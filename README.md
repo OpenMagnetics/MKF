@@ -1,2 +1,2 @@
 # Magnetics Knowledge Foundation
-Repository for holding all the different models, ideally and initiall writen in Golang
+Repository for holding all the different models, ideally and initially writen in C++
