@@ -9,14 +9,18 @@ using json = nlohmann::json;
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
-int add(int i, int j) {
-    return i + j;
-}
-
 namespace py = pybind11;
 
+
+py::dict get_constants(){
+    py::dict dict;
+    auto constants = OpenMagnetics::Constants();
+    dict["residualGap"] = constants.residualGap;
+    dict["minimumNonResidualGap"] = constants.minimumNonResidualGap;
+    return dict;
+}
+
+
 PYBIND11_MODULE(PyMKF, m) {
-    py::class_<OpenMagnetics::Constants>(m, "Constants")
-        .def(py::init())
-        .def_readonly("residual_gap", &OpenMagnetics::Constants::residualGap);
+    m.def("get_constants", &get_constants, "Returns the constants");
 }
