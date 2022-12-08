@@ -11,7 +11,6 @@
 #include <CoreTemplate.hpp>
 #include <magic_enum.hpp>
 #include "json.hpp"
-#include "Utils.cpp"
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
@@ -20,8 +19,6 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
     using nlohmann::json;
     using ColumnShape = ShapeEnum;
-
-    const double residualGap = 0.00001;
 
     enum class DimensionalValues : int { MAXIMUM, NOMINAL, MINIMUM };
 
@@ -127,6 +124,7 @@ namespace OpenMagnetics {
 
         std::shared_ptr<std::vector<GeometricalDescription>> create_geometrical_description();
         std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
+        ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
         std::vector<CoreGap> find_gaps_by_type(GappingType gappingType);
         void scale_to_stacks(int64_t numberStacks);
         void process_gap();

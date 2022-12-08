@@ -5,12 +5,15 @@
 #include <vector>
 #include <filesystem>
 #include <streambuf>
+#include <limits>
 #include <nlohmann/json-schema.hpp>
 #include <CoreTemplate.hpp>
 #include <magic_enum.hpp>
 #include "json.hpp"
-#include "Utils.cpp"
+#include "Utils.h"
 #include "Core.h"
+#include "Constants.h"
+
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
@@ -18,6 +21,7 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+    auto constants = Constants();
     template <OpenMagnetics::DimensionalValues preferredValue> 
     double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue)
     {
@@ -1768,6 +1772,23 @@ namespace OpenMagnetics {
         return foundColumns;
     }
 
+    ColumnElement Core::find_closest_column_by_coordinates(std::vector<double> coordinates) {
+        double closestDistance = std::numeric_limits<double>::infinity();
+        ColumnElement closestColumn;
+        for (auto &column : get_processed_description()->get_columns()) {
+            double distance = 0;
+            auto column_coordinates = column.get_coordinates();
+            for (size_t i = 0; i < column_coordinates.size(); ++i) {
+                distance += fabs(column_coordinates[i] - coordinates[i]);
+            }
+            if (distance < closestDistance) {
+                closestColumn = column;
+                closestDistance = distance;
+            }
+        }
+        return closestColumn;
+    }
+
     std::vector<CoreGap> Core::find_gaps_by_type(GappingType gappingType) {
         std::vector<CoreGap> foundGaps;
         for (auto &gap : get_functional_description().get_gapping()) {
@@ -1818,10 +1839,10 @@ namespace OpenMagnetics {
         if (numberNonResidualGaps + numberResidualGaps == 0) {
             for (size_t i = 0; i < get_processed_description()->get_columns().size(); ++i) {
                 jsonGap["type"] = GappingType::RESIDUAL;
-                jsonGap["length"] = residualGap;
+                jsonGap["length"] = constants.residualGap;
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
-                jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2;
+                jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - constants.residualGap / 2;
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -1833,7 +1854,7 @@ namespace OpenMagnetics {
                 jsonGap["length"] = gapping[i].get_length();
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
-                jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2;
+                jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - gapping[i].get_length() / 2;
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -1969,7 +1990,6 @@ namespace OpenMagnetics {
 //     // core.process_data();
 
 //     // auto processed_description = *core.get_processed_description();
-//     std::cout << *(core.get_mutable_functional_description().get_name()) << "\n";
 //     // std::cout << "effective_area: " << core.get_processed_description()->get_effective_parameters().get_effective_area() << "\n";
 //     // std::cout << "effective_length: " << core.get_processed_description()->get_effective_parameters().get_effective_length() << "\n";
 //     // std::cout << "effective_volume: " << core.get_processed_description()->get_effective_parameters().get_effective_volume() << "\n";

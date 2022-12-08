@@ -58,7 +58,10 @@ add_custom_command(
 add_custom_target(CoreTemplate ALL
     DEPENDS "${CMAKE_BINARY_DIR}/MAS/CoreTemplate.hpp")
 
-add_library(MKF STATIC src/Core.cpp)
+file(GLOB SOURCES
+    "src/*.cpp")
+
+add_library(MKF SHARED ${SOURCES})
 
 include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
@@ -76,15 +79,12 @@ file(GLOB TESTS_SOURCES
 add_executable(MKF_tests ${TESTS_SOURCES})
 target_link_libraries(MKF_tests MKF)
 
-
 include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src")
 pybind11_add_module(PyMKF src/PyMKF/PyMKFWrapper.cpp )
 target_link_libraries(PyMKF PRIVATE MKF pybind11_json)
 
-
 # EXAMPLE_VERSION_INFO is defined by setup.py and passed into the C++ code as a
 # define (VERSION_INFO) here.
-
 
 target_compile_definitions(PyMKF
                            PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
