@@ -1,7 +1,9 @@
 #include "pybind11_json.hpp"
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "Constants.h"
 #include "Core.h"
+#include "Reluctance.h"
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -26,7 +28,31 @@ py::dict get_constants(){
 }
 
 
+json get_gap_reluctance(json coreGapData, std::string modelNameString){
+
+    auto modelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameString);
+
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName.value());
+    OpenMagnetics::CoreGap coreGap(coreGapData);
+
+    auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap);
+    return coreGapResult;
+}
+
+json get_gap_reluctance_model_information(){
+    py::dict dict;
+    dict["information"] = OpenMagnetics::ReluctanceModel::get_models_information();
+    dict["errors"] = OpenMagnetics::ReluctanceModel::get_models_errors();
+    dict["errors"] = OpenMagnetics::ReluctanceModel::get_models_errors();
+    dict["internal_links"] = OpenMagnetics::ReluctanceModel::get_models_internal_links();
+    dict["external_links"] = OpenMagnetics::ReluctanceModel::get_models_external_links();
+    return dict;
+}
+
+
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
+    m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
+    m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");
 }

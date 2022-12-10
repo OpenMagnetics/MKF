@@ -33,3 +33,35 @@ coreData = {
 
 core_data = PyMKF.get_core_data(coreData)
 pprint.pprint(core_data)
+
+
+coreGap = {
+    'area': 0.000123,
+    'coordinates': [0.0, 0.0, 0.0],
+    'distanceClosestNormalSurface': 0.0146,
+    'length': 0.0001,
+    'sectionDimensions': [0.0125, 0.0125],
+    'shape': 'round',
+    'type': 'additive'
+}
+
+reluctance_data = PyMKF.get_gap_reluctance(coreGap, "ZHANG")
+pprint.pprint(reluctance_data)
+
+
+coreGap = {
+    'area': 0.00075,
+    'coordinates': [0, 0, 0],
+    'distanceClosestNormalSurface': 0.0334975,
+    'height': 0,
+    'length': 0.00013000000000000002,
+    'sectionDimensions': [0.025, 0.03],
+    'shape': 'rectangular',
+    'type': 'subtractive'
+}
+
+reluctance_data = PyMKF.get_gap_reluctance(coreGap, "ZHANG")
+pprint.pprint(reluctance_data)
+
+models_info = PyMKF.get_gap_reluctance_model_information()
+pprint.pprint(models_info)
