@@ -43,6 +43,7 @@ namespace OpenMagnetics {
             fringing_factor = gap_length / (constants.vacuum_permeability * gap_area * reluctance);
         }
         std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
         result["reluctance"] = reluctance;
         result["fringing_factor"] = fringing_factor;
 
@@ -53,11 +54,9 @@ namespace OpenMagnetics {
     {
         auto constants = Constants();
         auto gap_length = gapInfo.get_length();
-        auto gap_area = *(gapInfo.get_area());
         auto gap_shape = *(gapInfo.get_shape());
         auto gap_section_dimensions = *(gapInfo.get_section_dimensions());
         auto distance_closest_normal_surface = *(gapInfo.get_distance_closest_normal_surface());
-        double reluctance_no_fringing = gap_length / (constants.vacuum_permeability * gap_area);
         double reluctance;
         double fringing_factor = 1;
         auto gap_section_width = gap_section_dimensions[0];
@@ -66,19 +65,18 @@ namespace OpenMagnetics {
         if (gap_shape == ShapeEnum::ROUND) {
             double gamma_r = get_reluctance_type_1(gap_length / 2, gap_section_width / 2, distance_closest_normal_surface) / (gap_length / constants.vacuum_permeability / (gap_section_width / 2));
             reluctance = pow(gamma_r, 2) * gap_length / (constants.vacuum_permeability * std::numbers::pi * pow(gap_section_width / 2, 2));
+            fringing_factor = 1 / gamma_r;
         }
         else {
             double gamma_x = get_reluctance_type_1(gap_length / 2, gap_section_width, distance_closest_normal_surface) / (gap_length / constants.vacuum_permeability / gap_section_width);
             double gamma_y = get_reluctance_type_1(gap_length / 2, gap_section_depth, distance_closest_normal_surface) / (gap_length / constants.vacuum_permeability / gap_section_depth);
             double gamma = gamma_x * gamma_y;
             reluctance = gamma * gap_length / (constants.vacuum_permeability * gap_section_depth * gap_section_width);
-        }
-
-        if (gap_length > 0) {
-            fringing_factor = std::max(1., reluctance_no_fringing / reluctance);
+            fringing_factor = 1 / gamma;
         }
 
         std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
         result["reluctance"] = reluctance;
         result["fringing_factor"] = fringing_factor;
 
@@ -109,6 +107,38 @@ namespace OpenMagnetics {
         reluctance = gap_length / (constants.vacuum_permeability * gap_area * fringing_factor);
 
         std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
+        result["reluctance"] = reluctance;
+        result["fringing_factor"] = fringing_factor;
+
+        return result;
+    };
+
+    std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo)
+    {
+        auto constants = Constants();
+        auto gap_length = gapInfo.get_length();
+        auto gap_area = *(gapInfo.get_area());
+        auto gap_shape = *(gapInfo.get_shape());
+        auto gap_section_dimensions = *(gapInfo.get_section_dimensions());
+        double reluctance;
+        double fringing_factor = 1;
+        auto gap_section_width = gap_section_dimensions[0];
+        auto gap_section_depth = gap_section_dimensions[1];
+
+        if (gap_length > 0) {
+            if (gap_shape == ShapeEnum::ROUND) {
+                fringing_factor = pow(1 + gap_length / gap_section_width, 2);
+            }
+            else{
+                fringing_factor = (1 + gap_length / gap_section_depth) * (1 + gap_length / gap_section_width);
+            }
+        }
+
+        reluctance = gap_length / (constants.vacuum_permeability * gap_area * fringing_factor);
+
+        std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
         result["reluctance"] = reluctance;
         result["fringing_factor"] = fringing_factor;
 
@@ -125,15 +155,15 @@ namespace OpenMagnetics {
         auto distance_closest_normal_surface = *(gapInfo.get_distance_closest_normal_surface());
         double reluctance;
         double fringing_factor = 1;
-        auto gap_section_depth = gap_section_dimensions[1];
 
         if (gap_length > 0) {
-            fringing_factor = 1 + (1.1 * gap_length / gap_section_depth) * log(2 * 2 * distance_closest_normal_surface / gap_length);
+            fringing_factor = 1 + gap_length / sqrt(gap_area) * log(2 * 2 * distance_closest_normal_surface / gap_length);
         }
 
         reluctance = gap_length / (constants.vacuum_permeability * gap_area * fringing_factor);
 
         std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
         result["reluctance"] = reluctance;
         result["fringing_factor"] = fringing_factor;
 
@@ -155,11 +185,15 @@ namespace OpenMagnetics {
             std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceEffectiveAreaModel);
             return reluctanceModel;
         }
+        else if (modelName == ReluctanceModels::EFFECTIVE_LENGTH) {
+            std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceEffectiveLengthModel);
+            return reluctanceModel;
+        }
         else if (modelName == ReluctanceModels::MUEHLETHALER) {
             std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceMuehlethalerModel);
             return reluctanceModel;
         }
 
-        else throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, MCLYMAN, EFFECTIVE_AREA, MUEHLETHALER}");
+        else throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, MCLYMAN, EFFECTIVE_AREA, EFFECTIVE_LENGTH, MUEHLETHALER}");
     }
 }
