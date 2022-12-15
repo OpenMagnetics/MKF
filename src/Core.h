@@ -118,16 +118,27 @@ namespace OpenMagnetics {
         Core(const json & j) {
             from_json(j, *this);
             process_data();
+            
             process_gap();
+
+            if (get_geometrical_description() == nullptr) {
+                auto geometricalDescription = create_geometrical_description();
+
+                set_geometrical_description(geometricalDescription);
+            }
         }
         virtual ~Core() = default;
 
         std::shared_ptr<std::vector<GeometricalDescription>> create_geometrical_description();
         std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
         ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
+        int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
+        int find_exact_column_index_by_coordinates(std::vector<double> coordinates);
         std::vector<CoreGap> find_gaps_by_type(GappingType gappingType);
         void scale_to_stacks(int64_t numberStacks);
+        bool is_gapping_missaligned();
         void process_gap();
+        void distribute_and_process_gap();
         void process_data();
     };
 }
