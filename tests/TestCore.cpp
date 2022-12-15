@@ -1141,6 +1141,25 @@ SUITE(processedDescription)
     //     CHECK(core.get_processed_description()->get_columns()[0].get_shape() == OpenMagnetics::ColumnShape::RECTANGULAR);
     //     CHECK(core.get_processed_description()->get_columns()[1].get_shape() == OpenMagnetics::ColumnShape::RECTANGULAR);
     // }
+
+    TEST(Custom_0)
+    {
+        auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": [0.0125, 0.0125], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0005, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.0, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        CHECK_EQUAL(core.get_processed_description()->get_columns().size(), 2u);
+    }
+
+    TEST(Custom_1)
+    {
+        auto coreJson = json::parse("{\"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0308, \"B\": 0.0264, \"C\": 0.0265, \"D\": 0.016, \"E\": 0.01, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(), 0.0002756, 0.0002756 * 0.2);
+        auto function_description = core.get_functional_description();
+    }
 }
 
 SUITE(geometricalDescription)
@@ -1161,7 +1180,7 @@ SUITE(geometricalDescription)
         CHECK_EQUAL(*(core.get_mutable_functional_description().get_name()), "core_E_19_8_5_N87_substractive");
         CHECK_EQUAL(geometrical_description.size(), 2u);
         CHECK(geometrical_description[0].get_machining() != nullptr);
-        CHECK(geometrical_description[1].get_machining() == nullptr);
+        CHECK(geometrical_description[1].get_machining() != nullptr);
         CHECK(geometrical_description[0].get_type() == OpenMagnetics::GeometricalDescriptionType::HALF_SET);
         CHECK(geometrical_description[1].get_type() == OpenMagnetics::GeometricalDescriptionType::HALF_SET);
     }
@@ -1186,6 +1205,24 @@ SUITE(geometricalDescription)
         CHECK(geometrical_description[5].get_machining() == nullptr);
         CHECK(geometrical_description[4].get_type() == OpenMagnetics::GeometricalDescriptionType::SPACER);
         CHECK(geometrical_description[5].get_type() == OpenMagnetics::GeometricalDescriptionType::SPACER);
+    }
+
+    TEST(Custom_0)
+    {
+        auto coreJson = json::parse("{\"functionalDescription\": {\"gapping\": [{\"area\": 0.000114, \"coordinates\": [0.0, -0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000114, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.008451, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000114, \"coordinates\": [0.0, 0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000205, \"coordinates\": [0.017925, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, 0.02], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 0.000205, \"coordinates\": [-0.017925, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, 0.02], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"Custom_0\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.03, \"B\": 0.011800000000000001, \"C\": 0.02, \"D\": 0.0085, \"E\": 0.0256, \"F\": 0.012, \"G\": 0.017, \"H\": 0.0}, \"family\": \"lp\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        auto geometrical_description = *(core.get_geometrical_description());
+
+        CHECK_EQUAL(*(core.get_mutable_functional_description().get_name()), "Custom_0");
+        CHECK_EQUAL(geometrical_description.size(), 2u);
+        CHECK(geometrical_description[0].get_machining() != nullptr);
+        CHECK(geometrical_description[1].get_machining() != nullptr);
+        CHECK(geometrical_description[0].get_machining()->size() == 2);
+        CHECK(geometrical_description[1].get_machining()->size() == 2);
+        CHECK(geometrical_description[0].get_type() == OpenMagnetics::GeometricalDescriptionType::HALF_SET);
+        CHECK(geometrical_description[1].get_type() == OpenMagnetics::GeometricalDescriptionType::HALF_SET);
     }
 }
 
@@ -1329,9 +1366,6 @@ SUITE(functionalDescription)
 
     TEST(Custom_0)
     {
-        auto coreFilePath = masPath + "samples/core/core_E_55_21_N97_additive.json";
-        std::ifstream json_file(coreFilePath);
-
         auto coreJson = json::parse("""{\"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"shape\": {\"family\": \"pm\", \"type\": \"custom\", \"aliases\": [], \"dimensions\": {\"A\": 0.1118, \"B\": 0.046299999999999994, \"C\": 0.045, \"D\": 0.0319, \"E\": 0.08979999999999999, \"F\": 0.0286, \"G\": 0.052, \"H\": 0.0056, \"b\": 0.0058, \"t\": 0.004200000000000001}, \"familySubtype\": \"2\", \"name\": \"Custom\"}, \"type\": \"two-piece set\", \"name\": \"default\", \"numberStacks\": 1}}""");
 
         OpenMagnetics::Core core(coreJson);
@@ -1341,14 +1375,69 @@ SUITE(functionalDescription)
 
     TEST(Custom_1)
     {
-        auto coreFilePath = masPath + "samples/core/core_E_55_21_N97_additive.json";
-        std::ifstream json_file(coreFilePath);
-
-        auto coreJson = json::parse("{\"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0308, \"B\": 0.0264, \"C\": 0.0265, \"D\": 0.016, \"E\": 0.01, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
+        // Tests that a missaligned gapping get recalculated
+        auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": [0.0125, 0.0125], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0005, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.0, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
         OpenMagnetics::Core core(coreJson);
 
-        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(), 0.0002756, 0.0002756 * 0.2);
         auto function_description = core.get_functional_description();
+
+        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[2] == 0);
+
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[1] == 0);
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[2] != 0);
+    }
+
+    TEST(Custom_2)
+    {
+        // Tests that a distributed but aligned gapping does not get recalculated
+        auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 1.5e-05, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0041, \"length\": 0.001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 1.5e-05, \"coordinates\": [0.0, 1.0, 0.0], \"distanceClosestNormalSurface\": 0.0041, \"length\": 0.001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, 0.0, 0.00805], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, -1.0, 0.00805], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.000, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        auto function_description = core.get_functional_description();
+
+        CHECK_EQUAL(function_description.get_gapping().size(), 4u);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*function_description.get_gapping()[0].get_coordinates())[2] == 0);
+
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[1] != 0);
+        CHECK((*function_description.get_gapping()[1].get_coordinates())[2] == 0);
+
+        CHECK((*function_description.get_gapping()[2].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[2].get_coordinates())[1] == 0);
+        CHECK((*function_description.get_gapping()[2].get_coordinates())[2] != 0);
+
+        CHECK((*function_description.get_gapping()[3].get_coordinates())[0] == 0);
+        CHECK((*function_description.get_gapping()[3].get_coordinates())[1] != 0);
+        CHECK((*function_description.get_gapping()[3].get_coordinates())[2] != 0);
+    }
+
+    TEST(Custom_3)
+    {
+        // Check for segmentation fault
+        auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 1.5e-05, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.00455, \"length\": 0.0001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, 0.0, 0.00805], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.101, \"B\": 0.076, \"C\": 0.03, \"D\": 0.048, \"E\": 0.044, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        auto function_description = core.get_functional_description();
+
+    }
+
+    TEST(Custom_4)
+    {
+        // Check for segmentation fault
+        auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000175, \"coordinates\": [0.0, -0.0124, 0.0], \"distanceClosestNormalSurface\": 0.0119, \"length\": 0.001, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000175, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.024301, \"length\": 0.002, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000175, \"coordinates\": [0.0, 0.0124, 0.0], \"distanceClosestNormalSurface\": 0.011901, \"length\": 0.002, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000136, \"coordinates\": [0.0344, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0248, \"length\": 5e-06, \"sectionDimensions\": [0.0091, 0.0149], \"shape\": \"rectangular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.038700000000000005, \"B\": 0.0352, \"C\": 0.0149, \"D\": 0.0248, \"G\": 0.0, \"H\": 0.0091}, \"family\": \"ur\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+
+        OpenMagnetics::Core core(coreJson);
+
+        auto function_description = core.get_functional_description();
+
     }
 }

@@ -64,7 +64,7 @@ SUITE(Samples)
                         }
                         catch (const std::exception & e)
                         {
-                            std::cerr << "Validation of schema failed, here is why: " << e.what() << "\n";
+                            std::cerr << "Validation of schema failed for " << path << ", here is why: " << e.what() << "\n";
                             CHECK(false); // fails
                             return;
                         }
@@ -77,7 +77,7 @@ SUITE(Samples)
                         }
                         catch (const std::exception & e)
                         {
-                            std::cerr << "Validation failed, here is why: " << e.what() << "\n";
+                            std::cerr << "Validation failed for " << path << ", here is why: " << e.what() << "\n";
                             CHECK(false); // fails
                             return;
                         }
@@ -85,6 +85,9 @@ SUITE(Samples)
                     }
                     catch (std::exception & e)
                     {
+                        std::ifstream f(validator_path);
+                        json shape_schema = json::parse(f);
+                        std::cerr << "shape_schema: " << shape_schema << "\n";
                         std::cerr << "Could not open and parse " << validator_path << ": " << e.what() << "\n";
                         CHECK(false); // fails
                         return;

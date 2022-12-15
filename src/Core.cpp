@@ -157,7 +157,7 @@ namespace OpenMagnetics {
                 auto dimensions = *get_shape().get_dimensions();
                 double tetha;
                 double aperture;
-                if (dimensions.find("G") == dimensions.end()) {
+                if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
                     tetha = asin(std::get<double>(dimensions["C"]) / std::get<double>(dimensions["E"]));
                     aperture = std::get<double>(dimensions["E"]) / 2 * cos(tetha);
                 } else {
@@ -346,11 +346,11 @@ namespace OpenMagnetics {
                 jsonLateralColumn["area"] = roundFloat<6>(jsonLateralColumn["width"].get<double>() * jsonLateralColumn["depth"].get<double>());
                 jsonLateralColumn["coordinates"] = {roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
                                                     0,
-                                                    roundFloat<6>(-std::get<double>(dimensions["F2"]) / 2 - std::get<double>(dimensions["K"]) + std::get<double>(dimensions["C"]) / 2)};
+                                                    0};
                 jsonWindingWindows.push_back(jsonLateralColumn);
                 jsonLateralColumn["coordinates"] = {roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
                                                     0,
-                                                    roundFloat<6>(-std::get<double>(dimensions["F2"]) / 2 - std::get<double>(dimensions["K"]) + std::get<double>(dimensions["C"]) / 2)};
+                                                    0};
                 jsonWindingWindows.push_back(jsonLateralColumn);
                 set_columns(jsonWindingWindows);
             }
@@ -436,12 +436,12 @@ namespace OpenMagnetics {
                 double windingArea;
                 double apertureArea;
                 double k;
-                if (dimensions.find("K") == dimensions.end()) {
+                if ((dimensions.find("K") == dimensions.end()) || (std::get<double>(dimensions["K"]) == 0)) {
                     k = std::get<double>(dimensions["F"]) / 2;
                 } else {
                     k = std::get<double>(dimensions["K"]);
                 }
-                if (dimensions.find("G") == dimensions.end()) {
+                if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
                     baseArea = std::get<double>(dimensions["A"]) * std::get<double>(dimensions["C"]);
                     windingArea = k * std::get<double>(dimensions["E"]) + 1 / 2 * std::numbers::pi * pow(std::get<double>(dimensions["E"]) / 2, 2);
                     apertureArea = 0;
@@ -475,12 +475,12 @@ namespace OpenMagnetics {
                 jsonWindingWindows.push_back(jsonMainColumn);
                 jsonLateralColumn["type"] = OpenMagnetics::ColumnType::LATERAL;
                 jsonLateralColumn["shape"] = OpenMagnetics::ColumnShape::IRREGULAR;
-                if (dimensions.find("G") == dimensions.end()) {
+                if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
                     jsonLateralColumn["depth"] = roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 - std::get<double>(dimensions["K"]));
                     jsonLateralColumn["area"] = roundFloat<6>(get_lateral_leg_area());
                     jsonLateralColumn["width"] = roundFloat<6>(jsonLateralColumn["area"].get<double>() / jsonLateralColumn["depth"].get<double>());
                     jsonLateralColumn["height"] = roundFloat<6>(std::get<double>(dimensions["D"]));
-                    jsonLateralColumn["coordinates"] = {0, roundFloat<6>(std::get<double>(dimensions["C"]) - jsonLateralColumn["depth"].get<double>() / 2), 0};
+                    jsonLateralColumn["coordinates"] = {0, 0, roundFloat<6>(std::get<double>(dimensions["C"]) - jsonLateralColumn["depth"].get<double>() / 2)};
                     jsonWindingWindows.push_back(jsonLateralColumn);
                 } else {
                     jsonLateralColumn["depth"] = roundFloat<6>(std::get<double>(dimensions["C"]));
@@ -509,7 +509,7 @@ namespace OpenMagnetics {
                 double a = std::get<double>(dimensions["A"]);
                 double b = std::get<double>(dimensions["C"]);
                 double k;
-                if (dimensions.find("K") == dimensions.end()) {
+                if ((dimensions.find("K") == dimensions.end()) || (std::get<double>(dimensions["K"]) == 0)) {
                     k = std::get<double>(dimensions["F"]) / 2;
                 } else {
                     k = std::get<double>(dimensions["K"]);
@@ -602,12 +602,12 @@ namespace OpenMagnetics {
                 jsonWindingWindows.push_back(jsonMainColumn);
                 jsonLateralColumn["type"] = OpenMagnetics::ColumnType::LATERAL;
                 jsonLateralColumn["shape"] = OpenMagnetics::ColumnShape::IRREGULAR;
-                if (dimensions.find("G") == dimensions.end()) {
+                if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
                     jsonLateralColumn["depth"] = roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 - std::get<double>(dimensions["K"]));
                     jsonLateralColumn["area"] = roundFloat<6>(get_lateral_leg_area());
                     jsonLateralColumn["width"] = roundFloat<6>(jsonLateralColumn["area"].get<double>() / jsonLateralColumn["depth"].get<double>());
                     jsonLateralColumn["height"] = roundFloat<6>(std::get<double>(dimensions["D"]));
-                    jsonLateralColumn["coordinates"] = {0, roundFloat<6>(std::get<double>(dimensions["C"]) - jsonLateralColumn["depth"].get<double>() / 2), 0};
+                    jsonLateralColumn["coordinates"] = {0, 0, -roundFloat<6>((std::get<double>(dimensions["C"]) - jsonLateralColumn["depth"].get<double>() )/ 2)};
                     jsonWindingWindows.push_back(jsonLateralColumn);
                 } else {
                     jsonLateralColumn["depth"] = roundFloat<6>(std::get<double>(dimensions["C"]));
@@ -855,7 +855,7 @@ namespace OpenMagnetics {
                 double G = std::get<double>(dimensions["G"]);
                 double J;
                 double L;
-                if (dimensions.find("J") == dimensions.end()) {
+                if ((dimensions.find("J") == dimensions.end()) || (std::get<double>(dimensions["J"]) == 0)) {
                     J = std::get<double>(dimensions["F"]) / 2;  // Totally made up base on drawings
                     L = F + (C - F) / 3;  // Totally made up base on drawings
                 } else {
@@ -1212,10 +1212,23 @@ namespace OpenMagnetics {
             {
                 auto dimensions = *get_shape().get_dimensions();
                 json jsonWindingWindow;
+                double windingWindowWidth;
+                if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                    if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) - std::get<double>(dimensions["H"]);
+                    }
+                    else {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) - std::get<double>(dimensions["H"]);
+                    }
+                }
+                else {
+                    windingWindowWidth = std::get<double>(dimensions["E"]);
+                }
+
                 jsonWindingWindow["height"] = std::get<double>(dimensions["D"]);
-                jsonWindingWindow["width"] = std::get<double>(dimensions["E"]);
+                jsonWindingWindow["width"] = windingWindowWidth;
                 jsonWindingWindow["area"] = jsonWindingWindow["height"].get<double>() * jsonWindingWindow["width"].get<double>();
-                jsonWindingWindow["coordinates"] = {(std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2, 0};
+                jsonWindingWindow["coordinates"] = {(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2, 0};
                 set_winding_window(jsonWindingWindow);
             }
 
@@ -1305,10 +1318,23 @@ namespace OpenMagnetics {
             {
                 auto dimensions = *get_shape().get_dimensions();
                 json jsonWindingWindow;
+                double windingWindowWidth;
+                if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                    if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) - std::get<double>(dimensions["H"]);
+                    }
+                    else {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) - std::get<double>(dimensions["H"]);
+                    }
+                }
+                else {
+                    windingWindowWidth = std::get<double>(dimensions["E"]);
+                }
+
                 jsonWindingWindow["height"] = std::get<double>(dimensions["D"]);
-                jsonWindingWindow["width"] = std::get<double>(dimensions["E"]);
+                jsonWindingWindow["width"] = windingWindowWidth;
                 jsonWindingWindow["area"] = jsonWindingWindow["height"].get<double>() * jsonWindingWindow["width"].get<double>();
-                jsonWindingWindow["coordinates"] = {(std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2, 0};
+                jsonWindingWindow["coordinates"] = {(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2, 0};
                 set_winding_window(jsonWindingWindow);
             }
 
@@ -1324,6 +1350,19 @@ namespace OpenMagnetics {
             {
                 auto dimensions = *get_shape().get_dimensions();
                 auto familySubtype = *get_shape().get_family_subtype();
+
+                double windingWindowWidth;
+                if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                    if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) - std::get<double>(dimensions["H"]);
+                    }
+                    else {
+                        windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) - std::get<double>(dimensions["H"]);
+                    }
+                }
+                else {
+                    windingWindowWidth = std::get<double>(dimensions["E"]);
+                }
 
                 json jsonWindingWindows = json::array();
                 json jsonMainColumn;
@@ -1354,7 +1393,7 @@ namespace OpenMagnetics {
                     jsonLateralColumn["area"] = roundFloat<6>(std::numbers::pi * pow(jsonMainColumn["width"].get<double>() / 2, 2));
                 }
                 jsonLateralColumn["height"] = roundFloat<6>(std::get<double>(dimensions["D"]));
-                jsonLateralColumn["coordinates"] = {roundFloat<6>((std::get<double>(dimensions["A"]) + std::get<double>(dimensions["E"])) / 2), 0, 0};
+                jsonLateralColumn["coordinates"] = {roundFloat<6>((std::get<double>(dimensions["A"]) + windingWindowWidth) / 2), 0, 0};
                 jsonWindingWindows.push_back(jsonLateralColumn);
                 set_columns(jsonWindingWindows);
             }
@@ -1372,6 +1411,19 @@ namespace OpenMagnetics {
                 double a3;
                 double l4;
                 double l5;
+                double e;
+
+                if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                    if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
+                        e = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) - std::get<double>(dimensions["H"]);
+                    }
+                    else {
+                        e = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) - std::get<double>(dimensions["H"]);
+                    }
+                }
+                else {
+                    e = std::get<double>(dimensions["E"]);
+                }
 
                 if (familySubtype == "1") {
                     a1 = std::get<double>(dimensions["C"]) * std::get<double>(dimensions["H"]);
@@ -1396,7 +1448,7 @@ namespace OpenMagnetics {
                 }
 
                 lengths.push_back(2 * std::get<double>(dimensions["D"]));
-                lengths.push_back(2 * std::get<double>(dimensions["E"]));
+                lengths.push_back(2 * e);
                 lengths.push_back(2 * std::get<double>(dimensions["D"]));
                 lengths.push_back(l4);
                 lengths.push_back(l5);
@@ -1682,16 +1734,15 @@ namespace OpenMagnetics {
                 if (aux["coordinates"][0] == nullptr) {
                     aux["coordinates"] = {0, 0, 0};
                 }
-                else {  // Gap coordinates are centered in the gap, while machining coordinates start at the base of the central column surface, therefore, we must correct them
-                    aux["coordinates"][1] = aux["coordinates"].at(1).get<double>() - gap.get_length() / 2;
-                }
+                // else {  // Gap coordinates are centered in the gap, while machining coordinates start at the base of the central column surface, therefore, we must correct them
+                //     aux["coordinates"][1] = aux["coordinates"].at(1).get<double>() - gap.get_length() / 2;
+                // }
                 jsonMachining.push_back(aux);
             }
-
         }
 
         jsonGeometricalDescription["material"] = get_functional_description().get_material();
-        jsonGeometricalDescription["shape"] = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_name();
+        jsonGeometricalDescription["shape"] = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
         switch (get_functional_description().get_type()) {
             case OpenMagnetics::FunctionalDescriptionType::TOROIDAL:
                 jsonGeometricalDescription["type"] = OpenMagnetics::GeometricalDescriptionType::TOROIDAL;
@@ -1704,6 +1755,7 @@ namespace OpenMagnetics {
                     double currentHeight = roundFloat<6>(corePieceHeight);
                     std::vector<double> coordinates = {0, currentHeight, currentDepth};
                     jsonGeometricalDescription["coordinates"] = coordinates;
+                    jsonGeometricalDescription["rotation"] = {0, 0, 0};
                     if (jsonMachining.size() > 0) {
                         jsonGeometricalDescription["machining"] = jsonMachining;
                     }
@@ -1719,19 +1771,69 @@ namespace OpenMagnetics {
             case OpenMagnetics::FunctionalDescriptionType::TWO_PIECE_SET:
                 jsonGeometricalDescription["type"] = OpenMagnetics::GeometricalDescriptionType::HALF_SET;
                 for (auto i = 0; i < numberStacks; ++i) {
-                    double currentHeight = roundFloat<6>(spacerThickness / 2 + corePieceHeight);
+                    double currentHeight = roundFloat<6>(spacerThickness / 2);
+                    json topHalfMachining = json::array();
                     std::vector<double> coordinates = {0, currentHeight, currentDepth};
                     jsonGeometricalDescription["coordinates"] = coordinates;
-                    if (jsonMachining.size() > 0) {
-                        jsonGeometricalDescription["machining"] = jsonMachining;
+                    jsonGeometricalDescription["rotation"] = {std::numbers::pi, std::numbers::pi, 0};
+                    for (auto & operation : jsonMachining) {
+                        if (operation["coordinates"].at(1).get<double>() >= 0 && operation["coordinates"].at(1).get<double>() < operation["length"].get<double>() / 2) {
+                            json brokenDownOperation;
+                            brokenDownOperation["coordinates"] = operation["coordinates"];
+                            brokenDownOperation["length"] = operation["length"].get<double>() / 2 + operation["coordinates"].at(1).get<double>();
+                            brokenDownOperation["coordinates"][1] = brokenDownOperation["length"].get<double>() / 2;
+                            topHalfMachining.push_back(brokenDownOperation);
+                        }
+                        else if (operation["coordinates"].at(1).get<double>() < 0 && (operation["coordinates"].at(1).get<double>() + operation["length"].get<double>() / 2) > 0) {
+                            json brokenDownOperation;
+                            brokenDownOperation["coordinates"] = operation["coordinates"];
+                            brokenDownOperation["length"] = operation["length"].get<double>() / 2 + operation["coordinates"].at(1).get<double>();
+                            brokenDownOperation["coordinates"][1] = brokenDownOperation["length"].get<double>() / 2;
+                            topHalfMachining.push_back(brokenDownOperation);
+                        }
+                        else if (operation["coordinates"].at(1).get<double>() > 0) {
+                            topHalfMachining.push_back(operation);
+                        }
+                    }
+
+
+                    if (topHalfMachining.size() > 0) {
+                        jsonGeometricalDescription["machining"] = topHalfMachining;
                     }
                     geometricalDescription.push_back(GeometricalDescription(jsonGeometricalDescription));
 
-                    if (jsonGeometricalDescription.find("machining") != jsonGeometricalDescription.end())
-                    {
-                        jsonGeometricalDescription.erase("machining");
+                    json bottomHalfMachining = json::array();
+
+                    for (auto & operation : jsonMachining) {
+                        if (operation["coordinates"].at(1).get<double>() <= 0 && (-operation["coordinates"].at(1).get<double>() < operation["length"].get<double>() / 2)) {
+                            json brokenDownOperation;
+                            brokenDownOperation["coordinates"] = operation["coordinates"];
+                            brokenDownOperation["length"] = operation["length"].get<double>() / 2 - operation["coordinates"].at(1).get<double>();
+                            brokenDownOperation["coordinates"][1] = -brokenDownOperation["length"].get<double>() / 2;
+                            bottomHalfMachining.push_back(brokenDownOperation);
+                        }
+                        else if (operation["coordinates"].at(1).get<double>() > 0 && (operation["coordinates"].at(1).get<double>() - operation["length"].get<double>() / 2) < 0) {
+                            json brokenDownOperation;
+                            brokenDownOperation["coordinates"] = operation["coordinates"];
+                            brokenDownOperation["length"] = operation["length"].get<double>() / 2 - operation["coordinates"].at(1).get<double>();
+                            brokenDownOperation["coordinates"][1] = -brokenDownOperation["length"].get<double>() / 2;
+                            bottomHalfMachining.push_back(brokenDownOperation);
+                        }
+                        else if (operation["coordinates"].at(1).get<double>() < 0) {
+                            bottomHalfMachining.push_back(operation);
+                        }
                     }
 
+                    if (std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() == CoreShapeFamily::UR) {
+                        jsonGeometricalDescription["rotation"] = {0, std::numbers::pi, 0};
+                    }
+                    else {
+                        jsonGeometricalDescription["rotation"] = {0, 0, 0};
+                    }
+
+                    if (bottomHalfMachining.size() > 0) {
+                        jsonGeometricalDescription["machining"] = bottomHalfMachining;
+                    }
                     currentHeight = -currentHeight;
                     coordinates = {0, currentHeight, currentDepth};
                     jsonGeometricalDescription["coordinates"] = coordinates;
@@ -1742,11 +1844,69 @@ namespace OpenMagnetics {
 
                 if (spacerThickness > 0) {
                     for ( auto &column : corePiece->get_columns()) {
+                        auto shape_data = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
                         if (column.get_type() == OpenMagnetics::ColumnType::LATERAL) {
                             jsonSpacer["type"] = OpenMagnetics::GeometricalDescriptionType::SPACER;
                             jsonSpacer["material"] = "plastic";
-                            jsonSpacer["dimensions"] = {column.get_width(), spacerThickness, column.get_depth() * numberStacks};
-                            jsonSpacer["coordinates"] = column.get_coordinates();
+                            // We cannot use directly column.get_width()
+                            auto dimensions = *shape_data.get_dimensions();
+                            double windingWindowWidth;
+                            if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                                if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
+                                    windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) - std::get<double>(dimensions["H"]);
+                                }
+                                else {
+                                    windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) - std::get<double>(dimensions["H"]);
+                                }
+                            }
+                            else {
+                                windingWindowWidth = std::get<double>(dimensions["E"]);
+                            }
+                            double minimum_column_width;
+                            double minimum_column_depth;
+                            if ((shape_data.get_family() == CoreShapeFamily::EP || shape_data.get_family() == CoreShapeFamily::EPX) && corePiece->get_columns().size() == 2) {
+                                minimum_column_width = std::get<double>(dimensions["A"]);
+                            }
+                            else if (shape_data.get_family() == CoreShapeFamily::U || shape_data.get_family() == CoreShapeFamily::UR) {
+                                if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
+                                    minimum_column_width = (std::get<double>(dimensions["A"]) - windingWindowWidth) / 2;
+                                }
+                                else{
+                                    minimum_column_width = std::get<double>(dimensions["H"]);
+                                }
+                            }
+                            else {
+                                minimum_column_width = (std::get<double>(dimensions["A"]) - windingWindowWidth) / 2;
+                            }
+
+                            if ((shape_data.get_family() == CoreShapeFamily::EP || shape_data.get_family() == CoreShapeFamily::EPX) && corePiece->get_columns().size() == 2) {
+                                minimum_column_depth = column.get_depth();
+                            }
+                            else if (shape_data.get_family() == CoreShapeFamily::P || shape_data.get_family() == CoreShapeFamily::PM) {
+                                minimum_column_depth = std::get<double>(dimensions["F"]);
+                            }
+                            else if (shape_data.get_family() == CoreShapeFamily::RM) {
+                                if (dimensions.find("J") != dimensions.end() && (roundFloat<6>(std::get<double>(dimensions["J"])) != 0)) {
+                                    minimum_column_depth = sqrt(2) * std::get<double>(dimensions["J"]) - std::get<double>(dimensions["A"]);
+                                }
+                                else if (dimensions.find("H") != dimensions.end() && (roundFloat<6>(std::get<double>(dimensions["H"])) != 0)) {
+                                    minimum_column_depth = std::get<double>(dimensions["H"]);
+                                }
+                                else {
+                                    minimum_column_depth = std::get<double>(dimensions["F"]);
+                                }
+                            }
+                            else {
+                                minimum_column_depth = column.get_depth() * numberStacks;
+                            }
+                            jsonSpacer["dimensions"] = {minimum_column_width, spacerThickness, minimum_column_depth * 1.2};
+                            jsonSpacer["rotation"] = {0, 0, 0};
+                            if (column.get_coordinates()[0] < 0) {
+                                jsonSpacer["coordinates"] = {-std::get<double>(dimensions["A"]) / 2 + minimum_column_width / 2, column.get_coordinates()[1], column.get_coordinates()[2]};
+                            }
+                            else {
+                                jsonSpacer["coordinates"] = {std::get<double>(dimensions["A"]) / 2 - minimum_column_width / 2, column.get_coordinates()[1], column.get_coordinates()[2]};
+                            }
                             geometricalDescription.push_back(GeometricalDescription(jsonSpacer));
                         }
                     }
@@ -1770,6 +1930,43 @@ namespace OpenMagnetics {
             }
         }
         return foundColumns;
+    }
+
+    int Core::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
+        double closestDistance = std::numeric_limits<double>::infinity();
+        int closestColumnIndex = -1;
+        auto columns = get_processed_description()->get_columns();
+        for (size_t index = 0; index < columns.size(); ++index) {
+            double distance = 0;
+            auto column_coordinates = columns[index].get_coordinates();
+            for (size_t i = 0; i < column_coordinates.size(); ++i) {
+                if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are axis X and Z
+                    distance += fabs(column_coordinates[i] - coordinates[i]);
+                }
+            }
+            if (distance < closestDistance) {
+                closestColumnIndex = index;
+                closestDistance = distance;
+            }
+        }
+        return closestColumnIndex;
+    }
+
+    int Core::find_exact_column_index_by_coordinates(std::vector<double> coordinates) {
+        auto columns = get_processed_description()->get_columns();
+        for (size_t index = 0; index < columns.size(); ++index) {
+            double distance = 0;
+            auto column_coordinates = columns[index].get_coordinates();
+            for (size_t i = 0; i < column_coordinates.size(); ++i) {
+                if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are axis X and Z
+                    distance += fabs(column_coordinates[i] - coordinates[i]);
+                }
+            }
+            if (distance == 0) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     ColumnElement Core::find_closest_column_by_coordinates(std::vector<double> coordinates) {
@@ -1811,7 +2008,7 @@ namespace OpenMagnetics {
         }
     }
 
-    void Core::process_gap()
+    void Core::distribute_and_process_gap()
     {
         json jsonGap;
         json jsonGapping = json::array();
@@ -1828,13 +2025,14 @@ namespace OpenMagnetics {
         int numberGaps = numberNonResidualGaps + numberResidualGaps;
         int numberColumns = get_processed_description()->get_columns().size();
 
-
         // Check if current information is valid
-        if (numberNonResidualGaps + numberResidualGaps < numberColumns && (numberNonResidualGaps + numberResidualGaps) > 0) {
-            if (!(get_functional_description().get_type() == OpenMagnetics::FunctionalDescriptionType::TOROIDAL && numberColumns == 1)) {
-                throw std::runtime_error("A TWO_PIECE_SET core cannot have less gaps than columns");
-            }
-        }
+        // if (numberNonResidualGaps + numberResidualGaps < numberColumns && (numberNonResidualGaps + numberResidualGaps) > 0) {
+        //     numberNonResidualGaps = 0;
+        //     numberResidualGaps = 0;
+        //     // if (!(get_functional_description().get_type() == OpenMagnetics::FunctionalDescriptionType::TOROIDAL && numberColumns == 1)) {
+        //     //     throw std::runtime_error("A TWO_PIECE_SET core cannot have less gaps than columns");
+        //     // }
+        // }
 
         if (numberNonResidualGaps + numberResidualGaps == 0) {
             for (size_t i = 0; i < get_processed_description()->get_columns().size(); ++i) {
@@ -1843,6 +2041,22 @@ namespace OpenMagnetics {
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
                 jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - constants.residualGap / 2;
+                jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
+                jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
+                jsonGapping.push_back(jsonGap);
+            }
+        }
+        else if (numberNonResidualGaps + numberResidualGaps < numberColumns) {
+            for (size_t i = 0; i < get_processed_description()->get_columns().size(); ++i) {
+                size_t gapIndex = i;
+                if (i >= gapping.size()) {
+                    gapIndex = gapping.size() -1;
+                }
+                jsonGap["type"] = gapping[gapIndex].get_type();
+                jsonGap["length"] = gapping[gapIndex].get_length();
+                jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
+                jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
+                jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - gapping[gapIndex].get_length() / 2;
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -1861,15 +2075,26 @@ namespace OpenMagnetics {
             }
         }
         else {
-
             auto lateralColumns = find_columns_by_type(ColumnType::LATERAL);
             auto centralColumns = find_columns_by_type(ColumnType::CENTRAL);
-            if (numberGaps == numberColumns) {
-                centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
-                distanceClosestNormalSurface = roundFloat<6>(centralColumns[0].get_height() / 2 - nonResidualGaps[0].get_length() / 2) ;
+
+            ColumnElement windingColumn;
+            std::vector<ColumnElement> returnColumns;
+            if (centralColumns.size() == 0) {
+                windingColumn = lateralColumns[0];
+                returnColumns = std::vector<ColumnElement>(lateralColumns.begin() + 1, lateralColumns.end());
             }
             else {
-                coreChunkSizePlusGap = roundFloat<6>(centralColumns[0].get_height() / (nonResidualGaps.size() + 1));
+                windingColumn = centralColumns[0];
+                returnColumns = lateralColumns;
+            }
+
+            if (numberGaps == numberColumns) {
+                centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
+                distanceClosestNormalSurface = roundFloat<6>(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2) ;
+            }
+            else {
+                coreChunkSizePlusGap = roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
                 centralColumnGapsHeightOffset = roundFloat<6>(-coreChunkSizePlusGap * (nonResidualGaps.size() - 1) / 2);
                 distanceClosestNormalSurface = roundFloat<6>(coreChunkSizePlusGap - nonResidualGaps[0].get_length() / 2);
             }
@@ -1877,14 +2102,14 @@ namespace OpenMagnetics {
             for (size_t i = 0; i < nonResidualGaps.size(); ++i) {
                 jsonGap["type"] = nonResidualGaps[i].get_type();
                 jsonGap["length"] = nonResidualGaps[i].get_length();
-                jsonGap["coordinates"] = {centralColumns[0].get_coordinates()[0], centralColumns[0].get_coordinates()[0] + centralColumnGapsHeightOffset, centralColumns[0].get_coordinates()[2]};
-                jsonGap["shape"] = centralColumns[0].get_shape();
+                jsonGap["coordinates"] = {windingColumn.get_coordinates()[0], windingColumn.get_coordinates()[0] + centralColumnGapsHeightOffset, windingColumn.get_coordinates()[2]};
+                jsonGap["shape"] = windingColumn.get_shape();
                 jsonGap["distanceClosestNormalSurface"] = distanceClosestNormalSurface;
-                jsonGap["area"] = centralColumns[0].get_area();
-                jsonGap["sectionDimensions"] = {centralColumns[0].get_width(), centralColumns[0].get_depth()};
+                jsonGap["area"] = windingColumn.get_area();
+                jsonGap["sectionDimensions"] = {windingColumn.get_width(), windingColumn.get_depth()};
                 jsonGapping.push_back(jsonGap);
 
-                centralColumnGapsHeightOffset += roundFloat<6>(centralColumns[0].get_height() / (nonResidualGaps.size() + 1));
+                centralColumnGapsHeightOffset += roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
                 if (i < nonResidualGaps.size() / 2. - 1) {
                     distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface + coreChunkSizePlusGap);
                 }
@@ -1892,17 +2117,85 @@ namespace OpenMagnetics {
                     distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface - coreChunkSizePlusGap);
                 }
             }
-
-            for (size_t i = 0; i < lateralColumns.size(); ++i) {
-                jsonGap["type"] = residualGaps[i].get_type();
-                jsonGap["length"] = residualGaps[i].get_length();
-                jsonGap["coordinates"] = lateralColumns[i].get_coordinates();
-                jsonGap["shape"] = lateralColumns[i].get_shape();
-                jsonGap["distanceClosestNormalSurface"] = lateralColumns[i].get_height() / 2;
-                jsonGap["area"] = lateralColumns[i].get_area();
-                jsonGap["sectionDimensions"] = {lateralColumns[i].get_width(), lateralColumns[i].get_depth()};
-                jsonGapping.push_back(jsonGap);
+            if (residualGaps.size() < returnColumns.size()) {
+                for (size_t i = 0; i < returnColumns.size(); ++i) {
+                    jsonGap["type"] = GappingType::RESIDUAL;
+                    jsonGap["length"] = constants.residualGap;
+                    jsonGap["coordinates"] = returnColumns[i].get_coordinates();
+                    jsonGap["shape"] = returnColumns[i].get_shape();
+                    jsonGap["distanceClosestNormalSurface"] = returnColumns[i].get_height() / 2 - constants.residualGap / 2;
+                    jsonGap["area"] = returnColumns[i].get_area();
+                    jsonGap["sectionDimensions"] = {returnColumns[i].get_width(), returnColumns[i].get_depth()};
+                    jsonGapping.push_back(jsonGap);
+                }
             }
+            else {
+                for (size_t i = 0; i < returnColumns.size(); ++i) {
+                    jsonGap["type"] = residualGaps[i].get_type();
+                    jsonGap["length"] = residualGaps[i].get_length();
+                    jsonGap["coordinates"] = returnColumns[i].get_coordinates();
+                    jsonGap["shape"] = returnColumns[i].get_shape();
+                    jsonGap["distanceClosestNormalSurface"] = returnColumns[i].get_height() / 2;
+                    jsonGap["area"] = returnColumns[i].get_area();
+                    jsonGap["sectionDimensions"] = {returnColumns[i].get_width(), returnColumns[i].get_depth()};
+                    jsonGapping.push_back(jsonGap);
+                }
+            }
+        }
+
+
+        get_mutable_functional_description().set_gapping(jsonGapping);
+
+    }
+
+    bool Core::is_gapping_missaligned(){
+        auto gapping = get_functional_description().get_gapping();
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            if (gapping[i].get_coordinates() == nullptr) {
+                return true;
+            }
+            auto columnIndex = find_exact_column_index_by_coordinates(*gapping[i].get_coordinates());
+            if (columnIndex == -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void Core::process_gap()
+    {
+        json jsonGap;
+        json jsonGapping = json::array();
+        auto gapping = get_functional_description().get_gapping();
+        auto columns = get_processed_description()->get_columns();
+
+        if (gapping.size() == 0 || gapping[0].get_coordinates() == nullptr || is_gapping_missaligned()) {
+            return distribute_and_process_gap();
+        }
+
+        std::vector<int> numberGapsPerColumn;
+        for (size_t i = 0; i < columns.size(); ++i) {
+            numberGapsPerColumn.push_back(0);
+        }
+
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
+            numberGapsPerColumn[columnIndex]++;
+        }
+
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
+
+            double coreChunkSizePlusGap = roundFloat<6>(columns[columnIndex].get_height() / (numberGapsPerColumn[columnIndex] + 1));
+
+            jsonGap["type"] = gapping[i].get_type();
+            jsonGap["length"] = gapping[i].get_length();
+            jsonGap["coordinates"] = gapping[i].get_coordinates();
+            jsonGap["shape"] = columns[columnIndex].get_shape();
+            jsonGap["distanceClosestNormalSurface"] = roundFloat<6>(coreChunkSizePlusGap - gapping[i].get_length() / 2);
+            jsonGap["area"] = columns[columnIndex].get_area();
+            jsonGap["sectionDimensions"] = {columns[columnIndex].get_width(), columns[columnIndex].get_depth()};
+            jsonGapping.push_back(jsonGap);
         }
 
         get_mutable_functional_description().set_gapping(jsonGapping);
@@ -1959,57 +2252,5 @@ namespace OpenMagnetics {
             }
             set_processed_description(std::make_shared<ProcessedDescription>(processedDescription));
             scale_to_stacks(*(get_functional_description().get_number_stacks()));
-
-            if (get_geometrical_description() == nullptr) {
-                auto geometricalDescription = create_geometrical_description();
-
-                set_geometrical_description(geometricalDescription);
-            }
         }
 }
-
-
-// int main(int, const char *[])
-// {
-
-//     std::string filePath = __FILE__;
-//     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../");
-//     auto coreFilePath = masPath + "samples/core/core_E_55_21_N97_additive.json";
-//     std::ifstream json_file(coreFilePath);
-
-//     json coreJson;
-//     coreJson["functionalDescription"] = json();
-//     coreJson["functionalDescription"]["name"] = "core_PQ_20_16_N97_substractive";
-//     coreJson["functionalDescription"]["type"] = "two-piece set";
-//     coreJson["functionalDescription"]["material"] = "N97";
-//     coreJson["functionalDescription"]["shape"] = "P 59/36";
-//     coreJson["functionalDescription"]["gapping"] = json::array();
-//     coreJson["functionalDescription"]["numberStacks"] = 1;
-//     OpenMagnetics::Core core(coreJson);
-
-//     // core.process_data();
-
-//     // auto processed_description = *core.get_processed_description();
-//     // std::cout << "effective_area: " << core.get_processed_description()->get_effective_parameters().get_effective_area() << "\n";
-//     // std::cout << "effective_length: " << core.get_processed_description()->get_effective_parameters().get_effective_length() << "\n";
-//     // std::cout << "effective_volume: " << core.get_processed_description()->get_effective_parameters().get_effective_volume() << "\n";
-//     // std::cout << "minimum_area: " << core.get_processed_description()->get_effective_parameters().get_minimum_area() << "\n";
-//     // std::cout << "winding window height: " << *(core.get_processed_description()->get_winding_windows()[0].get_height()) << "\n";
-//     // std::cout << "winding window depth: " << *(core.get_processed_description()->get_winding_windows()[0].get_width()) << "\n";
-//     std::cout << "main column width: " << core.get_processed_description()->get_columns()[0].get_width() << "\n";
-//     std::cout << "main column depth: " << core.get_processed_description()->get_columns()[0].get_depth() << "\n";
-//     std::cout << "main column height: " << core.get_processed_description()->get_columns()[0].get_height() << "\n";
-//     std::cout << "lateral column width: " << core.get_processed_description()->get_columns()[1].get_width() << "\n";
-//     std::cout << "lateral column depth: " << core.get_processed_description()->get_columns()[1].get_depth() << "\n";
-//     std::cout << "lateral column height: " << core.get_processed_description()->get_columns()[1].get_height() << "\n";
-//     // std::cout << "lateral column width: " << core.get_processed_description()->get_columns()[2].get_width() << "\n";
-//     // std::cout << "lateral column height: " << core.get_processed_description()->get_columns()[2].get_depth() << "\n";
-//     // std::cout << core.get_mutable_functional_description().get_shape() << "\n";
-//     // std::cout << effective_parameters.get_effective_volume() << "\n";
-//     // json ea;
-//     // to_json(ea, core);
-//     // std::cout << ea.dump(4) << "\n";
-
-//     // auto ea = *core.get_geometrical_description();
-//     // std::cout << "geometrical_description: " << ()[0].get_type() << "\n";
-// }

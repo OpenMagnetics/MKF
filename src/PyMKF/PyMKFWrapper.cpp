@@ -43,7 +43,6 @@ json get_gap_reluctance_model_information(){
     py::dict dict;
     dict["information"] = OpenMagnetics::ReluctanceModel::get_models_information();
     dict["errors"] = OpenMagnetics::ReluctanceModel::get_models_errors();
-    dict["errors"] = OpenMagnetics::ReluctanceModel::get_models_errors();
     dict["internal_links"] = OpenMagnetics::ReluctanceModel::get_models_internal_links();
     dict["external_links"] = OpenMagnetics::ReluctanceModel::get_models_external_links();
     return dict;

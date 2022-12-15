@@ -42,11 +42,11 @@ namespace OpenMagnetics {
             }
             static std::map<std::string, std::string> get_models_information() {
                 std::map<std::string, std::string> information;
-                information["Zhang"] = "Based on \"Improved Calculation Method for Inductance Value of the Air-Gap Inductor\" by Xinsheng Zhang";
-                information["Muehlethaler"] = "Based on \"A Novel Approach for 3D Air Gap Reluctance Calculations\" by Jonas Mühlethaler";
-                information["McLyman"] = "Based on the method described in page 8-11 from \"Transformer and Inductor Design Handbook Fourth Edition\" by Colonel Wm. T. McLyman";
-                information["Effective Area"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk";
-                information["Effective Length"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk";
+                information["Zhang"] = "Based on \"Improved Calculation Method for Inductance Value of the Air-Gap Inductor\" by Xinsheng Zhang.";
+                information["Muehlethaler"] = "Based on \"A Novel Approach for 3D Air Gap Reluctance Calculations\" by Jonas Mühlethaler.";
+                information["McLyman"] = "Based on the method described in page 8-11 from \"Transformer and Inductor Design Handbook Fourth Edition\" by Colonel Wm. T. McLyman.";
+                information["Effective Area"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
+                information["Effective Length"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
                 return information;
             }
             static std::map<std::string, double> get_models_errors() {
