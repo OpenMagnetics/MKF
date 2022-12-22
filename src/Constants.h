@@ -13,6 +13,8 @@ namespace OpenMagnetics {
 
 		const double absolute_permeability = vacuum_permeability * 2000; // HARDCODED TODO: replace when materials are implemented
 		const double magnetic_flux_density_saturation = 0.352; // HARDCODED TODO: replace when materials are implemented
+
+		const double spacer_protuding_percentage = 0.2;
 	};
 }
 
