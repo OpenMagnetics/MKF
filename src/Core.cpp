@@ -2063,6 +2063,7 @@ namespace OpenMagnetics {
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
                 jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - constants.residualGap / 2;
+                jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -2079,6 +2080,7 @@ namespace OpenMagnetics {
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
                 jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - gapping[gapIndex].get_length() / 2;
+                jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -2091,6 +2093,7 @@ namespace OpenMagnetics {
                 jsonGap["coordinates"] = get_processed_description()->get_columns()[i].get_coordinates();
                 jsonGap["shape"] = get_processed_description()->get_columns()[i].get_shape();
                 jsonGap["distanceClosestNormalSurface"] = get_processed_description()->get_columns()[i].get_height() / 2 - gapping[i].get_length() / 2;
+                jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                 jsonGap["area"] = get_processed_description()->get_columns()[i].get_area();
                 jsonGap["sectionDimensions"] = {get_processed_description()->get_columns()[i].get_width(), get_processed_description()->get_columns()[i].get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -2127,6 +2130,7 @@ namespace OpenMagnetics {
                 jsonGap["coordinates"] = {windingColumn.get_coordinates()[0], windingColumn.get_coordinates()[0] + centralColumnGapsHeightOffset, windingColumn.get_coordinates()[2]};
                 jsonGap["shape"] = windingColumn.get_shape();
                 jsonGap["distanceClosestNormalSurface"] = distanceClosestNormalSurface;
+                jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                 jsonGap["area"] = windingColumn.get_area();
                 jsonGap["sectionDimensions"] = {windingColumn.get_width(), windingColumn.get_depth()};
                 jsonGapping.push_back(jsonGap);
@@ -2146,6 +2150,7 @@ namespace OpenMagnetics {
                     jsonGap["coordinates"] = returnColumns[i].get_coordinates();
                     jsonGap["shape"] = returnColumns[i].get_shape();
                     jsonGap["distanceClosestNormalSurface"] = returnColumns[i].get_height() / 2 - constants.residualGap / 2;
+                    jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                     jsonGap["area"] = returnColumns[i].get_area();
                     jsonGap["sectionDimensions"] = {returnColumns[i].get_width(), returnColumns[i].get_depth()};
                     jsonGapping.push_back(jsonGap);
@@ -2158,6 +2163,7 @@ namespace OpenMagnetics {
                     jsonGap["coordinates"] = returnColumns[i].get_coordinates();
                     jsonGap["shape"] = returnColumns[i].get_shape();
                     jsonGap["distanceClosestNormalSurface"] = returnColumns[i].get_height() / 2;
+                    jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
                     jsonGap["area"] = returnColumns[i].get_area();
                     jsonGap["sectionDimensions"] = {returnColumns[i].get_width(), returnColumns[i].get_depth()};
                     jsonGapping.push_back(jsonGap);

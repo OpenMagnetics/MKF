@@ -139,44 +139,11 @@ pprint.pprint(PyMKF.get_constants())
 # pprint.pprint(core_data)
 
 
-coreData = {'functionalDescription': {'bobbin': None,
-                           'gapping': [{'area': 0.000135,
-                                        'coordinates': [0.0, 0.0, 0.0],
-                                        'distanceClosestNormalSurface': 0.0125,
-                                        'length': 0.001,
-                                        'sectionDimensions': [0.008401, 0.016],
-                                        'shape': 'rectangular',
-                                        'type': 'subtractive'},
-                                       {'area': 0.000135,
-                                        'coordinates': [0.0174, 0.0, 0.0],
-                                        'distanceClosestNormalSurface': 0.013,
-                                        'length': 1e-05,
-                                        'sectionDimensions': [0.008401, 0.016],
-                                        'shape': 'rectangular',
-                                        'type': 'residual'}],
-                           'material': '3C97',
-                           'name': 'default',
-                           'numberStacks': 1,
-                           'shape': {'aliases': [],
-                                     'dimensions': {'A': 0.025,
-                                                    'B': 0.0043,
-                                                    'C': 0.02,
-                                                    'D': 0.002,
-                                                    'E': 0.0208,
-                                                    'F': 0.0063,
-                                                    'F2': 0.0145,
-                                                    'G': 0.0,
-                                                    'H': 0.0},
-                                     'family': 'planar el',
-                                     'familySubtype': '1',
-                                     'name': 'EL 25/4.3',
-                                     'type': 'standard'},
-                           'type': 'two-piece set'},
- 'geometricalDescription': None,
- 'processedDescription': None}
+coreData = {"functionalDescription":{"name":"default","type":"two-piece set","material":"3C97","shape":{"aliases":[],"dimensions":{"A":0.0595,"B":0.036,"C":0.017,"D":0.0215,"H":0,"G":0},"family":"ur","familySubtype":"1","name":"UR 59/36/17","type":"standard"},"gapping":[{"area":0.000083,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.0015,"length":0.001,"sectionDimensions":[0.0063,0.0145],"shape":"oblong","type":"subtractive"},{"area":0.000043,"coordinates":[0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"},{"area":0.000043,"coordinates":[-0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"}],"numberStacks":1,"bobbin":None},"geometricalDescription":None,"processedDescription":None}
 
+pprint.pprint("mierda")
 core_data = PyMKF.get_core_data(coreData)
-pprint.pprint(core_data['functionalDescription']['gapping'])
+pprint.pprint(core_data['processedDescription']['columns'])
 pprint.pprint(len(core_data['functionalDescription']['gapping']))
 
 
