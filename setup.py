@@ -43,6 +43,15 @@ class CMakeBuild(build_ext):
         # Must be in this form due to bug in .resolve() only fixed in Python 3.10+
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)  # type: ignore[no-untyped-call]
         extdir = ext_fullpath.parent.resolve()
+        build_temp = Path(self.build_temp) / ext.name
+        MAS_output_dir = Path.cwd() / build_temp / "MAS" 
+
+        if not MAS_output_dir.exists():
+            MAS_output_dir.mkdir(parents=True)
+
+        subprocess.run(
+            [f"quicktype -l c++ -s schema {Path.cwd()}/../MAS/schemas/core.json -S {Path.cwd()}/../MAS/schemas/utils.json -S {Path.cwd()}/../MAS/schemas/core/gap.json -S {Path.cwd()}/../MAS/schemas/core/shape.json -S {Path.cwd()}/../MAS/schemas/core/material.json -S {Path.cwd()}/../MAS/schemas/insulation/material.json -S {Path.cwd()}/../MAS/schemas/insulation/wireCoating.json -S {Path.cwd()}/../MAS/schemas/core/bobbin.json -S {Path.cwd()}/../MAS/schemas/core/piece.json -S {Path.cwd()}/../MAS/schemas/core/spacer.json -o {MAS_output_dir}/CoreTemplate.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost"], shell=True
+        )
 
         # Using this requires trailing slash for auto-detection & incusion of
         # auxiliary "native" libs
@@ -124,8 +133,6 @@ class CMakeBuild(build_ext):
             if hasattr(self, "parallel") and self.parallel:
                 # CMake 3.12+ only.
                 build_args += [f"-j{self.parallel}"]
-
-        build_temp = Path(self.build_temp) / ext.name
 
         if not build_temp.exists():
             build_temp.mkdir(parents=True)

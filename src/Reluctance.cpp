@@ -170,6 +170,64 @@ namespace OpenMagnetics {
         return result;
     };
 
+    std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo)
+    {
+        auto constants = Constants();
+        auto gap_length = gapInfo.get_length();
+        auto gap_area = *(gapInfo.get_area());
+        auto gap_coordinates = *(gapInfo.get_coordinates());
+        auto gap_section_dimensions = *(gapInfo.get_section_dimensions());
+        auto distance_closest_normal_surface = *(gapInfo.get_distance_closest_normal_surface());
+        auto distance_closest_parallel_surface = *(gapInfo.get_distance_closest_parallel_surface());
+        double reluctance;
+        double fringing_factor = 1;
+        auto gap_section_width = gap_section_dimensions[0];
+
+        if (gap_length > 0) {
+            double c = gap_section_width / 2 + distance_closest_parallel_surface;
+            double b = gap_section_width / 2 + 0.001;
+            double l1 = distance_closest_normal_surface * 2;
+            double lg = gap_length;
+            double rc = gap_section_width / 2;
+            double rx = gap_section_width / 2;
+            double aux1 = 1 + 2. / sqrt(std::numbers::pi) * lg / (2 * rc) * log(2.1 * rx / lg);
+            double aux2 = 1. / 6. * (pow(c, 2) + 2 * c * b + pow(b, 2)) / pow(b, 2);
+
+            double gamma = aux1 + (aux2 - aux1) * pow(lg / l1, 2 * std::numbers::pi);
+
+            fringing_factor = alpha(rx, l1, lg) * pow(gap_coordinates[1] / l1, 2) + gamma;
+        }
+
+        reluctance = gap_length / (constants.vacuum_permeability * gap_area * fringing_factor);
+
+        std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
+        result["reluctance"] = reluctance;
+        result["fringing_factor"] = fringing_factor;
+
+        return result;
+    };
+
+
+    std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo)
+    {
+        auto constants = Constants();
+        auto gap_length = gapInfo.get_length();
+        auto gap_area = *(gapInfo.get_area());
+        double reluctance;
+        double fringing_factor = 1;
+
+        reluctance = gap_length / (constants.vacuum_permeability * gap_area);
+
+        std::map<std::string, double> result;
+        result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
+        result["reluctance"] = reluctance;
+        result["fringing_factor"] = fringing_factor;
+
+        return result;
+    };
+
+
 
     std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName)
     {
@@ -193,7 +251,15 @@ namespace OpenMagnetics {
             std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceMuehlethalerModel);
             return reluctanceModel;
         }
+        else if (modelName == ReluctanceModels::STENGLEIN) {
+            std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceStengleinModel);
+            return reluctanceModel;
+        }
+        else if (modelName == ReluctanceModels::CLASSIC) {
+            std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceClassicModel);
+            return reluctanceModel;
+        }
 
-        else throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, MCLYMAN, EFFECTIVE_AREA, EFFECTIVE_LENGTH, MUEHLETHALER}");
+        else throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, MCLYMAN, EFFECTIVE_AREA, EFFECTIVE_LENGTH, MUEHLETHALER, STENGLEIN, CLASSIC}");
     }
 }

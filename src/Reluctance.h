@@ -14,7 +14,7 @@
 
 namespace OpenMagnetics {
 
-    enum class ReluctanceModels : int { ZHANG, MCLYMAN, EFFECTIVE_AREA, EFFECTIVE_LENGTH, MUEHLETHALER };
+    enum class ReluctanceModels : int { ZHANG, MCLYMAN, EFFECTIVE_AREA, EFFECTIVE_LENGTH, MUEHLETHALER, STENGLEIN, CLASSIC };
 
     class ReluctanceModel {
         private:
@@ -120,6 +120,35 @@ namespace OpenMagnetics {
     class ReluctanceMcLymanModel: public ReluctanceModel {
         public:
             std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    };
+
+    class ReluctanceClassicModel: public ReluctanceModel {
+        public:
+            std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    };
+
+    // Based on The Reluctance of Large Air Gaps in Ferrite Cores by Erika Stenglein
+    // https://sci-hub.wf/10.1109/EPE.2016.7695271
+    class ReluctanceStengleinModel: public ReluctanceModel {
+        public:
+            std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+
+            double u(double rx, double l1) {
+                return 42.7 * rx / l1 - 50.2;
+            }
+
+            double v(double rx, double l1) {
+                return -55.4 * rx / l1 + 71.6;
+            }
+
+            double w(double rx, double l1) {
+                return 0.88 * rx / l1 - 0.80;
+            }
+
+            double alpha(double rx, double l1, double lg) {
+                return u(rx, l1) * pow(lg / l1, 2) + v(rx, l1) * lg / l1 + w(rx, l1);
+            }
+
     };
 
 }
