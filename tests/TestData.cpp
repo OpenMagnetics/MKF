@@ -51,7 +51,6 @@ SUITE(Samples)
 
                     auto validator_path = path.parent_path().string() + ".json";
                     validator_path = ReplaceAll(validator_path, "samples", "schemas");
-                    
                     try
                     {
                         std::ifstream f(validator_path);
@@ -189,21 +188,21 @@ SUITE(Data)
     TEST(Shapes)
     {
         auto data_file_path = mas_path + "data/shapes.ndjson";
-        auto schema_file_path = mas_path + "schemas/core/shape.json";
+        auto schema_file_path = mas_path + "schemas/magnetic/core/shape.json";
         validate_ndjson(schema_file_path, data_file_path);
     }
 
     TEST(Bobbins)
     {
         auto data_file_path = mas_path + "data/bobbins.ndjson";
-        auto schema_file_path = mas_path + "schemas/core/bobbin.json";
+        auto schema_file_path = mas_path + "schemas/magnetic/core/bobbin.json";
         validate_ndjson(schema_file_path, data_file_path);
     }
 
     TEST(Materials)
     {
         auto data_file_path = mas_path + "data/materials.ndjson";
-        auto schema_file_path = mas_path + "schemas/core/material.json";
+        auto schema_file_path = mas_path + "schemas/magnetic/core/material.json";
         validate_ndjson(schema_file_path, data_file_path);
     }
 }

@@ -139,26 +139,58 @@ pprint.pprint(PyMKF.get_constants())
 # pprint.pprint(core_data)
 
 
-coreData = {"functionalDescription":{"name":"default","type":"two-piece set","material":"3C97","shape":{"aliases":[],"dimensions":{"A":0.0595,"B":0.036,"C":0.017,"D":0.0215,"H":0,"G":0},"family":"ur","familySubtype":"1","name":"UR 59/36/17","type":"standard"},"gapping":[{"area":0.000083,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.0015,"length":0.001,"sectionDimensions":[0.0063,0.0145],"shape":"oblong","type":"subtractive"},{"area":0.000043,"coordinates":[0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"},{"area":0.000043,"coordinates":[-0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"}],"numberStacks":1,"bobbin":None},"geometricalDescription":None,"processedDescription":None}
+# coreData = {"functionalDescription":{"name":"default","type":"two-piece set","material":"3C97","shape":{"aliases":[],"dimensions":{"A":0.0595,"B":0.036,"C":0.017,"D":0.0215,"H":0,"G":0},"family":"ur","familySubtype":"1","name":"UR 59/36/17","type":"standard"},"gapping":[{"area":0.000083,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.0015,"length":0.001,"sectionDimensions":[0.0063,0.0145],"shape":"oblong","type":"subtractive"},{"area":0.000043,"coordinates":[0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"},{"area":0.000043,"coordinates":[-0.01145,0,0],"distanceClosestNormalSurface":0.001996,"length":0.00001,"sectionDimensions":[0.002101,0.02],"shape":"rectangular","type":"residual"}],"numberStacks":1,"bobbin":None},"geometricalDescription":None,"processedDescription":None}
 
-pprint.pprint("mierda")
-core_data = PyMKF.get_core_data(coreData)
-pprint.pprint(core_data['processedDescription']['columns'])
-pprint.pprint(len(core_data['functionalDescription']['gapping']))
+# pprint.pprint("mierda")
+# core_data = PyMKF.get_core_data(coreData)
+# pprint.pprint(core_data['processedDescription']['columns'])
+# pprint.pprint(len(core_data['functionalDescription']['gapping']))
 
 
-# coreGap = {
-#     'area': 0.000123,
-#     'coordinates': [0.0, 0.0, 0.0],
-#     'distanceClosestNormalSurface': 0.0146,
-#     'length': 0.0001,
-#     'sectionDimensions': [0.0125, 0.0125],
-#     'shape': 'round',
-#     'type': 'additive'
-# }
+coreGap = {'gapping': [{'area': 0.000123,
+              'coordinates': [0, 0.0007, 0],
+              'distanceClosestNormalSurface': 0.01405,
+              'distanceClosestParallelSurface': 0.01405,
+              'length': 0.0011,
+              'sectionDimensions': [0.0125, 0.0125],
+              'shape': 'round',
+              'type': 'subtractive'},
+             {'area': 6.2e-05,
+              'coordinates': [0.017301, 0.00733, 0],
+              'distanceClosestNormalSurface': 0.006801,
+              'distanceClosestParallelSurface': 0.01405,
+              'length': 0.001,
+              'sectionDimensions': [0.004501, 0.0125],
+              'shape': 'irregular',
+              'type': 'subtractive'},
+             {'area': 6.2e-05,
+              'coordinates': [-0.017301, 0, 0],
+              'distanceClosestNormalSurface': 0.014598,
+              'distanceClosestParallelSurface': 0.01405,
+              'length': 5e-06,
+              'sectionDimensions': [0.004501, 0.0125],
+              'shape': 'irregular',
+              'type': 'residual'},
+             {'area': 6.2e-05,
+              'coordinates': [0.017301, 0, 0],
+              'distanceClosestNormalSurface': 0.007245,
+              'distanceClosestParallelSurface': 0.01405,
+              'length': 0.00011,
+              'sectionDimensions': [0.004501, 0.0125],
+              'shape': 'irregular',
+              'type': 'subtractive'},
+             {'area': 6.2e-05,
+              'coordinates': [0.017301, -0.00733, 0],
+              'distanceClosestNormalSurface': 0.00725,
+              'distanceClosestParallelSurface': 0.01405,
+              'length': 0.0001,
+              'sectionDimensions': [0.004501, 0.0125],
+              'shape': 'irregular',
+              'type': 'subtractive'}],
+ 'model': 'Stenglein'}
 
-# reluctance_data = PyMKF.get_gap_reluctance(coreGap, "ZHANG")
-# pprint.pprint(reluctance_data)
+reluctance_data = PyMKF.get_gap_reluctance(coreGap['gapping'], "STENGLEIN")
+pprint.pprint(reluctance_data)
 
 
 # coreGap = {

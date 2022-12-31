@@ -2,8 +2,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "Constants.h"
-#include "Core.h"
+#include "CoreWrapper.h"
 #include "Reluctance.h"
+#include "Utils.h"
 #include "json.hpp"
 
 using json = nlohmann::json;
@@ -15,8 +16,13 @@ using json = nlohmann::json;
 namespace py = pybind11;
 
 json get_core_data(json coreData){
-    OpenMagnetics::Core core(coreData);
+    OpenMagnetics::CoreWrapper core(coreData);
     return core;
+}
+
+json get_material_data(json materialName){
+    auto materialData = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(materialName);
+    return materialData;
 }
 
 py::dict get_constants(){
@@ -26,7 +32,6 @@ py::dict get_constants(){
     dict["minimumNonResidualGap"] = constants.minimumNonResidualGap;
     return dict;
 }
-
 
 json get_gap_reluctance(json coreGapData, std::string modelNameString){
 
@@ -51,6 +56,7 @@ json get_gap_reluctance_model_information(){
 
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
+    m.def("get_material_data", &get_material_data, "Returns the all data about a given core material");
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");

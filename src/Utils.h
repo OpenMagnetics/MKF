@@ -4,7 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
-#include <CoreTemplate.hpp>
+#include <MAS.hpp>
 #include "json.hpp"
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
@@ -19,7 +19,7 @@ namespace OpenMagnetics {
         if (std::is_same<T, OpenMagnetics::CoreShape>::value) 
             database = "shapes";
         else if (std::is_same<T, OpenMagnetics::CoreMaterial>::value)
-            database = "material";
+            database = "materials";
         else throw "Unknown type";
 
         std::string filePath = __FILE__;

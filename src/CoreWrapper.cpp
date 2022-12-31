@@ -7,11 +7,11 @@
 #include <streambuf>
 #include <limits>
 #include <nlohmann/json-schema.hpp>
-#include <CoreTemplate.hpp>
+// #include <MAS.hpp>
 #include <magic_enum.hpp>
 #include "json.hpp"
 #include "Utils.h"
-#include "Core.h"
+#include "CoreWrapper.h"
 #include "Constants.h"
 
 using nlohmann::json_uri;
@@ -21,38 +21,37 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-    auto constants = Constants();
     template <OpenMagnetics::DimensionalValues preferredValue> 
     double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue)
     {
         double doubleValue = 0;
-        if (std::holds_alternative<OpenMagnetics::Utils>(dimensionValue)) {
+        if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
             switch (preferredValue){
                 case OpenMagnetics::DimensionalValues::MAXIMUM:
-                    if (std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum());
+                    if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum());
                     break;
                 case OpenMagnetics::DimensionalValues::NOMINAL:
-                    if (std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum() != nullptr && std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum() != nullptr)
-                        doubleValue = (*(std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum()) + *(std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum())) / 2;
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum());
+                    if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum() != nullptr && std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum() != nullptr)
+                        doubleValue = (*(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum()) + *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum())) / 2;
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum());
                     break;
                 case OpenMagnetics::DimensionalValues::MINIMUM:
-                    if (std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_minimum());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_nominal());
-                    else if (std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum() != nullptr)
-                        doubleValue = *(std::get<OpenMagnetics::Utils>(dimensionValue).get_maximum());
+                    if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal());
+                    else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum() != nullptr)
+                        doubleValue = *(std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum());
                     break;
                 default: throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
 
@@ -1711,9 +1710,10 @@ namespace OpenMagnetics {
         j["partial_effective_parameters"] = x.get_partial_effective_parameters();
     }
 
-    std::shared_ptr<std::vector<GeometricalDescription>> Core::create_geometrical_description()
+    std::shared_ptr<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::create_geometrical_description()
     {
-        std::vector<GeometricalDescription> geometricalDescription;
+        auto constants = Constants();
+        std::vector<CoreGeometricalDescriptionElement> geometricalDescription;
         auto numberStacks = *(get_functional_description().get_number_stacks());
         auto gapping = get_functional_description().get_gapping();
 
@@ -1749,12 +1749,12 @@ namespace OpenMagnetics {
         jsonGeometricalDescription["shape"] = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
         switch (get_functional_description().get_type()) {
             case OpenMagnetics::FunctionalDescriptionType::TOROIDAL:
-                jsonGeometricalDescription["type"] = OpenMagnetics::GeometricalDescriptionType::TOROIDAL;
+                jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::TOROIDAL;
 
                 //TODO add for toroids
                 break;
             case OpenMagnetics::FunctionalDescriptionType::CLOSED_SHAPE:
-                jsonGeometricalDescription["type"] = OpenMagnetics::GeometricalDescriptionType::CLOSED;
+                jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::CLOSED;
                 for (auto i = 0; i < numberStacks; ++i) {
                     double currentHeight = roundFloat<6>(corePieceHeight);
                     std::vector<double> coordinates = {0, currentHeight, currentDepth};
@@ -1763,7 +1763,7 @@ namespace OpenMagnetics {
                     if (jsonMachining.size() > 0) {
                         jsonGeometricalDescription["machining"] = jsonMachining;
                     }
-                    geometricalDescription.push_back(GeometricalDescription(jsonGeometricalDescription));
+                    geometricalDescription.push_back(CoreGeometricalDescriptionElement(jsonGeometricalDescription));
 
                     if (jsonGeometricalDescription.find("machining") != jsonGeometricalDescription.end())
                     {
@@ -1773,7 +1773,7 @@ namespace OpenMagnetics {
                 }
                 break;
             case OpenMagnetics::FunctionalDescriptionType::TWO_PIECE_SET:
-                jsonGeometricalDescription["type"] = OpenMagnetics::GeometricalDescriptionType::HALF_SET;
+                jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET;
                 for (auto i = 0; i < numberStacks; ++i) {
                     double currentHeight = roundFloat<6>(spacerThickness / 2);
                     json topHalfMachining = json::array();
@@ -1804,7 +1804,7 @@ namespace OpenMagnetics {
                     if (topHalfMachining.size() > 0) {
                         jsonGeometricalDescription["machining"] = topHalfMachining;
                     }
-                    geometricalDescription.push_back(GeometricalDescription(jsonGeometricalDescription));
+                    geometricalDescription.push_back(CoreGeometricalDescriptionElement(jsonGeometricalDescription));
 
                     json bottomHalfMachining = json::array();
 
@@ -1842,7 +1842,7 @@ namespace OpenMagnetics {
                     currentHeight = -currentHeight;
                     coordinates = {0, currentHeight, currentDepth};
                     jsonGeometricalDescription["coordinates"] = coordinates;
-                    geometricalDescription.push_back(GeometricalDescription(jsonGeometricalDescription));
+                    geometricalDescription.push_back(CoreGeometricalDescriptionElement(jsonGeometricalDescription));
 
                     currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
                 }
@@ -1851,7 +1851,7 @@ namespace OpenMagnetics {
                     for ( auto &column : corePiece->get_columns()) {
                         auto shape_data = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
                         if (column.get_type() == OpenMagnetics::ColumnType::LATERAL) {
-                            jsonSpacer["type"] = OpenMagnetics::GeometricalDescriptionType::SPACER;
+                            jsonSpacer["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER;
                             jsonSpacer["material"] = "plastic";
                             // We cannot use directly column.get_width()
                             auto dimensions = *shape_data.get_dimensions();
@@ -1929,7 +1929,7 @@ namespace OpenMagnetics {
                                     jsonSpacer["coordinates"] = {std::get<double>(dimensions["A"]) / 2 - minimum_column_width / 2 + protuding_width, column.get_coordinates()[1], column.get_coordinates()[2]};
                                 }
                             }
-                            geometricalDescription.push_back(GeometricalDescription(jsonSpacer));
+                            geometricalDescription.push_back(CoreGeometricalDescriptionElement(jsonSpacer));
                         }
                     }
                 }
@@ -1940,11 +1940,11 @@ namespace OpenMagnetics {
             default: throw std::runtime_error("Unknown type of core, options are {TOROIDAL, TWO_PIECE_SET, PIECE_AND_PLATE, CLOSED_SHAPE}");
         }
 
-        return std::make_shared<std::vector<GeometricalDescription>>(geometricalDescription);
+        return std::make_shared<std::vector<CoreGeometricalDescriptionElement>>(geometricalDescription);
 
     }
 
-    std::vector<ColumnElement> Core::find_columns_by_type(ColumnType columnType) {
+    std::vector<ColumnElement> CoreWrapper::find_columns_by_type(ColumnType columnType) {
         std::vector<ColumnElement> foundColumns;
         for (auto &column : get_processed_description()->get_columns()) {
             if (column.get_type() == columnType) {
@@ -1954,7 +1954,7 @@ namespace OpenMagnetics {
         return foundColumns;
     }
 
-    int Core::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
+    int CoreWrapper::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
         double closestDistance = std::numeric_limits<double>::infinity();
         int closestColumnIndex = -1;
         auto columns = get_processed_description()->get_columns();
@@ -1974,7 +1974,7 @@ namespace OpenMagnetics {
         return closestColumnIndex;
     }
 
-    int Core::find_exact_column_index_by_coordinates(std::vector<double> coordinates) {
+    int CoreWrapper::find_exact_column_index_by_coordinates(std::vector<double> coordinates) {
         auto columns = get_processed_description()->get_columns();
         for (size_t index = 0; index < columns.size(); ++index) {
             double distance = 0;
@@ -1991,7 +1991,7 @@ namespace OpenMagnetics {
         return -1;
     }
 
-    ColumnElement Core::find_closest_column_by_coordinates(std::vector<double> coordinates) {
+    ColumnElement CoreWrapper::find_closest_column_by_coordinates(std::vector<double> coordinates) {
         double closestDistance = std::numeric_limits<double>::infinity();
         ColumnElement closestColumn;
         for (auto &column : get_processed_description()->get_columns()) {
@@ -2008,7 +2008,7 @@ namespace OpenMagnetics {
         return closestColumn;
     }
 
-    std::vector<CoreGap> Core::find_gaps_by_type(GappingType gappingType) {
+    std::vector<CoreGap> CoreWrapper::find_gaps_by_type(GappingType gappingType) {
         std::vector<CoreGap> foundGaps;
         for (auto &gap : get_functional_description().get_gapping()) {
             if (gap.get_type() == gappingType) {
@@ -2018,7 +2018,7 @@ namespace OpenMagnetics {
         return foundGaps;
     }
 
-    void Core::scale_to_stacks(int64_t numberStacks)
+    void CoreWrapper::scale_to_stacks(int64_t numberStacks)
     {
         get_processed_description()->get_mutable_effective_parameters().set_effective_area(get_processed_description()->get_effective_parameters().get_effective_area() * numberStacks);
         get_processed_description()->get_mutable_effective_parameters().set_minimum_area(get_processed_description()->get_effective_parameters().get_minimum_area() * numberStacks);
@@ -2030,8 +2030,9 @@ namespace OpenMagnetics {
         }
     }
 
-    void Core::distribute_and_process_gap()
+    void CoreWrapper::distribute_and_process_gap()
     {
+        auto constants = Constants();
         json jsonGap;
         json jsonGapping = json::array();
         auto gapping = get_functional_description().get_gapping();
@@ -2176,7 +2177,7 @@ namespace OpenMagnetics {
 
     }
 
-    bool Core::is_gapping_missaligned(){
+    bool CoreWrapper::is_gapping_missaligned(){
         auto gapping = get_functional_description().get_gapping();
         for (size_t i = 0; i < gapping.size(); ++i) {
             if (gapping[i].get_coordinates() == nullptr) {
@@ -2190,7 +2191,7 @@ namespace OpenMagnetics {
         return false;
     }
 
-    void Core::process_gap()
+    void CoreWrapper::process_gap()
     {
         json jsonGap;
         json jsonGapping = json::array();
@@ -2221,6 +2222,7 @@ namespace OpenMagnetics {
             jsonGap["coordinates"] = gapping[i].get_coordinates();
             jsonGap["shape"] = columns[columnIndex].get_shape();
             jsonGap["distanceClosestNormalSurface"] = roundFloat<6>(coreChunkSizePlusGap - gapping[i].get_length() / 2);
+            jsonGap["distanceClosestParallelSurface"] = get_processed_description()->get_winding_windows()[0].get_width();
             jsonGap["area"] = columns[columnIndex].get_area();
             jsonGap["sectionDimensions"] = {columns[columnIndex].get_width(), columns[columnIndex].get_depth()};
             jsonGapping.push_back(jsonGap);
@@ -2230,15 +2232,21 @@ namespace OpenMagnetics {
 
     }
 
-    void Core::process_data() { 
-            // If the shape is a string, we have to load its dta from the database
+    void CoreWrapper::process_data() { 
+            // If the shape is a string, we have to load its data from the database
             if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
                 auto shape_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreShape>(std::get<std::string>(get_functional_description().get_shape()));
                 get_mutable_functional_description().set_shape(shape_data);
             }
 
+            // If the material is a string, we have to load its data from the database
+            if (std::holds_alternative<std::string>(get_functional_description().get_material())) {
+                auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(get_functional_description().get_material()));
+                get_mutable_functional_description().set_material(material_data);
+            }
+
             auto corePiece = OpenMagnetics::CorePiece::factory(std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()));
-            ProcessedDescription processedDescription;
+            CoreProcessedDescription processedDescription;
             json coreEffectiveParameters;
             json coreWindingWindow;
             auto coreColumns = corePiece->get_columns();
@@ -2278,7 +2286,7 @@ namespace OpenMagnetics {
                     break;
                 default: throw std::runtime_error("Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
             }
-            set_processed_description(std::make_shared<ProcessedDescription>(processedDescription));
+            set_processed_description(std::make_shared<CoreProcessedDescription>(processedDescription));
             scale_to_stacks(*(get_functional_description().get_number_stacks()));
         }
 }

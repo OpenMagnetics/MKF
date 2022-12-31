@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <streambuf>
 #include <nlohmann/json-schema.hpp>
-#include <CoreTemplate.hpp>
+#include <MAS.hpp>
 #include <magic_enum.hpp>
 #include "json.hpp"
 using nlohmann::json_uri;
@@ -18,7 +18,6 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
     using nlohmann::json;
-    using ColumnShape = ShapeEnum;
 
     enum class DimensionalValues : int { MAXIMUM, NOMINAL, MINIMUM };
 
@@ -113,9 +112,9 @@ namespace OpenMagnetics {
     void to_json(json & j, const OpenMagnetics::CorePiece & x);
 
 
-    class Core:public CoreTemplate {
+    class CoreWrapper:public MagneticCore {
         public:
-        Core(const json & j) {
+        CoreWrapper(const json & j) {
             from_json(j, *this);
             process_data();
             
@@ -127,9 +126,9 @@ namespace OpenMagnetics {
                 set_geometrical_description(geometricalDescription);
             }
         }
-        virtual ~Core() = default;
+        virtual ~CoreWrapper() = default;
 
-        std::shared_ptr<std::vector<GeometricalDescription>> create_geometrical_description();
+        std::shared_ptr<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
         std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
         ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
         int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
