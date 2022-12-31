@@ -8,35 +8,40 @@
 
 using json = nlohmann::json;
 
+namespace UnitTest {
+    class ListFilter {
+        char **list;
+        int n;
+    public:
+        ListFilter(char **list_, int count) {
+            list = list_; n = count;
+        }
+        bool operator()(const Test* const t) const {
+            for (int i=0;i<n;++i) {
+                std::string dot_cpp_appended = std::string(list[i]) + ".cpp";
+                if (!strcasecmp(t->m_details.testName, list[i]) ||
+                        !strcasecmp(t->m_details.suiteName, list[i]) ||
+                        !strcasecmp(t->m_details.filename, list[i]) ||
+                        !strcasecmp(t->m_details.filename, dot_cpp_appended.c_str())) {
+                    // erring on the side of matching more tests
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
 
-int main( int argc, char** argv )
-{
-  if( argc > 1 )
-  {
-      //if first arg is "suite", we search for suite names instead of test names
-    const bool bSuite = strcmp( "suite", argv[ 1 ] ) == 0;
-
-      //walk list of all tests, add those with a name that
-      //matches one of the arguments  to a new TestList
-    const UnitTest::TestList& allTests( UnitTest::Test::GetTestList() );
-    UnitTest::TestList selectedTests;
-    UnitTest::Test* p = allTests.GetHead();
-    while( p )
-    {
-      for( int i = 1 ; i < argc ; ++i )
-        if( strcmp( bSuite ? p->m_details.suiteName
-                           : p->m_details.testName, argv[ i ] ) == 0 )
-          selectedTests.Add( p );
-      p = p->m_nextTest;
+    int RunTheseTests(char ** list, int n) {
+        TestReporterStdout reporter;
+        TestRunner runner(reporter);
+        return runner.RunTestsIf(Test::GetTestList(), NULL, ListFilter(list,n), 0);
     }
+}
 
-      //run selected test(s) only
-    UnitTest::TestReporterStdout reporter;
-    UnitTest::TestRunner runner( reporter );
-    return runner.RunTestsIf( selectedTests, 0, UnitTest::True(), 0 );
-  }
-  else
-  {
-    return UnitTest::RunAllTests();
-  }
+int main(int argc, char *argv[]) {
+    if (argc == 1) {
+        UnitTest::RunAllTests();
+    } else {
+        UnitTest::RunTheseTests(argv+1, argc-1); // skip the program's name itself.
+    }
 }
