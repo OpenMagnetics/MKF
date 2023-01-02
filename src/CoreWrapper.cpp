@@ -1748,12 +1748,12 @@ namespace OpenMagnetics {
         jsonGeometricalDescription["material"] = get_functional_description().get_material();
         jsonGeometricalDescription["shape"] = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
         switch (get_functional_description().get_type()) {
-            case OpenMagnetics::FunctionalDescriptionType::TOROIDAL:
+            case OpenMagnetics::CoreType::TOROIDAL:
                 jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::TOROIDAL;
 
                 //TODO add for toroids
                 break;
-            case OpenMagnetics::FunctionalDescriptionType::CLOSED_SHAPE:
+            case OpenMagnetics::CoreType::CLOSED_SHAPE:
                 jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::CLOSED;
                 for (auto i = 0; i < numberStacks; ++i) {
                     double currentHeight = roundFloat<6>(corePieceHeight);
@@ -1772,7 +1772,7 @@ namespace OpenMagnetics {
                     currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
                 }
                 break;
-            case OpenMagnetics::FunctionalDescriptionType::TWO_PIECE_SET:
+            case OpenMagnetics::CoreType::TWO_PIECE_SET:
                 jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET;
                 for (auto i = 0; i < numberStacks; ++i) {
                     double currentHeight = roundFloat<6>(spacerThickness / 2);
@@ -1934,7 +1934,7 @@ namespace OpenMagnetics {
                     }
                 }
                 break;
-            case OpenMagnetics::FunctionalDescriptionType::PIECE_AND_PLATE:
+            case OpenMagnetics::CoreType::PIECE_AND_PLATE:
                 //TODO add for toroPIECE_AND_PLATE
                 break;
             default: throw std::runtime_error("Unknown type of core, options are {TOROIDAL, TWO_PIECE_SET, PIECE_AND_PLATE, CLOSED_SHAPE}");
@@ -2052,7 +2052,7 @@ namespace OpenMagnetics {
         // if (numberNonResidualGaps + numberResidualGaps < numberColumns && (numberNonResidualGaps + numberResidualGaps) > 0) {
         //     numberNonResidualGaps = 0;
         //     numberResidualGaps = 0;
-        //     // if (!(get_functional_description().get_type() == OpenMagnetics::FunctionalDescriptionType::TOROIDAL && numberColumns == 1)) {
+        //     // if (!(get_functional_description().get_type() == OpenMagnetics::CoreType::TOROIDAL && numberColumns == 1)) {
         //     //     throw std::runtime_error("A TWO_PIECE_SET core cannot have less gaps than columns");
         //     // }
         // }
@@ -2251,8 +2251,8 @@ namespace OpenMagnetics {
             json coreWindingWindow;
             auto coreColumns = corePiece->get_columns();
             switch (get_functional_description().get_type()) {
-                case OpenMagnetics::FunctionalDescriptionType::TOROIDAL:
-                case OpenMagnetics::FunctionalDescriptionType::CLOSED_SHAPE:
+                case OpenMagnetics::CoreType::TOROIDAL:
+                case OpenMagnetics::CoreType::CLOSED_SHAPE:
                     processedDescription.set_columns(coreColumns);
                     to_json(coreEffectiveParameters, corePiece->get_partial_effective_parameters());
                     processedDescription.set_effective_parameters(coreEffectiveParameters);
@@ -2263,7 +2263,7 @@ namespace OpenMagnetics {
                     processedDescription.set_width(corePiece->get_width());
                     break;
 
-                case OpenMagnetics::FunctionalDescriptionType::TWO_PIECE_SET:
+                case OpenMagnetics::CoreType::TWO_PIECE_SET:
                     for ( auto &column : coreColumns) {
                         column.set_height(2 * column.get_height());
                     }
