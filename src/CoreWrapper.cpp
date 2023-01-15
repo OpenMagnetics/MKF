@@ -7,19 +7,92 @@
 #include <streambuf>
 #include <limits>
 #include <nlohmann/json-schema.hpp>
-// #include <MAS.hpp>
 #include <magic_enum.hpp>
 #include "json.hpp"
 #include "Utils.h"
 #include "CoreWrapper.h"
 #include "Constants.h"
 
+   
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 
 namespace OpenMagnetics {
+    std::map<std::string, json> coreMaterialDatabase;
+    std::map<std::string, json> coreShapeDatabase;
+    auto constants = Constants();
+
+    template <typename T>
+    T find_data_by_name(std::string name)
+    {
+        std::string database;
+        if (std::is_same<T, OpenMagnetics::CoreShape>::value) 
+            database = "shapes";
+        else if (std::is_same<T, OpenMagnetics::CoreMaterial>::value)
+            database = "materials";
+        else throw "Unknown type";
+
+        if (coreMaterialDatabase.empty() && database == "materials") {
+            std::string filePath = __FILE__;
+            auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+            auto dataFilePath = masPath + "data/materials.ndjson";
+            std::ifstream ndjsonFile(dataFilePath);
+            std::string myline;
+            while (std::getline(ndjsonFile, myline))
+            {
+                json jf = json::parse(myline);
+                coreMaterialDatabase[jf["name"]] = jf;
+            }
+        }
+        else {
+        }
+
+        if (coreShapeDatabase.empty() && database == "shapes") {
+            std::string filePath = __FILE__;
+            auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+            auto dataFilePath = masPath + "data/shapes.ndjson";
+            std::ifstream ndjsonFile(dataFilePath);
+            std::string myline;
+            while (std::getline(ndjsonFile, myline))
+            {
+                json jf = json::parse(myline);
+                coreShapeDatabase[jf["name"]] = jf;
+                for (auto & alias : jf["aliases"]) {
+                    coreShapeDatabase[alias] = jf;
+                }
+            }
+        }
+
+        json jsonData;
+        if (database == "materials") {
+            if (coreMaterialDatabase.count(name)){
+                jsonData = coreMaterialDatabase[name];
+            }
+            else {
+                jsonData = json::parse("{}");
+            }
+        }
+        else if (database == "shapes") {
+            if (coreShapeDatabase.count(name)){
+                jsonData = coreShapeDatabase[name];
+            }
+            else {
+                jsonData = json::parse("{}");
+            }
+        }
+        T datum(jsonData);
+        return datum;
+    }
+
+    template <int decimals>
+    double roundFloat(double value){
+        if (value < 0) 
+            return floor(value * pow(10, decimals)) / pow(10, decimals);
+        else
+            return ceil(value * pow(10, decimals)) / pow(10, decimals);
+    }
 
     template <OpenMagnetics::DimensionalValues preferredValue> 
     double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue)
@@ -1712,7 +1785,6 @@ namespace OpenMagnetics {
 
     std::shared_ptr<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::create_geometrical_description()
     {
-        auto constants = Constants();
         std::vector<CoreGeometricalDescriptionElement> geometricalDescription;
         auto numberStacks = *(get_functional_description().get_number_stacks());
         auto gapping = get_functional_description().get_gapping();
@@ -2239,8 +2311,8 @@ namespace OpenMagnetics {
                 get_mutable_functional_description().set_shape(shape_data);
             }
 
-            // If the material is a string, we have to load its data from the database
-            if (std::holds_alternative<std::string>(get_functional_description().get_material())) {
+            // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid long loading operations)
+            if (std::holds_alternative<std::string>(get_functional_description().get_material()) && std::get<std::string>(get_functional_description().get_material()) != "dummy") {
                 auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(get_functional_description().get_material()));
                 get_mutable_functional_description().set_material(material_data);
             }
