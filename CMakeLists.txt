@@ -36,7 +36,22 @@ FetchContent_Declare(pybind11
 FetchContent_Declare(pybind11_json
         GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
 
-FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json)
+FetchContent_Declare(libInterpolate
+        GIT_REPOSITORY https://github.com/CD3/libInterpolate)
+
+FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate)
+
+file(DOWNLOAD
+    https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+    "${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz")
+
+add_custom_target(unZip ALL)
+add_custom_command(TARGET unZip PRE_BUILD
+   COMMAND ${CMAKE_COMMAND} -E tar xzf ${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz
+WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/_deps
+DEPENDS ${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz
+COMMENT "Unpacking eigen-3.tar.gz"
+VERBATIM)
 
 set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
 
@@ -56,6 +71,11 @@ add_custom_command(
   COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json -S ${MAS_DIR}/schemas/magnetic.json -S ${MAS_DIR}/schemas/magnetic/core.json -S ${MAS_DIR}/schemas/magnetic/winding.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/core/gap.json -S ${MAS_DIR}/schemas/magnetic/core/shape.json -S ${MAS_DIR}/schemas/magnetic/core/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/core/bobbin.json -S ${MAS_DIR}/schemas/magnetic/core/piece.json -S ${MAS_DIR}/schemas/magnetic/core/spacer.json -S ${MAS_DIR}/schemas/magnetic/wire/solid.json -S ${MAS_DIR}/schemas/magnetic/wire/stranded.json -S ${MAS_DIR}/schemas/magnetic/wire/material.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/inputs.json -S ${MAS_DIR}/schemas/inputs/designRequirements.json -S ${MAS_DIR}/schemas/inputs/operationConditions.json -S ${MAS_DIR}/schemas/inputs/operationPointExcitation.json -o ${CMAKE_BINARY_DIR}/MAS/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   USES_TERMINAL)
 
+add_custom_command(
+  OUTPUT "${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp"
+  COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json -S ${MAS_DIR}/schemas/magnetic.json -S ${MAS_DIR}/schemas/magnetic/core.json -S ${MAS_DIR}/schemas/magnetic/winding.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/core/gap.json -S ${MAS_DIR}/schemas/magnetic/core/shape.json -S ${MAS_DIR}/schemas/magnetic/core/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/core/bobbin.json -S ${MAS_DIR}/schemas/magnetic/core/piece.json -S ${MAS_DIR}/schemas/magnetic/core/spacer.json -S ${MAS_DIR}/schemas/magnetic/wire/solid.json -S ${MAS_DIR}/schemas/magnetic/wire/stranded.json -S ${MAS_DIR}/schemas/magnetic/wire/material.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/inputs.json -S ${MAS_DIR}/schemas/inputs/designRequirements.json -S ${MAS_DIR}/schemas/inputs/operationConditions.json -S ${MAS_DIR}/schemas/inputs/operationPointExcitation.json -o ${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
+  USES_TERMINAL)
+
 add_custom_target(MAS ALL
     DEPENDS "${CMAKE_BINARY_DIR}/MAS/MAS.hpp")
 
@@ -64,10 +84,24 @@ file(GLOB SOURCES
 
 add_library(MKF SHARED ${SOURCES})
 
+
+add_custom_target(MASGeneration
+                  /bin/echo "RUNNING MASGeneration"
+                  DEPENDS "${CMAKE_BINARY_DIR}/MAS/MAS.hpp")
+
+add_custom_target(PyMASGeneration
+                  /bin/echo "RUNNING PyMASGeneration"
+                  DEPENDS "${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp")
+
+add_dependencies(MKF MASGeneration)
+add_dependencies(MKF PyMASGeneration)
+
 include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
+include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-3.4.0")
+include_directories("${CMAKE_BINARY_DIR}/_deps/libinterpolate-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
 

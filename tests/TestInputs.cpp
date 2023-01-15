@@ -1,0 +1,536 @@
+#include <UnitTest++.h>
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include <filesystem>
+#include <nlohmann/json-schema.hpp>
+#include "json.hpp"
+#include "Utils.h"
+#include "InputsWrapper.h"
+#include "InitialPermeability.h"
+#include <magic_enum.hpp>
+using nlohmann::json_uri;
+using nlohmann::json_schema::json_validator;
+using json = nlohmann::json;
+#include <typeinfo>
+
+
+
+SUITE(Inputs)
+{
+    TEST(Test_One_Operation_Point_One_Winding_Triangular)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["waveform"]["data"] = {-5, 5, -5};
+        windingExcitation["excitation"]["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 2.88, max_error * 2.88);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 0.376, max_error * 0.376);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 128000, max_error * 128000);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 10, max_error * 10);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 3.833, max_error * 3.833);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Equidistant_Sinusoidal)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["waveform"]["data"] = {0, 0.06145122063750744, 0.12290244127501487, 0.18435366191252228, 0.24580488255002975, 0.30713118165698094, 0.36841396877014293, 0.4296967558833049, 0.49097954299646696, 0.5520997341739765, 0.6130461159030302, 0.6739924976320839, 0.7349388793611376, 0.7957719836746695, 0.8562149102236266, 0.9166578367725836, 0.9771007633215409, 1.037543689870498, 1.0973397955470385, 1.1571135970555646, 1.216887398564091, 1.276661200072617, 1.3358449876276357, 1.394785828260622, 1.4537266688936081, 1.5126675095265945, 1.5711608190293265, 1.6291071460395254, 1.6870534730497244, 1.7449998000599234, 1.8027250701453021, 1.8595180566781788, 1.9163110432110557, 1.973104029743932, 2.0298970162768093, 2.085468263777627, 2.140952244204727, 2.1964362246318263, 2.251920205058926, 2.3064179538943743, 2.3604408504819907, 2.4144637470696066, 2.468486643657223, 2.5218390582265293, 2.574252797970201, 2.6266665377138723, 2.6790802774575444, 2.731216487484836, 2.78187740796716, 2.8325383284494845, 2.883199248931809, 2.933860169414133, 2.9828185803057643, 3.031587823465096, 3.0803570666244284, 3.1291263097837603, 3.176595953084751, 3.223339845815499, 3.2700837385462473, 3.3168276312769955, 3.362746026335129, 3.4073364468764473, 3.4519268674177654, 3.496517287959084, 3.540823247071316, 3.5831379761799416, 3.625452705288568, 3.6677674343971947, 3.710082163505821, 3.750324109205718, 3.790247165150427, 3.8301702210951354, 3.8700932770398437, 3.9084948307976948, 3.9459167872571586, 3.983338743716622, 4.020760700176085, 4.057271371972193, 4.092089657964925, 4.126907943957656, 4.161726229950387, 4.196297097987679, 4.228416279011962, 4.2605354600362455, 4.292654641060529, 4.324773822084812, 4.3545703852665465, 4.38390242487977, 4.413234464492994, 4.442566504106219, 4.470249709086087, 4.496714210206516, 4.523178711326947, 4.549643212447377, 4.575176689548374, 4.598701114817964, 4.6222255400875545, 4.645749965357144, 4.669099124937923, 4.689618995542171, 4.71013886614642, 4.730658736750669, 4.751178607354918, 4.7692498393956875, 4.7867089117955866, 4.8041679841954865, 4.8216270565953865, 4.8374022756616615, 4.85175269575333, 4.866103115844998, 4.880453535936666, 4.893912026714872, 4.905114460994323, 4.9163168952737735, 4.927519329553225, 4.938642296560028, 4.9466660399335725, 4.954689783307117, 4.962713526680662, 4.970737270054206, 4.976307156132361, 4.981130216077137, 4.985953276021912, 4.990776335966688, 4.993965661835207, 4.9955748186791515, 4.997183975523097, 4.998793132367041, 4.999597710789014, 4.99798855394507, 4.9963793971011246, 4.99477024025718, 4.993161083413235, 4.9883648059942995, 4.983541746049524, 4.978718686104749, 4.973895626159973, 4.9667253983674335, 4.95870165499389, 4.950677911620344, 4.942654168246801, 4.93312054669295, 4.9219181124135, 4.910715678134049, 4.899513243854598, 4.8876287459825, 4.873278325890832, 4.858927905799163, 4.844577485707495, 4.830227065615827, 4.812897520395438, 4.795438447995538, 4.777979375595638, 4.760520303195739, 4.7409186720527945, 4.720398801448546, 4.699878930844296, 4.679359060240047, 4.657512177991942, 4.633987752722351, 4.610463327452761, 4.586938902183172, 4.562875463007594, 4.536410961887164, 4.5099464607667334, 4.483481959646303, 4.457017458525873, 4.427900484299609, 4.398568444686385, 4.36923640507316, 4.339904365459936, 4.308714231572671, 4.276595050548388, 4.244475869524105, 4.212356688499822, 4.1791353729467575, 4.144317086954025, 4.109498800961293, 4.074680514968562, 4.039471678405818, 4.002049721946355, 3.96462776548689, 3.927205809027427, 3.8897838525679624, 3.85013174906749, 3.8102086931227817, 3.7702856371780733, 3.730362581233366, 3.6889247989515104, 3.6466100698428843, 3.6042953407342573, 3.5619806116256303, 3.518812498229744, 3.4742220776884256, 3.429631657147107, 3.3850412366057903, 3.3401995776423714, 3.2934556849116223, 3.246711792180875, 3.199967899450126, 3.1532240067193786, 3.1047416882040952, 3.0559724450447625, 3.0072032018854333, 2.9584339587261006, 2.9085297091729725, 2.8578687886906486, 2.807207868208325, 2.756546947726001, 2.7052871473293862, 2.652873407585714, 2.60045966784204, 2.548045928098368, 2.495498091951033, 2.44147519536342, 2.387452298775802, 2.3334294021881856, 2.2794065056005692, 2.2241782148453773, 2.1686942344182754, 2.113210253991177, 2.057726273564077, 2.001500523010371, 1.9447075364774946, 1.88791454994462, 1.8311215634117453, 1.7739729635650274, 1.7160266365548278, 1.6580803095446264, 1.6001339825344267, 1.5421379298430882, 1.483197089210103, 1.4242562485771177, 1.3653154079441308, 1.3063745673111438, 1.2467742993183535, 1.18700049780983, 1.127226696301305, 1.067452894792778, 1.0073222265960222, 0.9468793000470654, 0.8864363734981069, 0.8259934469491519, 0.7654120702256666, 0.7044656884966134, 0.6435193067675584, 0.5825729250385052, 0.5216209365530489, 0.46033814943988993, 0.39905536232672745, 0.33777257521356496, 0.27648978810040425, 0.21507927223127865, 0.15362805159377224, 0.09217683095626406, 0.03072561031875587, -0.03072561031875054, -0.09217683095625517, -0.15362805159376514, -0.21507927223126977, -0.2764897881003954, -0.33777257521355786, -0.39905536232672034, -0.4603381494398846, -0.5216209365530453, -0.5825729250384999, -0.6435193067675531, -0.7044656884966063, -0.765412070225663, -0.8259934469491466, -0.8864363734981016, -0.9468793000470601, -1.0073222265960187, -1.0674528947927726, -1.1272266963012996, -1.187000497809823, -1.24677429931835, -1.3063745673111367, -1.3653154079441254, -1.4242562485771106, -1.4831970892100994, -1.542137929843081, -1.6001339825344232, -1.6580803095446228, -1.7160266365548225, -1.773972963565022, -1.8311215634117364, -1.8879145499446164, -1.9447075364774928, -2.0015005230103693, -2.057726273564077, -2.1132102539911752, -2.1686942344182736, -2.224178214845372, -2.279406505600564, -2.333429402188182, -2.3874522987757985, -2.441475195363413, -2.4954980919510312, -2.5480459280983627, -2.6004596678420366, -2.6528734075857088, -2.705287147329381, -2.7565469477259974, -2.8072078682083212, -2.857868788690647, -2.908529709172969, -2.9584339587260953, -3.007203201885428, -3.055972445044759, -3.1047416882040917, -3.153224006719375, -3.199967899450124, -3.2467117921808732, -3.2934556849116206, -3.3401995776423696, -3.3850412366057885, -3.4296316571471053, -3.474222077688424, -3.5188124982297424, -3.5619806116256267, -3.6042953407342537, -3.6466100698428807, -3.688924798951504, -3.7303625812333614, -3.770285637178068, -3.810208693122778, -3.8501317490674865, -3.8897838525679607, -3.9272058090274253, -3.96462776548689, -4.002049721946351, -4.039471678405816, -4.074680514968556, -4.109498800961289, -4.144317086954022, -4.179135372946753, -4.2123566884998205, -4.244475869524104, -4.276595050548385, -4.3087142315726705, -4.339904365459933, -4.369236405073156, -4.398568444686381, -4.427900484299604, -4.45701745852587, -4.4834819596463, -4.509946460766729, -4.53641096188716, -4.56287546300759, -4.586938902183168, -4.610463327452758, -4.633987752722349, -4.657512177991937, -4.6793590602400466, -4.699878930844295, -4.7203988014485425, -4.740918672052792, -4.760520303195736, -4.777979375595635, -4.795438447995536, -4.812897520395436, -4.830227065615827, -4.844577485707496, -4.858927905799163, -4.873278325890832, -4.887628745982499, -4.899513243854597, -4.910715678134047, -4.921918112413499, -4.933120546692948, -4.942654168246799, -4.950677911620344, -4.958701654993888, -4.9667253983674335, -4.973895626159973, -4.978718686104749, -4.983541746049525, -4.9883648059943, -4.993161083413236, -4.99477024025718, -4.9963793971011246, -4.99798855394507, -4.999597710789014, -4.998793132367042, -4.997183975523097, -4.995574818679152, -4.993965661835208, -4.990776335966688, -4.985953276021913, -4.981130216077137, -4.9763071561323615, -4.970737270054206, -4.962713526680662, -4.954689783307117, -4.9466660399335725, -4.938642296560029, -4.927519329553226, -4.916316895273774, -4.905114460994324, -4.893912026714872, -4.880453535936667, -4.866103115844997, -4.851752695753331, -4.837402275661661, -4.821627056595389, -4.804167984195489, -4.786708911795589, -4.769249839395689, -4.75117860735492, -4.730658736750671, -4.7101388661464245, -4.689618995542174, -4.669099124937926, -4.6457499653571475, -4.622225540087557, -4.598701114817967, -4.5751766895483765, -4.54964321244738, -4.523178711326947, -4.49671421020652, -4.470249709086087, -4.442566504106223, -4.413234464493, -4.383902424879775, -4.35457038526655, -4.324773822084817, -4.2926546410605315, -4.260535460036252, -4.228416279011965, -4.196297097987683, -4.161726229950389, -4.126907943957658, -4.09208965796493, -4.057271371972195, -4.020760700176087, -3.9833387437166223, -3.9459167872571577, -3.908494830797693, -3.870093277039846, -3.8301702210951376, -3.7902471651504257, -3.7503241092057173, -3.7100821635058203, -3.667767434397195, -3.6254527052885734, -3.583137976179941, -3.5408232470713195, -3.4965172879590867, -3.451926867417768, -3.407336446876453, -3.362746026335131, -3.316827631277004, -3.2700837385462513, -3.223339845815506, -3.176595953084753, -3.1291263097837643, -3.0803570666244298, -3.031587823465099, -2.9828185803057643, -2.9338601694141317, -2.8831992489318097, -2.8325383284494876, -2.7818774079671655, -2.73121648748484, -2.6790802774575475, -2.626666537713877, -2.574252797970207, -2.5218390582265293, -2.4684866436572293, -2.4144637470696075, -2.3604408504819965, -2.3064179538943783, -2.25192020505893, -2.196436224631828, -2.1409522442047297, -2.0854682637776314, -2.029897016276813, -1.9731040297439364, -1.9163110432110635, -1.859518056678187, -1.802725070145307, -1.7449998000599258, -1.6870534730497262, -1.62910714603953, -1.571160819029327, -1.512667509526601, -1.4537266688936121, -1.3947858282606305, -1.3358449876276417, -1.276661200072624, -1.2168873985640971, -1.1571135970555666, -1.0973397955470396, -1.0375436898704997, -0.9771007633215412, -0.9166578367725862, -0.8562149102236276, -0.7957719836746691, -0.7349388793611382, -0.6739924976320886, -0.6130461159030389, -0.5520997341739822, -0.4909795429964774, -0.4296967558833096, -0.3684139687701524, -0.30713118165698816, -0.24580488255003274, -0.18435366191252456, -0.12290244127501992, -0.06145122063751174, 0 };
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 3.53, max_error * 3.53);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 0, max_error);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 100000, max_error * 100000);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 10, max_error * 10);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 5, max_error * 5);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Equidistant_Square)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["voltage"]["waveform"]["data"] = {7.5, 7.5, -2.5, -2.5, 7.5}; 
+        windingExcitation["excitation"]["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        auto max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_voltage()).get_processed()).get_rms(), 4.33, max_error * 4.33);
+        CHECK_CLOSE(*(*(*excitation.get_voltage()).get_processed()).get_thd(), 0.92, max_error * 0.92);
+        CHECK_CLOSE(*(*(*excitation.get_voltage()).get_processed()).get_effective_frequency(), 692290, max_error * 692290);
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_processed()).get_peak_to_peak(), 10, max_error * 10);
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_harmonics()).get_amplitudes()[1], 4.5, max_error * 4.5);
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_voltage()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Triangular_Processed)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["processed"]["dutyCycle"] = 0.8;
+        windingExcitation["excitation"]["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        windingExcitation["excitation"]["current"]["processed"]["offset"] = 5;
+        windingExcitation["excitation"]["current"]["processed"]["peakToPeak"] = 20;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 7.64, max_error * 7.64);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 0.452, max_error * 0.452);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 117400, max_error * 117400);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 20, max_error * 20);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset(), 5, max_error * 5);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 5, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 7.45, max_error * 7.45);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Square_Processed)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["processed"]["dutyCycle"] = 0.8;
+        windingExcitation["excitation"]["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE;
+        windingExcitation["excitation"]["current"]["processed"]["offset"] = 0;
+        windingExcitation["excitation"]["current"]["processed"]["peakToPeak"] = 20;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 7.93, max_error * 7.93);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 1.15, max_error * 1.15);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 746020, max_error * 746020);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 20, max_error * 20);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 0.09375, max_error * 0.09375);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 7.33, max_error * 7.33);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Sinusoidal_Processed)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        windingExcitation["excitation"]["current"]["processed"]["offset"] = -6;
+        windingExcitation["excitation"]["current"]["processed"]["peakToPeak"] = 12;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.1;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 7.35, max_error * 7.35);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 0, max_error);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 70700, max_error * 70700);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 12, max_error * 12);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset() + 6, 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 6, max_error * 6);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 6, max_error * 6);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Square_With_Dead_Time_Processed)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["processed"]["dutyCycle"] = 0.42;
+        windingExcitation["excitation"]["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE_WITH_DEAD_TIME;
+        windingExcitation["excitation"]["current"]["processed"]["offset"] = 0;
+        windingExcitation["excitation"]["current"]["processed"]["peakToPeak"] = 13;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_rms(), 5.92, max_error * 5.92);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_thd(), 0.315, max_error * 0.315);
+        CHECK_CLOSE(*(*(*excitation.get_current()).get_processed()).get_effective_frequency(), 465000, max_error * 465000);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_peak_to_peak(), 13, max_error * 13);
+        CHECK_CLOSE((*(*excitation.get_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[0], 0.0, max_error * 0.0);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_amplitudes()[1], 8, max_error * 8);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_Two_Generated_Windings_Turns_Ratios)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["waveform"]["data"] = {-5, 5, -5};
+        windingExcitation["excitation"]["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
+        windingExcitation["excitation"]["voltage"]["waveform"]["data"] = {1, 1, 0, 0, 1}; 
+        windingExcitation["excitation"]["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        std::vector<double> turnsRatioValues = {0.001, 0.1, 1, 5, 42};
+        auto max_error = 0.02;
+
+        for (auto &turnsRatioValue: turnsRatioValues) {
+
+            inputsJson["designRequirements"] = json();
+            inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+            json turnsRatio;
+            turnsRatio["nominal"] = turnsRatioValue;
+            inputsJson["designRequirements"]["turnsRatios"] = json::array({turnsRatio});
+
+            OpenMagnetics::InputsWrapper inputs(inputsJson);
+            auto excitation_primary = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+            CHECK_CLOSE(*(*(*excitation_primary.get_current()).get_processed()).get_rms(), 2.9, max_error * 2.9);
+            CHECK_CLOSE(*(*(*excitation_primary.get_current()).get_processed()).get_thd(), 0.382, max_error * 0.382);
+            CHECK_CLOSE(*(*(*excitation_primary.get_current()).get_processed()).get_effective_frequency(), 129700, max_error * 129700);
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_processed()).get_peak_to_peak(), 10, max_error * 10);
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_processed()).get_offset(), 0, max_error);
+
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_harmonics()).get_amplitudes()[1], 3.833, max_error * 3.833);
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+            CHECK_CLOSE((*(*excitation_primary.get_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+
+            CHECK_CLOSE(*(*(*excitation_primary.get_voltage()).get_processed()).get_rms(), 0.5, max_error * 0.5);
+            CHECK_CLOSE(*(*(*excitation_primary.get_voltage()).get_processed()).get_thd(), 0.92, max_error * 0.92);
+            CHECK_CLOSE(*(*(*excitation_primary.get_voltage()).get_processed()).get_effective_frequency(), 640900, max_error * 640900);
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_processed()).get_peak_to_peak(), 1, max_error * 1);
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_processed()).get_offset(), 0.25, max_error * 0.25);
+
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[0], 0.25, max_error * 0.25);
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[1], 0.451, max_error * 0.451);
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[0], 0, max_error);
+            CHECK_CLOSE((*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+
+            auto excitation_secondary = inputs.get_operation_points()[0].get_excitations_per_winding()[1].get_excitation();
+            CHECK_CLOSE(*(*(*excitation_secondary.get_current()).get_processed()).get_rms(), 
+                        *(*(*excitation_primary.get_current()).get_processed()).get_rms() * turnsRatioValue,
+                        max_error * *(*(*excitation_primary.get_current()).get_processed()).get_rms() * turnsRatioValue);
+            CHECK_CLOSE(*(*(*excitation_secondary.get_current()).get_processed()).get_thd(), 
+                        *(*(*excitation_primary.get_current()).get_processed()).get_thd(),
+                        max_error * *(*(*excitation_primary.get_current()).get_processed()).get_thd());
+            CHECK_CLOSE(*(*(*excitation_secondary.get_current()).get_processed()).get_effective_frequency(), 
+                        *(*(*excitation_primary.get_current()).get_processed()).get_effective_frequency(),
+                        max_error * *(*(*excitation_primary.get_current()).get_processed()).get_effective_frequency());
+            CHECK_CLOSE((*(*excitation_secondary.get_current()).get_processed()).get_peak_to_peak(), 
+                        (*(*excitation_primary.get_current()).get_processed()).get_peak_to_peak() * turnsRatioValue,
+                        max_error * (*(*excitation_primary.get_current()).get_processed()).get_peak_to_peak() * turnsRatioValue);
+            CHECK_CLOSE((*(*excitation_secondary.get_current()).get_processed()).get_offset(), 
+                        (*(*excitation_primary.get_current()).get_processed()).get_offset() * turnsRatioValue,
+                        max_error);
+
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_amplitudes()[0], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[0] / turnsRatioValue,
+                        max_error);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_amplitudes()[1], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[1] / turnsRatioValue,
+                        max_error * (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[1] / turnsRatioValue);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_frequencies()[0], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[0],
+                        max_error);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_frequencies()[1], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[1],
+                        max_error * (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[1]);
+
+            CHECK_CLOSE(*(*(*excitation_secondary.get_voltage()).get_processed()).get_rms(), 
+                        *(*(*excitation_primary.get_voltage()).get_processed()).get_rms() / turnsRatioValue,
+                        max_error * *(*(*excitation_primary.get_voltage()).get_processed()).get_rms() / turnsRatioValue);
+            CHECK_CLOSE(*(*(*excitation_secondary.get_voltage()).get_processed()).get_thd(), 
+                        *(*(*excitation_primary.get_voltage()).get_processed()).get_thd(),
+                        max_error * *(*(*excitation_primary.get_voltage()).get_processed()).get_thd());
+            CHECK_CLOSE(*(*(*excitation_secondary.get_voltage()).get_processed()).get_effective_frequency(), 
+                        *(*(*excitation_primary.get_voltage()).get_processed()).get_effective_frequency(),
+                        max_error * *(*(*excitation_primary.get_voltage()).get_processed()).get_effective_frequency());
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_processed()).get_peak_to_peak(), 
+                        (*(*excitation_primary.get_voltage()).get_processed()).get_peak_to_peak() / turnsRatioValue,
+                        max_error * (*(*excitation_primary.get_voltage()).get_processed()).get_peak_to_peak() / turnsRatioValue);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_processed()).get_offset(), 
+                        (*(*excitation_primary.get_voltage()).get_processed()).get_offset() / turnsRatioValue,
+                        max_error);
+
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_amplitudes()[0], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[0] / turnsRatioValue,
+                        max_error);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_amplitudes()[1], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[1] / turnsRatioValue,
+                        max_error * (*(*excitation_primary.get_voltage()).get_harmonics()).get_amplitudes()[1] / turnsRatioValue);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_frequencies()[0], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[0],
+                        max_error * (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[0]);
+            CHECK_CLOSE((*(*excitation_secondary.get_voltage()).get_harmonics()).get_frequencies()[1], 
+                        (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[1],
+                        max_error * (*(*excitation_primary.get_voltage()).get_harmonics()).get_frequencies()[1]);
+        }
+    }
+
+    TEST(Test_One_Operation_Point_Three_Generated_Windings_Turns_Ratios_Must_Throw_Exception)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["current"]["waveform"]["data"] = {-5, 5, -5};
+        windingExcitation["excitation"]["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
+        windingExcitation["excitation"]["voltage"]["waveform"]["data"] = {1, 1, 0, 0, 1}; 
+        windingExcitation["excitation"]["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        double turnsRatioSecondaryValue = 1;
+        double turnsRatioTertiaryValue = 2;
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        json turnsRatioSecondary, turnsRatioTertiary;
+        turnsRatioSecondary["nominal"] = turnsRatioSecondaryValue;
+        turnsRatioTertiary["nominal"] = turnsRatioTertiaryValue;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array({turnsRatioSecondary, turnsRatioTertiary});
+
+        try {
+            OpenMagnetics::InputsWrapper inputs(inputsJson);
+            CHECK(false);
+        }
+        catch ( const std::invalid_argument& e ) {
+            CHECK(true);
+        }
+
+    }
+
+
+    TEST(Test_One_Operation_Point_One_Winding_Equidistant_Sinusoidal_Magnetizing_Current)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["voltage"]["waveform"]["data"] = {0, 0.06145122063750744, 0.12290244127501487, 0.18435366191252228, 0.24580488255002975, 0.30713118165698094, 0.36841396877014293, 0.4296967558833049, 0.49097954299646696, 0.5520997341739765, 0.6130461159030302, 0.6739924976320839, 0.7349388793611376, 0.7957719836746695, 0.8562149102236266, 0.9166578367725836, 0.9771007633215409, 1.037543689870498, 1.0973397955470385, 1.1571135970555646, 1.216887398564091, 1.276661200072617, 1.3358449876276357, 1.394785828260622, 1.4537266688936081, 1.5126675095265945, 1.5711608190293265, 1.6291071460395254, 1.6870534730497244, 1.7449998000599234, 1.8027250701453021, 1.8595180566781788, 1.9163110432110557, 1.973104029743932, 2.0298970162768093, 2.085468263777627, 2.140952244204727, 2.1964362246318263, 2.251920205058926, 2.3064179538943743, 2.3604408504819907, 2.4144637470696066, 2.468486643657223, 2.5218390582265293, 2.574252797970201, 2.6266665377138723, 2.6790802774575444, 2.731216487484836, 2.78187740796716, 2.8325383284494845, 2.883199248931809, 2.933860169414133, 2.9828185803057643, 3.031587823465096, 3.0803570666244284, 3.1291263097837603, 3.176595953084751, 3.223339845815499, 3.2700837385462473, 3.3168276312769955, 3.362746026335129, 3.4073364468764473, 3.4519268674177654, 3.496517287959084, 3.540823247071316, 3.5831379761799416, 3.625452705288568, 3.6677674343971947, 3.710082163505821, 3.750324109205718, 3.790247165150427, 3.8301702210951354, 3.8700932770398437, 3.9084948307976948, 3.9459167872571586, 3.983338743716622, 4.020760700176085, 4.057271371972193, 4.092089657964925, 4.126907943957656, 4.161726229950387, 4.196297097987679, 4.228416279011962, 4.2605354600362455, 4.292654641060529, 4.324773822084812, 4.3545703852665465, 4.38390242487977, 4.413234464492994, 4.442566504106219, 4.470249709086087, 4.496714210206516, 4.523178711326947, 4.549643212447377, 4.575176689548374, 4.598701114817964, 4.6222255400875545, 4.645749965357144, 4.669099124937923, 4.689618995542171, 4.71013886614642, 4.730658736750669, 4.751178607354918, 4.7692498393956875, 4.7867089117955866, 4.8041679841954865, 4.8216270565953865, 4.8374022756616615, 4.85175269575333, 4.866103115844998, 4.880453535936666, 4.893912026714872, 4.905114460994323, 4.9163168952737735, 4.927519329553225, 4.938642296560028, 4.9466660399335725, 4.954689783307117, 4.962713526680662, 4.970737270054206, 4.976307156132361, 4.981130216077137, 4.985953276021912, 4.990776335966688, 4.993965661835207, 4.9955748186791515, 4.997183975523097, 4.998793132367041, 4.999597710789014, 4.99798855394507, 4.9963793971011246, 4.99477024025718, 4.993161083413235, 4.9883648059942995, 4.983541746049524, 4.978718686104749, 4.973895626159973, 4.9667253983674335, 4.95870165499389, 4.950677911620344, 4.942654168246801, 4.93312054669295, 4.9219181124135, 4.910715678134049, 4.899513243854598, 4.8876287459825, 4.873278325890832, 4.858927905799163, 4.844577485707495, 4.830227065615827, 4.812897520395438, 4.795438447995538, 4.777979375595638, 4.760520303195739, 4.7409186720527945, 4.720398801448546, 4.699878930844296, 4.679359060240047, 4.657512177991942, 4.633987752722351, 4.610463327452761, 4.586938902183172, 4.562875463007594, 4.536410961887164, 4.5099464607667334, 4.483481959646303, 4.457017458525873, 4.427900484299609, 4.398568444686385, 4.36923640507316, 4.339904365459936, 4.308714231572671, 4.276595050548388, 4.244475869524105, 4.212356688499822, 4.1791353729467575, 4.144317086954025, 4.109498800961293, 4.074680514968562, 4.039471678405818, 4.002049721946355, 3.96462776548689, 3.927205809027427, 3.8897838525679624, 3.85013174906749, 3.8102086931227817, 3.7702856371780733, 3.730362581233366, 3.6889247989515104, 3.6466100698428843, 3.6042953407342573, 3.5619806116256303, 3.518812498229744, 3.4742220776884256, 3.429631657147107, 3.3850412366057903, 3.3401995776423714, 3.2934556849116223, 3.246711792180875, 3.199967899450126, 3.1532240067193786, 3.1047416882040952, 3.0559724450447625, 3.0072032018854333, 2.9584339587261006, 2.9085297091729725, 2.8578687886906486, 2.807207868208325, 2.756546947726001, 2.7052871473293862, 2.652873407585714, 2.60045966784204, 2.548045928098368, 2.495498091951033, 2.44147519536342, 2.387452298775802, 2.3334294021881856, 2.2794065056005692, 2.2241782148453773, 2.1686942344182754, 2.113210253991177, 2.057726273564077, 2.001500523010371, 1.9447075364774946, 1.88791454994462, 1.8311215634117453, 1.7739729635650274, 1.7160266365548278, 1.6580803095446264, 1.6001339825344267, 1.5421379298430882, 1.483197089210103, 1.4242562485771177, 1.3653154079441308, 1.3063745673111438, 1.2467742993183535, 1.18700049780983, 1.127226696301305, 1.067452894792778, 1.0073222265960222, 0.9468793000470654, 0.8864363734981069, 0.8259934469491519, 0.7654120702256666, 0.7044656884966134, 0.6435193067675584, 0.5825729250385052, 0.5216209365530489, 0.46033814943988993, 0.39905536232672745, 0.33777257521356496, 0.27648978810040425, 0.21507927223127865, 0.15362805159377224, 0.09217683095626406, 0.03072561031875587, -0.03072561031875054, -0.09217683095625517, -0.15362805159376514, -0.21507927223126977, -0.2764897881003954, -0.33777257521355786, -0.39905536232672034, -0.4603381494398846, -0.5216209365530453, -0.5825729250384999, -0.6435193067675531, -0.7044656884966063, -0.765412070225663, -0.8259934469491466, -0.8864363734981016, -0.9468793000470601, -1.0073222265960187, -1.0674528947927726, -1.1272266963012996, -1.187000497809823, -1.24677429931835, -1.3063745673111367, -1.3653154079441254, -1.4242562485771106, -1.4831970892100994, -1.542137929843081, -1.6001339825344232, -1.6580803095446228, -1.7160266365548225, -1.773972963565022, -1.8311215634117364, -1.8879145499446164, -1.9447075364774928, -2.0015005230103693, -2.057726273564077, -2.1132102539911752, -2.1686942344182736, -2.224178214845372, -2.279406505600564, -2.333429402188182, -2.3874522987757985, -2.441475195363413, -2.4954980919510312, -2.5480459280983627, -2.6004596678420366, -2.6528734075857088, -2.705287147329381, -2.7565469477259974, -2.8072078682083212, -2.857868788690647, -2.908529709172969, -2.9584339587260953, -3.007203201885428, -3.055972445044759, -3.1047416882040917, -3.153224006719375, -3.199967899450124, -3.2467117921808732, -3.2934556849116206, -3.3401995776423696, -3.3850412366057885, -3.4296316571471053, -3.474222077688424, -3.5188124982297424, -3.5619806116256267, -3.6042953407342537, -3.6466100698428807, -3.688924798951504, -3.7303625812333614, -3.770285637178068, -3.810208693122778, -3.8501317490674865, -3.8897838525679607, -3.9272058090274253, -3.96462776548689, -4.002049721946351, -4.039471678405816, -4.074680514968556, -4.109498800961289, -4.144317086954022, -4.179135372946753, -4.2123566884998205, -4.244475869524104, -4.276595050548385, -4.3087142315726705, -4.339904365459933, -4.369236405073156, -4.398568444686381, -4.427900484299604, -4.45701745852587, -4.4834819596463, -4.509946460766729, -4.53641096188716, -4.56287546300759, -4.586938902183168, -4.610463327452758, -4.633987752722349, -4.657512177991937, -4.6793590602400466, -4.699878930844295, -4.7203988014485425, -4.740918672052792, -4.760520303195736, -4.777979375595635, -4.795438447995536, -4.812897520395436, -4.830227065615827, -4.844577485707496, -4.858927905799163, -4.873278325890832, -4.887628745982499, -4.899513243854597, -4.910715678134047, -4.921918112413499, -4.933120546692948, -4.942654168246799, -4.950677911620344, -4.958701654993888, -4.9667253983674335, -4.973895626159973, -4.978718686104749, -4.983541746049525, -4.9883648059943, -4.993161083413236, -4.99477024025718, -4.9963793971011246, -4.99798855394507, -4.999597710789014, -4.998793132367042, -4.997183975523097, -4.995574818679152, -4.993965661835208, -4.990776335966688, -4.985953276021913, -4.981130216077137, -4.9763071561323615, -4.970737270054206, -4.962713526680662, -4.954689783307117, -4.9466660399335725, -4.938642296560029, -4.927519329553226, -4.916316895273774, -4.905114460994324, -4.893912026714872, -4.880453535936667, -4.866103115844997, -4.851752695753331, -4.837402275661661, -4.821627056595389, -4.804167984195489, -4.786708911795589, -4.769249839395689, -4.75117860735492, -4.730658736750671, -4.7101388661464245, -4.689618995542174, -4.669099124937926, -4.6457499653571475, -4.622225540087557, -4.598701114817967, -4.5751766895483765, -4.54964321244738, -4.523178711326947, -4.49671421020652, -4.470249709086087, -4.442566504106223, -4.413234464493, -4.383902424879775, -4.35457038526655, -4.324773822084817, -4.2926546410605315, -4.260535460036252, -4.228416279011965, -4.196297097987683, -4.161726229950389, -4.126907943957658, -4.09208965796493, -4.057271371972195, -4.020760700176087, -3.9833387437166223, -3.9459167872571577, -3.908494830797693, -3.870093277039846, -3.8301702210951376, -3.7902471651504257, -3.7503241092057173, -3.7100821635058203, -3.667767434397195, -3.6254527052885734, -3.583137976179941, -3.5408232470713195, -3.4965172879590867, -3.451926867417768, -3.407336446876453, -3.362746026335131, -3.316827631277004, -3.2700837385462513, -3.223339845815506, -3.176595953084753, -3.1291263097837643, -3.0803570666244298, -3.031587823465099, -2.9828185803057643, -2.9338601694141317, -2.8831992489318097, -2.8325383284494876, -2.7818774079671655, -2.73121648748484, -2.6790802774575475, -2.626666537713877, -2.574252797970207, -2.5218390582265293, -2.4684866436572293, -2.4144637470696075, -2.3604408504819965, -2.3064179538943783, -2.25192020505893, -2.196436224631828, -2.1409522442047297, -2.0854682637776314, -2.029897016276813, -1.9731040297439364, -1.9163110432110635, -1.859518056678187, -1.802725070145307, -1.7449998000599258, -1.6870534730497262, -1.62910714603953, -1.571160819029327, -1.512667509526601, -1.4537266688936121, -1.3947858282606305, -1.3358449876276417, -1.276661200072624, -1.2168873985640971, -1.1571135970555666, -1.0973397955470396, -1.0375436898704997, -0.9771007633215412, -0.9166578367725862, -0.8562149102236276, -0.7957719836746691, -0.7349388793611382, -0.6739924976320886, -0.6130461159030389, -0.5520997341739822, -0.4909795429964774, -0.4296967558833096, -0.3684139687701524, -0.30713118165698816, -0.24580488255003274, -0.18435366191252456, -0.12290244127501992, -0.06145122063751174, 0 };
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_rms(), 0.05627, max_error * 0.05627);
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_thd(), 0, max_error);
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_effective_frequency(), 100000, max_error * 100000);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_processed()).get_peak_to_peak(), 0.158, max_error * 0.158);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_amplitudes()[1], 0.07957, max_error * 0.07957);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    }
+
+    TEST(Test_One_Operation_Point_One_Winding_Equidistant_Triangular_Magnetizing_Current)
+    {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["winding"] = "primary";
+        windingExcitation["excitation"]["frequency"] = 100000;
+        windingExcitation["excitation"]["voltage"]["waveform"]["data"] = {7.5, 7.5, -2.5, -2.5, 7.5}; 
+        windingExcitation["excitation"]["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        auto max_error = 0.01;
+
+        auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0].get_excitation();
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_rms(), 0.0541, max_error * 0.0541);
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_thd(), 0.3765, max_error * 0.3765);
+        CHECK_CLOSE(*(*(*excitation.get_magnetizing_current()).get_processed()).get_effective_frequency(), 128000, max_error * 128000);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_processed()).get_peak_to_peak(), 0.1875, max_error * 0.1875);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_processed()).get_offset(), 0, max_error);
+
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_amplitudes()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_amplitudes()[1], 0.07165, max_error * 0.07165);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_frequencies()[0], 0, max_error);
+        CHECK_CLOSE((*(*excitation.get_magnetizing_current()).get_harmonics()).get_frequencies()[1], 100000, max_error * 100000);
+    
+    }
+
+}

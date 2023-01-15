@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <streambuf>
 #include "Constants.h"
+#include "InitialPermeability.h"
 #include <magic_enum.hpp>
 
 #include <CoreWrapper.h>
@@ -21,9 +22,12 @@ namespace OpenMagnetics {
         protected:
         public:
             virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
-            double get_core_reluctance(CoreWrapper core) {
+            double get_ungapped_core_reluctance(CoreWrapper core) {
                 auto constants = Constants();
-                double absolute_permeability = constants.absolute_permeability; // HARDCODED TODO: replace when materials are implemented
+                OpenMagnetics::InitialPermeability initial_permeability;
+
+                double initial_permeability_value = initial_permeability.get_initial_permeability(core.get_functional_description().get_material());
+                double absolute_permeability = constants.vacuum_permeability * initial_permeability_value;
                 double effective_area = core.get_processed_description()->get_effective_parameters().get_effective_area();
                 double effective_length = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
@@ -90,7 +94,29 @@ namespace OpenMagnetics {
                 internal_links["Classic"] = "";
                 return internal_links;
             }
-            // virtual double get_total_reluctance() = 0;
+            double get_core_reluctance(CoreWrapper core){
+                auto coreReluctance = get_ungapped_core_reluctance(core);
+                double calculatedReluctance = 0;
+                double calculatedCentralReluctance = 0;
+                double calculatedLateralReluctance = 0;
+                auto gapping = core.get_functional_description().get_gapping();
+                for (const auto& gap: gapping) {
+                    auto gap_reluctance = get_gap_reluctance(gap);
+                    auto gapColumn = core.find_closest_column_by_coordinates(*gap.get_coordinates());
+                    if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
+                        calculatedLateralReluctance += 1 / gap_reluctance["reluctance"];
+                    }
+                    else {
+                        calculatedCentralReluctance += gap_reluctance["reluctance"];
+                    }
+                    if (gap_reluctance["fringing_factor"] < 1) {
+                        std::cout << "fringing_factor " << gap_reluctance["fringing_factor"] << std::endl;
+                    }
+
+                }
+                calculatedReluctance = coreReluctance + calculatedCentralReluctance + 1 / calculatedLateralReluctance;
+                return calculatedReluctance;
+            }
 
             static std::shared_ptr<ReluctanceModel> factory(ReluctanceModels modelName);
     };
