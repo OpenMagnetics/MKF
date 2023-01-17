@@ -2312,7 +2312,7 @@ namespace OpenMagnetics {
             }
 
             // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid long loading operations)
-            if (std::holds_alternative<std::string>(get_functional_description().get_material()) && std::get<std::string>(get_functional_description().get_material()) != "dummy") {
+            if (_includeMaterialData && std::holds_alternative<std::string>(get_functional_description().get_material()) && std::get<std::string>(get_functional_description().get_material()) != "dummy") {
                 auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(get_functional_description().get_material()));
                 get_mutable_functional_description().set_material(material_data);
             }

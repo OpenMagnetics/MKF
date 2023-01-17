@@ -15,8 +15,8 @@ using json = nlohmann::json;
 
 namespace py = pybind11;
 
-json get_core_data(json coreData){
-    OpenMagnetics::CoreWrapper core(coreData);
+json get_core_data(json coreData, bool includeMaterialData=false){
+    OpenMagnetics::CoreWrapper core(coreData, includeMaterialData);
     return core;
 }
 

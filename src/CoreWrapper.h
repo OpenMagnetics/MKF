@@ -113,8 +113,10 @@ namespace OpenMagnetics {
 
 
     class CoreWrapper:public MagneticCore {
+        bool _includeMaterialData = false;
         public:
-        CoreWrapper(const json & j) {
+        CoreWrapper(const json & j, bool includeMaterialData=false) {
+            _includeMaterialData = includeMaterialData;
             from_json(j, *this);
             process_data();
             
