@@ -10,6 +10,7 @@
 #include <nlohmann/json-schema.hpp>
 #include <MAS.hpp>
 #include <magic_enum.hpp>
+#include "Utils.h"
 #include "json.hpp"
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
@@ -20,6 +21,7 @@ namespace OpenMagnetics {
     using nlohmann::json;
 
     enum class DimensionalValues : int { MAXIMUM, NOMINAL, MINIMUM };
+    enum class GappingType : int { GRINDED, SPACER, RESIDUAL, DISTRIBUTED };
 
     template <OpenMagnetics::DimensionalValues preferredValue> 
     double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue);
@@ -33,20 +35,11 @@ namespace OpenMagnetics {
             CoreShape shape;
             WindingWindowElement winding_window;
             EffectiveParameters partial_effective_parameters;
-        protected:
-            using dimensions_map = std::shared_ptr<std::map<std::string, Dimension>>;
         public:
             virtual std::tuple<double, double, double> get_shape_constants() = 0;
             virtual void process_columns() = 0;
             virtual void process_winding_window() = 0;
             virtual void process_extra_data() = 0;
-
-            void flatten_dimensions()
-            {
-                for ( auto &dimension : *get_mutable_shape().get_dimensions() ) {
-                    dimension.second = resolve_dimensional_values<OpenMagnetics::DimensionalValues::NOMINAL>(dimension.second);
-                }
-            }
 
             /**
              * List of columns in the piece
@@ -88,12 +81,12 @@ namespace OpenMagnetics {
             EffectiveParameters & get_mutable_partial_effective_parameters() { return partial_effective_parameters; }
             void set_partial_effective_parameters(const EffectiveParameters & value) { this->partial_effective_parameters = value; }
 
-
             static std::shared_ptr<CorePiece> factory(CoreShape shape);
 
             void process()
             {
-                flatten_dimensions();
+                
+                set_shape(flatten_dimensions(get_mutable_shape()));
                 process_winding_window();
                 process_columns();
                 process_extra_data();
@@ -113,33 +106,39 @@ namespace OpenMagnetics {
 
 
     class CoreWrapper:public MagneticCore {
-        bool _includeMaterialData = false;
+        private:
+            bool _includeMaterialData = false;
         public:
-        CoreWrapper(const json & j, bool includeMaterialData=false) {
-            _includeMaterialData = includeMaterialData;
-            from_json(j, *this);
-            process_data();
-            
-            process_gap();
+            CoreWrapper(const json & j, bool includeMaterialData=false) {
+                _includeMaterialData = includeMaterialData;
+                from_json(j, *this);
+                process_data();
+                
+                process_gap();
 
-            if (get_geometrical_description() == nullptr) {
-                auto geometricalDescription = create_geometrical_description();
+                if (!get_geometrical_description()) {
+                    auto geometricalDescription = create_geometrical_description();
 
-                set_geometrical_description(geometricalDescription);
+                    set_geometrical_description(geometricalDescription);
+                }
             }
-        }
-        virtual ~CoreWrapper() = default;
+            CoreWrapper() = default;
+            virtual ~CoreWrapper() = default;
 
-        std::shared_ptr<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
-        std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
-        ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
-        int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
-        int find_exact_column_index_by_coordinates(std::vector<double> coordinates);
-        std::vector<CoreGap> find_gaps_by_type(GappingType gappingType);
-        void scale_to_stacks(int64_t numberStacks);
-        bool is_gapping_missaligned();
-        void process_gap();
-        void distribute_and_process_gap();
-        void process_data();
+            std::optional<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
+            std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
+            ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
+            int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
+            int find_exact_column_index_by_coordinates(std::vector<double> coordinates);
+            std::vector<CoreGap> find_gaps_by_type(GapType gappingType);
+            void scale_to_stacks(int64_t numberStacks);
+            bool is_gapping_missaligned();
+            void process_gap();
+            void distribute_and_process_gap();
+            void process_data();
+
+            std::vector<CoreGap> get_gapping() {
+                return get_mutable_functional_description().get_gapping();
+            }
     };
 }

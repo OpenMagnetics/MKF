@@ -27,6 +27,7 @@ namespace OpenMagnetics {
             wind_by_layers();
             wind_by_turns();
         }
+        WindingWrapper() = default;
         virtual ~WindingWrapper() = default;
 
         void wind_by_sections();

@@ -34,23 +34,23 @@ namespace OpenMagnetics {
             auto permeability_point = std::get<PermeabilityPoint>(initial_permeability_data);
             initial_permeability_value = permeability_point.get_value();
 
-            if (permeability_point.get_modifiers() != nullptr) {
+            if (permeability_point.get_modifiers()) {
                 MagneticsPermeabilityMethodData modifiers = (*permeability_point.get_modifiers())["default"];
                 if ((*modifiers.get_method()) == "Magnetics") {
-                    if (temperature != nullptr) {
+                    if (temperature) {
                         auto temperature_factor = (*modifiers.get_temperature_factor());
                         double permeability_variation_due_to_temperature = temperature_factor.get_a() + temperature_factor.get_b() * (*temperature) + temperature_factor.get_c() * pow(*temperature, 2) + temperature_factor.get_d() * pow(*temperature, 3) + temperature_factor.get_e() * pow(*temperature, 4);
                         initial_permeability_value *= (1 + permeability_variation_due_to_temperature);
                     }
 
-                    if (frequency != nullptr) {
+                    if (frequency) {
                         auto frequency_factor = (*modifiers.get_frequency_factor());
                         double permeability_variation_due_to_frequency = frequency_factor.get_a() + frequency_factor.get_b() * (*frequency) + frequency_factor.get_c() * pow(*frequency, 2) + frequency_factor.get_d() * pow(*frequency, 3) + frequency_factor.get_e() * pow(*frequency, 4);
 
                         initial_permeability_value *= (1 + permeability_variation_due_to_frequency);
                     }
 
-                    if (magneticFieldDcBias != nullptr) {
+                    if (magneticFieldDcBias) {
                         auto magnetic_field_dc_bias_factor = modifiers.get_magnetic_field_dc_bias_factor();
                         double permeability_variation_due_to_magnetic_field_dc_bias = 0.01 / (magnetic_field_dc_bias_factor.get_a() + magnetic_field_dc_bias_factor.get_b() * pow(*magneticFieldDcBias, magnetic_field_dc_bias_factor.get_c()));
 
@@ -61,8 +61,8 @@ namespace OpenMagnetics {
         }
         else {
             auto permeability_points = std::get<std::vector<PermeabilityPoint>>(initial_permeability_data);
-            bool has_temperature_requirement = temperature != nullptr;
-            bool has_temperature_dependency = permeability_points[0].get_temperature() != nullptr;
+            bool has_temperature_requirement = temperature;
+            bool has_temperature_dependency = permeability_points[0].get_temperature().has_value();
 
             if (has_temperature_dependency) {
                 int n = permeability_points.size();
@@ -88,7 +88,7 @@ namespace OpenMagnetics {
             }
         }
 
-        if (material_data.get_curie_temperature() != nullptr && temperature != nullptr) {
+        if (material_data.get_curie_temperature() && temperature) {
             if ((*temperature) > (*material_data.get_curie_temperature())) {
                 initial_permeability_value = 1;
             }

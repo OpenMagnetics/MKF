@@ -41,17 +41,6 @@ FetchContent_Declare(libInterpolate
 
 FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate)
 
-file(DOWNLOAD
-    https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
-    "${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz")
-
-add_custom_target(unZip ALL)
-add_custom_command(TARGET unZip PRE_BUILD
-   COMMAND ${CMAKE_COMMAND} -E tar xzf ${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz
-WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/_deps
-DEPENDS ${CMAKE_BINARY_DIR}/_deps/eigen-3.tar.gz
-COMMENT "Unpacking eigen-3.tar.gz"
-VERBATIM)
 
 set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
 
@@ -100,7 +89,7 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind1
 include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
-include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-3.4.0")
+include_directories("/usr/include/eigen3/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/libinterpolate-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
