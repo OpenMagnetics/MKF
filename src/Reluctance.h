@@ -11,6 +11,7 @@
 #include "InitialPermeability.h"
 #include <magic_enum.hpp>
 
+#include <InputsWrapper.h>
 #include <CoreWrapper.h>
 
 namespace OpenMagnetics {
@@ -22,12 +23,33 @@ namespace OpenMagnetics {
         protected:
         public:
             virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
-            double get_ungapped_core_reluctance(CoreWrapper core) {
+            double get_ungapped_core_reluctance(CoreWrapper core, OperationPoint* operationPoint=nullptr) {
                 auto constants = Constants();
                 OpenMagnetics::InitialPermeability initial_permeability;
 
-                double initial_permeability_value = initial_permeability.get_initial_permeability(core.get_functional_description().get_material());
+                double initial_permeability_value;
+                if (operationPoint != nullptr) {
+                    double temperature = operationPoint->get_conditions().get_ambient_temperature();  // TODO: Use a future calculated temperature
+                    auto frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
+                    initial_permeability_value = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(),
+                                                                                               &temperature,
+                                                                                               nullptr,
+                                                                                               &frequency);
+                }
+                else {
+                    initial_permeability_value = initial_permeability.get_initial_permeability(core.get_functional_description().get_material());
+                }
                 double absolute_permeability = constants.vacuum_permeability * initial_permeability_value;
+                double effective_area = core.get_processed_description()->get_effective_parameters().get_effective_area();
+                double effective_length = core.get_processed_description()->get_effective_parameters().get_effective_length();
+
+                double reluctance_core = effective_length / (absolute_permeability * effective_area);
+                return reluctance_core;
+            }
+
+            double get_ungapped_core_reluctance(CoreWrapper core, double initial_permeability) {
+                auto constants = Constants();
+                double absolute_permeability = constants.vacuum_permeability * initial_permeability;
                 double effective_area = core.get_processed_description()->get_effective_parameters().get_effective_area();
                 double effective_length = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
@@ -48,7 +70,7 @@ namespace OpenMagnetics {
                 std::map<std::string, std::string> information;
                 information["Zhang"] = "Based on \"Improved Calculation Method for Inductance Value of the Air-Gap Inductor\" by Xinsheng Zhang.";
                 information["Muehlethaler"] = "Based on \"A Novel Approach for 3D Air Gap Reluctance Calculations\" by Jonas Mühlethaler.";
-                information["Partridge"] = "Based on the method described in page 8-11 from \"Transformer and Inductor Design Handbook Fourth Edition\" by Colonel Wm. T. Partridge.";
+                information["Partridge"] = "Based on the method described in page 8-11 from \"Transformer and Inductor Design Handbook Fourth Edition\" by Colonel Wm. T. McLyman.";
                 information["Effective Area"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
                 information["Effective Length"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
                 information["Stenglein"] = "Based on \"The Reluctance of Large Air Gaps in Ferrite Cores\" by Erika Stenglein.";
@@ -94,8 +116,19 @@ namespace OpenMagnetics {
                 internal_links["Classic"] = "";
                 return internal_links;
             }
-            double get_core_reluctance(CoreWrapper core){
-                auto coreReluctance = get_ungapped_core_reluctance(core);
+            double get_core_reluctance(CoreWrapper core, OperationPoint* operationPoint=nullptr){
+                auto coreReluctance = get_ungapped_core_reluctance(core, operationPoint);
+                double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+                return calculatedReluctance;
+            }
+
+            double get_core_reluctance(CoreWrapper core, double initialPermeability){
+                auto coreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
+                double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+                return calculatedReluctance;
+            }
+
+            double get_gapping_reluctance(CoreWrapper core){
                 double calculatedReluctance = 0;
                 double calculatedCentralReluctance = 0;
                 double calculatedLateralReluctance = 0;
@@ -114,7 +147,7 @@ namespace OpenMagnetics {
                     }
 
                 }
-                calculatedReluctance = coreReluctance + calculatedCentralReluctance + 1 / calculatedLateralReluctance;
+                calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
                 return calculatedReluctance;
             }
 

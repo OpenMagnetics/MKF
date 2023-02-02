@@ -5,6 +5,7 @@
 #include <filesystem>
 #include "Reluctance.h"
 #include "Constants.h"
+#include "TestingUtils.h"
 
 
 SUITE(Reluctance)
@@ -50,73 +51,10 @@ SUITE(Reluctance)
         {OpenMagnetics::ReluctanceModels::CLASSIC, 1},
     };
 
-    OpenMagnetics::CoreWrapper get_core(std::string shapeName, json basicGapping, int numberStacks = 1) {
-        auto coreJson = json();
-
-        coreJson["functionalDescription"] = json();
-        coreJson["functionalDescription"]["name"] = "GapReluctanceTest";
-        coreJson["functionalDescription"]["type"] = "two-piece set";
-        coreJson["functionalDescription"]["material"] = "N87";
-        coreJson["functionalDescription"]["shape"] = shapeName;
-        coreJson["functionalDescription"]["gapping"] = basicGapping;
-        coreJson["functionalDescription"]["numberStacks"] = numberStacks;
-
-        OpenMagnetics::CoreWrapper core(coreJson);
-
-        return core;
-    }
-
-    json get_grinded_gap(double gapLength) {
-        auto constants = OpenMagnetics::Constants();
-        auto basicGapping = json::array();
-        auto basicCentralGap = json();
-        basicCentralGap["type"] = "subtractive";
-        basicCentralGap["length"] = gapLength;
-        auto basicLateralGap = json();
-        basicLateralGap["type"] = "residual";
-        basicLateralGap["length"] = constants.residualGap;
-        basicGapping.push_back(basicCentralGap);
-        basicGapping.push_back(basicLateralGap);
-        basicGapping.push_back(basicLateralGap);
-
-        return basicGapping;
-    }
-
-    json get_distributed_gap(double gapLength, int numberGaps) {
-        auto constants = OpenMagnetics::Constants();
-        auto basicGapping = json::array();
-        auto basicCentralGap = json();
-        basicCentralGap["type"] = "subtractive";
-        basicCentralGap["length"] = gapLength;
-        auto basicLateralGap = json();
-        basicLateralGap["type"] = "residual";
-        basicLateralGap["length"] = constants.residualGap;
-        for (int i = 0; i < numberGaps; ++i)
-        {
-            basicGapping.push_back(basicCentralGap);
-        }
-        basicGapping.push_back(basicLateralGap);
-        basicGapping.push_back(basicLateralGap);
-
-        return basicGapping;
-    }
-
-    json get_spacer_gap(double gapLength) {
-        auto basicGapping = json::array();
-        auto basicSpacerGap = json();
-        basicSpacerGap["type"] = "additive";
-        basicSpacerGap["length"] = gapLength;
-        basicGapping.push_back(basicSpacerGap);
-        basicGapping.push_back(basicSpacerGap);
-        basicGapping.push_back(basicSpacerGap);
-
-        return basicGapping;
-    }
-
     double run_test_reluctance(OpenMagnetics::ReluctanceModels modelName, std::string shapeName, json basicGapping, double expectedReluctance) {
 
         double maximumErrorReluctance = maximumErrorReluctances[modelName];
-        auto core = get_core(shapeName, basicGapping);
+        auto core = OpenMagneticsTesting::get_core(shapeName, basicGapping);
         auto gapping = core.get_functional_description().get_gapping();
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName);
 
@@ -140,7 +78,7 @@ SUITE(Reluctance)
     double run_test_energy(OpenMagnetics::ReluctanceModels modelName, std::string shapeName, json basicGapping, double expectedEnergy, int numberStacks=1) {
 
         double maximumErrorEnergy = maximumErrorEnergies[modelName];
-        auto core = get_core(shapeName, basicGapping, numberStacks);
+        auto core = OpenMagneticsTesting::get_core(shapeName, basicGapping, numberStacks);
         auto gapping = core.get_functional_description().get_gapping();
         double calculatedEnergy = 0;
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName);
@@ -195,7 +133,7 @@ SUITE(Reluctance)
         }};
 
         for (auto& test : tests) {
-            meanError += run_test_reluctance(modelName, "PQ 28/20", get_grinded_gap(test["gapLength"]), test["expectedReluctance"]);
+            meanError += run_test_reluctance(modelName, "PQ 28/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedReluctance"]);
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
@@ -247,7 +185,7 @@ SUITE(Reluctance)
         };
 
         for (auto& test : tests) {
-            meanError += run_test_reluctance(modelName, "E 42/21/20", get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
+            meanError += run_test_reluctance(modelName, "E 42/21/20", OpenMagneticsTesting::get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
@@ -295,7 +233,7 @@ SUITE(Reluctance)
         };
 
         for (auto& test : tests) {
-            meanError += run_test_reluctance(modelName, "ETD 59", get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
+            meanError += run_test_reluctance(modelName, "ETD 59", OpenMagneticsTesting::get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
@@ -322,7 +260,7 @@ SUITE(Reluctance)
         };
 
         for (auto& test : tests) {
-            meanError += run_test_reluctance(modelName, "E 55/28/21", get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
+            meanError += run_test_reluctance(modelName, "E 55/28/21", OpenMagneticsTesting::get_spacer_gap(test["gapLength"]), test["expectedReluctance"]);
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
@@ -346,7 +284,7 @@ SUITE(Reluctance)
         };
 
         for (auto& test : tests) {
-            meanError += run_test_energy(modelName, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            meanError += run_test_energy(modelName, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
         meanError /= tests.size();
         std::cout << "Mean Error in Energy for Test_reluctance_PQ_40_40_Grinded with Model " << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
@@ -382,7 +320,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -392,7 +330,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -402,7 +340,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -412,7 +350,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -422,7 +360,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::ZHANG, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -455,7 +393,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -465,7 +403,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -475,7 +413,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -485,7 +423,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -495,7 +433,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::MUEHLETHALER, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -528,7 +466,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -538,7 +476,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -548,7 +486,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -558,7 +496,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -568,7 +506,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_AREA, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -601,7 +539,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -611,7 +549,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -621,7 +559,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -631,7 +569,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -641,7 +579,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::EFFECTIVE_LENGTH, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -674,7 +612,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -684,7 +622,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -694,7 +632,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -704,7 +642,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -714,7 +652,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::PARTRIDGE, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -747,7 +685,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -757,7 +695,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -767,7 +705,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -777,7 +715,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -787,7 +725,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::STENGLEIN, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -820,7 +758,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -830,7 +768,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -840,7 +778,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -850,7 +788,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -860,7 +798,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::BALAKRISHNAN, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
 
@@ -893,7 +831,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.02528}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "PQ 40/40", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "PQ 40/40", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_Grinded)
@@ -903,7 +841,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.09}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
+            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"]);
         }
 
         TEST(Test_Energy_E_80_38_20_2_Stacks_Grinded)
@@ -913,7 +851,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.1629}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
+            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 2);
         }
 
         TEST(Test_Energy_E_80_38_20_3_Stacks_Grinded)
@@ -923,7 +861,7 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.24}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
+            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "E 80/38/20", OpenMagneticsTesting::get_grinded_gap(test["gapLength"]), test["expectedEnergy"], 3);
         }
 
         TEST(Test_Energy_PQ_40_40_Distributed)
@@ -933,7 +871,68 @@ SUITE(Reluctance)
                 {"expectedEnergy", 0.076}
             };
 
-            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "PQ 40/40", get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+            run_test_energy(OpenMagnetics::ReluctanceModels::CLASSIC, "PQ 40/40", OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
         }
     }
+}
+
+
+SUITE(ReluctanceUngappedCore)
+{
+    TEST(Test_Reluctance_3C96)
+    {
+        double dcCurrent = 10;
+        double ambientTemperature = 50;
+        double dutyCycle = 0.75;
+        double peakToPeak = 10;
+        double frequency = 100000;
+        double magnetizingInductance = 10e-6;
+
+        OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(frequency,
+                                                                                                      magnetizingInductance,
+                                                                                                      ambientTemperature,
+                                                                                                      OpenMagnetics::WaveformLabel::SQUARE,
+                                                                                                      peakToPeak,
+                                                                                                      dutyCycle,
+                                                                                                      dcCurrent);
+        auto core = OpenMagneticsTesting::get_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(OpenMagnetics::ReluctanceModels::ZHANG);
+
+        double calculatedReluctanceAt50 = reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operation_points()[0]);
+
+        ambientTemperature = 100;
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(frequency,
+                                                                         magnetizingInductance,
+                                                                         ambientTemperature,
+                                                                         OpenMagnetics::WaveformLabel::SQUARE,
+                                                                         peakToPeak,
+                                                                         dutyCycle,
+                                                                         dcCurrent);
+        double calculatedReluctanceAt100= reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operation_points()[0]);
+
+        ambientTemperature = 150;
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(frequency,
+                                                                         magnetizingInductance,
+                                                                         ambientTemperature,
+                                                                         OpenMagnetics::WaveformLabel::SQUARE,
+                                                                         peakToPeak,
+                                                                         dutyCycle,
+                                                                         dcCurrent);
+        double calculatedReluctanceAt150 = reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operation_points()[0]);
+
+        ambientTemperature = 200;
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(frequency,
+                                                                         magnetizingInductance,
+                                                                         ambientTemperature,
+                                                                         OpenMagnetics::WaveformLabel::SQUARE,
+                                                                         peakToPeak,
+                                                                         dutyCycle,
+                                                                         dcCurrent);
+        double calculatedReluctanceAt200 = reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operation_points()[0]);
+
+        CHECK(calculatedReluctanceAt50 > calculatedReluctanceAt100);
+        CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt100);
+        CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt200);
+    }
+
 }

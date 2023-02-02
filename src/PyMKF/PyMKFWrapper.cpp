@@ -4,6 +4,7 @@
 #include "Constants.h"
 #include "CoreWrapper.h"
 #include "Reluctance.h"
+#include "MagnetizingInductance.h"
 #include "Utils.h"
 #include "json.hpp"
 
@@ -53,6 +54,27 @@ json get_gap_reluctance_model_information(){
     return dict;
 }
 
+double get_inductance_from_number_turns_and_gapping(json coreData,
+                                                    json windingData,
+                                                    json operationPointData){
+    OpenMagnetics::CoreWrapper core(coreData);
+    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::OperationPoint operationPoint(operationPointData);
+
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPointData);
+
+    return magnetizingInductance;
+}
+
+// std::vector<CoreGap> get_gapping_from_number_turns_and_inductance(json core,
+//                                                                   json winding,
+//                                                                   json inputs,
+//                                                                   std::string gappingTypeString, 
+//                                                                   size_t decimals = 4);
+
+// double get_number_turns_from_gapping_and_inductance(json core,
+//                                                     json inputs);
 
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
@@ -60,4 +82,5 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");
+    m.def("get_inductance_from_number_turns_and_gapping", &get_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");
 }

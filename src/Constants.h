@@ -16,6 +16,9 @@ namespace OpenMagnetics {
 		const double spacer_protuding_percentage = 0.2;
 
 		const double number_points_samples_waveforms = 128;
+		const double minimum_distributed_fringing_factor = 1.05;
+		const double maximum_distributed_fringing_factor = 1.3;
+		const double initial_gap_length_for_searching = 0.001;
 	};
 }
 

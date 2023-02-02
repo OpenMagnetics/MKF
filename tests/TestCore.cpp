@@ -24,7 +24,7 @@ SUITE(CoreProcessedDescription)
         std::ifstream json_file(coreFilePath);
 
         auto coreJson = json::parse(json_file);
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
@@ -53,7 +53,7 @@ SUITE(CoreProcessedDescription)
         std::ifstream json_file(coreFilePath);
 
         auto coreJson = json::parse(json_file);
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_55_28_21_3C95_additive");
@@ -81,7 +81,7 @@ SUITE(CoreProcessedDescription)
         std::ifstream json_file(coreFilePath);
 
         auto coreJson = json::parse(json_file);
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_19_8_5_N87_substractive");
@@ -113,7 +113,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ETD 39/20/13";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_ETD_39_20_13_N97_substractive");
@@ -145,7 +145,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ETD 19/14/8";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_ETD_19_14_8_N97_substractive");
@@ -177,7 +177,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ETD 54/28/19";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_ETD_54_28_19_N97_substractive");
@@ -209,7 +209,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ER 54/18/18";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_ER_54_18_18_N97_substractive");
@@ -241,7 +241,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ER 18/3/10";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_ER_18_3_10_N97_substractive");
@@ -273,7 +273,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ELP 102/20/38";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 2;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_102_20_38_N97_substractive");
@@ -305,7 +305,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "ELP 14/3.5/5";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 3;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_14_3.5_5_N97_substractive");
@@ -337,7 +337,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EL 25/4.3";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_25_4.3_N97_substractive");
@@ -369,7 +369,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EL 11/2";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_11_2_N97_substractive");
@@ -401,7 +401,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EC 70";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EC_70_N97_substractive");
@@ -433,7 +433,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EFD 10/5/3";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EFD_10_5_3_N97_substractive");
@@ -465,7 +465,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EFD 30/15/9";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EFD_30_15_9_N97_substractive");
@@ -497,7 +497,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EQ 30/8/20";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EQ_30_8_20_N97_substractive");
@@ -529,7 +529,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EPX 10";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EPX_10_N97_substractive");
@@ -560,7 +560,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EPX 7";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EPX_7_N97_substractive");
@@ -589,7 +589,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EPO 13";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EPO_13_N97_substractive");
@@ -620,7 +620,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "LP 42/25/15.8";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_LP_42_25_15_8_N97_substractive");
@@ -651,7 +651,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EP 7";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EP_7_N97_substractive");
@@ -681,7 +681,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "EP 20";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_EP_20_N97_substractive");
@@ -711,7 +711,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "RM 14";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_RM_14_N97_substractive");
@@ -741,7 +741,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "RM 7LP";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_RM_7LP_N97_substractive");
@@ -771,7 +771,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "PQ 20/16";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_PQ_20_16_N97_substractive");
@@ -801,7 +801,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "PQ 107/87";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_PQ_107_87_N97_substractive");
@@ -831,7 +831,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "PM 114/93";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_PM_114_93_N97_substractive");
@@ -861,7 +861,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "P 150/30";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_P_150_30_N97_substractive");
@@ -891,7 +891,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "P 11/7";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_P_11_7_N97_substractive");
@@ -921,7 +921,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "P 7/4";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_P_7_4_N97_substractive");
@@ -951,7 +951,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "U 79/129/31";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_U_79_129_31_N97_substractive");
@@ -980,7 +980,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "U 26/22/16";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_U_26_22_16_N97_substractive");
@@ -1009,7 +1009,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "UR 48/39/17";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_UR_48_39_17_N97_substractive");
@@ -1039,7 +1039,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "UR 70/33/17";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_UR_70_33_17_N97_substractive");
@@ -1069,7 +1069,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "UR 55/38/36";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_UR_55_39_36_N97_substractive");
@@ -1099,7 +1099,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "UR 64/40/20";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_UR_64_40_20_N97_substractive");
@@ -1129,7 +1129,7 @@ SUITE(CoreProcessedDescription)
         coreJson["functionalDescription"]["shape"] = "UT 20";
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
         double numberStacks = coreJson["functionalDescription"]["numberStacks"];
 
         auto geometrical_description = *(core.get_geometrical_description());
@@ -1155,7 +1155,7 @@ SUITE(CoreProcessedDescription)
     {
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": [0.0125, 0.0125], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0005, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.0, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         CHECK_EQUAL(core.get_processed_description()->get_columns().size(), 2u);
     }
@@ -1164,7 +1164,7 @@ SUITE(CoreProcessedDescription)
     {
         auto coreJson = json::parse("{\"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0308, \"B\": 0.0264, \"C\": 0.0265, \"D\": 0.016, \"E\": 0.01, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(), 0.0002756, 0.0002756 * 0.2);
         auto function_description = core.get_functional_description();
@@ -1182,15 +1182,15 @@ SUITE(CoreGeometricalDescription)
         std::ifstream json_file(coreFilePath);
 
         auto coreJson = json::parse(json_file);
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto geometrical_description = *(core.get_geometrical_description());
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_19_8_5_N87_substractive");
         CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material()).get_mutable_volumetric_losses()["default"].size() > 0);
         CHECK_EQUAL(geometrical_description.size(), 2u);
-        CHECK(geometrical_description[0].get_machining() != nullptr);
-        CHECK(geometrical_description[1].get_machining() != nullptr);
+        CHECK(geometrical_description[0].get_machining());
+        CHECK(geometrical_description[1].get_machining());
         CHECK(geometrical_description[0].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
         CHECK(geometrical_description[1].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
     }
@@ -1201,19 +1201,19 @@ SUITE(CoreGeometricalDescription)
         std::ifstream json_file(coreFilePath);
 
         auto coreJson = json::parse(json_file);
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto geometrical_description = *(core.get_geometrical_description());
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "core_E_55_21_N97_additive");
         CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material()).get_mutable_volumetric_losses()["default"].size() > 0);
         CHECK_EQUAL(geometrical_description.size(), 6u);
-        CHECK(geometrical_description[0].get_machining() == nullptr);
-        CHECK(geometrical_description[1].get_machining() == nullptr);
-        CHECK(geometrical_description[2].get_machining() == nullptr);
-        CHECK(geometrical_description[3].get_machining() == nullptr);
-        CHECK(geometrical_description[4].get_machining() == nullptr);
-        CHECK(geometrical_description[5].get_machining() == nullptr);
+        CHECK(!geometrical_description[0].get_machining());
+        CHECK(!geometrical_description[1].get_machining());
+        CHECK(!geometrical_description[2].get_machining());
+        CHECK(!geometrical_description[3].get_machining());
+        CHECK(!geometrical_description[4].get_machining());
+        CHECK(!geometrical_description[5].get_machining());
         CHECK(geometrical_description[4].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER);
         CHECK(geometrical_description[5].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER);
     }
@@ -1222,15 +1222,15 @@ SUITE(CoreGeometricalDescription)
     {
         auto coreJson = json::parse("{\"functionalDescription\": {\"gapping\": [{\"area\": 0.000114, \"coordinates\": [0.0, -0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000114, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.008451, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000114, \"coordinates\": [0.0, 0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, \"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000205, \"coordinates\": [0.017925, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, 0.02], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 0.000205, \"coordinates\": [-0.017925, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, 0.02], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"Custom_0\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.03, \"B\": 0.011800000000000001, \"C\": 0.02, \"D\": 0.0085, \"E\": 0.0256, \"F\": 0.012, \"G\": 0.017, \"H\": 0.0}, \"family\": \"lp\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto geometrical_description = *(core.get_geometrical_description());
 
         CHECK_EQUAL(*(core.get_functional_description().get_name()), "Custom_0");
         CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material()).get_mutable_volumetric_losses()["default"].size() > 0);
         CHECK_EQUAL(geometrical_description.size(), 2u);
-        CHECK(geometrical_description[0].get_machining() != nullptr);
-        CHECK(geometrical_description[1].get_machining() != nullptr);
+        CHECK(geometrical_description[0].get_machining());
+        CHECK(geometrical_description[1].get_machining());
         CHECK(geometrical_description[0].get_machining()->size() == 2);
         CHECK(geometrical_description[1].get_machining()->size() == 2);
         CHECK(geometrical_description[0].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
@@ -1241,13 +1241,13 @@ SUITE(CoreGeometricalDescription)
     {
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000135, \"coordinates\": [0.0, 0.0078, 0.0], \"distanceClosestNormalSurface\": 0.00515, \"length\": 0.0001, \"sectionDimensions\": [0.008401, 0.016], \"shape\": \"rectangular\", \"type\": \"subtractive\"}, {\"area\": 0.000135, \"coordinates\": [0.0, 0.0026, 0.0], \"distanceClosestNormalSurface\": 0.0047, \"length\": 0.001, \"sectionDimensions\": [0.008401, 0.016], \"shape\": \"rectangular\", \"type\": \"subtractive\"}, {\"area\": 0.000135, \"coordinates\": [0.0, -0.0020299999999999997, 0.0], \"distanceClosestNormalSurface\": 0.00512, \"length\": 0.00016, \"sectionDimensions\": [0.008401, 0.016], \"shape\": \"rectangular\", \"type\": \"subtractive\"}, {\"area\": 0.000135, \"coordinates\": [0.0, -0.007549999999999999, 0.0], \"distanceClosestNormalSurface\": 0.0027, \"length\": 0.005, \"sectionDimensions\": [0.008401, 0.016], \"shape\": \"rectangular\", \"type\": \"subtractive\"}, {\"area\": 0.000135, \"coordinates\": [0.0174, 0.005, 0.0], \"distanceClosestNormalSurface\": 0.008, \"length\": 0.003, \"sectionDimensions\": [0.008401, 0.016], \"shape\": \"rectangular\", \"type\": \"subtractive\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0258, \"B\": 0.0222, \"C\": 0.016, \"D\": 0.013, \"E\": 0.009, \"F\": 0.0125, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto geometrical_description = *(core.get_geometrical_description());
 
         CHECK_EQUAL(geometrical_description.size(), 2u);
-        CHECK(geometrical_description[0].get_machining() != nullptr);
-        CHECK(geometrical_description[1].get_machining() != nullptr);
+        CHECK(geometrical_description[0].get_machining());
+        CHECK(geometrical_description[1].get_machining());
         CHECK(geometrical_description[0].get_machining()->size() == 3);
         CHECK(geometrical_description[1].get_machining()->size() == 2);
         CHECK(geometrical_description[0].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
@@ -1268,7 +1268,7 @@ SUITE(CoreFunctionalDescription)
         auto coreJson = json::parse(json_file);
         coreJson["functionalDescription"]["gapping"][0] = coreJson["functionalDescription"]["gapping"][1];
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1290,7 +1290,7 @@ SUITE(CoreFunctionalDescription)
 
         auto coreJson = json::parse(json_file);
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1314,7 +1314,7 @@ SUITE(CoreFunctionalDescription)
         coreJson["functionalDescription"]["gapping"][1] = coreJson["functionalDescription"]["gapping"][0];
         coreJson["functionalDescription"]["gapping"][2] = coreJson["functionalDescription"]["gapping"][0];
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1338,7 +1338,7 @@ SUITE(CoreFunctionalDescription)
         auto coreJson = json::parse(json_file);
         coreJson["functionalDescription"]["gapping"].push_back(coreJson["functionalDescription"]["gapping"][0]);
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1367,7 +1367,7 @@ SUITE(CoreFunctionalDescription)
         coreJson["functionalDescription"]["gapping"].push_back(coreJson["functionalDescription"]["gapping"][0]);
         coreJson["functionalDescription"]["gapping"].push_back(coreJson["functionalDescription"]["gapping"][0]);
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1397,7 +1397,7 @@ SUITE(CoreFunctionalDescription)
     {
         auto coreJson = json::parse("""{\"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"shape\": {\"family\": \"pm\", \"type\": \"custom\", \"aliases\": [], \"dimensions\": {\"A\": 0.1118, \"B\": 0.046299999999999994, \"C\": 0.045, \"D\": 0.0319, \"E\": 0.08979999999999999, \"F\": 0.0286, \"G\": 0.052, \"H\": 0.0056, \"b\": 0.0058, \"t\": 0.004200000000000001}, \"familySubtype\": \"2\", \"name\": \"Custom\"}, \"type\": \"two-piece set\", \"name\": \"default\", \"numberStacks\": 1}}""");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
     }
@@ -1407,7 +1407,7 @@ SUITE(CoreFunctionalDescription)
         // Tests that a missaligned gapping get recalculated
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": [0.0125, 0.0125], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0005, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.014598, \"length\": 5e-06, \"sectionDimensions\": [0.004501, 0.0125], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.0, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1426,7 +1426,7 @@ SUITE(CoreFunctionalDescription)
         // Tests that a distributed but aligned gapping does not get recalculated
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 1.5e-05, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0041, \"length\": 0.001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 1.5e-05, \"coordinates\": [0.0, 1.0, 0.0], \"distanceClosestNormalSurface\": 0.0041, \"length\": 0.001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, 0.0, -0.005751], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, -1.0, -0.005751], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0125, \"B\": 0.0064, \"C\": 0.0088, \"D\": 0.0046, \"E\": 0.01, \"F\": 0.0043, \"G\": 0.000, \"H\": 0.0, \"K\": 0.0023}, \"family\": \"ep\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1453,7 +1453,7 @@ SUITE(CoreFunctionalDescription)
         // Check for segmentation fault
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 1.5e-05, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.00455, \"length\": 0.0001, \"sectionDimensions\": [0.0043, 0.0043], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 8.8e-05, \"coordinates\": [0.0, 0.0, -0.005751], \"distanceClosestNormalSurface\": 0.004598, \"length\": 5e-06, \"sectionDimensions\": [0.058628, 0.001501], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.101, \"B\": 0.076, \"C\": 0.03, \"D\": 0.048, \"E\": 0.044, \"G\": 0.0, \"H\": 0.0}, \"family\": \"u\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1464,7 +1464,7 @@ SUITE(CoreFunctionalDescription)
         // Check for segmentation fault
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000175, \"coordinates\": [0.0, -0.0124, 0.0], \"distanceClosestNormalSurface\": 0.0119, \"length\": 0.001, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000175, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.024301, \"length\": 0.002, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000175, \"coordinates\": [0.0, 0.0124, 0.0], \"distanceClosestNormalSurface\": 0.011901, \"length\": 0.002, \"sectionDimensions\": [0.0149, 0.0149], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000136, \"coordinates\": [0.0344, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.0248, \"length\": 5e-06, \"sectionDimensions\": [0.0091, 0.0149], \"shape\": \"rectangular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"default\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.038700000000000005, \"B\": 0.0352, \"C\": 0.0149, \"D\": 0.0248, \"G\": 0.0, \"H\": 0.0091}, \"family\": \"ur\", \"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
 
@@ -1475,7 +1475,7 @@ SUITE(CoreFunctionalDescription)
         // Check for segmentation fault
         auto coreJson = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"length\": 0.001, \"type\": \"subtractive\"}, {\"length\": 0.002, \"type\": \"subtractive\"}, {\"length\": 0.002, \"type\": \"subtractive\"}, {\"length\": 0.00005, \"type\": \"residual\"}, {\"length\": 0.00005, \"type\": \"residual\"}], \"material\": \"N97\", \"name\": \"dummy\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0112, \"B\": 0.0052, \"C\": 0.0045000000000000005, \"D\": 0.0036, \"E\": 0.008150000000000001, \"F\": 0.0038, \"G\": 0.0058, \"H\": 0.0020499999999999997, \"J\": 0.009600000000000001, \"R\": 0.0003}, \"family\": \"rm\", \"familySubtype\": \"3\", \"magneticCircuit\": \"open\", \"name\": \"RM 4\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}}");
 
-        OpenMagnetics::CoreWrapper core(coreJson);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto function_description = core.get_functional_description();
         CHECK_EQUAL(function_description.get_gapping().size(), 5u);

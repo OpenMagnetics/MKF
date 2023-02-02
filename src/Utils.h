@@ -20,7 +20,11 @@ namespace OpenMagnetics {
 
     template <typename T>
     T find_data_by_name(std::string name);
+
     template <int decimals>
     double roundFloat(double value);
 
+    double roundFloat(double value, size_t decimals);
+
+    CoreShape flatten_dimensions(CoreShape shape);
 }

@@ -21,7 +21,6 @@ SUITE(InitialPermeability)
     {
         OpenMagnetics::InitialPermeability initial_permeability;
         std::string material_name = "XFlux 60";
-        // auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(material_name);
         auto material_data = material_name;
         double initial_permeability_value = initial_permeability.get_initial_permeability(material_data);
         CHECK(initial_permeability_value == 60);
