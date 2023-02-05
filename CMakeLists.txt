@@ -61,8 +61,8 @@ add_custom_command(
   USES_TERMINAL)
 
 add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp"
-  COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json -S ${MAS_DIR}/schemas/magnetic.json -S ${MAS_DIR}/schemas/magnetic/core.json -S ${MAS_DIR}/schemas/magnetic/winding.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/core/gap.json -S ${MAS_DIR}/schemas/magnetic/core/shape.json -S ${MAS_DIR}/schemas/magnetic/core/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/core/bobbin.json -S ${MAS_DIR}/schemas/magnetic/core/piece.json -S ${MAS_DIR}/schemas/magnetic/core/spacer.json -S ${MAS_DIR}/schemas/magnetic/wire/solid.json -S ${MAS_DIR}/schemas/magnetic/wire/stranded.json -S ${MAS_DIR}/schemas/magnetic/wire/material.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/inputs.json -S ${MAS_DIR}/schemas/inputs/designRequirements.json -S ${MAS_DIR}/schemas/inputs/operationConditions.json -S ${MAS_DIR}/schemas/inputs/operationPointExcitation.json -o ${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
+  OUTPUT "${CMAKE_BINARY_DIR}/MAS/MAS.hpp"
+  COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json -S ${MAS_DIR}/schemas/magnetic.json -S ${MAS_DIR}/schemas/magnetic/core.json -S ${MAS_DIR}/schemas/magnetic/winding.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/core/gap.json -S ${MAS_DIR}/schemas/magnetic/core/shape.json -S ${MAS_DIR}/schemas/magnetic/core/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/core/bobbin.json -S ${MAS_DIR}/schemas/magnetic/core/piece.json -S ${MAS_DIR}/schemas/magnetic/core/spacer.json -S ${MAS_DIR}/schemas/magnetic/wire/solid.json -S ${MAS_DIR}/schemas/magnetic/wire/stranded.json -S ${MAS_DIR}/schemas/magnetic/wire/material.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/inputs.json -S ${MAS_DIR}/schemas/inputs/designRequirements.json -S ${MAS_DIR}/schemas/inputs/operationConditions.json -S ${MAS_DIR}/schemas/inputs/operationPointExcitation.json -o ${CMAKE_BINARY_DIR}/MAS/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   USES_TERMINAL)
 
 add_custom_target(MAS ALL
@@ -80,7 +80,7 @@ add_custom_target(MASGeneration
 
 add_custom_target(PyMASGeneration
                   /bin/echo "RUNNING PyMASGeneration"
-                  DEPENDS "${CMAKE_BINARY_DIR}/temp.linux-x86_64-3.8/PyMKF/MAS/MAS.hpp")
+                  DEPENDS "${CMAKE_BINARY_DIR}/MAS/MAS.hpp")
 
 add_dependencies(MKF MASGeneration)
 add_dependencies(MKF PyMASGeneration)

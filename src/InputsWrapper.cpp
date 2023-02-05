@@ -253,7 +253,7 @@ namespace OpenMagnetics {
         integration.push_back(integral);
         double time_per_point = 1 / frequency / source.size();
         for (auto& point : source) {
-            integral += point / magnetizing_inductance * time_per_point + dcCurrent;
+            integral += point / magnetizing_inductance * time_per_point;
             integration.push_back(integral);
         }
 
@@ -261,7 +261,7 @@ namespace OpenMagnetics {
 
         double integrationAverage = std::accumulate(std::begin(integration), std::end(integration), 0.0) / integration.size();
         for (size_t i=0; i<integration.size(); ++i) {
-            integration[i] = integration[i] - integrationAverage;
+            integration[i] = integration[i] - integrationAverage + dcCurrent;
         }
 
         resultWaveform.set_data(integration);

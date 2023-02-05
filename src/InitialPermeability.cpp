@@ -52,7 +52,7 @@ namespace OpenMagnetics {
 
                     if (magneticFieldDcBias) {
                         auto magnetic_field_dc_bias_factor = modifiers.get_magnetic_field_dc_bias_factor();
-                        double permeability_variation_due_to_magnetic_field_dc_bias = 0.01 / (magnetic_field_dc_bias_factor.get_a() + magnetic_field_dc_bias_factor.get_b() * pow(*magneticFieldDcBias, magnetic_field_dc_bias_factor.get_c()));
+                        double permeability_variation_due_to_magnetic_field_dc_bias = 0.01 / (magnetic_field_dc_bias_factor.get_a() + magnetic_field_dc_bias_factor.get_b() * pow(roundFloat(*magneticFieldDcBias, 3), magnetic_field_dc_bias_factor.get_c()));
 
                         initial_permeability_value *= permeability_variation_due_to_magnetic_field_dc_bias;
                     }
@@ -94,6 +94,9 @@ namespace OpenMagnetics {
             }
         }
 
+        if (std::isnan(initial_permeability_value))  {
+            throw std::runtime_error("Initial Permeability must be a number, not NaN");
+        }
 
         return initial_permeability_value;
     };

@@ -85,7 +85,6 @@ namespace OpenMagnetics {
 
             void process()
             {
-                
                 set_shape(flatten_dimensions(get_mutable_shape()));
                 process_winding_window();
                 process_columns();

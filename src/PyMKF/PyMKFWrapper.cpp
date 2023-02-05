@@ -56,12 +56,15 @@ json get_gap_reluctance_model_information(){
 
 double get_inductance_from_number_turns_and_gapping(json coreData,
                                                     json windingData,
-                                                    json operationPointData){
+                                                    json operationPointData,
+                                                    json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
     OpenMagnetics::WindingWrapper winding(windingData);
     OpenMagnetics::OperationPoint operationPoint(operationPointData);
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+    std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
     double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPointData);
 
     return magnetizingInductance;
