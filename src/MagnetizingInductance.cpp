@@ -28,7 +28,7 @@ namespace OpenMagnetics {
         double modifiedInitialPermeability;
         size_t timeout = 10;
 
-        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["reluctance"]).value());
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
         double totalReluctance;
         double modifiedMagnetizingInductance = 5e-3;
         double currentMagnetizingInductance;
@@ -40,7 +40,6 @@ namespace OpenMagnetics {
 
         do {
             currentMagnetizingInductance = modifiedMagnetizingInductance;
-
 
 
             if (!operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
@@ -89,7 +88,7 @@ namespace OpenMagnetics {
         double currentInitialPermeability;
         double modifiedInitialPermeability;
 
-        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["reluctance"]).value());
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
         double totalReluctance;
 
         currentInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(),
@@ -202,7 +201,7 @@ namespace OpenMagnetics {
         double modifiedInitialPermeability;
         double currentInitialPermeability;
 
-        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["reluctance"]).value());
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
         double neededTotalReluctance = pow(numberTurnsPrimary, 2) / desiredMagnetizingInductance;
 
         currentInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(),

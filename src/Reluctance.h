@@ -92,7 +92,7 @@ namespace OpenMagnetics {
                 errors["Classic"] = 0.283863;
                 return errors;
             }
-            static std::map<std::string, std::string> get_models_internal_links() {
+            static std::map<std::string, std::string> get_models_external_links() {
                 std::map<std::string, std::string> external_links;
                 external_links["Zhang"] = "https://ieeexplore.ieee.org/document/9332553";
                 external_links["Muehlethaler"] = "https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/10_A_Novel_Approach_ECCEAsia2011_01.pdf";
@@ -104,21 +104,27 @@ namespace OpenMagnetics {
                 external_links["Classic"] = "https://en.wikipedia.org/wiki/Magnetic_reluctance";
                 return external_links;
             }
-            static std::map<std::string, std::string> get_models_external_links() {
+            static std::map<std::string, std::string> get_models_internal_links() {
                 std::map<std::string, std::string> internal_links;
                 internal_links["Zhang"] = "";
-                internal_links["Muehlethaler"] = "/musings/10";
+                internal_links["Muehlethaler"] = "/musings/10_gap_reluctance_and_muehlethaler_method";
                 internal_links["Partridge"] = "";
                 internal_links["Effective Area"] = "";
                 internal_links["Effective Length"] = "";
-                internal_links["Stenglein"] = "";
+                internal_links["Stenglein"] = "/musings/11_inductance_variables_and_stenglein_method";
                 internal_links["Balakrishnan"] = "";
                 internal_links["Classic"] = "";
                 return internal_links;
             }
             double get_core_reluctance(CoreWrapper core, OperationPoint* operationPoint=nullptr){
                 auto coreReluctance = get_ungapped_core_reluctance(core, operationPoint);
+                if (std::isnan(coreReluctance))  {
+                    throw std::runtime_error("Core Reluctance must be a number, not NaN");
+                }
                 double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+                if (std::isnan(calculatedReluctance))  {
+                    throw std::runtime_error("Reluctance must be a number, not NaN");
+                }
                 return calculatedReluctance;
             }
 

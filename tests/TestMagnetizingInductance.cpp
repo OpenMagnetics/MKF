@@ -72,7 +72,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 23.3e-3;
 
@@ -105,8 +105,56 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::OperationPoint operationPoint(operationPointData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
         magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+    }
+
+    TEST(Test_Inductance_Powder_Web)
+    {
+        // This tests checks that the operation is not crashing
+
+        json coreData = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 0.001, \"sectionDimensions\": null, \"shape\": null, \"type\": \"subtractive\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}], \"material\": {\"bhCycle\": null, \"curieTemperature\": 500.0, \"family\": \"High Flux\", \"manufacturerInfo\": {\"cost\": null, \"name\": \"Magnetics\", \"reference\": null, \"status\": null}, \"materialComposition\": \"ironPowder\", \"name\": \"High Flux 26\", \"permeability\": {\"amplitude\": null, \"initial\": {\"frequency\": null, \"magneticFieldDcBias\": null, \"magneticFluxDensityPeak\": null, \"modifiers\": {\"EQ/LP\": {\"frequencyFactor\": null, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.58277e-17, \"c\": 3.243}, \"method\": \"Magnetics\", \"temperatureFactor\": null}, \"default\": {\"frequencyFactor\": {\"a\": 0.0, \"b\": -2.56e-08, \"c\": 3.4300000000000005e-15, \"d\": -7.34e-22, \"e\": 3.99e-29}, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.02934e-13, \"c\": 2.426}, \"method\": \"Magnetics\", \"temperatureFactor\": {\"a\": -0.0033, \"b\": 0.000129, \"c\": 3.799999999999999e-08, \"d\": 0.0, \"e\": 0.0}}}, \"temperature\": null, \"tolerance\": null, \"value\": 26.0}}, \"saturation\": [{\"magneticField\": 7957.0, \"magneticFluxDensity\": 0.9, \"temperature\": 100.0}], \"type\": \"commercial\", \"volumetricLosses\": {\"EQ/LP\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.165, \"beta\": 1.357, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 14.41908, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}], \"default\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.218, \"beta\": 1.24, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 93.80774, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}]}}, \"name\": \"My Core\", \"numberStacks\": 2, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0351, \"B\": 0.0155, \"C\": 0.01, \"D\": 0.0095, \"E\": 0.025, \"F\": 0.01, \"G\": 0.0, \"H\": 0.0}, \"family\": \"e\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"E 35/10\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+        json windingData = json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", \"numberParallels\": 1, \"numberTurns\": 23, \"wire\": \"Dummy\"}], \"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+        json operationPointData = json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 125.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": [0.0, 2.5e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", \"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [7.5, 7.5, -2.5, -2.5, 7.5], \"numberPeriods\": null, \"time\": [0.0, 2.5e-06, 2.5e-06, 1e-05, 1e-05]}}}], \"name\": null}");
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+    }
+
+    TEST(Test_Inductance_Powder_Dc_Offset_Web)
+    {
+        // This tests checks that the operation is not crashing
+
+        json coreData = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.0001, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.009497499999999999, \"distanceClosestParallelSurface\": 0.007500000000000001, \"length\": 5e-06, \"sectionDimensions\": [0.01, 0.01], \"shape\": \"rectangular\", \"type\": \"residual\"}, {\"area\": 5.1e-05, \"coordinates\": [0.015025, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.009497499999999999, \"distanceClosestParallelSurface\": 0.007500000000000001, \"length\": 5e-06, \"sectionDimensions\": [0.00505, 0.01], \"shape\": \"rectangular\", \"type\": \"residual\"}, {\"area\": 5.1e-05, \"coordinates\": [-0.015025, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.009497499999999999, \"distanceClosestParallelSurface\": 0.007500000000000001, \"length\": 5e-06, \"sectionDimensions\": [0.00505, 0.01], \"shape\": \"rectangular\", \"type\": \"residual\"}], \"material\": {\"bhCycle\": null, \"curieTemperature\": 500.0, \"family\": \"High Flux\", \"manufacturerInfo\": {\"cost\": null, \"name\": \"Magnetics\", \"reference\": null, \"status\": null}, \"materialComposition\": \"ironPowder\", \"name\": \"High Flux 26\", \"permeability\": {\"amplitude\": null, \"initial\": {\"frequency\": null, \"magneticFieldDcBias\": null, \"magneticFluxDensityPeak\": null, \"modifiers\": {\"EQ/LP\": {\"frequencyFactor\": null, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.58277e-17, \"c\": 3.243}, \"method\": \"Magnetics\", \"temperatureFactor\": null}, \"default\": {\"frequencyFactor\": {\"a\": 0.0, \"b\": -2.56e-08, \"c\": 3.4300000000000005e-15, \"d\": -7.34e-22, \"e\": 3.99e-29}, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.02934e-13, \"c\": 2.426}, \"method\": \"Magnetics\", \"temperatureFactor\": {\"a\": -0.0033, \"b\": 0.000129, \"c\": 3.799999999999999e-08, \"d\": 0.0, \"e\": 0.0}}}, \"temperature\": null, \"tolerance\": null, \"value\": 26.0}}, \"saturation\": [{\"magneticField\": 7957.0, \"magneticFluxDensity\": 0.9, \"temperature\": 100.0}], \"type\": \"commercial\", \"volumetricLosses\": {\"EQ/LP\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.165, \"beta\": 1.357, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 14.41908, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}], \"default\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.218, \"beta\": 1.24, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 93.80774, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}]}}, \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0351, \"B\": 0.0155, \"C\": 0.01, \"D\": 0.0095, \"E\": 0.025, \"F\": 0.01}, \"family\": \"e\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"E 35/10\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": [{\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\": null, \"material\": {\"bhCycle\": null, \"curieTemperature\": 500.0, \"family\": \"High Flux\", \"manufacturerInfo\": {\"cost\": null, \"name\": \"Magnetics\", \"reference\": null, \"status\": null}, \"materialComposition\": \"ironPowder\", \"name\": \"High Flux 26\", \"permeability\": {\"amplitude\": null, \"initial\": {\"frequency\": null, \"magneticFieldDcBias\": null, \"magneticFluxDensityPeak\": null, \"modifiers\": {\"EQ/LP\": {\"frequencyFactor\": null, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.58277e-17, \"c\": 3.243}, \"method\": \"Magnetics\", \"temperatureFactor\": null}, \"default\": {\"frequencyFactor\": {\"a\": 0.0, \"b\": -2.56e-08, \"c\": 3.4300000000000005e-15, \"d\": -7.34e-22, \"e\": 3.99e-29}, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.02934e-13, \"c\": 2.426}, \"method\": \"Magnetics\", \"temperatureFactor\": {\"a\": -0.0033, \"b\": 0.000129, \"c\": 3.799999999999999e-08, \"d\": 0.0, \"e\": 0.0}}}, \"temperature\": null, \"tolerance\": null, \"value\": 26.0}}, \"saturation\": [{\"magneticField\": 7957.0, \"magneticFluxDensity\": 0.9, \"temperature\": 100.0}], \"type\": \"commercial\", \"volumetricLosses\": {\"EQ/LP\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.165, \"beta\": 1.357, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 14.41908, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}], \"default\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.218, \"beta\": 1.24, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 93.80774, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}]}}, \"rotation\": [3.141592653589793, 3.141592653589793, 0.0], \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0351, \"B\": 0.0155, \"C\": 0.01, \"D\": 0.0095, \"E\": 0.025, \"F\": 0.01}, \"family\": \"e\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"E 35/10\", \"type\": \"standard\"}, \"type\": \"half set\"}, {\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\": null, \"material\": {\"bhCycle\": null, \"curieTemperature\": 500.0, \"family\": \"High Flux\", \"manufacturerInfo\": {\"cost\": null, \"name\": \"Magnetics\", \"reference\": null, \"status\": null}, \"materialComposition\": \"ironPowder\", \"name\": \"High Flux 26\", \"permeability\": {\"amplitude\": null, \"initial\": {\"frequency\": null, \"magneticFieldDcBias\": null, \"magneticFluxDensityPeak\": null, \"modifiers\": {\"EQ/LP\": {\"frequencyFactor\": null, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.58277e-17, \"c\": 3.243}, \"method\": \"Magnetics\", \"temperatureFactor\": null}, \"default\": {\"frequencyFactor\": {\"a\": 0.0, \"b\": -2.56e-08, \"c\": 3.4300000000000005e-15, \"d\": -7.34e-22, \"e\": 3.99e-29}, \"magneticFieldDcBiasFactor\": {\"a\": 0.01, \"b\": 1.02934e-13, \"c\": 2.426}, \"method\": \"Magnetics\", \"temperatureFactor\": {\"a\": -0.0033, \"b\": 0.000129, \"c\": 3.799999999999999e-08, \"d\": 0.0, \"e\": 0.0}}}, \"temperature\": null, \"tolerance\": null, \"value\": 26.0}}, \"saturation\": [{\"magneticField\": 7957.0, \"magneticFluxDensity\": 0.9, \"temperature\": 100.0}], \"type\": \"commercial\", \"volumetricLosses\": {\"EQ/LP\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.165, \"beta\": 1.357, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 14.41908, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}], \"default\": [{\"coerciveForce\": null, \"method\": \"steinmetz\", \"ranges\": [{\"alpha\": 2.218, \"beta\": 1.24, \"ct0\": null, \"ct1\": null, \"ct2\": null, \"k\": 93.80774, \"maximumFrequency\": 1000000000.0, \"minimumFrequency\": 1.0}], \"referenceVolumetricLosses\": null, \"remanence\": null, \"resistivity\": null}]}}, \"rotation\": [0.0, 0.0, 0.0], \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0351, \"B\": 0.0155, \"C\": 0.01, \"D\": 0.0095, \"E\": 0.025, \"F\": 0.01}, \"family\": \"e\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"E 35/10\", \"type\": \"standard\"}, \"type\": \"half set\"}], \"processedDescription\": {\"columns\": [{\"area\": 0.0001, \"coordinates\": [0.0, 0.0, 0.0], \"depth\": 0.01, \"height\": 0.019, \"shape\": \"rectangular\", \"type\": \"central\", \"width\": 0.01}, {\"area\": 5.1e-05, \"coordinates\": [0.015025, 0.0, 0.0], \"depth\": 0.01, \"height\": 0.019, \"shape\": \"rectangular\", \"type\": \"lateral\", \"width\": 0.00505}, {\"area\": 5.1e-05, \"coordinates\": [-0.015025, 0.0, 0.0], \"depth\": 0.01, \"height\": 0.019, \"shape\": \"rectangular\", \"type\": \"lateral\", \"width\": 0.00505}], \"depth\": 0.01, \"effectiveParameters\": {\"effectiveArea\": 0.00010598795443650464, \"effectiveLength\": 0.06997308266114835, \"effectiveVolume\": 7.416303896871564e-06, \"minimumArea\": 0.0001}, \"height\": 0.031, \"width\": 0.0351, \"windingWindows\": [{\"angle\": null, \"area\": 0.0001425, \"coordinates\": [0.005, 0.0], \"height\": 0.019, \"radialHeight\": null, \"width\": 0.007500000000000001}]}}");
+        json windingData = json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", \"numberParallels\": 1, \"numberTurns\": 23, \"wire\": \"Dummy\"}], \"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+        json operationPointData = json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 130.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [17.0, 27.0, 17.0], \"numberPeriods\": null, \"time\": [0.0, 2e-06, 5.128205128205128e-06]}}, \"frequency\": 195000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", \"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [20.740000000000002, 20.740000000000002, -13.259999999999998, -13.259999999999998, 20.740000000000002], \"numberPeriods\": null, \"time\": [0.0, 2e-06, 2e-06, 5.128205128205128e-06, 5.128205128205128e-06]}}}], \"name\": null}");
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+    }
+
+    TEST(Test_Inductance_Powder_Micrometals_Dc_Offset_Web)
+    {
+        // This tests checks that the operation is not crashing and producing an inductance greater than 2 uH
+
+        json coreData = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 0.001, \"sectionDimensions\": null, \"shape\": null, \"type\": \"subtractive\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 5e-06, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 5e-06, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}], \"material\": \"-40\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [\"ETD 54\"], \"dimensions\": {\"A\": 0.0545, \"B\": 0.0276, \"C\": 0.0189, \"D\": 0.0202, \"E\": 0.0412, \"F\": 0.0189, \"G\": 0.0, \"H\": 0.0}, \"family\": \"etd\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"ETD 54/28/19\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": [{\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\": [{\"coordinates\": [0.0, 7.5e-05, 0.0], \"length\": 0.00015}, {\"coordinates\": [0.0, 0.0073, 0.0], \"length\": 0.0003}], \"material\": \"3C97\", \"rotation\": [3.141592653589793, 3.141592653589793, 0.0], \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146, \"E\": 0.030100000000000002, \"F\": 0.0125}, \"family\": \"etd\", \"familySubtype\": \"1\", \"magneticCircuit\": null, \"name\": \"ETD 39/20/13\", \"type\": \"standard\"}, \"type\": \"half set\"}, {\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\": [{\"coordinates\": [0.0, -0.0073, 0.0], \"length\": 0.0003}, {\"coordinates\": [0.0, -7.5e-05, 0.0], \"length\": 0.00015}], \"material\": \"3C97\", \"rotation\": [0.0, 0.0, 0.0], \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146, \"E\": 0.030100000000000002, \"F\": 0.0125}, \"family\": \"etd\", \"familySubtype\": \"1\", \"magneticCircuit\": null, \"name\": \"ETD 39/20/13\", \"type\": \"standard\"}, \"type\": \"half set\"}], \"processedDescription\": {\"columns\": [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"depth\": 0.0125, \"height\": 0.0292, \"shape\": \"round\", \"type\": \"central\", \"width\": 0.0125}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0, 0.0], \"depth\": 0.0125, \"height\": 0.0292, \"shape\": \"irregular\", \"type\": \"lateral\", \"width\": 0.004501}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"depth\": 0.0125, \"height\": 0.0292, \"shape\": \"irregular\", \"type\": \"lateral\", \"width\": 0.004501}], \"depth\": 0.0125, \"effectiveParameters\": {\"effectiveArea\": 0.0001249790616277593, \"effectiveLength\": 0.09385923258669904, \"effectiveVolume\": 1.1730438813787252e-05, \"minimumArea\": 0.0001227184630308513}, \"height\": 0.0396, \"width\": 0.0391, \"windingWindows\": [{\"angle\": null, \"area\": 0.00025696000000000003, \"coordinates\": [0.00625, 0.0], \"height\": 0.0292, \"radialHeight\": null, \"width\": 0.0088}]}}");
+        json windingData = json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", \"numberParallels\": 1, \"numberTurns\": 23, \"wire\": \"Dummy\"}], \"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+        json operationPointData = json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 25.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", \"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}");
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        auto ea = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+
+        CHECK(ea > 2e-6);
+
     }
 
     TEST(Test_Inductance_Ferrite_Spacer)
@@ -123,7 +171,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         prepare_test_parameters(dcCurrent,
                                 ambientTemperature,
@@ -156,7 +204,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         prepare_test_parameters(dcCurrent,
                                 ambientTemperature,
@@ -189,7 +237,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         prepare_test_parameters(dcCurrent,
                                 ambientTemperature,
@@ -221,7 +269,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 666;
 
@@ -255,7 +303,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 13;
 
@@ -289,7 +337,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.003;
 
@@ -323,7 +371,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.0066;
 
@@ -357,7 +405,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.0004;
 
@@ -392,7 +440,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::WindingWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"reluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.00039;
 

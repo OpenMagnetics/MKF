@@ -36,8 +36,9 @@ wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | 
 sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
 sudo apt install cmake
 sudo apt install ninja-build
-curl -fsSL https://deb.nodesource.com/setup_19.x | sudo -E bash - && sudo apt-get install -y nodejs
-sudo apt install npm
+
+nvm install node
+
 npm install -g quicktype
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt install -y gcc-11 g++-11
@@ -50,6 +51,13 @@ sudo apt install libeigen3-dev
 
 if step 2 fails:
 ln -s /usr/bin/python3 /usr/include/python3
+
+sudo add-apt-repository ppa:freecad-maintainers/freecad-daily
+sudo apt update
+sudo apt install freecad-daily
+
+sudo mkdir /etc/openmagnetics
+sudo chmod 777 -R /etc/openmagnetics
 
 
 

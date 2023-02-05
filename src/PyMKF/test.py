@@ -217,7 +217,7 @@ import PyMKF
 # models_info = PyMKF.get_gap_reluctance_model_information()
 # pprint.pprint(models_info)
 
-
+models = {'gapReluctance': 'PARTRIDGE'}
 core = {'functionalDescription': {'bobbin': None,
                            'gapping': [{'area': None,
                                         'coordinates': None,
@@ -304,5 +304,5 @@ operationPoint = {'conditions': {'ambientRelativeHumidity': None,
                                                                1e-05]}}}],
   'name': None}
 
-inductance = PyMKF.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint)
+inductance = PyMKF.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint, models)
 print(inductance)
