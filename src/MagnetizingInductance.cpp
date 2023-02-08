@@ -75,7 +75,7 @@ namespace OpenMagnetics {
         return currentMagnetizingInductance;
     }
 
-    double MagnetizingInductance::get_number_turns_from_gapping_and_inductance(CoreWrapper core,
+    int MagnetizingInductance::get_number_turns_from_gapping_and_inductance(CoreWrapper core,
                                                                                InputsWrapper inputs){
         auto operationPoint = inputs.get_operation_point(0);
         double desiredMagnetizingInductance = InputsWrapper::get_requirement_value(inputs.get_design_requirements().get_magnetizing_inductance());
@@ -83,7 +83,7 @@ namespace OpenMagnetics {
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
         double frequency = operationPoint.get_mutable_excitations_per_winding()[0].get_frequency();
         OpenMagnetics::InitialPermeability initial_permeability;
-        size_t numberTurnsPrimary;
+        int numberTurnsPrimary;
         size_t timeout = 10;
         double currentInitialPermeability;
         double modifiedInitialPermeability;
@@ -122,7 +122,7 @@ namespace OpenMagnetics {
             }
         }
 
-        return numberTurnsPrimary;
+        return std::max(1, numberTurnsPrimary);
     }
 
     CoreWrapper get_core_with_grinded_gapping(CoreWrapper core, double gapLength) {
@@ -237,7 +237,7 @@ namespace OpenMagnetics {
         double fringingFactorOneGap = 0;
 
         double reluctance = 0;
-        size_t numberDistributedGaps = 1;
+        size_t numberDistributedGaps = 3;
         timeout = 100;
         CoreWrapper gappedCore;
 
@@ -254,7 +254,7 @@ namespace OpenMagnetics {
                     throw std::runtime_error("Residual type cannot be chosen to calculate the needed gapping");
                     break;
                 case GappingType::DISTRIBUTED:
-                    while(numberDistributedGaps > 1){
+                    while(numberDistributedGaps > 3){
                         gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
                         fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0])["fringing_factor"];
                         if (fringingFactorOneGap < constants.minimum_distributed_fringing_factor && numberDistributedGaps > 1) {

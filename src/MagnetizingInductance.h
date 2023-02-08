@@ -35,7 +35,7 @@ namespace OpenMagnetics {
                                                                               GappingType gappingType, 
                                                                               size_t decimals = 4);
 
-            double get_number_turns_from_gapping_and_inductance(CoreWrapper core,
+            int get_number_turns_from_gapping_and_inductance(CoreWrapper core,
                                                                 InputsWrapper inputs);
     };
 
