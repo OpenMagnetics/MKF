@@ -1,6 +1,7 @@
 #include "pybind11_json.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include "pybind11_json/pybind11_json.hpp"
 #include "Constants.h"
 #include "CoreWrapper.h"
 #include "Reluctance.h"
@@ -70,14 +71,52 @@ double get_inductance_from_number_turns_and_gapping(json coreData,
     return magnetizingInductance;
 }
 
-// std::vector<CoreGap> get_gapping_from_number_turns_and_inductance(json core,
-//                                                                   json winding,
-//                                                                   json inputs,
-//                                                                   std::string gappingTypeString, 
-//                                                                   size_t decimals = 4);
 
-// double get_number_turns_from_gapping_and_inductance(json core,
-//                                                     json inputs);
+double get_number_turns_from_gapping_and_inductance(json coreData,
+                                                    json inputsData,    
+                                                    json modelsData){
+    OpenMagnetics::CoreWrapper core(coreData);
+    OpenMagnetics::InputsWrapper inputs(inputsData);
+
+    std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, inputs);
+
+    return numberTurns;
+}
+
+py::list get_gapping_from_number_turns_and_inductance(json coreData,
+                                                      json windingData,
+                                                      json inputsData,
+                                                      std::string gappingTypeString,
+                                                      size_t decimals,
+                                                      json modelsData){
+    OpenMagnetics::CoreWrapper core(coreData);
+    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::InputsWrapper inputs(inputsData);
+
+    std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+    OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>(gappingTypeString).value();
+
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core,
+                                                                                                                      winding,
+                                                                                                                      inputs,
+                                                                                                                      gappingType, 
+                                                                                                                      decimals);
+
+    py::list gappingAux;
+    for (auto &gap: gapping) {
+        json aux;
+        to_json(aux, gap);
+        py::dict pyAux = aux;
+        gappingAux.append(pyAux);
+    }
+    return gappingAux;
+
+}
+
 
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
@@ -86,4 +125,6 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");
     m.def("get_inductance_from_number_turns_and_gapping", &get_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");
+    m.def("get_number_turns_from_gapping_and_inductance", &get_number_turns_from_gapping_and_inductance, "Returns the number of turns needed to achieve a given inductance with a given gapping");
+    m.def("get_gapping_from_number_turns_and_inductance", &get_gapping_from_number_turns_and_inductance, "Returns the gapping needed to achieve a given inductance with a given number of turns");
 }
