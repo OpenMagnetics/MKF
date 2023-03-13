@@ -53,6 +53,7 @@ namespace OpenMagnetics {
         return magneticFluxDensity;
 
     }
+
     ElectromagneticParameter MagneticField::get_magnetic_field_strength(ElectromagneticParameter magneticFluxDensity, double initialPermeability, double frequency){
         ElectromagneticParameter magneticFieldStrength;
         Waveform magneticFieldStrengthWaveform;

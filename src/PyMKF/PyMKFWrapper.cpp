@@ -3,11 +3,16 @@
 #include <pybind11/stl.h>
 #include "pybind11_json/pybind11_json.hpp"
 #include "Constants.h"
+#include <MAS.hpp>
+#include "InputsWrapper.h"
 #include "CoreWrapper.h"
 #include "Reluctance.h"
 #include "MagnetizingInductance.h"
+#include "CoreLosses.h"
 #include "Utils.h"
 #include "json.hpp"
+#include <pybind11/embed.h>
+#include <magic_enum.hpp>
 
 using json = nlohmann::json;
 
@@ -66,7 +71,7 @@ double get_inductance_from_number_turns_and_gapping(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPointData);
+    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
     return magnetizingInductance;
 }
@@ -81,7 +86,7 @@ double get_number_turns_from_gapping_and_inductance(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, inputs);
+    double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, &inputs);
 
     return numberTurns;
 }
@@ -102,7 +107,7 @@ py::list get_gapping_from_number_turns_and_inductance(json coreData,
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
     std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core,
                                                                                                                       winding,
-                                                                                                                      inputs,
+                                                                                                                      &inputs,
                                                                                                                       gappingType, 
                                                                                                                       decimals);
 
@@ -117,6 +122,61 @@ py::list get_gapping_from_number_turns_and_inductance(json coreData,
 
 }
 
+json get_steinmetz_coefficients(std::string material, double frequency){
+    auto steinmetz = py::module::import("steinmetz");
+    json coefficients = steinmetz.attr("fit")(material, frequency).cast<std::map<std::string, double>>();
+
+    std::cout << coefficients << std::endl;
+
+    return coefficients;
+}
+
+json get_core_losses(json coreData,
+                     json windingData,
+                     json operationPointData,
+                     json modelsData){
+    OpenMagnetics::CoreWrapper core(coreData);
+    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::OperationPoint operationPoint(operationPointData);
+
+    std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+
+    OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+
+    auto magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+    double temperature = operationPoint.get_conditions().get_ambient_temperature();
+
+    auto modelName = magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(models["coreLosses"]);
+
+    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(modelName.value());
+
+    auto result = coreLossesModel->get_core_losses(core, excitation, temperature);
+
+    std::cout << "magneticFluxDensity.get_processed().value().get_offset()" << std::endl;
+    std::cout << magneticFluxDensity.get_processed().value().get_offset() << std::endl;
+    result["magneticFluxDensityPeak"] = magneticFluxDensity.get_processed().value().get_peak().value();
+    result["magneticFluxDensityAcPeak"] = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
+    result["voltageRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value();
+    result["currentRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
+    result["apparentPower"] = result["voltageRms"] * result["currentRms"];
+
+    return result;
+}
+
+
+json get_core_losses_model_information(){
+    py::dict dict;
+    dict["information"] = OpenMagnetics::CoreLossesModel::get_models_information();
+    dict["errors"] = OpenMagnetics::CoreLossesModel::get_models_errors();
+    dict["internal_links"] = OpenMagnetics::CoreLossesModel::get_models_internal_links();
+    dict["external_links"] = OpenMagnetics::CoreLossesModel::get_models_external_links();
+    return dict;
+}
+
 
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
@@ -127,4 +187,7 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_inductance_from_number_turns_and_gapping", &get_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");
     m.def("get_number_turns_from_gapping_and_inductance", &get_number_turns_from_gapping_and_inductance, "Returns the number of turns needed to achieve a given inductance with a given gapping");
     m.def("get_gapping_from_number_turns_and_inductance", &get_gapping_from_number_turns_and_inductance, "Returns the gapping needed to achieve a given inductance with a given number of turns");
+    m.def("get_steinmetz_coefficients", &get_steinmetz_coefficients, "");
+    m.def("get_core_losses", &get_core_losses, "Returns the core losses according to given model");
+    m.def("get_core_losses_model_information", &get_core_losses_model_information, "Returns the information and average error for core losses models");
 }

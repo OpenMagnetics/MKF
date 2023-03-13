@@ -85,6 +85,7 @@ add_custom_target(PyMASGeneration
 add_dependencies(MKF MASGeneration)
 add_dependencies(MKF PyMASGeneration)
 
+include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
@@ -94,7 +95,7 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/libinterpolate-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
 
-target_link_libraries(MKF nlohmann_json::nlohmann_json nlohmann_json_schema_validator UnitTest++ pybind11_json)
+target_link_libraries(MKF nlohmann_json::nlohmann_json nlohmann_json_schema_validator UnitTest++ pybind11_json pybind11::embed)
 target_include_directories(MKF PUBLIC src/)
 
 file(GLOB TESTS_SOURCES

@@ -9,20 +9,37 @@
 #include "MagnetizingInductance.h"
 #include "MagneticField.h"
 #include "Reluctance.h"
+#include "InputsWrapper.h"
 #include "Utils.h"
-// #include "../tests/TestingUtils.h"
+#include "../tests/TestingUtils.h"
 
 
 namespace OpenMagnetics {
 
-    double MagnetizingInductance::get_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                                               WindingWrapper winding,
-                                                                               OperationPoint operationPoint){
+    void set_current_as_magnetizing_current(OperationPoint* operationPoint) {
+        OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
+        auto current = excitation.get_current().value();
 
+        auto currentExcitation = excitation.get_current().value();
+        auto currentExcitationWaveform = currentExcitation.get_waveform().value();
+        auto sampledCurrentWaveform = InputsWrapper::get_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
+        currentExcitation.set_harmonics(InputsWrapper::get_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+        currentExcitation.set_processed(InputsWrapper::get_processed_data(currentExcitation, sampledCurrentWaveform, true));
+        excitation.set_current(currentExcitation);
+        excitation.set_magnetizing_current(excitation.get_current().value());
+        operationPoint->get_mutable_excitations_per_winding()[0] = excitation;
+    }
+
+    std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductance_and_magnetic_flux_density(CoreWrapper core,
+                                                                                                                WindingWrapper winding,
+                                                                                                                OperationPoint* operationPoint){
+
+        std::pair<double, ElectromagneticParameter> result;
         double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operationPoint->get_conditions().get_ambient_temperature();
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
-        double frequency = operationPoint.get_mutable_excitations_per_winding()[0].get_frequency();
+        double frequency = operationPoint->get_mutable_excitations_per_winding()[0].get_frequency();
+        OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
         OpenMagnetics::InitialPermeability initial_permeability;
         double currentInitialPermeability;
         double modifiedInitialPermeability;
@@ -37,25 +54,39 @@ namespace OpenMagnetics {
                                                                                     &temperature,
                                                                                     nullptr,
                                                                                     &frequency);
+        if (!excitation.get_voltage()) {
+            set_current_as_magnetizing_current(operationPoint);
+        }
 
         do {
             currentMagnetizingInductance = modifiedMagnetizingInductance;
-
-
-            if (!operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
-                operationPoint = InputsWrapper::process_operation_point(operationPoint, currentMagnetizingInductance);
-            }
 
             do
             {
                 currentInitialPermeability = modifiedInitialPermeability;
                 totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+                modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
 
-                auto magneticFlux = OpenMagnetics::MagneticField::get_magnetic_flux(operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
+                if (excitation.get_voltage()) {
+                    auto voltage = operationPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
+                    auto sampledVoltageWaveform = InputsWrapper::get_sampled_waveform(voltage.get_waveform().value(), frequency);
+
+                    auto magnetizingCurrent = InputsWrapper::get_magnetizing_current(excitation, sampledVoltageWaveform, modifiedMagnetizingInductance);
+
+                    auto sampledMagnetizingCurrentWaveform = InputsWrapper::get_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
+                    magnetizingCurrent.set_harmonics(InputsWrapper::get_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+                    magnetizingCurrent.set_processed(InputsWrapper::get_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, true));
+
+                    excitation.set_magnetizing_current(magnetizingCurrent);
+                    operationPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                }
+
+                auto magneticFlux = OpenMagnetics::MagneticField::get_magnetic_flux(operationPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
                                                                                     totalReluctance,
                                                                                     numberTurnsPrimary,
                                                                                     frequency);
                 auto magneticFluxDensity = OpenMagnetics::MagneticField::get_magnetic_flux_density(magneticFlux, effectiveArea, frequency);
+                result.second = magneticFluxDensity;
                 auto magneticFieldStrength = OpenMagnetics::MagneticField::get_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability, frequency);
 
                 modifiedInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(),
@@ -69,19 +100,35 @@ namespace OpenMagnetics {
                 }
             } while (fabs(currentInitialPermeability - modifiedInitialPermeability) >= 1);
 
-            modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
         } while (fabs(currentMagnetizingInductance - modifiedMagnetizingInductance) / modifiedMagnetizingInductance >= 0.01);
 
-        return currentMagnetizingInductance;
+
+        if (!excitation.get_voltage()) {
+            operationPoint->get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::get_induced_voltage(excitation, currentMagnetizingInductance));
+        }
+
+        result.first = currentMagnetizingInductance;
+        return result;
+    }
+
+
+    double MagnetizingInductance::get_inductance_from_number_turns_and_gapping(CoreWrapper core,
+                                                                               WindingWrapper winding,
+                                                                               OperationPoint* operationPoint){
+
+        auto inductance_and_magnetic_flux_density = get_inductance_and_magnetic_flux_density(core, winding, operationPoint);
+
+        return inductance_and_magnetic_flux_density.first;
     }
 
     int MagnetizingInductance::get_number_turns_from_gapping_and_inductance(CoreWrapper core,
-                                                                               InputsWrapper inputs){
-        auto operationPoint = inputs.get_operation_point(0);
-        double desiredMagnetizingInductance = InputsWrapper::get_requirement_value(inputs.get_design_requirements().get_magnetizing_inductance());
+                                                                            InputsWrapper* inputs){
+        auto operationPoint = inputs->get_operation_point(0);
+        double desiredMagnetizingInductance = InputsWrapper::get_requirement_value(inputs->get_design_requirements().get_magnetizing_inductance());
         double temperature = operationPoint.get_conditions().get_ambient_temperature();
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
         double frequency = operationPoint.get_mutable_excitations_per_winding()[0].get_frequency();
+        OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(operationPoint);
         OpenMagnetics::InitialPermeability initial_permeability;
         int numberTurnsPrimary;
         size_t timeout = 10;
@@ -95,7 +142,10 @@ namespace OpenMagnetics {
                                                                                    &temperature,
                                                                                    nullptr,
                                                                                    &frequency);
-
+        if (!excitation.get_voltage()) {
+            set_current_as_magnetizing_current(&operationPoint);
+            inputs->set_operation_point_by_index(operationPoint, 0);
+        }
         while (true) {
 
             totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
@@ -121,6 +171,12 @@ namespace OpenMagnetics {
                 timeout--;
             }
         }
+
+        if (!excitation.get_voltage()) {
+            operationPoint.get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::get_induced_voltage(excitation, desiredMagnetizingInductance));
+            inputs->set_operation_point_by_index(operationPoint, 0);
+        }
+
 
         return std::max(1, numberTurnsPrimary);
     }
@@ -186,15 +242,16 @@ namespace OpenMagnetics {
 
     std::vector<CoreGap> MagnetizingInductance::get_gapping_from_number_turns_and_inductance(CoreWrapper core,
                                                                               WindingWrapper winding,
-                                                                              InputsWrapper inputs,
+                                                                              InputsWrapper* inputs,
                                                                               GappingType gappingType, 
                                                                               size_t decimals){
         auto constants = OpenMagnetics::Constants();
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operationPoint = inputs->get_operation_point(0);
         double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
-        double desiredMagnetizingInductance = InputsWrapper::get_requirement_value(inputs.get_design_requirements().get_magnetizing_inductance());
+        double desiredMagnetizingInductance = InputsWrapper::get_requirement_value(inputs->get_design_requirements().get_magnetizing_inductance());
         double temperature = operationPoint.get_conditions().get_ambient_temperature();
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+        OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(operationPoint);
         double frequency = operationPoint.get_mutable_excitations_per_winding()[0].get_frequency();
         OpenMagnetics::InitialPermeability initial_permeability;
         size_t timeout = 10;
@@ -208,6 +265,10 @@ namespace OpenMagnetics {
                                                                                    &temperature,
                                                                                    nullptr,
                                                                                    &frequency);
+        if (!excitation.get_voltage()) {
+            set_current_as_magnetizing_current(&operationPoint);
+            inputs->set_operation_point_by_index(operationPoint, 0);
+        }
 
         while (true) {
             auto magneticFlux = OpenMagnetics::MagneticField::get_magnetic_flux(operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
@@ -229,6 +290,11 @@ namespace OpenMagnetics {
                 currentInitialPermeability = modifiedInitialPermeability;
                 timeout--;
             }
+        }
+
+        if (!excitation.get_voltage()) {
+            operationPoint.get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::get_induced_voltage(excitation, desiredMagnetizingInductance));
+            inputs->set_operation_point_by_index(operationPoint, 0);
         }
 
         double gapLength = constants.residualGap;
