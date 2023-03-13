@@ -19,6 +19,8 @@ namespace OpenMagnetics {
 		const double minimum_distributed_fringing_factor = 1.05;
 		const double maximum_distributed_fringing_factor = 1.3;
 		const double initial_gap_length_for_searching = 0.001;
+
+		const double roshen_magnetic_field_strength_step = 0.1;
 	};
 }
 

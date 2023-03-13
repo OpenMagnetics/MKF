@@ -28,15 +28,15 @@ SUITE(MagnetizingInductance)
                                  std::string coreMaterial,
                                  OpenMagnetics::CoreWrapper& core,
                                  OpenMagnetics::WindingWrapper& winding,
-                                 OpenMagnetics::InputsWrapper& inputs) {
+                                 OpenMagnetics::InputsWrapper& inputs,
+                                 double peakToPeak = 20) {
 
         double dutyCycle = 0.5;
-        double peakToPeak = 2;
 
         inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(frequency,
                                                                             desiredMagnetizingInductance,
                                                                             ambientTemperature,
-                                                                            OpenMagnetics::WaveformLabel::SQUARE,
+                                                                            OpenMagnetics::WaveformLabel::SINUSOIDAL,
                                                                             peakToPeak,
                                                                             dutyCycle,
                                                                             dcCurrent);
@@ -88,11 +88,11 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, inputs.get_operation_point(0));
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
-
 
     TEST(Test_Inductance_Ferrite_Web)
     {
@@ -106,7 +106,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::OperationPoint operationPoint(operationPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
     }
 
     TEST(Test_Inductance_Powder_Web)
@@ -121,7 +121,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::OperationPoint operationPoint(operationPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
     }
 
     TEST(Test_Inductance_Powder_Dc_Offset_Web)
@@ -136,7 +136,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::OperationPoint operationPoint(operationPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
     }
 
     TEST(Test_Inductance_Powder_Micrometals_Dc_Offset_Web)
@@ -151,7 +151,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::OperationPoint operationPoint(operationPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        auto ea = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, operationPoint);
+        auto ea = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
         CHECK(ea > 2e-6);
 
@@ -185,7 +185,8 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, inputs.get_operation_point(0));
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -218,7 +219,8 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, inputs.get_operation_point(0));
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -251,7 +253,8 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, inputs.get_operation_point(0)) ;
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint) ;
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -285,7 +288,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, inputs);
+        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, &inputs);
 
         CHECK_CLOSE(expectedValue, numberTurns, max_error * expectedValue);
     }
@@ -319,7 +322,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, inputs);
+        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, &inputs);
 
         CHECK_CLOSE(expectedValue, numberTurns, max_error * expectedValue);
     }
@@ -353,7 +356,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, OpenMagnetics::GappingType::GRINDED);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, OpenMagnetics::GappingType::GRINDED);
 
         CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
     }
@@ -387,7 +390,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, OpenMagnetics::GappingType::GRINDED);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, OpenMagnetics::GappingType::GRINDED);
 
         CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
     }
@@ -421,7 +424,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, OpenMagnetics::GappingType::DISTRIBUTED);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, OpenMagnetics::GappingType::DISTRIBUTED);
 
         CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
         CHECK_EQUAL(7UL, gapping.size());
@@ -456,7 +459,7 @@ SUITE(MagnetizingInductance)
                                 winding,
                                 inputs);
 
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, OpenMagnetics::GappingType::DISTRIBUTED, 5);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, OpenMagnetics::GappingType::DISTRIBUTED, 5);
 
         CHECK_EQUAL(expectedValue, gapping[0].get_length());
         CHECK_EQUAL(7UL, gapping.size());
@@ -475,7 +478,7 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, gappingType, 5);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
 
         CHECK(gapping.size() == 5);
 
@@ -493,7 +496,128 @@ SUITE(MagnetizingInductance)
         OpenMagnetics::WindingWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
-        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, inputs, gappingType, 5);
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
 
     }
+
+    TEST(Test_Magnetizing_Inductance)
+    {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 42;
+        double frequency = 20000;
+        std::string coreShape = "ETD 29";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::WindingWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        double expectedInductanceValue = 215e-6;
+        double currentPeakToPeak = 20;
+        double voltagePeakToPeak = 2 * std::numbers::pi * frequency * expectedInductanceValue * currentPeakToPeak;
+
+        prepare_test_parameters(dcCurrent,
+                                ambientTemperature,
+                                frequency,
+                                numberTurns,
+                                -1,
+                                gapping,
+                                coreShape,
+                                coreMaterial,
+                                core,
+                                winding,
+                                inputs,
+                                voltagePeakToPeak);
+
+        double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
+        double expectedMagneticFluxDensity = expectedInductanceValue * (currentPeakToPeak / 2) / numberTurns / effectiveArea;
+
+        auto operationPoint = inputs.get_operation_point(0);
+        auto ea = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint);
+
+        auto magnetizingInductance = ea.first;
+        auto magneticFluxDensity = ea.second;
+
+        auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
+        auto magneticFluxDensityWaveformPeak = *max_element(std::begin(magneticFluxDensityWaveform), std::end(magneticFluxDensityWaveform));
+        OpenMagnetics::OperationPointExcitation primaryExcitation = OpenMagnetics::InputsWrapper::get_primary_excitation(operationPoint);
+
+        CHECK_CLOSE(expectedInductanceValue, magnetizingInductance, max_error * expectedInductanceValue);
+        CHECK_CLOSE(expectedMagneticFluxDensity, magneticFluxDensityWaveformPeak, max_error * expectedMagneticFluxDensity);
+        CHECK(bool(primaryExcitation.get_voltage()));
+        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+
+        if (primaryExcitation.get_current()) {
+            auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            CHECK_CLOSE(currentPeakToPeak, operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), max_error * currentPeakToPeak);
+        }
+    }
+
+    TEST(Test_Gapping_Web_No_Voltage)
+    {
+        // This tests checks that the operation is not crashing
+        json coreData = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000369, \"coordinates\": [0.0, 0.05, 0.0], \"distanceClosestNormalSurface\": -0.077551, \"distanceClosestParallelSurface\": 0.011524999999999999, \"length\": 0.1, \"sectionDimensions\": [0.02165, 0.02165], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": 0.000184, \"coordinates\": [0.026126, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, \"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 0.000184, \"coordinates\": [-0.026126, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, \"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C95\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [\"ETD 54\"], \"dimensions\": {\"A\": 0.0545, \"B\": 0.0276, \"C\": 0.0189, \"D\": 0.0202, \"E\": 0.0412, \"F\": 0.0189}, \"family\": \"etd\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"ETD 54/28/19\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\": null, \"processedDescription\": null}");
+        json windingData = json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", \"numberParallels\": 1, \"numberTurns\": 1, \"wire\": \"Dummy\"}], \"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+        json inputsData = json::parse("{\"designRequirements\": {\"altitude\": null, \"cti\": null, \"insulationType\": null, \"leakageInductance\": null, \"magnetizingInductance\": {\"excludeMaximum\": null, \"excludeMinimum\": null, \"maximum\": null, \"minimum\": null, \"nominal\": 0.00004654652816558039}, \"name\": null, \"operationTemperature\": null, \"overvoltageCategory\": null, \"pollutionDegree\": null, \"turnsRatios\": []}, \"operationPoints\": [{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 25.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [41.0, 51.0, 41.0], \"numberPeriods\": null, \"time\": [0.0, 2.5e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}]}");
+        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::InputsWrapper inputs(inputsData);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
+        auto gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
+        auto primaryExcitation = inputs.get_operation_point(0).get_mutable_excitations_per_winding()[0];
+        double currentPeakToPeak = 10;
+        double voltagePeakToPeak = 248;
+
+        CHECK(bool(primaryExcitation.get_voltage()));
+        CHECK(bool(primaryExcitation.get_current()));
+        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+
+        if (primaryExcitation.get_current()) {
+            auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            CHECK_CLOSE(currentPeakToPeak, inputs.get_operation_point(0).get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), max_error * currentPeakToPeak);
+            CHECK_CLOSE(currentPeakToPeak, inputs.get_operation_point(0).get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_peak_to_peak().value(), max_error * currentPeakToPeak);
+            CHECK_CLOSE(voltagePeakToPeak, inputs.get_operation_point(0).get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_peak_to_peak().value(), max_error * voltagePeakToPeak);
+        }
+    }
+
+    TEST(Test_Inductance_Ferrite_Web_No_Voltage)
+    {
+        // This tests checks that the operation is not crashing
+
+        json coreData = json::parse("{\"functionalDescription\": {\"gapping\": [{\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 0.001, \"sectionDimensions\": null, \"shape\": null, \"type\": \"subtractive\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}, {\"area\": null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}], \"material\": \"3C97\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146, \"E\": 0.030100000000000002, \"F\": 0.0125, \"G\": 0.0, \"H\": 0.0}, \"family\": \"etd\", \"familySubtype\": \"1\", \"magneticCircuit\": null, \"name\": \"ETD 39/20/13\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}}");
+        json windingData = json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", \"numberParallels\": 1, \"numberTurns\": 10, \"wire\": \"Dummy\"}], \"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+        json operationPointData = json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 25.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": [0.0, 2.5e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}],\"name\": null}");
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+        auto primaryExcitation = operationPoint.get_mutable_excitations_per_winding()[0];
+        double currentPeakToPeak = 10;
+        double voltagePeakToPeak = 105;
+
+        CHECK(bool(primaryExcitation.get_voltage()));
+        CHECK(bool(primaryExcitation.get_current()));
+        CHECK(bool(primaryExcitation.get_magnetizing_current()));
+
+        if (primaryExcitation.get_current()) {
+            auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
+            CHECK_CLOSE(currentPeakToPeak, operationPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), max_error * currentPeakToPeak);
+            CHECK_CLOSE(currentPeakToPeak, operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_peak_to_peak().value(), max_error * currentPeakToPeak);
+        }
+        if (primaryExcitation.get_voltage()) {
+            CHECK_CLOSE(voltagePeakToPeak, operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_peak_to_peak().value(), max_error * voltagePeakToPeak);
+        }
+    }
+
+
 }

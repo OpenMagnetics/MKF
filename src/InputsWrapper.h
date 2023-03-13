@@ -45,12 +45,16 @@ namespace OpenMagnetics {
         OperationPoint get_operation_point(size_t index);
         OperationPointExcitation get_winding_excitation(size_t operationPointIndex, size_t windingIndex);
         OperationPointExcitation get_primary_excitation(size_t operationPointIndex);
+        static OperationPointExcitation get_primary_excitation(OperationPoint operationPoint);
 
-        static void get_magnetizing_current(OperationPointExcitation& excitation, Waveform sampledWaveform, double magnetizingInductance);
+        static ElectromagneticParameter get_induced_voltage(OperationPointExcitation& excitation, double magnetizingInductance);
+        static ElectromagneticParameter get_magnetizing_current(OperationPointExcitation& excitation, double magnetizingInductance);
+        static ElectromagneticParameter get_magnetizing_current(OperationPointExcitation& excitation, Waveform sampledWaveform, double magnetizingInductance);
         static ElectromagneticParameter add_offset_to_excitation(ElectromagneticParameter electromagneticParameter, double offset, double frequency);
 
         static InputsWrapper create_quick_operation_point(double frequency, double magnetizingInductance, double temperature, 
                                                 WaveformLabel waveShape, double peakToPeak, double dutyCycle, double dcCurrent);
+
 
         void set_operation_point_by_index(const OperationPoint & value, size_t index) { get_mutable_operation_points()[index] = value; }
 

@@ -27,16 +27,20 @@ namespace OpenMagnetics {
             }
             double get_inductance_from_number_turns_and_gapping(CoreWrapper core,
                                                                 WindingWrapper winding,
-                                                                OperationPoint operationPoint);
+                                                                OperationPoint* operationPoint);
 
             std::vector<CoreGap> get_gapping_from_number_turns_and_inductance(CoreWrapper core,
                                                                               WindingWrapper winding,
-                                                                              InputsWrapper inputs,
+                                                                              InputsWrapper* inputs,
                                                                               GappingType gappingType, 
                                                                               size_t decimals = 4);
 
             int get_number_turns_from_gapping_and_inductance(CoreWrapper core,
-                                                                InputsWrapper inputs);
+                                                             InputsWrapper* inputs);
+
+            std::pair<double, ElectromagneticParameter> get_inductance_and_magnetic_flux_density(CoreWrapper core,
+                                                                                                 WindingWrapper winding,
+                                                                                                 OperationPoint* operationPoint);
     };
 
 }

@@ -27,4 +27,6 @@ namespace OpenMagnetics {
     double roundFloat(double value, size_t decimals);
 
     CoreShape flatten_dimensions(CoreShape shape);
+
+    double tryGetDutyCycle(Waveform waveform, double frequency);
 }
