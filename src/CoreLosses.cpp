@@ -94,10 +94,10 @@ namespace OpenMagnetics {
             if (!ranges[i].get_maximum_frequency()) {
                 throw std::runtime_error("Missing maximum frequency in material");
             }
+
             if (frequency >= ranges[i].get_minimum_frequency().value() && frequency <= ranges[i].get_maximum_frequency().value()) {
                 return ranges[i];
             }
-
 
             if (minimumMaterialFrequency > ranges[i].get_minimum_frequency().value()) {
                 minimumMaterialFrequency = ranges[i].get_minimum_frequency().value();
@@ -139,12 +139,9 @@ namespace OpenMagnetics {
         double k = steinmetzDatum.get_k();
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
+        double volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
 
-
-        double volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta) * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0 );
+        volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
         std::map<std::string, double> result;
         result["totalLosses"] = volumetricLosses * effectiveVolume;
@@ -195,9 +192,6 @@ namespace OpenMagnetics {
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
         double ki = get_ki(steinmetzDatum);
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
 
         double volumetricLossesSum = 0;
         double timeDifference;
@@ -212,7 +206,8 @@ namespace OpenMagnetics {
             volumetricLossesSum += pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) * timeDifference;
         }
 
-        double volumetricLosses = ki * pow(magneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+        double volumetricLosses = ki * pow(magneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
+        volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
         std::map<std::string, double> result;
         result["totalLosses"] = volumetricLosses * effectiveVolume;
@@ -247,9 +242,6 @@ namespace OpenMagnetics {
         double k = steinmetzDatum.get_k();
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
 
         double equivalentSinusoidalFrequency = 0;
         double timeDifference;
@@ -266,7 +258,8 @@ namespace OpenMagnetics {
 
         equivalentSinusoidalFrequency = 2 / pow(std::numbers::pi, 2) * equivalentSinusoidalFrequency;
 
-        double volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta) * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+        double volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
+        volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
         std::map<std::string, double> result;
         result["totalLosses"] = volumetricLosses * effectiveVolume;
@@ -301,9 +294,6 @@ namespace OpenMagnetics {
         double k = steinmetzDatum.get_k();
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
 
         double equivalentSinusoidalFrequency = 0;
         double timeDifference;
@@ -320,7 +310,8 @@ namespace OpenMagnetics {
 
         equivalentSinusoidalFrequency = 2 / pow(std::numbers::pi, 2) / pow(magneticFluxDensityPeakToPeak, 2) * equivalentSinusoidalFrequency;
 
-        double volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta) * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+        double volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
+        volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
         std::map<std::string, double> result;
         result["totalLosses"] = volumetricLosses * effectiveVolume;
@@ -370,9 +361,6 @@ namespace OpenMagnetics {
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
         double kn = get_kn(steinmetzDatum);
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
 
         double volumetricLossesSum = 0;
         double timeDifference;
@@ -387,7 +375,8 @@ namespace OpenMagnetics {
             volumetricLossesSum += pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) * timeDifference;
         }
 
-        double volumetricLosses = kn * pow(magneticFluxDensityPeakToPeak / 2, beta - alpha) * frequency * volumetricLossesSum * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+        double volumetricLosses = kn * pow(magneticFluxDensityPeakToPeak / 2, beta - alpha) * frequency * volumetricLossesSum;
+        volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
         std::map<std::string, double> result;
         result["totalLosses"] = volumetricLosses * effectiveVolume;
@@ -418,13 +407,11 @@ namespace OpenMagnetics {
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
         double k = steinmetzDatum.get_k();
-        double ct0 = steinmetzDatum.get_ct0().value();
-        double ct1 = steinmetzDatum.get_ct1().value();
-        double ct2 = steinmetzDatum.get_ct2().value();
         double dutyCycle = magneticFluxDensity.get_processed().value().get_duty_cycle().value();
         double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
 
-        double lossesFrameT1 = std::numbers::pi / 4 * k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta) * (ct2 * pow(temperature, 2) - ct1 * temperature + ct0 );
+        double lossesFrameT1 = std::numbers::pi / 4 * k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
+        lossesFrameT1 = CoreLossesModel::apply_temperature_coefficients(lossesFrameT1, steinmetzDatum, temperature);
         std::vector<double> dutyCycleValues = {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9};
         std::vector<double> factorValues = {1.45, 1.4, 1.35, 1.275, 1.25, 1.2, 1.15, 1.075, 1, 1.075, 1.15, 1.2, 1.25, 1.275, 1.35, 1.4, 1.45};
 
@@ -522,46 +509,30 @@ namespace OpenMagnetics {
             roshenParameters["resistivity"] = resistivity;
         }
 
+        // for (auto& param: roshenParameters){
+
+        // }
+
+
 
         return roshenParameters;
     }
 
-
     std::map<std::string, double> get_major_loop_parameters(double saturationMagneticFieldStrength, double saturationMagneticFluxDensity, double coerciveForce, double remanence) {
         std::map<std::string, double> majorLoopParameters;
-        auto bh_curve_half_loop = [&](double magneticFieldStrength, double a, double b){
-            return (magneticFieldStrength + coerciveForce) / (a + b * fabs(magneticFieldStrength + coerciveForce));
-        };
-        double minimumRemainder = 99999;
         double a1 = 0;
         double b1 = 0;
         double b2 = 0;
-        for (double a=0; a<100; a+=0.1) {
-            double previousRemainder = 99999;
-            for (double b=0; b<100; b+=0.1) {
-                double remainder0 = bh_curve_half_loop(saturationMagneticFieldStrength, a, b) - saturationMagneticFluxDensity;
-                double remainder1 = bh_curve_half_loop(0, a, b) - remanence;
-                if (previousRemainder < fabs(remainder0 + remainder1)) {
-                    break;
-                }
-                if (minimumRemainder > fabs(remainder0 + remainder1)) {
-                    minimumRemainder = fabs(remainder0 + remainder1);
-                    a1 = a;
-                    b1 = b;
-                }
-                previousRemainder = fabs(remainder0 + remainder1);
-            }
-        }
-
-        minimumRemainder = 99999;
-        for (double b=0; b<100; b+=0.1) {
-            double remainder = bh_curve_half_loop(-saturationMagneticFieldStrength, a1, b) - (-saturationMagneticFluxDensity);
-            if (minimumRemainder > fabs(remainder)) {
-                minimumRemainder = fabs(remainder);
-                b2 = b;
-            }
-        }
-
+        double Hc = coerciveForce;
+        double H0 = saturationMagneticFieldStrength;
+        double B0 = saturationMagneticFluxDensity;
+        double H1 = 0;
+        double B1 = remanence;
+        double H2 = -saturationMagneticFieldStrength;
+        double B2 = -saturationMagneticFluxDensity;
+        b1 = (H0 / B0 + Hc / B0 - H1 / B1 - Hc / B1) / (H0 - H1);
+        a1 = (Hc - B1 * b1 * Hc) / B1;
+        b2 = (H2 + Hc - B2 * a1) / (B2 * fabs(H2 + Hc));
         majorLoopParameters["a1"] = a1;
         majorLoopParameters["b1"] = b1;
         majorLoopParameters["b2"] = b2;
@@ -627,6 +598,10 @@ namespace OpenMagnetics {
         std::vector<double> upperMagneticFluxDensityWaveform = get_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
         std::vector<double> lowerMagneticFluxDensityWaveform = get_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
         std::vector<double> difference;
+
+        _hysteresisMajorH = magneticFieldStrengthPoints;
+        _hysteresisMajorLoopTop = upperMagneticFluxDensityWaveform;
+        _hysteresisMajorLoopBottom = lowerMagneticFluxDensityWaveform;
         for (size_t i=0; i<upperMagneticFluxDensityWaveform.size(); i++) {
             difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
         }
@@ -666,6 +641,10 @@ namespace OpenMagnetics {
                 cutLowerMagneticFluxDensityWaveform.push_back(elem);
             }
         }
+
+
+        _hysteresisMinorLoopTop = cutUpperMagneticFluxDensityWaveform;
+        _hysteresisMinorLoopBottom = cutLowerMagneticFluxDensityWaveform;
 
         size_t minimum_length = std::min(cutUpperMagneticFluxDensityWaveform.size(), cutLowerMagneticFluxDensityWaveform.size());
         double bhArea = 0;

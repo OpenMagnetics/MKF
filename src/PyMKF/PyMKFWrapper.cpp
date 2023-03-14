@@ -154,7 +154,7 @@ json get_core_losses(json coreData,
 
     auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(modelName.value());
 
-    auto result = coreLossesModel->get_core_losses(core, excitation, temperature);
+    json result = coreLossesModel->get_core_losses(core, excitation, temperature);
 
     std::cout << "magneticFluxDensity.get_processed().value().get_offset()" << std::endl;
     std::cout << magneticFluxDensity.get_processed().value().get_offset() << std::endl;
@@ -162,18 +162,27 @@ json get_core_losses(json coreData,
     result["magneticFluxDensityAcPeak"] = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     result["voltageRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value();
     result["currentRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
-    result["apparentPower"] = result["voltageRms"] * result["currentRms"];
+    result["apparentPower"] = operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value() * operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
+
+    if (models["coreLosses"] == "ROSHEN") {
+        result["_hysteresisMajorLoopTop"] = coreLossesModel->_hysteresisMajorLoopTop;
+        result["_hysteresisMajorLoopBottom"] = coreLossesModel->_hysteresisMajorLoopBottom;
+        result["_hysteresisMajorH"] = coreLossesModel->_hysteresisMajorH;
+        result["_hysteresisMinorLoopTop"] = coreLossesModel->_hysteresisMinorLoopTop;
+        result["_hysteresisMinorLoopBottom"] = coreLossesModel->_hysteresisMinorLoopBottom;
+    }
 
     return result;
 }
 
 
-json get_core_losses_model_information(){
+json get_core_losses_model_information(std::string material){
     py::dict dict;
     dict["information"] = OpenMagnetics::CoreLossesModel::get_models_information();
     dict["errors"] = OpenMagnetics::CoreLossesModel::get_models_errors();
     dict["internal_links"] = OpenMagnetics::CoreLossesModel::get_models_internal_links();
     dict["external_links"] = OpenMagnetics::CoreLossesModel::get_models_external_links();
+    dict["available_models"] = OpenMagnetics::CoreLossesModel::get_methods(material);
     return dict;
 }
 

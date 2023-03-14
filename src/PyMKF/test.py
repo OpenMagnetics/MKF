@@ -404,7 +404,7 @@ import PyMKF
 #                                                               0.01065],
 #                                         'shape': 'rectangular',
 #                                         'type': 'residual'}],
-#                            'material': '3C97',
+#                            'material': 'XFlux 19',
 #                            'numberStacks': 1,
 #                            'shape': {'aliases': [],
 #                                      'dimensions': {'A': 0.032,
@@ -471,84 +471,138 @@ import PyMKF
 #                                            models)
 
 # print(core_losses_result)
-models = {'coreLosses': 'STEINMETZ', 'gapReluctance': 'BALAKRISHNAN'}
-core = {'functionalDescription': {'gapping': [{'area': 9.8e-05,
-                                        'coordinates': [0.0, 0.0001, 0.0],
-                                        'distanceClosestNormalSurface': 0.011301,
-                                        'distanceClosestParallelSurface': 0.006999999999999999,
-                                        'length': 0.0001,
-                                        'sectionDimensions': [0.0092, 0.01065],
-                                        'shape': 'rectangular',
-                                        'type': 'subtractive'},
-                                       {'area': 4.7e-05,
-                                        'coordinates': [0.0138, 0.0, 0.0],
-                                        'distanceClosestNormalSurface': 0.011498,
-                                        'distanceClosestParallelSurface': 0.006999999999999999,
-                                        'length': 5e-06,
-                                        'sectionDimensions': [0.004401,
-                                                              0.01065],
-                                        'shape': 'rectangular',
-                                        'type': 'residual'},
-                                       {'area': 4.7e-05,
-                                        'coordinates': [-0.0138, 0.0, 0.0],
-                                        'distanceClosestNormalSurface': 0.011498,
-                                        'distanceClosestParallelSurface': 0.006999999999999999,
-                                        'length': 5e-06,
-                                        'sectionDimensions': [0.004401,
-                                                              0.01065],
-                                        'shape': 'rectangular',
-                                        'type': 'residual'}],
-                           'material': '3C97',
-                           'numberStacks': 1,
-                           'shape': {'aliases': [],
-                                     'dimensions': {'A': 0.032,
-                                                    'B': 0.0161,
-                                                    'C': 0.01065,
-                                                    'D': 0.0115,
-                                                    'E': 0.0232,
-                                                    'F': 0.0092,
-                                                    'G': 0.0,
-                                                    'H': 0.0},
-                                     'family': 'e',
-                                     'familySubtype': None,
-                                     'magneticCircuit': 'open',
-                                     'name': 'E 32/16/11',
-                                     'type': 'standard'},
-                           'type': 'two-piece set'},
- 'manufacturerInfo': None,
- 'name': 'My Core'}
-winding = {'bobbin': None,
- 'functionalDescription': [{'isolationSide': 'primary',
-                            'name': 'Primary',
-                            'numberParallels': 1,
-                            'numberTurns': 33,
-                            'wire': 'Dummy'}],
- 'layersDescription': None,
- 'sectionsDescription': None,
- 'turnsDescription': None}
-inputs = {'conditions': {'ambientRelativeHumidity': None,
-                'ambientTemperature': 37.0,
-                'cooling': None,
-                'name': None},
- 'excitationsPerWinding': [{'current': {'harmonics': None,
-                                        'processed': None,
-                                        'waveform': {'ancillaryLabel': None,
-                                                     'data': [5.0, -5.0, 5.0],
-                                                     'numberPeriods': None,
-                                                     'time': [0.0,
-                                                              2.5e-06,
-                                                              1e-05]}},
-                            'frequency': 100000.0,
-                            'magneticFieldStrength': None,
-                            'magneticFluxDensity': None,
-                            'magnetizingCurrent': None,
-                            'name': 'My Operation Point',
-                            }],
- 'name': None}
+# 'models'
+# models = {'coreLosses': 'ROSHEN', 'gapReluctance': 'BALAKRISHNAN'}
+# core = {'functionalDescription': {'gapping': [{'area': 5.6e-05,
+#                                         'coordinates': [0.0, 0.0005, 0.0],
+#                                         'distanceClosestNormalSurface': 0.00205,
+#                                         'distanceClosestParallelSurface': 0.004475000000000001,
+#                                         'length': 0.001,
+#                                         'sectionDimensions': [0.0084, 0.0084],
+#                                         'shape': 'round',
+#                                         'type': 'subtractive'},
+#                                        {'area': 3.3e-05,
+#                                         'coordinates': [0.010026, 0.0, 0.0],
+#                                         'distanceClosestNormalSurface': 0.003048,
+#                                         'distanceClosestParallelSurface': 0.004475000000000001,
+#                                         'length': 5e-06,
+#                                         'sectionDimensions': [0.0027, 0.012223],
+#                                         'shape': 'irregular',
+#                                         'type': 'residual'},
+#                                        {'area': 3.3e-05,
+#                                         'coordinates': [-0.010026, 0.0, 0.0],
+#                                         'distanceClosestNormalSurface': 0.003048,
+#                                         'distanceClosestParallelSurface': 0.004475000000000001,
+#                                         'length': 5e-06,
+#                                         'sectionDimensions': [0.0027, 0.012223],
+#                                         'shape': 'irregular',
+#                                         'type': 'residual'}],
+#                            'material': 'N87',
+#                            'numberStacks': 1,
+#                            'shape': {'aliases': ['RM 8LP'],
+#                                      'dimensions': {'A': 0.02275,
+#                                                     'B': 0.00575,
+#                                                     'C': 0.0108,
+#                                                     'D': 0.00305,
+#                                                     'E': 0.01735,
+#                                                     'F': 0.0084,
+#                                                     'G': 0.009500000000000001,
+#                                                     'H': 0.0045,
+#                                                     'J': 0.0193,
+#                                                     'R': 0.00030000000000000003},
+#                                      'family': 'rm',
+#                                      'familySubtype': '3',
+#                                      'magneticCircuit': 'open',
+#                                      'name': 'RM 8/11',
+#                                      'type': 'standard'},
+#                            'type': 'two-piece set'},
+#  'manufacturerInfo': None,
+#  'name': 'My Core'}
+# winding = {'bobbin': None,
+#  'functionalDescription': [{'isolationSide': 'primary',
+#                             'name': 'Primary',
+#                             'numberParallels': 1,
+#                             'numberTurns': 34,
+#                             'wire': 'Dummy'}],
+#  'layersDescription': None,
+#  'sectionsDescription': None,
+#  'turnsDescription': None}
+# inputs = {'conditions': {'ambientRelativeHumidity': None,
+#                 'ambientTemperature': 36.0,
+#                 'cooling': None,
+#                 'name': None},
+#  'excitationsPerWinding': [{'current': {'harmonics': None,
+#                                         'processed': None,
+#                                         'waveform': {'ancillaryLabel': None,
+#                                                      'data': [0.0, 10.0, 0.0],
+#                                                      'numberPeriods': None,
+#                                                      'time': [0.0,
+#                                                               2.4999999999999998e-06,
+#                                                               1e-05]}},
+#                             'frequency': 100000.0,
+#                             'magneticFieldStrength': None,
+#                             'magneticFluxDensity': None,
+#                             'magnetizingCurrent': None,
+#                             'name': 'My Operation Point',
+#                             'voltage': None}],
+#  'name': None}
 
-core_losses_result = PyMKF.get_core_losses(core,
-                                           winding,
-                                           inputs,
-                                           models)
 
-print(core_losses_result)
+# core_losses_result = PyMKF.get_core_losses(core,
+#                                            winding,
+#                                            inputs,
+#                                            models)
+
+# import matplotlib.pyplot as plt
+# print(core_losses_result.keys())
+# print(core_losses_result['totalLosses'])
+# print(core_losses_result['magneticFluxDensityAcPeak'])
+
+# plt.plot(core_losses_result['_hysteresisMajorH'], core_losses_result['_hysteresisMajorLoopBottom'])
+# plt.plot(core_losses_result['_hysteresisMajorH'], core_losses_result['_hysteresisMajorLoopTop'])
+# plt.show()
+
+# plt.plot(core_losses_result['_hysteresisMinorLoopBottom'])
+# plt.plot(core_losses_result['_hysteresisMinorLoopTop'])
+# plt.show()
+
+
+# inputs = {'conditions': {'ambientRelativeHumidity': None,
+#                 'ambientTemperature': 37.0,
+#                 'cooling': None,
+#                 'name': None},
+#  'excitationsPerWinding': [{'current': {'harmonics': None,
+#                                         'processed': None,
+#                                         'waveform': {'ancillaryLabel': None,
+#                                                      'data': [0.0, 10.0, 0.0],
+#                                                      'numberPeriods': None,
+#                                                      'time': [0.0,
+#                                                               2.4999999999999998e-06,
+#                                                               1e-05]}},
+#                             'frequency': 100000.0,
+#                             'magneticFieldStrength': None,
+#                             'magneticFluxDensity': None,
+#                             'magnetizingCurrent': None,
+#                             'name': 'My Operation Point',
+#                             'voltage': None}],
+#  'name': None}
+
+
+# core_losses_result = PyMKF.get_core_losses(core,
+#                                            winding,
+#                                            inputs,
+#                                            models)
+
+# # print(core_losses_result)
+# print(core_losses_result['totalLosses'])
+# print(core_losses_result.keys())
+# print(core_losses_result['totalLosses'])
+# print(core_losses_result['magneticFluxDensityAcPeak'])
+
+# plt.plot(core_losses_result['_hysteresisMajorH'], core_losses_result['_hysteresisMajorLoopBottom'])
+# plt.plot(core_losses_result['_hysteresisMajorH'], core_losses_result['_hysteresisMajorLoopTop'])
+# plt.show()
+
+# plt.plot(core_losses_result['_hysteresisMinorLoopBottom'])
+# plt.plot(core_losses_result['_hysteresisMinorLoopTop'])
+# plt.show()
