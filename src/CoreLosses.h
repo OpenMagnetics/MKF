@@ -21,6 +21,12 @@ namespace OpenMagnetics {
         private:
         protected:
         public:
+            std::vector<double> _hysteresisMajorLoopTop;
+            std::vector<double> _hysteresisMajorLoopBottom;
+            std::vector<double> _hysteresisMajorH;
+            std::vector<double> _hysteresisMinorLoopTop;
+            std::vector<double> _hysteresisMinorLoopBottom;
+            std::vector<double> _hysteresisMinorH;
             SteinmetzCoreLossesMethodRangeDatum _steinmetzDatum;
             bool _steinmetzDatumSet = false;
             CoreLossesModel() = default;
@@ -31,6 +37,53 @@ namespace OpenMagnetics {
             bool is_steinmetz_datum_loaded() { return _steinmetzDatumSet; }
             SteinmetzCoreLossesMethodRangeDatum get_steinmetz_datum() { return _steinmetzDatum; }
             void set_steinmetz_datum(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) { _steinmetzDatumSet = true; _steinmetzDatum = steinmetzDatum; }
+
+            static double apply_temperature_coefficients(double volumetricLosses, SteinmetzCoreLossesMethodRangeDatum steinmetzDatum, double temperature) {
+                double volumetricLossesWithTemperature = volumetricLosses;
+                if (steinmetzDatum.get_ct0() && steinmetzDatum.get_ct1() && steinmetzDatum.get_ct2()) {
+                    double ct0 = steinmetzDatum.get_ct0().value();
+                    double ct1 = steinmetzDatum.get_ct1().value();
+                    double ct2 = steinmetzDatum.get_ct2().value();
+                    volumetricLossesWithTemperature *= (ct2 * pow(temperature, 2) - ct1 * temperature + ct0 );
+                }
+                return volumetricLossesWithTemperature;
+            }
+
+            static std::vector<std::string> get_methods(CoreMaterialDataOrNameUnion material){
+                OpenMagnetics::CoreMaterial materialData;
+                // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid long loading operations)
+                if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
+                    materialData = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(material));
+                }
+                else {
+                    materialData = std::get<OpenMagnetics::CoreMaterial>(material);
+                }
+
+                std::vector<std::string> methods;
+                auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+                for(auto& volumetricLossesMethodVariant: volumetricLossesMethodsVariants) {
+                    auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+                    for(auto& volumetricLossesMethod: volumetricLossesMethods) {
+                        if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
+                            auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
+                            methods.push_back(methodData.get_method());
+                        }
+                    }
+                }
+
+                std::vector<std::string> models;
+                if (std::count(methods.begin(), methods.end(), "steinmetz")) {
+                    models.push_back("Steinmetz");
+                    models.push_back("iGSE");
+                    models.push_back("Barg");
+                    models.push_back("Albach");
+                    models.push_back("MSE");
+                }
+                if (std::count(methods.begin(), methods.end(), "roshen")) {
+                    models.push_back("Roshen");
+                }
+                return models;
+            }
 
             static std::map<std::string, std::string> get_models_information() {
                 std::map<std::string, std::string> information;
