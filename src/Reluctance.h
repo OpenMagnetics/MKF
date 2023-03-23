@@ -68,14 +68,14 @@ namespace OpenMagnetics {
             }
             static std::map<std::string, std::string> get_models_information() {
                 std::map<std::string, std::string> information;
-                information["Zhang"] = "Based on \"Improved Calculation Method for Inductance Value of the Air-Gap Inductor\" by Xinsheng Zhang.";
-                information["Muehlethaler"] = "Based on \"A Novel Approach for 3D Air Gap Reluctance Calculations\" by Jonas Mühlethaler.";
-                information["Partridge"] = "Based on the method described in page 8-11 from \"Transformer and Inductor Design Handbook Fourth Edition\" by Colonel Wm. T. McLyman.";
-                information["Effective Area"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
-                information["Effective Length"] = "Based on the method described in page 60 from \"High-Frequency Magnetic Components, Second Edition\" by Marian Kazimierczuk.";
-                information["Stenglein"] = "Based on \"The Reluctance of Large Air Gaps in Ferrite Cores\" by Erika Stenglein.";
-                information["Balakrishnan"] = "Based on \"Air-gap reluctance and inductance calculations for magnetic circuits using a Schwarz-Christoffel transformation\" by A. Balakrishnan.";
-                information["Classic"] = "Based on the reluctance of a uniform magnetic circuit";
+                information["Zhang"] = R"(Based on "Improved Calculation Method for Inductance Value of the Air-Gap Inductor" by Xinsheng Zhang.)";
+                information["Muehlethaler"] = R"(Based on "A Novel Approach for 3D Air Gap Reluctance Calculations" by Jonas Mühlethaler.)";
+                information["Partridge"] = R"(Based on the method described in page 8-11 from "Transformer and Inductor Design Handbook Fourth Edition" by Colonel Wm. T. McLyman.)";
+                information["Effective Area"] = R"(Based on the method described in page 60 from "High-Frequency Magnetic Components, Second Edition" by Marian Kazimierczuk.)";
+                information["Effective Length"] = R"(Based on the method described in page 60 from "High-Frequency Magnetic Components, Second Edition" by Marian Kazimierczuk.)";
+                information["Stenglein"] = R"(Based on "The Reluctance of Large Air Gaps in Ferrite Cores" by Erika Stenglein.)";
+                information["Balakrishnan"] = R"(Based on "Air-gap reluctance and inductance calculations for magnetic circuits using a Schwarz-Christoffel transformation" by A. Balakrishnan.)";
+                information["Classic"] = R"(Based on the reluctance of a uniform magnetic circuit)";
                 return information;
             }
             static std::map<std::string, double> get_models_errors() {
@@ -131,6 +131,7 @@ namespace OpenMagnetics {
             double get_core_reluctance(CoreWrapper core, double initialPermeability){
                 auto coreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
                 double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+
                 return calculatedReluctance;
             }
 

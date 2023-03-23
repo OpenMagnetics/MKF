@@ -1694,6 +1694,27 @@ SUITE(CoreLossesFromWeb){
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
 
     }
+    TEST(Only_Voltage){
+        auto models = json::parse(R"({"coreLosses": "ROSHEN", "coreTemperature": "MANIKTALA", "gapReluctance": "ZHANG"})");
+        auto core = OpenMagnetics::CoreWrapper(json::parse(R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "3C97", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
+        auto winding = OpenMagnetics::WindingWrapper(json::parse(R"({"bobbin": null, "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [6.885, 6.885, -2.2949999999999995, -2.2949999999999995, 6.885], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+
+        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+
+        auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>("IGSE").value());
+        auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+        
+        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
+
+    }
     TEST(Only_Current_With_Dc){
         auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
         auto core = OpenMagnetics::CoreWrapper(json::parse("{\"functionalDescription\": {\"gapping\": [{\"area\": 9.8e-05, \"coordinates\": [0.0, 0.0001, 0.0], \"distanceClosestNormalSurface\": 0.011301, \"distanceClosestParallelSurface\": 0.006999999999999999, \"length\": 0.0002, \"sectionDimensions\": [0.0092, 0.01065], \"shape\": \"rectangular\", \"type\": \"subtractive\"}, {\"area\": 4.7e-05, \"coordinates\": [0.0138, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.011498, \"distanceClosestParallelSurface\": 0.006999999999999999, \"length\": 5e-06, \"sectionDimensions\": [0.004401, 0.01065], \"shape\": \"rectangular\", \"type\": \"residual\"}, {\"area\": 4.7e-05, \"coordinates\": [-0.0138, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.011498, \"distanceClosestParallelSurface\": 0.006999999999999999, \"length\": 5e-06, \"sectionDimensions\": [0.004401, 0.01065], \"shape\": \"rectangular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.032, \"B\": 0.0161, \"C\": 0.01065, \"D\": 0.0115, \"E\": 0.0232, \"F\": 0.0092, \"G\": 0.0, \"H\": 0.0}, \"family\": \"e\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"E 32/16/11\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"manufacturerInfo\": null, \"name\": \"My Core\"}"));
@@ -1714,11 +1735,24 @@ SUITE(CoreLossesFromWeb){
 
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 1, 1 * 0.1);
     }
+
     TEST(Test_Methods){
         std::vector<std::string> methods = OpenMagnetics::CoreLossesModel::get_methods("3C97");
-        CHECK(methods[0] == "roshen");
-        CHECK(methods[1] == "steinmetz");
+        OpenMagneticsTesting::print("methods");
+        OpenMagneticsTesting::print(methods);
+        CHECK(methods.size() == 6);
+        CHECK(methods[0] == "Steinmetz");
+        CHECK(methods[1] == "iGSE");
+        CHECK(methods[2] == "Barg");
+        CHECK(methods[3] == "Albach");
+        CHECK(methods[4] == "MSE");
+        CHECK(methods[5] == "Roshen");
         methods = OpenMagnetics::CoreLossesModel::get_methods("XFlux 19");
-        CHECK(methods[0] == "steinmetz");
+        CHECK(methods.size() == 5);
+        CHECK(methods[0] == "Steinmetz");
+        CHECK(methods[1] == "iGSE");
+        CHECK(methods[2] == "Barg");
+        CHECK(methods[3] == "Albach");
+        CHECK(methods[4] == "MSE");
     }
 }
