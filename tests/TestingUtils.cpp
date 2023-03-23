@@ -93,6 +93,13 @@ namespace OpenMagneticsTesting {
         std::cout << std::endl;
     }
 
+    void print(std::vector<std::string> data){
+        for (auto i: data) {
+            std::cout << i << ' ';
+        }
+        std::cout << std::endl;
+    }
+
     void print(double data){
         std::cout << data << std::endl;
     }

@@ -87,13 +87,13 @@ namespace OpenMagnetics {
 
             static std::map<std::string, std::string> get_models_information() {
                 std::map<std::string, std::string> information;
-                information["Steinmetz"] = "Based on \"On the law of hysteresis\" by Charles Proteus Steinmetz";
-                information["iGSE"] = "Based on \"Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms Using Only Steinmetz Parameters\" by Charles R. Sullivan";
-                information["Barg"] = "Based on \"Core Loss Calculation of Symmetric Trapezoidal Magnetic Flux Density Waveform\" by Sobhi Barg";
-                information["Roshen"] = "Based on \"Ferrite Core Loss for Power Magnetic Components Design\" and \"A Practical, Accurate and Very General Core Loss Model for Nonsinusoidal Waveforms\" by Waseem Roshen";
-                information["Albach"] = "Based on \"Calculating Core Losses in Transformers for Arbitrary Magnetizing Currents A Comparison of Different Approaches\" by Manfred Albach";
-                information["NSE"] = "Based on \"Measurement and Loss Model of Ferrites with Non-sinusoidal Waveforms\" by Alex Van den Bossche";
-                information["MSE"] = "Based on \"Calculation of Losses in Ferro- and Ferrimagnetic Materials Based on the Modified Steinmetz Equation\" by Jürgen Reinert";
+                information["Steinmetz"] = R"(Based on "On the law of hysteresis" by Charles Proteus Steinmetz)";
+                information["iGSE"] = R"(Based on "Accurate Prediction of Ferrite Core Loss with Nonsinusoidal Waveforms Using Only Steinmetz Parameters" by Charles R. Sullivan)";
+                information["Barg"] = R"(Based on "Core Loss Calculation of Symmetric Trapezoidal Magnetic Flux Density Waveform" by Sobhi Barg)";
+                information["Roshen"] = R"(Based on "Ferrite Core Loss for Power Magnetic Components Design" and "A Practical, Accurate and Very General Core Loss Model for Nonsinusoidal Waveforms" by Waseem Roshen)";
+                information["Albach"] = R"(Based on "Calculating Core Losses in Transformers for Arbitrary Magnetizing Currents A Comparison of Different Approaches" by Manfred Albach)";
+                information["NSE"] = R"(Based on "Measurement and Loss Model of Ferrites with Non-sinusoidal Waveforms" by Alex Van den Bossche)";
+                information["MSE"] = R"(Based on "Calculation of Losses in Ferro- and Ferrimagnetic Materials Based on the Modified Steinmetz Equation" by Jürgen Reinert)";
                 return information;
             }
             static std::map<std::string, double> get_models_errors() {

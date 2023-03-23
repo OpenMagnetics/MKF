@@ -59,9 +59,53 @@ sudo apt install freecad-daily
 sudo mkdir /etc/openmagnetics
 sudo chmod 777 -R /etc/openmagnetics
 
+sudo apt install ngspice
+sudo apt-get install bison -y
+sudo apt-get install byacc -y
+
+
+
+
 
 
 quicktype -l c++ -s schema ../../MAS/schemas/MAS.json -S ../../MAS/schemas/magnetic.json -S ../../MAS/schemas/magnetic/core.json -S ../../MAS/schemas/magnetic/winding.json -S ../../MAS/schemas/utils.json -S ../../MAS/schemas/magnetic/core/gap.json -S ../../MAS/schemas/magnetic/core/shape.json -S ../../MAS/schemas/magnetic/core/material.json -S ../../MAS/schemas/magnetic/insulation/material.json -S ../../MAS/schemas/magnetic/insulation/wireCoating.json -S ../../MAS/schemas/magnetic/core/bobbin.json -S ../../MAS/schemas/magnetic/core/piece.json -S ../../MAS/schemas/magnetic/core/spacer.json -S ../../MAS/schemas/magnetic/wire/solid.json -S ../../MAS/schemas/magnetic/wire/stranded.json -S ../../MAS/schemas/magnetic/wire/material.json -S ../../MAS/schemas/utils.json -S ../../MAS/schemas/magnetic/insulation/wireCoating.json -S ../../MAS/schemas/magnetic/insulation/material.json -S ../../MAS/schemas/inputs.json -S ../../MAS/schemas/inputs/designRequirements.json -S ../../MAS/schemas/inputs/operationConditions.json -S ../../MAS/schemas/inputs/operationPointExcitation.json -o MAS/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost hide-null-optional
 
 
 quicktype -l python -s schema ../../MAS/schemas/MAS.json -S ../../MAS/schemas/magnetic.json -S ../../MAS/schemas/magnetic/core.json -S ../../MAS/schemas/magnetic/winding.json -S ../../MAS/schemas/utils.json -S ../../MAS/schemas/magnetic/core/gap.json -S ../../MAS/schemas/magnetic/core/shape.json -S ../../MAS/schemas/magnetic/core/material.json -S ../../MAS/schemas/magnetic/insulation/material.json -S ../../MAS/schemas/magnetic/insulation/wireCoating.json -S ../../MAS/schemas/magnetic/core/bobbin.json -S ../../MAS/schemas/magnetic/core/piece.json -S ../../MAS/schemas/magnetic/core/spacer.json -S ../../MAS/schemas/magnetic/wire/solid.json -S ../../MAS/schemas/magnetic/wire/stranded.json -S ../../MAS/schemas/magnetic/wire/material.json -S ../../MAS/schemas/utils.json -S ../../MAS/schemas/magnetic/insulation/wireCoating.json -S ../../MAS/schemas/magnetic/insulation/material.json -S ../../MAS/schemas/inputs.json -S ../../MAS/schemas/inputs/designRequirements.json -S ../../MAS/schemas/inputs/operationConditions.json -S ../../MAS/schemas/inputs/operationPointExcitation.json -o MAS/MAS.py --python-version 3.7 --just-types --no-nice-property-names
+
+
+
+
+
+
+
+git clone git://git.code.sf.net/p/ngspice/ngspice ngspice
+cd ngspice
+mkdir build
+cd build
+../configure --enable-xspice --disable-debug --with-readline=yes --with-ngshared
+make
+sudo make install
+
+
+
+
+
+
+git clone https://github.com/Xyce/Xyce.git
+sudo apt install gfortran
+sudo apt-get install flex bison
+sudo apt-get install libblas-dev liblapack-dev
+sudo apt-get install libsuitesparse-dev
+sudo apt-get install fftw-dev
+cpan XML::LibXML
+mkdir build
+cd build
+cmake -D Xyce_USE_SUPERBUILD=ON ..
+
+git clone --shallow-since 2022-09-15 --branch develop https://github.com/trilinos/Trilinos.git
+git checkout b91cc3dcd9
+mkdir build
+cd build
+sudo cd
+cmake --build . -j 8 -t install

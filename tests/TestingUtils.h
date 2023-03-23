@@ -16,6 +16,7 @@ namespace OpenMagneticsTesting {
     json get_residual_gap();
 
     void print(std::vector<double> data);
+    void print(std::vector<std::string> data);
     void print(double data);
     void print(std::string data);
     void print_json(json data);
