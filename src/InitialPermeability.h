@@ -1,27 +1,27 @@
 #pragma once
-#include <fstream>
-#include <numbers>
-#include <iostream>
-#include <cmath>
-#include <map>
-#include <vector>
-#include <filesystem>
-#include <streambuf>
 #include "Constants.h"
-#include <magic_enum.hpp>
 
 #include <CoreWrapper.h>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <magic_enum.hpp>
+#include <map>
+#include <numbers>
+#include <streambuf>
+#include <vector>
 
 namespace OpenMagnetics {
 
-    class InitialPermeability {
-        private:
-        protected:
-        public:
-            double get_initial_permeability(CoreMaterialDataOrNameUnion material,
-                                            double* temperature=nullptr,
-                                            double* magneticFieldDcBias=nullptr,
-                                            double* frequency=nullptr);
-    };
+class InitialPermeability {
+  private:
+  protected:
+  public:
+    double get_initial_permeability(CoreMaterialDataOrNameUnion material,
+                                    double* temperature = nullptr,
+                                    double* magneticFieldDcBias = nullptr,
+                                    double* frequency = nullptr);
+};
 
-}
+} // namespace OpenMagnetics
