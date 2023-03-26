@@ -34,6 +34,10 @@ json get_material_data(json materialName){
     return materialData;
 }
 
+json get_available_shape_families(){
+    return magic_enum::enum_names<OpenMagnetics::CoreShapeFamily>();
+}
+
 py::dict get_constants(){
     py::dict dict;
     auto constants = OpenMagnetics::Constants();
@@ -143,9 +147,11 @@ json get_core_losses(json coreData,
     auto operationPoint = inputs.get_operation_point(0);
     OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
     double magnetizingInductance = OpenMagnetics::InputsWrapper::get_requirement_value(inputs.get_design_requirements().get_magnetizing_inductance());
-    auto magnetizingCurrent = OpenMagnetics::InputsWrapper::get_magnetizing_current(excitation, magnetizingInductance);
-    excitation.set_current(magnetizingCurrent);
-    operationPoint.get_mutable_excitations_per_winding()[0] = excitation;
+    if (!excitation.get_current()) {
+        auto magnetizingCurrent = OpenMagnetics::InputsWrapper::get_magnetizing_current(excitation, magnetizingInductance);
+        excitation.set_current(magnetizingCurrent);
+        operationPoint.get_mutable_excitations_per_winding()[0] = excitation;
+    }
 
     auto defaults = OpenMagnetics::Defaults();
 
@@ -230,6 +236,7 @@ json get_core_temperature_model_information(){
 
 PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
+    m.def("get_available_shape_families", &get_available_shape_families, "Returns the available shape families");
     m.def("get_material_data", &get_material_data, "Returns the all data about a given core material");
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");

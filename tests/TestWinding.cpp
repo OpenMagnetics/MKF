@@ -1,38 +1,33 @@
+#include "WindingWrapper.h"
+#include "json.hpp"
+
 #include <UnitTest++.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <vector>
-#include <filesystem>
-#include <nlohmann/json-schema.hpp>
-#include "json.hpp"
-#include "WindingWrapper.h"
 #include <magic_enum.hpp>
+#include <nlohmann/json-schema.hpp>
+#include <vector>
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 #include <typeinfo>
 
-
-SUITE(WindingProcessedDescription)
-{
-    std::string filePath = __FILE__;
-    auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-
-}
-
-SUITE(WindingGeometricalDescription)
-{
+SUITE(WindingProcessedDescription) {
     std::string filePath = __FILE__;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
 }
 
-SUITE(WindingFunctionalDescription)
-{
+SUITE(WindingGeometricalDescription) {
+    std::string filePath = __FILE__;
+    auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+}
+
+SUITE(WindingFunctionalDescription) {
     std::string filePath = __FILE__;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
 
-    TEST(inductor_42_turns)
-    {
+    TEST(inductor_42_turns) {
         auto windingFilePath = masPath + "samples/magnetic/winding/inductor_42_turns.json";
         std::ifstream json_file(windingFilePath);
 
@@ -47,5 +42,4 @@ SUITE(WindingFunctionalDescription)
 
         CHECK(windingWrapperJson == windingJson["functionalDescription"][0]);
     }
-
 }
