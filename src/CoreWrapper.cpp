@@ -1718,6 +1718,64 @@ class UT : public CorePiece {
     }
 };
 
+class T : public CorePiece {
+  public:
+    void process_extra_data() {
+        auto dimensions = get_shape().get_dimensions().value();
+        set_width(std::get<double>(dimensions["A"]));
+        set_height(std::get<double>(dimensions["A"]));
+        set_depth(std::get<double>(dimensions["C"]));
+    }
+
+    void process_winding_window() {
+        auto dimensions = get_shape().get_dimensions().value();
+        json jsonWindingWindow;
+        jsonWindingWindow["radialHeight"] = std::get<double>(dimensions["B"]) / 2;
+        jsonWindingWindow["angle"] = 2 * std::numbers::pi;
+        jsonWindingWindow["area"] = std::numbers::pi * pow(std::get<double>(dimensions["B"]) / 2, 2);
+        jsonWindingWindow["coordinates"] = {(std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 4, 0};
+        set_winding_window(jsonWindingWindow);
+    }
+
+    void process_columns() {
+        auto dimensions = get_shape().get_dimensions().value();
+        json jsonWindingWindows = json::array();
+        json jsonMainColumn;
+        json jsonLateralColumn;
+        double columnWidth = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 2;
+        jsonMainColumn["type"] = OpenMagnetics::ColumnType::CENTRAL;
+        jsonMainColumn["shape"] = OpenMagnetics::ColumnShape::RECTANGULAR;
+        jsonMainColumn["width"] = columnWidth;
+        jsonMainColumn["depth"] = roundFloat<6>(std::get<double>(dimensions["C"]));
+        jsonMainColumn["height"] = 2 * std::numbers::pi * (std::get<double>(dimensions["B"]) / 2 + columnWidth / 2);
+        jsonMainColumn["area"] =
+            roundFloat<6>(jsonMainColumn["width"].get<double>() * jsonMainColumn["depth"].get<double>());
+        jsonMainColumn["coordinates"] = {0, 0, 0};
+        jsonWindingWindows.push_back(jsonMainColumn);
+        set_columns(jsonWindingWindows);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = get_shape().get_dimensions().value();
+        std::vector<double> lengths;
+        std::vector<double> areas;
+        double columnWidth = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 2;
+
+        lengths.push_back(2 * std::numbers::pi * (std::get<double>(dimensions["B"]) / 2 + columnWidth / 2));
+
+        areas.push_back(columnWidth * std::get<double>(dimensions["C"]));
+
+        double c1 = 0, c2 = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            c1 += lengths[i] / areas[i];
+            c2 += lengths[i] / pow(areas[i], 2);
+        }
+        auto minimumArea = *min_element(areas.begin(), areas.end());
+
+        return {c1, c2, minimumArea};
+    }
+};
+
 std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
@@ -1840,9 +1898,15 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape) {
         piece->process();
         return piece;
     }
+    else if (family == CoreShapeFamily::T) {
+        std::shared_ptr<CorePiece> piece(new T);
+        piece->set_shape(shape);
+        piece->process();
+        return piece;
+    }
     else
         throw std::runtime_error("Unknown shape family, available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
-                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT}");
+                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T}");
 }
 
 inline void from_json(const json& j, OpenMagnetics::CorePiece& x) {

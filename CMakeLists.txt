@@ -39,14 +39,7 @@ FetchContent_Declare(pybind11_json
 FetchContent_Declare(libInterpolate
         GIT_REPOSITORY https://github.com/CD3/libInterpolate)
 
-FetchContent_Declare(ngspice
-        GIT_REPOSITORY git://git.code.sf.net/p/ngspice/ngspice
-        CONFIGURE_COMMAND "configure --prefix mierda/ --enable-xspice --disable-debug --with-readline=yes --with-ngshared"
-        BUILD_COMMAND make
-        INSTALL_COMMAND "make install"
-        )
-
-FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate ngspice)
+FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate)
 
 
 set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
@@ -99,12 +92,11 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
 include_directories("/usr/include/eigen3/")
-include_directories("/usr/include/ngspice/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/libinterpolate-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
 
-target_link_libraries(MKF nlohmann_json::nlohmann_json nlohmann_json_schema_validator UnitTest++ pybind11_json pybind11::embed ngspice)
+target_link_libraries(MKF nlohmann_json::nlohmann_json nlohmann_json_schema_validator UnitTest++ pybind11_json pybind11::embed)
 target_include_directories(MKF PUBLIC src/)
 
 file(GLOB TESTS_SOURCES

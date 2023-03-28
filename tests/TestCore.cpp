@@ -1477,6 +1477,39 @@ SUITE(CoreProcessedDescription) {
               OpenMagnetics::ColumnShape::RECTANGULAR);
     }
 
+    TEST(T_40_24_16) {
+        json coreJson;
+        coreJson["functionalDescription"] = json();
+        coreJson["name"] = "core_T_40_24_16_N97_substractive";
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = "T 40/24/16";
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+        double numberStacks = coreJson["functionalDescription"]["numberStacks"];
+
+        CHECK_EQUAL(*(core.get_name()), "core_T_40_24_16_N97_substractive");
+        CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
+                  .get_mutable_volumetric_losses()["default"]
+                  .size() > 0);
+        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(),
+                    0.000125 * numberStacks, 0.000125 * numberStacks * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_length(), 0.09629,
+                    0.09629 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_volume(),
+                    0.000012070 * numberStacks, 0.000012070 * numberStacks * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_minimum_area(),
+                    0.000125 * numberStacks, 0.000125 * numberStacks * 0.2);
+        CHECK_CLOSE(*(core.get_processed_description()->get_winding_windows()[0].get_radial_height()), 0.012, 0.012 * 0.2);
+        CHECK_CLOSE(*(core.get_processed_description()->get_winding_windows()[0].get_angle()), 2 * 3.1415, 2 * 3.1415 * 0.2);
+        CHECK_EQUAL(core.get_processed_description()->get_columns().size(), 1u);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_width(), 0.008, 0.008 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_depth(), 0.016 * numberStacks,
+                    0.020 * numberStacks * 0.2);
+        CHECK(core.get_processed_description()->get_columns()[0].get_shape() == OpenMagnetics::ColumnShape::RECTANGULAR);
+    }
+
     TEST(Web_0) {
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000123, \"coordinates\": "
