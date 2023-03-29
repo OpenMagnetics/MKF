@@ -19,6 +19,17 @@ ElectromagneticParameter MagneticField::get_magnetic_flux(ElectromagneticParamet
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
     auto magnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
+
+    if (InputsWrapper::is_waveform_sampled(magnetizingCurrentWaveform)) {
+        if (magnetizingCurrentWaveform.get_data().size() > 0 && ((magnetizingCurrentWaveform.get_data().size() & (magnetizingCurrentWaveform.get_data().size() - 1)) != 0)) {
+            std::cout << "magnetizingCurrentWaveform.get_data().size():" << magnetizingCurrentWaveform.get_data().size() << std::endl;
+            throw std::invalid_argument("magnetizingCurrentWaveform vector size is not a power of 2");
+        }
+    }
+    else {
+         magnetizingCurrentWaveform = InputsWrapper::get_sampled_waveform(magnetizingCurrentWaveform, frequency);
+    }
+
     for (auto& datum : magnetizingCurrentWaveform.get_data()) {
         magneticFluxData.push_back(datum * numberTurns / reluctance);
     }

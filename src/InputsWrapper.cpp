@@ -209,6 +209,21 @@ ElectromagneticParameter InputsWrapper::standarize_waveform(ElectromagneticParam
     return standardized_parameter;
 }
 
+bool is_size_power_of_2(std::vector<double> data) {
+    return data.size() > 0 && ((data.size() & (data.size() - 1)) == 0);
+}
+
+bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
+    auto constants = Constants();
+    if (!waveform.get_time()) {
+        return false;
+    }
+    else {
+        return waveform.get_data().size() == constants.number_points_samples_waveforms;
+    }
+
+}
+
 Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency) {
     auto constants = Constants();
 
@@ -282,12 +297,14 @@ ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcita
 
     if (isWaveformSampled) {
         source.push_back(source[0]);
-        time.push_back(time[time.size() - 1] + time[0]);
+        double difference = time[time.size() - 1] - time[time.size() - 2];
+        time.push_back(time[time.size() - 1] + difference);
     }
     else {
         source.push_back(source[1]);
         time.push_back(time[time.size() - 1] + time[1]);
     }
+
 
     std::adjacent_difference(source.begin(), source.end(), source.begin());
     derivative = std::vector<double>(source.begin() + 1, source.end());
@@ -536,6 +553,10 @@ Harmonics InputsWrapper::get_harmonics_data(Waveform waveform, double frequency)
         data.emplace_back(dataToProcess[i]);
     }
 
+    if (data.size() > 0 && ((data.size() & (data.size() - 1)) != 0)) {
+
+        throw std::invalid_argument("Data vector size is not a power of 2");
+    }
     fft(data);
 
     harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
@@ -704,8 +725,42 @@ OperationPointExcitation InputsWrapper::get_winding_excitation(size_t operationP
 OperationPointExcitation InputsWrapper::get_primary_excitation(size_t operationPointIndex) {
     return get_mutable_operation_points()[operationPointIndex].get_mutable_excitations_per_winding()[0];
 }
+
 OperationPointExcitation InputsWrapper::get_primary_excitation(OperationPoint operationPoint) {
     return operationPoint.get_mutable_excitations_per_winding()[0];
+}
+
+void InputsWrapper::make_waveform_size_power_of_two(OperationPoint* operationPoint) {
+    OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
+    double frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
+
+    // TODO: iterate over windings here in the future
+
+    if (excitation.get_current()) {
+        auto current = operationPoint->get_excitations_per_winding()[0].get_current().value();
+        auto currentWaveform = current.get_waveform().value();
+        if (!is_size_power_of_2(currentWaveform.get_data())) {
+            auto currentSampledWaveform = InputsWrapper::get_sampled_waveform(currentWaveform, frequency);
+            current.set_waveform(currentSampledWaveform);
+            current.set_harmonics(get_harmonics_data(currentSampledWaveform, frequency));
+            current.set_processed(get_processed_data(current, currentSampledWaveform, true));
+            operationPoint->get_mutable_excitations_per_winding()[0].set_current(current);
+
+
+            currentWaveform = current.get_waveform().value();
+
+            currentWaveform = operationPoint->get_excitations_per_winding()[0].get_current().value().get_waveform().value();
+        }
+    }
+    if (excitation.get_voltage()) {
+        auto voltage = operationPoint->get_excitations_per_winding()[0].get_voltage().value();
+        auto voltageWaveform = voltage.get_waveform().value();
+        if (!is_size_power_of_2(voltageWaveform.get_data())) {
+            auto voltageSampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, frequency);
+            voltage.set_waveform(voltageSampledWaveform);
+            operationPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
+        }
+    }
 }
 
 } // namespace OpenMagnetics

@@ -852,7 +852,6 @@ SUITE(Inputs) {
 
             OpenMagnetics::InputsWrapper inputs(inputsJson);
 
-            json mierda;
             auto excitation_primary = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
 
             CHECK_CLOSE(excitation_primary.get_current().value().get_processed().value().get_rms().value(), 2.9,

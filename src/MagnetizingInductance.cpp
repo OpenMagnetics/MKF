@@ -25,6 +25,11 @@ void set_current_as_magnetizing_current(OperationPoint* operationPoint) {
     auto currentExcitationWaveform = currentExcitation.get_waveform().value();
     auto sampledCurrentWaveform =
         InputsWrapper::get_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
+
+    if (sampledCurrentWaveform.get_data().size() > 0 && ((sampledCurrentWaveform.get_data().size() & (sampledCurrentWaveform.get_data().size() - 1)) != 0)) {
+        throw std::invalid_argument("sampledCurrentWaveform vector size is not a power of 2");
+    }
+
     currentExcitation.set_harmonics(
         InputsWrapper::get_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
     currentExcitation.set_processed(InputsWrapper::get_processed_data(currentExcitation, sampledCurrentWaveform, true));
@@ -37,6 +42,9 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
     CoreWrapper core,
     WindingWrapper winding,
     OperationPoint* operationPoint) {
+
+    InputsWrapper::make_waveform_size_power_of_two(operationPoint);
+
     std::pair<double, ElectromagneticParameter> result;
     double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
     double temperature = operationPoint->get_conditions().get_ambient_temperature();
@@ -54,19 +62,49 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
     double modifiedMagnetizingInductance = 5e-3;
     double currentMagnetizingInductance;
 
+    if (!excitation.get_voltage()) {
+        auto current = operationPoint->get_mutable_excitations_per_winding()[0].get_current().value();
+        auto currentWaveform = current.get_waveform().value();
+        if (!is_size_power_of_2(currentWaveform.get_data())) {
+            auto currentSampledWaveform = InputsWrapper::get_sampled_waveform(currentWaveform, frequency);
+            current.set_waveform(currentSampledWaveform);
+            operationPoint->get_mutable_excitations_per_winding()[0].set_current(current);
+        }
+    }
+
+    if (excitation.get_voltage()) {
+        auto aux = operationPoint->get_mutable_excitations_per_winding()[0].get_voltage().value().get_waveform().value();
+        if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+            throw std::invalid_argument("voltage_data vector size is not a power of 2");
+        }
+    }
+    if (excitation.get_current()) {
+        auto aux = operationPoint->get_mutable_excitations_per_winding()[0].get_current().value().get_waveform().value();
+        if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+            throw std::invalid_argument("current_data vector size is not a power of 2");
+        }
+    }
+
     modifiedInitialPermeability = initial_permeability.get_initial_permeability(
         core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
     if (!excitation.get_voltage()) {
         set_current_as_magnetizing_current(operationPoint);
+        auto aux = operationPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+        if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+            throw std::invalid_argument("magnetizing_current_data vector size is not a power of 2");
+        }
+
     }
 
     do {
         currentMagnetizingInductance = modifiedMagnetizingInductance;
 
+
         do {
             currentInitialPermeability = modifiedInitialPermeability;
             totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
             modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
+
 
             if (excitation.get_voltage()) {
                 auto voltage = operationPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
@@ -85,6 +123,11 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
 
                 excitation.set_magnetizing_current(magnetizingCurrent);
                 operationPoint->get_mutable_excitations_per_winding()[0] = excitation;
+            }
+
+            auto aux = operationPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+            if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+                throw std::invalid_argument("magnetizing_current_data vector size is not a power of 2");
             }
 
             auto magneticFlux = OpenMagnetics::MagneticField::get_magnetic_flux(
