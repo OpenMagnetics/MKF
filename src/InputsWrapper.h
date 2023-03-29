@@ -37,6 +37,7 @@ class InputsWrapper : public Inputs {
     void process_waveforms();
     static OperationPoint process_operation_point(OperationPoint operationPoint, double magnetizingInductance);
 
+    static bool is_waveform_sampled(Waveform waveform);
     static Waveform get_sampled_waveform(Waveform waveform, double frequency);
     static Processed get_processed_data(ElectromagneticParameter excitation, Waveform sampledWaveform, bool force);
     static Harmonics get_harmonics_data(Waveform waveform, double frequency);
@@ -57,6 +58,7 @@ class InputsWrapper : public Inputs {
     static ElectromagneticParameter add_offset_to_excitation(ElectromagneticParameter electromagneticParameter,
                                                              double offset,
                                                              double frequency);
+    static void make_waveform_size_power_of_two(OperationPoint* operationPoint);
 
     static InputsWrapper create_quick_operation_point(double frequency,
                                                       double magnetizingInductance,

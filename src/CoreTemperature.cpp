@@ -92,7 +92,6 @@ std::map<std::string, double> CoreTemperatureTdkModel::get_core_temperature(Core
 std::map<std::string, double> CoreTemperatureDixonModel::get_core_temperature(CoreWrapper core,
                                                                               double coreLosses,
                                                                               double ambientTemperature) {
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
     double windingWindowArea = core.get_processed_description().value().get_winding_windows()[0].get_area().value();
     double areaProduct = centralColumnArea * windingWindowArea * 100000000;

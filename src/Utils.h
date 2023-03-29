@@ -22,6 +22,8 @@ template<typename T> T find_data_by_name(std::string name);
 
 template<int decimals> double roundFloat(double value);
 
+bool is_size_power_of_2(std::vector<double> data);
+
 double roundFloat(double value, size_t decimals);
 
 CoreShape flatten_dimensions(CoreShape shape);
