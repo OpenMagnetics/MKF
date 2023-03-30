@@ -466,14 +466,22 @@ Processed InputsWrapper::get_processed_data(ElectromagneticParameter excitation,
         }
         std::transform(labelString.begin(), labelString.end(), labelString.begin(),
                        [](unsigned char c) { return std::toupper(c); });
-        std::optional<WaveformLabel> label = magic_enum::enum_cast<WaveformLabel>(labelString);
-        processed.set_label(label.value());
+        std::transform(labelString.begin(), labelString.end(), labelString.begin(),
+                       [](unsigned char c) { return (c=='-' || c==' ')? '_' : c; });
+        std::optional<WaveformLabel> label;
+        try {
+            label = magic_enum::enum_cast<WaveformLabel>(labelString);
+            processed.set_label(label.value());
 
-        processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
-                             sampledDataToProcess.size());
-        processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
-                                   *min_element(dataToProcess.begin(), dataToProcess.end()));
-        processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
+            processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
+                                 sampledDataToProcess.size());
+            processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
+                                       *min_element(dataToProcess.begin(), dataToProcess.end()));
+            processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
+        }
+        catch (...) {
+            throw std::invalid_argument("Unknown excitation label: " + labelString);
+        }
     }
     else {
         processed = excitation.get_processed().value();
