@@ -277,6 +277,25 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
     }
 
+    TEST(Test_Inductance_High_Flux_40_Web) {
+        // This tests checks that the operation is not crashing
+
+        json coreData = json::parse(R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "High Flux 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": null, "name": "My Core", "processedDescription": null})");
+        json windingData =
+            json::parse(R"({"bobbin": null, "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 24, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})");
+        json inputsData = json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0001279222825940401}, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})");
+
+        OpenMagnetics::CoreWrapper core(coreData);
+        OpenMagnetics::WindingWrapper winding(windingData);
+        OpenMagnetics::InputsWrapper inputs(inputsData);
+        auto operationPoint = inputs.get_operation_point(0);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
+            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        auto inductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+
+        std::cout << inductance << std::endl;
+    }
+
     // TEST(Test_Inductance_Powder_Micrometals_Dc_Offset_Web)
     // {
     //     // This tests checks that the operation is not crashing and producing an inductance greater than 2 uH

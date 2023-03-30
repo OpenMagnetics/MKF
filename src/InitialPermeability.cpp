@@ -29,7 +29,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
 
     auto initial_permeability_data = material_data.get_permeability().get_initial();
 
-    double initial_permeability_value;
+    double initial_permeability_value = 1;
 
     if (std::holds_alternative<PermeabilityPoint>(initial_permeability_data)) {
         auto permeability_point = std::get<PermeabilityPoint>(initial_permeability_data);
@@ -38,22 +38,22 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
         if (permeability_point.get_modifiers()) {
             MagneticsPermeabilityMethodData modifiers = (*permeability_point.get_modifiers())["default"];
             if ((*modifiers.get_method()) == "Magnetics") {
-                if (temperature) {
-                    auto temperature_factor = (*modifiers.get_temperature_factor());
+                auto temperature_factor = modifiers.get_temperature_factor();
+                if (temperature && temperature_factor) {
                     double permeability_variation_due_to_temperature =
-                        temperature_factor.get_a() + temperature_factor.get_b() * (*temperature) +
-                        temperature_factor.get_c() * pow(*temperature, 2) +
-                        temperature_factor.get_d() * pow(*temperature, 3) +
-                        temperature_factor.get_e() * pow(*temperature, 4);
+                        temperature_factor.value().get_a() + temperature_factor.value().get_b() * (*temperature) +
+                        temperature_factor.value().get_c() * pow(*temperature, 2) +
+                        temperature_factor.value().get_d() * pow(*temperature, 3) +
+                        temperature_factor.value().get_e() * pow(*temperature, 4);
                     initial_permeability_value *= (1 + permeability_variation_due_to_temperature);
                 }
 
-                if (frequency) {
-                    auto frequency_factor = (*modifiers.get_frequency_factor());
+                auto frequency_factor = modifiers.get_frequency_factor();
+                if (frequency && frequency_factor) {
                     double permeability_variation_due_to_frequency =
-                        frequency_factor.get_a() + frequency_factor.get_b() * (*frequency) +
-                        frequency_factor.get_c() * pow(*frequency, 2) + frequency_factor.get_d() * pow(*frequency, 3) +
-                        frequency_factor.get_e() * pow(*frequency, 4);
+                        frequency_factor.value().get_a() + frequency_factor.value().get_b() * (*frequency) +
+                        frequency_factor.value().get_c() * pow(*frequency, 2) + frequency_factor.value().get_d() * pow(*frequency, 3) +
+                        frequency_factor.value().get_e() * pow(*frequency, 4);
 
                     initial_permeability_value *= (1 + permeability_variation_due_to_frequency);
                 }
