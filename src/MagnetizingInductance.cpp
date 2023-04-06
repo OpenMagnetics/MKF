@@ -105,7 +105,6 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
             totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
             modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
 
-
             if (excitation.get_voltage()) {
                 auto voltage = operationPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
                 auto sampledVoltageWaveform =

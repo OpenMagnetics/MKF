@@ -181,6 +181,9 @@ json get_core_losses(json coreData,
     do {
         temperature = temperatureAfterLosses;
 
+        std::cout << "core.get_functional_description().get_number_stacks()" << std::endl;
+        std::cout << core.get_functional_description().get_number_stacks().value() << std::endl;
+
         excitation = operationPoint.get_excitations_per_winding()[0];
         operationPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 

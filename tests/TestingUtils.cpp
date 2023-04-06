@@ -13,9 +13,17 @@ OpenMagnetics::CoreWrapper get_core(std::string shapeName,
                                     std::string materialName) {
     auto coreJson = json();
 
+    std::string coreType;
+    if (shapeName[0] == 'T') {
+        coreType = "toroidal";
+    }
+    else {
+        coreType = "two-piece set";
+    }
+
     coreJson["functionalDescription"] = json();
     coreJson["functionalDescription"]["name"] = "GapReluctanceTest";
-    coreJson["functionalDescription"]["type"] = "two-piece set";
+    coreJson["functionalDescription"]["type"] = coreType;
     coreJson["functionalDescription"]["material"] = materialName;
     coreJson["functionalDescription"]["shape"] = shapeName;
     coreJson["functionalDescription"]["gapping"] = basicGapping;
