@@ -2385,6 +2385,32 @@ SUITE(CoreLossesFromWeb) {
 
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
     }
+
+    TEST(Crash_Toroids) {
+        auto models = json::parse(R"({"coreLosses": "IGSE", "coreTemperature": "MANIKTALA", "gapReluctance": "ZHANG"})");
+        auto core = OpenMagnetics::CoreWrapper(json::parse(R"({"functionalDescription": {"gapping": [], "material": "3C97", "shape": {"family": "t", "type": "standard", "aliases": [], "dimensions": {"A": 0.0034300000000000003, "B": 0.0017800000000000001, "C": 0.00203}, "familySubtype": null, "magneticCircuit": "closed", "name": "T 3.43/1.78/2.03"}, "type": "toroidal", "numberStacks": 1}, "geometricalDescription": null, "manufacturerInfo": null, "name": "My Core", "processedDescription": null})"));
+        auto winding = OpenMagnetics::WindingWrapper(
+            json::parse(R"({"bobbin": null, "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 26, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+        auto inputs = OpenMagnetics::InputsWrapper(
+            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0009443757859214556}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operationPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})"));
+
+        auto operationPoint = inputs.get_operation_point(0);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+
+        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity =
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+
+        auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(
+            magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>("IGSE").value());
+        auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+
+        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
+    }
     TEST(Test_Methods) {
         std::vector<std::string> methods = OpenMagnetics::CoreLossesModel::get_methods("3C97");
         OpenMagneticsTesting::print("methods");

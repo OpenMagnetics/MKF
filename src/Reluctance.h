@@ -140,6 +140,7 @@ class ReluctanceModel {
     }
     double get_core_reluctance(CoreWrapper core, OperationPoint* operationPoint = nullptr) {
         auto coreReluctance = get_ungapped_core_reluctance(core, operationPoint);
+
         if (std::isnan(coreReluctance)) {
             throw std::runtime_error("Core Reluctance must be a number, not NaN");
         }
@@ -152,6 +153,7 @@ class ReluctanceModel {
 
     double get_core_reluctance(CoreWrapper core, double initialPermeability) {
         auto coreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
+
         double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
 
         return calculatedReluctance;
@@ -162,6 +164,9 @@ class ReluctanceModel {
         double calculatedCentralReluctance = 0;
         double calculatedLateralReluctance = 0;
         auto gapping = core.get_functional_description().get_gapping();
+        if (gapping.size() == 0) {
+            return 0;
+        }
         for (const auto& gap : gapping) {
             auto gap_reluctance = get_gap_reluctance(gap);
             auto gapColumn = core.find_closest_column_by_coordinates(*gap.get_coordinates());

@@ -1970,8 +1970,15 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
     switch (get_functional_description().get_type()) {
         case OpenMagnetics::CoreType::TOROIDAL:
             jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::TOROIDAL;
+            for (auto i = 0; i < numberStacks; ++i) {
+                std::vector<double> coordinates = {0, 0, currentDepth};
+                jsonGeometricalDescription["coordinates"] = coordinates;
+                jsonGeometricalDescription["rotation"] = {std::numbers::pi / 2, std::numbers::pi / 2, 0};
 
-            // TODO add for toroids
+                geometricalDescription.push_back(CoreGeometricalDescriptionElement(jsonGeometricalDescription));
+
+                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
+            }
             break;
         case OpenMagnetics::CoreType::CLOSED_SHAPE:
             jsonGeometricalDescription["type"] = OpenMagnetics::CoreGeometricalDescriptionElementType::CLOSED;
@@ -2478,37 +2485,44 @@ void CoreWrapper::process_gap() {
     json jsonGap;
     json jsonGapping = json::array();
     auto gapping = get_functional_description().get_gapping();
+    auto family = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
     auto processedDescription = get_processed_description().value();
     auto columns = processedDescription.get_columns();
 
-    if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_missaligned()) {
-        return distribute_and_process_gap();
+    if (family == CoreShapeFamily::T && gapping.size() > 0 ) {
+        throw std::runtime_error("Toroids cannot be gapped");
     }
 
-    std::vector<int> numberGapsPerColumn;
-    for (size_t i = 0; i < columns.size(); ++i) {
-        numberGapsPerColumn.push_back(0);
-    }
+    if (family != CoreShapeFamily::T) {
+        if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_missaligned()) {
+            return distribute_and_process_gap();
+        }
 
-    for (size_t i = 0; i < gapping.size(); ++i) {
-        auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
-        numberGapsPerColumn[columnIndex]++;
-    }
+        std::vector<int> numberGapsPerColumn;
+        for (size_t i = 0; i < columns.size(); ++i) {
+            numberGapsPerColumn.push_back(0);
+        }
 
-    for (size_t i = 0; i < gapping.size(); ++i) {
-        auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
+            numberGapsPerColumn[columnIndex]++;
+        }
 
-        jsonGap["type"] = gapping[i].get_type();
-        jsonGap["length"] = gapping[i].get_length();
-        jsonGap["coordinates"] = gapping[i].get_coordinates();
-        jsonGap["shape"] = columns[columnIndex].get_shape();
-        jsonGap["distanceClosestNormalSurface"] =
-            roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) -
-                          gapping[i].get_length() / 2);
-        jsonGap["distanceClosestParallelSurface"] = processedDescription.get_winding_windows()[0].get_width();
-        jsonGap["area"] = columns[columnIndex].get_area();
-        jsonGap["sectionDimensions"] = {columns[columnIndex].get_width(), columns[columnIndex].get_depth()};
-        jsonGapping.push_back(jsonGap);
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
+
+            jsonGap["type"] = gapping[i].get_type();
+            jsonGap["length"] = gapping[i].get_length();
+            jsonGap["coordinates"] = gapping[i].get_coordinates();
+            jsonGap["shape"] = columns[columnIndex].get_shape();
+            jsonGap["distanceClosestNormalSurface"] =
+                roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) -
+                              gapping[i].get_length() / 2);
+            jsonGap["distanceClosestParallelSurface"] = processedDescription.get_winding_windows()[0].get_width();
+            jsonGap["area"] = columns[columnIndex].get_area();
+            jsonGap["sectionDimensions"] = {columns[columnIndex].get_width(), columns[columnIndex].get_depth()};
+            jsonGapping.push_back(jsonGap);
+        }
     }
 
     get_mutable_functional_description().set_gapping(jsonGapping);

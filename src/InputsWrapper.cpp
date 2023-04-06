@@ -457,6 +457,12 @@ Processed InputsWrapper::get_processed_data(ElectromagneticParameter excitation,
         auto waveform = excitation.get_waveform().value();
         dataToProcess = waveform.get_data();
 
+        for (size_t i = 0; i < dataToProcess.size(); ++i) {
+            if (isnan(dataToProcess[i])) {
+                throw std::invalid_argument("Waveform data contains NaN");
+            }
+        }
+
         std::string labelString;
         if (waveform.get_ancillary_label()) {
             labelString = waveform.get_ancillary_label().value();

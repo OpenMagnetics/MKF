@@ -1592,6 +1592,22 @@ SUITE(CoreGeometricalDescription) {
         CHECK(geometrical_description[5].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER);
     }
 
+    TEST(T_40_24_16) {
+        auto coreFilePath = masPath + "samples/magnetic/core/core_T_40_24_16_N97.json";
+        std::ifstream json_file(coreFilePath);
+
+        auto coreJson = json::parse(json_file);
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto geometrical_description = *(core.get_geometrical_description());
+
+        CHECK_EQUAL(*(core.get_name()), "core_T_40_24_16_N97");
+        CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
+                  .get_mutable_volumetric_losses()["default"]
+                  .size() > 0);
+        CHECK_EQUAL(geometrical_description.size(), 1u);
+    }
+
     TEST(Web_0) {
         auto coreJson = json::parse(
             "{\"name\": \"Custom_0\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000114, \"coordinates\": "

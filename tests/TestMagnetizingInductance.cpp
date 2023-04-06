@@ -20,7 +20,7 @@ SUITE(MagnetizingInductance) {
                                  double desiredMagnetizingInductance, std::vector<OpenMagnetics::CoreGap> gapping,
                                  std::string coreShape, std::string coreMaterial, OpenMagnetics::CoreWrapper& core,
                                  OpenMagnetics::WindingWrapper& winding, OpenMagnetics::InputsWrapper& inputs,
-                                 double peakToPeak = 20) {
+                                 double peakToPeak = 20, int numberStacks = 1) {
         double dutyCycle = 0.5;
 
         inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(
@@ -41,7 +41,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::WindingWrapper windingAux(windingJson);
         winding = windingAux;
 
-        core = OpenMagneticsTesting::get_core(coreShape, gapping, 1, coreMaterial);
+        core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
     TEST(Test_Inductance_Ferrite_Grinded) {
@@ -291,69 +291,9 @@ SUITE(MagnetizingInductance) {
         auto operationPoint = inputs.get_operation_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        auto inductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
 
-        std::cout << inductance << std::endl;
     }
-
-    // TEST(Test_Inductance_Powder_Micrometals_Dc_Offset_Web)
-    // {
-    //     // This tests checks that the operation is not crashing and producing an inductance greater than 2 uH
-
-    //     json coreData = json::parse("{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": null,
-    //     \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null,
-    //     \"length\": 0.001, \"sectionDimensions\": null, \"shape\": null, \"type\": \"subtractive\"}, {\"area\": null,
-    //     \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null,
-    //     \"length\": 5e-06, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}, {\"area\": null,
-    //     \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null,
-    //     \"length\": 5e-06, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}], \"material\":
-    //     \"-40\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [\"ETD 54\"], \"dimensions\":
-    //     {\"A\": 0.0545, \"B\": 0.0276, \"C\": 0.0189, \"D\": 0.0202, \"E\": 0.0412, \"F\": 0.0189, \"G\": 0.0, \"H\":
-    //     0.0}, \"family\": \"etd\", \"familySubtype\": null, \"magneticCircuit\": \"open\", \"name\": \"ETD
-    //     54/28/19\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, \"geometricalDescription\":
-    //     [{\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\":
-    //     [{\"coordinates\": [0.0, 7.5e-05, 0.0], \"length\": 0.00015}, {\"coordinates\": [0.0, 0.0073, 0.0],
-    //     \"length\": 0.0003}], \"material\": \"3C97\", \"rotation\": [3.141592653589793, 3.141592653589793, 0.0],
-    //     \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146,
-    //     \"E\": 0.030100000000000002, \"F\": 0.0125}, \"family\": \"etd\", \"familySubtype\": \"1\",
-    //     \"magneticCircuit\": null, \"name\": \"ETD 39/20/13\", \"type\": \"standard\"}, \"type\": \"half set\"},
-    //     {\"coordinates\": [0.0, 0.0, 0.0], \"dimensions\": null, \"insulationMaterial\": null, \"machining\":
-    //     [{\"coordinates\": [0.0, -0.0073, 0.0], \"length\": 0.0003}, {\"coordinates\": [0.0, -7.5e-05, 0.0],
-    //     \"length\": 0.00015}], \"material\": \"3C97\", \"rotation\": [0.0, 0.0, 0.0], \"shape\": {\"aliases\": [],
-    //     \"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146, \"E\": 0.030100000000000002,
-    //     \"F\": 0.0125}, \"family\": \"etd\", \"familySubtype\": \"1\", \"magneticCircuit\": null, \"name\": \"ETD
-    //     39/20/13\", \"type\": \"standard\"}, \"type\": \"half set\"}], \"processedDescription\": {\"columns\":
-    //     [{\"area\": 0.000123, \"coordinates\": [0.0, 0.0, 0.0], \"depth\": 0.0125, \"height\": 0.0292, \"shape\":
-    //     \"round\", \"type\": \"central\", \"width\": 0.0125}, {\"area\": 6.2e-05, \"coordinates\": [0.017301, 0.0,
-    //     0.0], \"depth\": 0.0125, \"height\": 0.0292, \"shape\": \"irregular\", \"type\": \"lateral\", \"width\":
-    //     0.004501}, {\"area\": 6.2e-05, \"coordinates\": [-0.017301, 0.0, 0.0], \"depth\": 0.0125, \"height\": 0.0292,
-    //     \"shape\": \"irregular\", \"type\": \"lateral\", \"width\": 0.004501}], \"depth\": 0.0125,
-    //     \"effectiveParameters\": {\"effectiveArea\": 0.0001249790616277593, \"effectiveLength\": 0.09385923258669904,
-    //     \"effectiveVolume\": 1.1730438813787252e-05, \"minimumArea\": 0.0001227184630308513}, \"height\": 0.0396,
-    //     \"width\": 0.0391, \"windingWindows\": [{\"angle\": null, \"area\": 0.00025696000000000003, \"coordinates\":
-    //     [0.00625, 0.0], \"height\": 0.0292, \"radialHeight\": null, \"width\": 0.0088}]}}"); json windingData =
-    //     json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\",
-    //     \"numberParallels\": 1, \"numberTurns\": 23, \"wire\": \"Dummy\"}], \"layersDescription\": null,
-    //     \"sectionsDescription\": null, \"turnsDescription\": null}"); json operationPointData =
-    //     json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 25.0, \"cooling\":
-    //     null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null,
-    //     \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\":
-    //     [0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null,
-    //     \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", \"voltage\":
-    //     {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [7.5, 7.5,
-    //     -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\":
-    //     [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}");
-
-    //     OpenMagnetics::CoreWrapper core(coreData);
-    //     OpenMagnetics::WindingWrapper winding(windingData);
-    //     OpenMagnetics::OperationPoint operationPoint(operationPointData);
-    //     OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::map<std::string,
-    //     std::string>({{"gapReluctance", "ZHANG"}})); auto ea =
-    //     magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
-
-    //     CHECK(ea > 2e-6);
-
-    // }
 
     TEST(Test_Inductance_Ferrite_Spacer) {
         double dcCurrent = 0;
@@ -923,4 +863,66 @@ SUITE(MagnetizingInductance) {
                         max_error * voltagePeakToPeak);
         }
     }
+
+    TEST(Test_Magnetizing_Inductance_Toroid) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 42;
+        double frequency = 20000;
+        std::string coreShape = "T 58/41/18";
+        std::string coreMaterial = "3C95";
+        std::vector<OpenMagnetics::CoreGap> gapping = {};
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::WindingWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
+            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        double expectedValue = 6.6e-3;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance =
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+    }
+    TEST(Test_Magnetizing_Inductance_Toroid_Stacks) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 42;
+        double frequency = 20000;
+        std::string coreShape = "T 58/41/18";
+        std::string coreMaterial = "3C95";
+        std::vector<OpenMagnetics::CoreGap> gapping = {};
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::WindingWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
+            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        double expectedValue = 6.6e-3;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto operationPoint = inputs.get_operation_point(0);
+        double magnetizingInductance =
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+
+        core = OpenMagneticsTesting::get_core(coreShape, gapping, 2, coreMaterial);
+        double magnetizingInductance2Stacks =
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+
+        expectedValue = magnetizingInductance * 2;
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance2Stacks, max_error * expectedValue);
+    }
+
 }
