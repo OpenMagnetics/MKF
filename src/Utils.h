@@ -20,6 +20,12 @@ namespace OpenMagnetics {
 
 template<typename T> T find_data_by_name(std::string name);
 
+template<typename T> void load_databases(bool withAliases=true);
+
+std::vector<std::string> get_material_names();
+
+std::vector<std::string> get_shape_names();
+
 template<int decimals> double roundFloat(double value);
 
 bool is_size_power_of_2(std::vector<double> data);

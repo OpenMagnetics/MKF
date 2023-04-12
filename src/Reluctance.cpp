@@ -45,6 +45,12 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -81,6 +87,12 @@ std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(Co
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -112,6 +124,12 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -142,6 +160,12 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -165,6 +189,12 @@ std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreG
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -202,6 +232,12 @@ std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreG
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -219,6 +255,12 @@ std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
@@ -246,6 +288,12 @@ std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(Co
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringing_factor);
     result["reluctance"] = reluctance;
+    if (reluctance > 0) {
+        result["permeance"] = 1 / reluctance;
+    }
+    else {
+        result["permeance"] = std::numeric_limits<double>::infinity();
+    }
     result["fringing_factor"] = fringing_factor;
 
     return result;
