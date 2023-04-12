@@ -38,6 +38,13 @@ json get_available_shape_families(){
     return magic_enum::enum_names<OpenMagnetics::CoreShapeFamily>();
 }
 
+json get_available_core_materials(){
+    return OpenMagnetics::get_material_names();
+}
+json get_available_core_shapes(){
+    return OpenMagnetics::get_shape_names();
+}
+
 py::dict get_constants(){
     py::dict dict;
     auto constants = OpenMagnetics::Constants();
@@ -241,6 +248,8 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_constants", &get_constants, "Returns the constants");
     m.def("get_available_shape_families", &get_available_shape_families, "Returns the available shape families");
     m.def("get_material_data", &get_material_data, "Returns the all data about a given core material");
+    m.def("get_available_core_materials", &get_available_core_materials, "Returns the names of all the core materials");
+    m.def("get_available_core_shapes", &get_available_core_shapes, "Returns the names of all the core shapes");
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");

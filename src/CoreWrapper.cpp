@@ -24,7 +24,7 @@ std::map<std::string, json> coreMaterialDatabase;
 std::map<std::string, json> coreShapeDatabase;
 auto constants = Constants();
 
-template<typename T> T find_data_by_name(std::string name) {
+template<typename T> void load_databases(bool withAliases) {
     std::string database;
     if (std::is_same<T, OpenMagnetics::CoreShape>::value)
         database = "shapes";
@@ -33,7 +33,7 @@ template<typename T> T find_data_by_name(std::string name) {
     else
         throw "Unknown type";
 
-    if (coreMaterialDatabase.empty() && database == "materials") {
+    {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
         auto dataFilePath = masPath + "data/materials.ndjson";
@@ -44,9 +44,8 @@ template<typename T> T find_data_by_name(std::string name) {
             coreMaterialDatabase[jf["name"]] = jf;
         }
     }
-    else {}
 
-    if (coreShapeDatabase.empty() && database == "shapes") {
+    {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
         auto dataFilePath = masPath + "data/shapes.ndjson";
@@ -55,10 +54,58 @@ template<typename T> T find_data_by_name(std::string name) {
         while (std::getline(ndjsonFile, myline)) {
             json jf = json::parse(myline);
             coreShapeDatabase[jf["name"]] = jf;
-            for (auto& alias : jf["aliases"]) {
-                coreShapeDatabase[alias] = jf;
+            if (withAliases) {
+                for (auto& alias : jf["aliases"]) {
+                    coreShapeDatabase[alias] = jf;
+                }
             }
         }
+    }
+}
+
+std::vector<std::string> get_material_names() {
+    if (coreMaterialDatabase.empty()) {
+        load_databases<OpenMagnetics::CoreMaterial>();
+    }
+
+    std::vector<std::string> materialNames;
+
+    for (auto& datum : coreMaterialDatabase) {
+        materialNames.push_back(datum.first);
+    }
+
+    return materialNames;
+}
+
+std::vector<std::string> get_shape_names() {
+    if (coreShapeDatabase.empty()) {
+        load_databases<OpenMagnetics::CoreShape>(true);
+    }
+
+    std::vector<std::string> shapeNames;
+
+    for (auto& datum : coreShapeDatabase) {
+        shapeNames.push_back(datum.first);
+    }
+
+    return shapeNames;
+}
+
+template<typename T> T find_data_by_name(std::string name) {
+    std::string database;
+    if (std::is_same<T, OpenMagnetics::CoreShape>::value)
+        database = "shapes";
+    else if (std::is_same<T, OpenMagnetics::CoreMaterial>::value)
+        database = "materials";
+    else
+        throw "Unknown type";
+
+    if (coreMaterialDatabase.empty() && database == "materials") {
+        load_databases<T>();
+    }
+
+    if (coreShapeDatabase.empty() && database == "shapes") {
+        load_databases<T>();
     }
 
     json jsonData;
