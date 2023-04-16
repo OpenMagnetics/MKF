@@ -458,75 +458,75 @@ import PyMKF
 #                                            inputs,
 #                                            models)
 
-models = {'coreLosses': 'IGSE', 'coreTemperature': 'MANIKTALA', 'gapReluctance': 'ZHANG'}
-core = {'functionalDescription': {'gapping': [],
-                           'material': '3C97',
-                           'numberStacks': 1,
-                           'shape': {'aliases': [],
-                                     'dimensions': {'A': 0.0034300000000000003,
-                                                    'B': 0.0017800000000000001,
-                                                    'C': 0.00203},
-                                     'family': 't',
-                                     'familySubtype': None,
-                                     'magneticCircuit': 'closed',
-                                     'name': 'T 3.43/1.78/2.03',
-                                     'type': 'standard'},
-                           'type': 'toroidal'},
- 'geometricalDescription': None,
- 'manufacturerInfo': None,
- 'name': 'My Core',
- 'processedDescription': None}
-winding = {'bobbin': None,
- 'functionalDescription': [{'isolationSide': 'primary',
-                            'name': 'Primary',
-                            'numberParallels': 1,
-                            'numberTurns': 25,
-                            'wire': 'Dummy'}],
- 'layersDescription': None,
- 'sectionsDescription': None,
- 'turnsDescription': None}
-inputs = {'designRequirements': {'altitude': None,
-                        'cti': None,
-                        'insulationType': None,
-                        'leakageInductance': None,
-                        'magnetizingInductance': {'excludeMaximum': None,
-                                                  'excludeMinimum': None,
-                                                  'maximum': None,
-                                                  'minimum': None,
-                                                  'nominal': 0.0005801190536338557},
-                        'name': None,
-                        'operationTemperature': None,
-                        'overvoltageCategory': None,
-                        'pollutionDegree': None,
-                        'turnsRatios': []},
- 'operationPoints': [{'conditions': {'ambientRelativeHumidity': None,
-                                     'ambientTemperature': 25.0,
-                                     'cooling': None,
-                                     'name': None},
-                      'excitationsPerWinding': [{'current': {'harmonics': None,
-                                                             'processed': None,
-                                                             'waveform': {'ancillaryLabel': None,
-                                                                          'data': [-.1,
-                                                                                   .1,
-                                                                                   -.1],
-                                                                          'numberPeriods': None,
-                                                                          'time': [0.0,
-                                                                                   2.5e-06,
-                                                                                   1e-05]}},
-                                                 'frequency': 100000.0,
-                                                 'magneticFieldStrength': None,
-                                                 'magneticFluxDensity': None,
-                                                 'magnetizingCurrent': None,
-                                                 'name': 'My Operation Point',
-                                                 'voltage': None}],
-                      'name': None}]}
-core_losses_result = PyMKF.get_core_losses(core,
-                                           winding,
-                                           inputs,
-                                           models)
+# models = {'coreLosses': 'IGSE', 'coreTemperature': 'MANIKTALA', 'gapReluctance': 'ZHANG'}
+# core = {'functionalDescription': {'gapping': [],
+#                            'material': '3C97',
+#                            'numberStacks': 1,
+#                            'shape': {'aliases': [],
+#                                      'dimensions': {'A': 0.0034300000000000003,
+#                                                     'B': 0.0017800000000000001,
+#                                                     'C': 0.00203},
+#                                      'family': 't',
+#                                      'familySubtype': None,
+#                                      'magneticCircuit': 'closed',
+#                                      'name': 'T 3.43/1.78/2.03',
+#                                      'type': 'standard'},
+#                            'type': 'toroidal'},
+#  'geometricalDescription': None,
+#  'manufacturerInfo': None,
+#  'name': 'My Core',
+#  'processedDescription': None}
+# winding = {'bobbin': None,
+#  'functionalDescription': [{'isolationSide': 'primary',
+#                             'name': 'Primary',
+#                             'numberParallels': 1,
+#                             'numberTurns': 25,
+#                             'wire': 'Dummy'}],
+#  'layersDescription': None,
+#  'sectionsDescription': None,
+#  'turnsDescription': None}
+# inputs = {'designRequirements': {'altitude': None,
+#                         'cti': None,
+#                         'insulationType': None,
+#                         'leakageInductance': None,
+#                         'magnetizingInductance': {'excludeMaximum': None,
+#                                                   'excludeMinimum': None,
+#                                                   'maximum': None,
+#                                                   'minimum': None,
+#                                                   'nominal': 0.0005801190536338557},
+#                         'name': None,
+#                         'operationTemperature': None,
+#                         'overvoltageCategory': None,
+#                         'pollutionDegree': None,
+#                         'turnsRatios': []},
+#  'operationPoints': [{'conditions': {'ambientRelativeHumidity': None,
+#                                      'ambientTemperature': 25.0,
+#                                      'cooling': None,
+#                                      'name': None},
+#                       'excitationsPerWinding': [{'current': {'harmonics': None,
+#                                                              'processed': None,
+#                                                              'waveform': {'ancillaryLabel': None,
+#                                                                           'data': [-.1,
+#                                                                                    .1,
+#                                                                                    -.1],
+#                                                                           'numberPeriods': None,
+#                                                                           'time': [0.0,
+#                                                                                    2.5e-06,
+#                                                                                    1e-05]}},
+#                                                  'frequency': 100000.0,
+#                                                  'magneticFieldStrength': None,
+#                                                  'magneticFluxDensity': None,
+#                                                  'magnetizingCurrent': None,
+#                                                  'name': 'My Operation Point',
+#                                                  'voltage': None}],
+#                       'name': None}]}
+# core_losses_result = PyMKF.get_core_losses(core,
+#                                            winding,
+#                                            inputs,
+#                                            models)
 
-print(core_losses_result)
-print(core_losses_result['totalLosses'])
+# print(core_losses_result)
+# print(core_losses_result['totalLosses'])
 # print(core_losses_result.keys())
 # print(core_losses_result['totalLosses'])
 # print(core_losses_result['magneticFluxDensityAcPeak'])
@@ -860,3 +860,9 @@ print(core_losses_result['totalLosses'])
 #                                                                 models)
 
 # print(inductance)
+
+core = {"name":"My Core","functionalDescription":{"coating":None,"gapping":[{"area":0.000057,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0085,0.0085],"shape":"round","type":"residual"},{"area":0.000028,"coordinates":[0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"},{"area":0.000028,"coordinates":[-0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"}],"material":"3C97","numberStacks":1,"shape":{"aliases":[],"dimensions":{"A":0.0576,"B":0.028399999999999998,"C":0.0155,"D":0.016,"H":0.0159,"G":0},"family":"ur","familySubtype":"2","name":"UR 57/28/16","type":"standard"},"type":"two-piece set"}}
+core_datum = PyMKF.get_core_data(core, False)
+
+
+print(core_datum)

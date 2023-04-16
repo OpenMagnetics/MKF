@@ -686,7 +686,8 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
                                                           WaveformLabel waveShape,
                                                           double peakToPeak,
                                                           double dutyCycle,
-                                                          double dcCurrent) {
+                                                          double dcCurrent,
+                                                          std::vector<double> turnsRatios) {
     json inputsJson;
 
     inputsJson["operationPoints"] = json::array();
@@ -708,7 +709,7 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
 
     inputsJson["designRequirements"] = json();
     inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
-    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+    inputsJson["designRequirements"]["turnsRatios"] = turnsRatios;
 
     InputsWrapper inputs(inputsJson);
 
