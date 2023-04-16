@@ -66,7 +66,8 @@ class InputsWrapper : public Inputs {
                                                       WaveformLabel waveShape,
                                                       double peakToPeak,
                                                       double dutyCycle,
-                                                      double dcCurrent);
+                                                      double dcCurrent,
+                                                      std::vector<double> turnsRatios = {});
 
     void set_operation_point_by_index(const OperationPoint& value, size_t index) {
         get_mutable_operation_points()[index] = value;

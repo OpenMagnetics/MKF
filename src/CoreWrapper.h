@@ -119,14 +119,16 @@ class CoreWrapper : public MagneticCore {
     bool _includeMaterialData = false;
 
   public:
-    CoreWrapper(const json& j, bool includeMaterialData = false) {
+    CoreWrapper(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true) {
         _includeMaterialData = includeMaterialData;
         from_json(j, *this);
-        process_data();
+        
+        if (includeProcessedDescription) {
+            process_data();
+            process_gap();
+        }
 
-        process_gap();
-
-        if (!get_geometrical_description()) {
+        if (!get_geometrical_description() && includeGeometricalDescription) {
             auto geometricalDescription = create_geometrical_description();
 
             set_geometrical_description(geometricalDescription);

@@ -2385,6 +2385,14 @@ void CoreWrapper::distribute_and_process_gap() {
     //     // }
     // }
 
+    if (numberNonResidualGaps == 0 && numberResidualGaps > numberColumns) {
+        gapping = std::vector<CoreGap>(gapping.begin(), gapping.end() - (numberResidualGaps - numberColumns));
+        get_mutable_functional_description().set_gapping(gapping);
+        residualGaps = find_gaps_by_type(GapType::RESIDUAL);
+        numberResidualGaps = residualGaps.size();
+        numberGaps = numberNonResidualGaps + numberResidualGaps;
+    }
+
     if (numberNonResidualGaps + numberResidualGaps == 0) {
         for (size_t i = 0; i < columns.size(); ++i) {
             json jsonGap;
@@ -2580,6 +2588,7 @@ void CoreWrapper::process_data() {
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
         auto shape_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreShape>(
             std::get<std::string>(get_functional_description().get_shape()));
+        shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
         get_mutable_functional_description().set_shape(shape_data);
     }
 
