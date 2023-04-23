@@ -32,7 +32,7 @@ void set_current_as_magnetizing_current(OperationPoint* operationPoint) {
 
     currentExcitation.set_harmonics(
         InputsWrapper::get_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-    currentExcitation.set_processed(InputsWrapper::get_processed_data(currentExcitation, sampledCurrentWaveform, true));
+    currentExcitation.set_processed(InputsWrapper::get_processed_data(currentExcitation, sampledCurrentWaveform, true, true));
     excitation.set_current(currentExcitation);
     excitation.set_magnetizing_current(excitation.get_current().value());
     operationPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -118,7 +118,7 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
                 magnetizingCurrent.set_harmonics(
                     InputsWrapper::get_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
                 magnetizingCurrent.set_processed(
-                    InputsWrapper::get_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, true));
+                    InputsWrapper::get_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, true, false));
 
                 excitation.set_magnetizing_current(magnetizingCurrent);
                 operationPoint->get_mutable_excitations_per_winding()[0] = excitation;

@@ -20,6 +20,15 @@
 
 namespace OpenMagnetics {
 
+std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(std::map<std::string, std::string> models) {
+    return factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(models["coreLosses"]).value());
+}
+
+std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(json models) {
+    std::string model = models["coreLosses"];
+    return factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(model).value());
+}
+
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels modelName) {
     if (modelName == CoreLossesModels::STEINMETZ) {
         std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesSteinmetzModel);
@@ -49,10 +58,14 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
         std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesRoshenModel);
         return coreLossesModel;
     }
+    else if (modelName == CoreLossesModels::PROPRIETARY) {
+        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesProprietaryModel);
+        return coreLossesModel;
+    }
 
     else
         throw std::runtime_error("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, BARG, ALBACH, "
-                                 "ROSHEN, OUYANG, NSE, MSE}");
+                                 "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY}");
 }
 
 CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string method) {
@@ -78,7 +91,7 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operations)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(material));
+        materialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
     }
     else {
         materialData = std::get<OpenMagnetics::CoreMaterial>(material);
@@ -441,7 +454,8 @@ std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper c
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
-    double dutyCycle = magneticFluxDensity.get_processed().value().get_duty_cycle().value();
+    double dutyCycle = 0.5;
+    // double dutyCycle = magneticFluxDensity.get_processed().value().get_duty_cycle().value();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
@@ -505,7 +519,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreM
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operations)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(material));
+        materialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
     }
     else {
         materialData = std::get<OpenMagnetics::CoreMaterial>(material);
@@ -513,10 +527,10 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreM
 
     auto roshenData = get_method_data(materialData, "roshen");
 
-    auto coerciveForceData = roshenData.get_coercive_force().value();
-    auto remanenceData = roshenData.get_remanence().value();
+    auto coerciveForceData = materialData.get_coercive_force().value();
+    auto remanenceData = materialData.get_remanence().value();
     auto saturationData = materialData.get_saturation();
-    auto resistivityData = roshenData.get_resistivity().value();
+    auto resistivityData = materialData.get_resistivity();
 
     roshenParameters["coerciveForce"] =
         coerciveForceData[0].get_magnetic_field() -
@@ -560,6 +574,9 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreM
                              roshenParameters["resistivityFrequencyCoefficient"] * frequency;
         roshenParameters["resistivity"] = resistivity;
     }
+    else if (resistivityData.size() < 2) {
+        roshenParameters["resistivity"] = resistivityData[0].get_value();
+    }
     else {
         size_t n = resistivityData.size();
         _1D::CubicSplineInterpolator<double> interp;
@@ -574,10 +591,6 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreM
         double resistivity = interp(temperature);
         roshenParameters["resistivity"] = resistivity;
     }
-
-    // for (auto& param: roshenParameters){
-
-    // }
 
     return roshenParameters;
 }
@@ -804,6 +817,42 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperationPo
     double excessEddyCurrentLossesDensity = sqrt(alphaTimesN0 / resistivity) * frequency * volumetricLossesIntegration;
 
     return excessEddyCurrentLossesDensity;
+}
+
+
+
+std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
+                                                                   OperationPointExcitation excitation,
+                                                                   double temperature) {
+
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    double frequency = excitation.get_frequency();
+    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+    std::map<std::string, double> result;
+    auto materialData = core.get_material();
+    double volumetricLosses = -1;
+
+    if (materialData.get_manufacturer_info().get_name() == "Micrometals") {
+        auto micrometalsData = get_method_data(materialData, "micrometals");
+        double a = micrometalsData.get_a().value();
+        double b = micrometalsData.get_b().value();
+        double c = micrometalsData.get_c().value();
+        double d = micrometalsData.get_d().value();
+        volumetricLosses = frequency / (a / pow(magneticFluxDensityAcPeak, 3) + b / pow(magneticFluxDensityAcPeak, 2.3) + c / pow(magneticFluxDensityAcPeak, 1.65)) + d * pow(magneticFluxDensityAcPeak, 2) * pow(frequency, 2);
+    }
+
+    if (materialData.get_manufacturer_info().get_name() == "Magnetics") {
+        auto micrometalsData = get_method_data(materialData, "magnetics");
+        double a = micrometalsData.get_a().value();
+        double b = micrometalsData.get_b().value();
+        double c = micrometalsData.get_c().value();
+        volumetricLosses = a * pow(magneticFluxDensityAcPeak, b) * pow(frequency, c);
+    }
+    result["totalLosses"] = volumetricLosses * effectiveVolume;
+    result["totalVolumetricLosses"] = volumetricLosses;
+
+    return result;
 }
 
 } // namespace OpenMagnetics

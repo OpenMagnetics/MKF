@@ -71,7 +71,7 @@ void fft(std::vector<std::complex<double>>& x) {
     }
 }
 
-double tryGetDutyCycle(Waveform waveform, double frequency) {
+double InputsWrapper::tryGetDutyCycle(Waveform waveform, double frequency) {
     if (waveform.get_time()) {
         std::vector<double> data = waveform.get_data();
         std::vector<double> time = waveform.get_time().value();
@@ -321,7 +321,7 @@ ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcita
     auto sampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, excitation.get_frequency());
     voltageElectromagneticParameter.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
     voltageElectromagneticParameter.set_processed(
-        get_processed_data(voltageElectromagneticParameter, sampledWaveform, true));
+        get_processed_data(voltageElectromagneticParameter, sampledWaveform, true, true));
 
     resultWaveform.set_data(derivative);
     return voltageElectromagneticParameter;
@@ -342,7 +342,7 @@ ElectromagneticParameter InputsWrapper::add_offset_to_excitation(Electromagnetic
     electromagneticParameter.set_waveform(waveform);
     auto sampledWaveform = InputsWrapper::get_sampled_waveform(waveform, frequency);
     electromagneticParameter.set_harmonics(get_harmonics_data(sampledWaveform, frequency));
-    electromagneticParameter.set_processed(get_processed_data(electromagneticParameter, sampledWaveform, true));
+    electromagneticParameter.set_processed(get_processed_data(electromagneticParameter, sampledWaveform, true, true));
     return electromagneticParameter;
 }
 
@@ -442,7 +442,8 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
 
 Processed InputsWrapper::get_processed_data(ElectromagneticParameter excitation,
                                             Waveform sampledWaveform,
-                                            bool force = false) {
+                                            bool force = false,
+                                            bool includeAdvancedData = true) {
     auto constants = Constants();
     Processed processed;
     std::vector<double> dataToProcess;
@@ -493,66 +494,63 @@ Processed InputsWrapper::get_processed_data(ElectromagneticParameter excitation,
         processed = excitation.get_processed().value();
     }
 
-    if (!processed.get_duty_cycle()) {
-        auto waveform = excitation.get_waveform().value();
-        double dutyCycle = tryGetDutyCycle(waveform, harmonics.get_frequencies()[1]);
-        processed.set_duty_cycle(dutyCycle);
-    }
-    if (!processed.get_effective_frequency() || force) {
-        double effectiveFrequency = 0;
-        std::vector<double> dividend;
-        std::vector<double> divisor;
+    if (includeAdvancedData) {
+        if (!processed.get_effective_frequency() || force) {
+            double effectiveFrequency = 0;
+            std::vector<double> dividend;
+            std::vector<double> divisor;
 
-        for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
-            double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-            double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-            dividend.push_back(dataSquared * timeSquared);
-            divisor.push_back(dataSquared);
+            for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
+                double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
+                double timeSquared = pow(harmonics.get_frequencies()[i], 2);
+                dividend.push_back(dataSquared * timeSquared);
+                divisor.push_back(dataSquared);
+            }
+            double sumDivisor = std::reduce(divisor.begin(), divisor.end());
+            if (sumDivisor > 0)
+                effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
+
+            processed.set_effective_frequency(effectiveFrequency);
         }
-        double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-        if (sumDivisor > 0)
-            effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
+        if (!processed.get_ac_effective_frequency() || force) {
+            double effectiveFrequency = 0;
+            std::vector<double> dividend;
+            std::vector<double> divisor;
 
-        processed.set_effective_frequency(effectiveFrequency);
-    }
-    if (!processed.get_ac_effective_frequency() || force) {
-        double effectiveFrequency = 0;
-        std::vector<double> dividend;
-        std::vector<double> divisor;
+            for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
+                double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
+                double timeSquared = pow(harmonics.get_frequencies()[i], 2);
+                dividend.push_back(dataSquared * timeSquared);
+                divisor.push_back(dataSquared);
+            }
+            double sumDivisor = std::reduce(divisor.begin(), divisor.end());
+            if (sumDivisor > 0)
+                effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
 
-        for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
-            double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-            double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-            dividend.push_back(dataSquared * timeSquared);
-            divisor.push_back(dataSquared);
-        }
-        double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-        if (sumDivisor > 0)
-            effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
-
-        processed.set_ac_effective_frequency(effectiveFrequency);
-    }
-
-    if (!processed.get_rms() || force) {
-        double rms = 0.0;
-        for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
-            rms += sampledDataToProcess[i] * sampledDataToProcess[i];
-        }
-        rms /= sampledDataToProcess.size();
-        rms = sqrt(rms);
-        processed.set_rms(rms);
-    }
-    if (!processed.get_thd() || force) {
-        std::vector<double> dividend;
-        double divisor = harmonics.get_amplitudes()[1];
-        double thd = 0;
-        for (size_t i = 2; i < harmonics.get_amplitudes().size(); ++i) {
-            dividend.push_back(pow(harmonics.get_amplitudes()[i], 2));
+            processed.set_ac_effective_frequency(effectiveFrequency);
         }
 
-        if (divisor > 0)
-            thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
-        processed.set_thd(thd);
+        if (!processed.get_rms() || force) {
+            double rms = 0.0;
+            for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
+                rms += sampledDataToProcess[i] * sampledDataToProcess[i];
+            }
+            rms /= sampledDataToProcess.size();
+            rms = sqrt(rms);
+            processed.set_rms(rms);
+        }
+        if (!processed.get_thd() || force) {
+            std::vector<double> dividend;
+            double divisor = harmonics.get_amplitudes()[1];
+            double thd = 0;
+            for (size_t i = 2; i < harmonics.get_amplitudes().size(); ++i) {
+                dividend.push_back(pow(harmonics.get_amplitudes()[i], 2));
+            }
+
+            if (divisor > 0)
+                thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
+            processed.set_thd(thd);
+        }
     }
 
     return processed;
@@ -776,6 +774,35 @@ void InputsWrapper::make_waveform_size_power_of_two(OperationPoint* operationPoi
             operationPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
         }
     }
+}
+
+double InputsWrapper::get_waveform_coefficient(OperationPoint* operationPoint) {
+    auto constants = Constants();
+    OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
+    double frequency = excitation.get_frequency();
+    Waveform sampledWaveform = excitation.get_voltage().value().get_waveform().value();
+
+    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.number_points_samples_waveforms) {
+        sampledWaveform = get_sampled_waveform(sampledWaveform, frequency);
+    }
+
+    std::vector<double> source = sampledWaveform.get_data();
+    std::vector<double> integration;
+
+    double integral = 0;
+    integration.push_back(integral);
+    double time_per_point = 1 / frequency / source.size();
+    source = std::vector<double>(source.begin(), source.end() - source.size() / 2);
+
+    for (size_t i = 0; i < source.size() - 1; i++) {
+        integral += (source[i + 1] - source[i]) / 2. + source[i];
+    }
+    integral *= time_per_point;
+
+    double voltageRms = excitation.get_voltage().value().get_processed().value().get_rms().value();
+
+    double waveformCoefficient = 2 * voltageRms / (frequency * integral);
+    return waveformCoefficient;
 }
 
 } // namespace OpenMagnetics

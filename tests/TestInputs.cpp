@@ -1721,7 +1721,8 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        CHECK(excitation.get_current().value().get_processed().value().get_duty_cycle().value() == 0.25);
+        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        CHECK(dutyCycle == 0.25);
     }
 
     TEST(Test_Get_Duty_Cycle_Square) {
@@ -1748,8 +1749,9 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
+        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
 
-        CHECK(excitation.get_current().value().get_processed().value().get_duty_cycle().value() == 0.75);
+        CHECK(dutyCycle == 0.75);
     }
 
     TEST(Test_Get_Duty_Cycle_Sinusoidal) {
@@ -2286,7 +2288,8 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        CHECK(excitation.get_current().value().get_processed().value().get_duty_cycle().value() == 1);
+        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        CHECK(dutyCycle == 1);
     }
 
     TEST(Test_Get_Duty_Cycle_Custom) {
@@ -2313,8 +2316,9 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
+        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
 
-        CHECK(excitation.get_current().value().get_processed().value().get_duty_cycle().value() == 0.42);
+        CHECK(dutyCycle == 0.42);
     }
 
     TEST(Test_Magnetizing_Current_Sinusoidal_Processed) {
@@ -2382,5 +2386,78 @@ SUITE(Inputs) {
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_peak().value(),
                     expectedValue, max_error * expectedValue);
+    }
+
+    TEST(Test_Waveform_Coefficient_Sinusoidal) {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["frequency"] = 100000;
+        windingExcitation["voltage"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        windingExcitation["voltage"]["processed"]["offset"] = 0;
+        windingExcitation["voltage"]["processed"]["peakToPeak"] = 1000;
+        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        windingExcitation["current"]["processed"]["offset"] = 42;
+        windingExcitation["current"]["processed"]["peakToPeak"] = 1;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        auto operationPointData = inputs.get_operation_points()[0];
+        double max_error = 0.1;
+
+        double expectedValue = 4.44;
+
+        double waveformCoefficient = OpenMagnetics::InputsWrapper::get_waveform_coefficient(&operationPointData);
+
+        CHECK_CLOSE(waveformCoefficient, expectedValue, max_error * expectedValue);
+    }
+
+    TEST(Test_Waveform_Coefficient_Square) {
+        json inputsJson;
+
+        inputsJson["operationPoints"] = json::array();
+        json operationPoint = json();
+        operationPoint["name"] = "Nominal";
+        operationPoint["conditions"] = json();
+        operationPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["frequency"] = 100000;
+        windingExcitation["voltage"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE;
+        windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+        windingExcitation["voltage"]["processed"]["offset"] = 0;
+        windingExcitation["voltage"]["processed"]["peakToPeak"] = 1000;
+        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        windingExcitation["current"]["processed"]["offset"] = 42;
+        windingExcitation["current"]["processed"]["peakToPeak"] = 1;
+        operationPoint["excitationsPerWinding"] = json::array();
+        operationPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operationPoints"].push_back(operationPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        auto operationPointData = inputs.get_operation_points()[0];
+        double max_error = 0.1;
+
+        double expectedValue = 4;
+
+        double waveformCoefficient = OpenMagnetics::InputsWrapper::get_waveform_coefficient(&operationPointData);
+
+        CHECK_CLOSE(waveformCoefficient, expectedValue, max_error * expectedValue);
     }
 }

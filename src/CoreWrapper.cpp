@@ -1,5 +1,6 @@
 #include "CoreWrapper.h"
 
+#include "Defaults.h"
 #include "Constants.h"
 #include "Utils.h"
 #include "json.hpp"
@@ -20,19 +21,11 @@ using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-std::map<std::string, json> coreMaterialDatabase;
+std::map<std::string, CoreMaterial> coreMaterialDatabase;
 std::map<std::string, json> coreShapeDatabase;
 auto constants = Constants();
 
-template<typename T> void load_databases(bool withAliases) {
-    std::string database;
-    if (std::is_same<T, OpenMagnetics::CoreShape>::value)
-        database = "shapes";
-    else if (std::is_same<T, OpenMagnetics::CoreMaterial>::value)
-        database = "materials";
-    else
-        throw "Unknown type";
-
+void load_databases(bool withAliases) {
     {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
@@ -41,7 +34,8 @@ template<typename T> void load_databases(bool withAliases) {
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {
             json jf = json::parse(myline);
-            coreMaterialDatabase[jf["name"]] = jf;
+            CoreMaterial coreMaterial(jf);
+            coreMaterialDatabase[jf["name"]] = coreMaterial;
         }
     }
 
@@ -53,10 +47,11 @@ template<typename T> void load_databases(bool withAliases) {
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {
             json jf = json::parse(myline);
-            coreShapeDatabase[jf["name"]] = jf;
+            CoreShape coreShape(jf);
+            coreShapeDatabase[jf["name"]] = coreShape;
             if (withAliases) {
                 for (auto& alias : jf["aliases"]) {
-                    coreShapeDatabase[alias] = jf;
+                    coreShapeDatabase[alias] = coreShape;
                 }
             }
         }
@@ -65,7 +60,7 @@ template<typename T> void load_databases(bool withAliases) {
 
 std::vector<std::string> get_material_names() {
     if (coreMaterialDatabase.empty()) {
-        load_databases<OpenMagnetics::CoreMaterial>();
+        load_databases();
     }
 
     std::vector<std::string> materialNames;
@@ -79,7 +74,7 @@ std::vector<std::string> get_material_names() {
 
 std::vector<std::string> get_shape_names() {
     if (coreShapeDatabase.empty()) {
-        load_databases<OpenMagnetics::CoreShape>(true);
+        load_databases(true);
     }
 
     std::vector<std::string> shapeNames;
@@ -91,42 +86,28 @@ std::vector<std::string> get_shape_names() {
     return shapeNames;
 }
 
-template<typename T> T find_data_by_name(std::string name) {
-    std::string database;
-    if (std::is_same<T, OpenMagnetics::CoreShape>::value)
-        database = "shapes";
-    else if (std::is_same<T, OpenMagnetics::CoreMaterial>::value)
-        database = "materials";
-    else
-        throw "Unknown type";
+OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
+    if (coreMaterialDatabase.empty()) {
+        load_databases();
+    }
+    if (coreMaterialDatabase.count(name)) {
+        return coreMaterialDatabase[name];
+    }
+    else {
+        return json::parse("{}");
+    }
+}
 
-    if (coreMaterialDatabase.empty() && database == "materials") {
-        load_databases<T>();
+OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
+    if (coreShapeDatabase.empty()) {
+        load_databases();
     }
-
-    if (coreShapeDatabase.empty() && database == "shapes") {
-        load_databases<T>();
+    if (coreShapeDatabase.count(name)) {
+        return coreShapeDatabase[name];
     }
-
-    json jsonData;
-    if (database == "materials") {
-        if (coreMaterialDatabase.count(name)) {
-            jsonData = coreMaterialDatabase[name];
-        }
-        else {
-            jsonData = json::parse("{}");
-        }
+    else {
+        return json::parse("{}");
     }
-    else if (database == "shapes") {
-        if (coreShapeDatabase.count(name)) {
-            jsonData = coreShapeDatabase[name];
-        }
-        else {
-            jsonData = json::parse("{}");
-        }
-    }
-    T datum(jsonData);
-    return datum;
 }
 
 template<int decimals> double roundFloat(double value) {
@@ -2583,10 +2564,24 @@ void CoreWrapper::process_gap() {
     get_mutable_functional_description().set_gapping(jsonGapping);
 }
 
+CoreMaterial CoreWrapper::get_material() {
+    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
+    // long loading operations)
+    if (std::holds_alternative<std::string>(get_functional_description().get_material())) {
+        auto material_data = OpenMagnetics::find_core_material_by_name(
+            std::get<std::string>(get_functional_description().get_material()));
+        return material_data;
+    }
+    else {
+        return std::get<CoreMaterial>(get_functional_description().get_material());
+    }
+
+}
+
 void CoreWrapper::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
-        auto shape_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreShape>(
+        auto shape_data = OpenMagnetics::find_core_shape_by_name(
             std::get<std::string>(get_functional_description().get_shape()));
         shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
         get_mutable_functional_description().set_shape(shape_data);
@@ -2596,7 +2591,7 @@ void CoreWrapper::process_data() {
     // long loading operations)
     if (_includeMaterialData && std::holds_alternative<std::string>(get_functional_description().get_material()) &&
         std::get<std::string>(get_functional_description().get_material()) != "dummy") {
-        auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(
+        auto material_data = OpenMagnetics::find_core_material_by_name(
             std::get<std::string>(get_functional_description().get_material()));
         get_mutable_functional_description().set_material(material_data);
     }
@@ -2648,5 +2643,31 @@ void CoreWrapper::process_data() {
     }
     set_processed_description(processedDescription);
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
+}
+
+double CoreWrapper::get_magnetic_flux_density_saturation(double temperature) {
+    auto defaults = Defaults();
+    if (std::holds_alternative<std::string>(get_functional_description().get_material()) &&
+        std::get<std::string>(get_functional_description().get_material()) != "dummy") {
+        auto material_data = OpenMagnetics::find_core_material_by_name(
+            std::get<std::string>(get_functional_description().get_material()));
+        get_mutable_functional_description().set_material(material_data);
+    }
+
+    auto coreMaterial =  std::get<OpenMagnetics::CoreMaterial>(get_functional_description().get_material());
+    auto saturationData = coreMaterial.get_saturation();
+    double saturationMagneticFluxDensity;
+    if (saturationData.size() > 1) {
+        saturationMagneticFluxDensity = 
+            saturationData[0].get_magnetic_flux_density() -
+            (saturationData[0].get_temperature() - temperature) *
+                (saturationData[0].get_magnetic_flux_density() - saturationData[1].get_magnetic_flux_density()) /
+                (saturationData[0].get_temperature() - saturationData[1].get_temperature());
+    }
+    else {
+        saturationMagneticFluxDensity = saturationData[0].get_magnetic_flux_density();
+    }
+
+    return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;
 }
 } // namespace OpenMagnetics

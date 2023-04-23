@@ -134,6 +134,25 @@ class CoreWrapper : public MagneticCore {
             set_geometrical_description(geometricalDescription);
         }
     }
+    CoreWrapper(const MagneticCore core) {
+        set_functional_description(core.get_functional_description());
+
+        if (core.get_geometrical_description()) {
+            set_geometrical_description(core.get_geometrical_description());
+        }
+        if (core.get_processed_description()) {
+            set_processed_description(core.get_processed_description());
+        }
+        if (core.get_distributors_info()) {
+            set_distributors_info(core.get_distributors_info());
+        }
+        if (core.get_manufacturer_info()) {
+            set_manufacturer_info(core.get_manufacturer_info());
+        }
+        if (core.get_name()) {
+            set_name(core.get_name());
+        }
+    }
     CoreWrapper() = default;
     virtual ~CoreWrapper() = default;
 
@@ -148,7 +167,9 @@ class CoreWrapper : public MagneticCore {
     void process_gap();
     void distribute_and_process_gap();
     void process_data();
+    CoreMaterial get_material();
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
+    double get_magnetic_flux_density_saturation(double temperature);
 };
 } // namespace OpenMagnetics

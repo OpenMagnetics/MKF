@@ -40,8 +40,8 @@ ElectromagneticParameter MagneticField::get_magnetic_flux(ElectromagneticParamet
 
     magneticFluxWaveform.set_data(magneticFluxData);
     magneticFlux.set_waveform(magneticFluxWaveform);
-    magneticFlux.set_harmonics(InputsWrapper::get_harmonics_data(magneticFluxWaveform, frequency));
-    magneticFlux.set_processed(InputsWrapper::get_processed_data(magneticFlux, magneticFluxWaveform, true));
+    // magneticFlux.set_harmonics(InputsWrapper::get_harmonics_data(magneticFluxWaveform, frequency));
+    // magneticFlux.set_processed(InputsWrapper::get_processed_data(magneticFlux, magneticFluxWaveform, true, false));
 
     return magneticFlux;
 }
@@ -65,7 +65,7 @@ ElectromagneticParameter MagneticField::get_magnetic_flux_density(Electromagneti
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
     magneticFluxDensity.set_harmonics(InputsWrapper::get_harmonics_data(magneticFluxDensityWaveform, frequency));
     magneticFluxDensity.set_processed(
-        InputsWrapper::get_processed_data(magneticFluxDensity, magneticFluxDensityWaveform, true));
+        InputsWrapper::get_processed_data(magneticFluxDensity, magneticFluxDensityWaveform, true, false));
 
     return magneticFluxDensity;
 }
@@ -91,7 +91,7 @@ ElectromagneticParameter MagneticField::get_magnetic_field_strength(Electromagne
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
     magneticFieldStrength.set_harmonics(InputsWrapper::get_harmonics_data(magneticFieldStrengthWaveform, frequency));
     magneticFieldStrength.set_processed(
-        InputsWrapper::get_processed_data(magneticFieldStrength, magneticFieldStrengthWaveform, true));
+        InputsWrapper::get_processed_data(magneticFieldStrength, magneticFieldStrengthWaveform, true, false));
 
     return magneticFieldStrength;
 }
