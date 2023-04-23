@@ -16,6 +16,7 @@
 namespace OpenMagnetics {
 
 enum class CoreLossesModels : int {
+    PROPRIETARY,
     STEINMETZ,
     IGSE,
     BARG,
@@ -43,6 +44,8 @@ class CoreLossesModel {
                                                           OperationPointExcitation excitation,
                                                           double temperature) = 0;
     static std::shared_ptr<CoreLossesModel> factory(CoreLossesModels modelName);
+    static std::shared_ptr<CoreLossesModel> factory(std::map<std::string, std::string> models);
+    static std::shared_ptr<CoreLossesModel> factory(json models);
     static OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum get_steinmetz_coefficients(
         CoreMaterialDataOrNameUnion material,
         double frequency);
@@ -72,7 +75,7 @@ class CoreLossesModel {
         // avoid long loading operations)
         if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
             materialData =
-                OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(std::get<std::string>(material));
+                OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
         }
         else {
             materialData = std::get<OpenMagnetics::CoreMaterial>(material);
@@ -100,6 +103,9 @@ class CoreLossesModel {
         }
         if (std::count(methods.begin(), methods.end(), "roshen")) {
             models.push_back("Roshen");
+        }
+        if (std::count(methods.begin(), methods.end(), "magnetics") || std::count(methods.begin(), methods.end(), "micrometals")) {
+            models.push_back("Proprietary");
         }
         return models;
     }
@@ -236,6 +242,14 @@ class CoreLossesMSEModel : public CoreLossesModel {
 // Based on Improved Calculation of Core Loss With Nonsinusoidal Waveforms by Charles R. Sullivan
 // http://inductor.thayerschool.org/papers/gse.pdf
 class CoreLossesGSEModel : public CoreLossesModel {
+  public:
+    std::map<std::string, double> get_core_losses(CoreWrapper core,
+                                                  OperationPointExcitation excitation,
+                                                  double temperature);
+};
+
+// Based on the formula provided by the manufacturer
+class CoreLossesProprietaryModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
                                                   OperationPointExcitation excitation,

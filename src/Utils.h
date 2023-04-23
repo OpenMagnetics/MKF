@@ -18,9 +18,10 @@ extern OpenMagnetics::Constants constants;
 
 namespace OpenMagnetics {
 
-template<typename T> T find_data_by_name(std::string name);
+OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
+OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 
-template<typename T> void load_databases(bool withAliases=true);
+void load_databases(bool withAliases=true);
 
 std::vector<std::string> get_material_names();
 

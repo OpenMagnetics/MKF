@@ -13,6 +13,7 @@ struct Defaults {
     const OpenMagnetics::CoreTemperatureModels coreTemperatureModelDefault =
         OpenMagnetics::CoreTemperatureModels::MANIKTALA;
     const OpenMagnetics::ReluctanceModels reluctanceModelDefault = OpenMagnetics::ReluctanceModels::ZHANG;
+    const double maximumProportionMagneticFluxDensitySaturation = 0.7;
 };
 } // namespace OpenMagnetics
 

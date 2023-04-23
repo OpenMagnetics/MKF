@@ -43,7 +43,7 @@ SUITE(InitialPermeability) {
     TEST(Test_N88) {
         OpenMagnetics::InitialPermeability initial_permeability;
         std::string material_name = "N88";
-        auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(material_name);
+        auto material_data = OpenMagnetics::find_core_material_by_name(material_name);
         double initial_permeability_value = initial_permeability.get_initial_permeability(material_data);
 
         double expected = 1900;
@@ -77,7 +77,7 @@ SUITE(InitialPermeability) {
     TEST(Test_N30) {
         OpenMagnetics::InitialPermeability initial_permeability;
         std::string material_name = "N30";
-        auto material_data = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(material_name);
+        auto material_data = OpenMagnetics::find_core_material_by_name(material_name);
         double initial_permeability_value = initial_permeability.get_initial_permeability(material_data);
 
         double expected = 4300;

@@ -30,7 +30,7 @@ json get_core_data(json coreData, bool includeMaterialData=false){
 }
 
 json get_material_data(json materialName){
-    auto materialData = OpenMagnetics::find_data_by_name<OpenMagnetics::CoreMaterial>(materialName);
+    auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
     return materialData;
 }
 
@@ -139,7 +139,6 @@ json get_steinmetz_coefficients(std::string material, double frequency){
     auto steinmetz = py::module::import("steinmetz");
     json coefficients = steinmetz.attr("fit")(material, frequency).cast<std::map<std::string, double>>();
 
-    std::cout << coefficients << std::endl;
 
     return coefficients;
 }
@@ -175,7 +174,7 @@ json get_core_losses(json coreData,
         coreTemperatureModelName = magic_enum::enum_cast<OpenMagnetics::CoreTemperatureModels>(models["coreTemperature"]).value();
     }
 
-    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(coreLossesModelName);
+    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
     auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(coreTemperatureModelName);
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
@@ -187,9 +186,6 @@ json get_core_losses(json coreData,
 
     do {
         temperature = temperatureAfterLosses;
-
-        std::cout << "core.get_functional_description().get_number_stacks()" << std::endl;
-        std::cout << core.get_functional_description().get_number_stacks().value() << std::endl;
 
         excitation = operationPoint.get_excitations_per_winding()[0];
         operationPoint.get_mutable_conditions().set_ambient_temperature(temperature);

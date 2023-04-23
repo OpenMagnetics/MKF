@@ -39,7 +39,7 @@ class InputsWrapper : public Inputs {
 
     static bool is_waveform_sampled(Waveform waveform);
     static Waveform get_sampled_waveform(Waveform waveform, double frequency);
-    static Processed get_processed_data(ElectromagneticParameter excitation, Waveform sampledWaveform, bool force);
+    static Processed get_processed_data(ElectromagneticParameter excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
     static Harmonics get_harmonics_data(Waveform waveform, double frequency);
     ElectromagneticParameter reflect_waveform(ElectromagneticParameter excitation, double ratio);
     static ElectromagneticParameter standarize_waveform(ElectromagneticParameter parameter, double frequency);
@@ -68,6 +68,10 @@ class InputsWrapper : public Inputs {
                                                       double dutyCycle,
                                                       double dcCurrent,
                                                       std::vector<double> turnsRatios = {});
+
+    static double tryGetDutyCycle(Waveform waveform, double frequency);
+
+    static double get_waveform_coefficient(OperationPoint* operationPoint);
 
     void set_operation_point_by_index(const OperationPoint& value, size_t index) {
         get_mutable_operation_points()[index] = value;
