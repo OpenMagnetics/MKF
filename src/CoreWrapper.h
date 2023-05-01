@@ -20,21 +20,6 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 using nlohmann::json;
 
-enum class DimensionalValues : int {
-    MAXIMUM,
-    NOMINAL,
-    MINIMUM
-};
-enum class GappingType : int {
-    GRINDED,
-    SPACER,
-    RESIDUAL,
-    DISTRIBUTED
-};
-
-template<OpenMagnetics::DimensionalValues preferredValue>
-double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue);
-
 class CorePiece {
   private:
     std::vector<ColumnElement> columns;
@@ -170,6 +155,9 @@ class CoreWrapper : public MagneticCore {
     CoreMaterial get_material();
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
-    double get_magnetic_flux_density_saturation(double temperature);
+    double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);
+    double get_magnetic_fielda_strength_saturation(double temperature);
+    double get_remanence(double temperature);
+    double get_coercive_force(double temperature);
 };
 } // namespace OpenMagnetics

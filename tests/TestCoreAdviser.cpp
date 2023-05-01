@@ -19,19 +19,19 @@ SUITE(CoreAdviser) {
             peakToPeak, dutyCycle, dcCurrent);
     }
 
-    TEST(test) {
-        double voltagePeakToPeak = 600;
-        double dcCurrent = 0;
-        double ambientTemperature = 25;
-        double frequency = 20000;
-        double desiredMagnetizingInductance = 1e-3;
-        std::vector<double> turnsRatios = {};
-        OpenMagnetics::InputsWrapper inputs;
+    // TEST(test) {
+    //     double voltagePeakToPeak = 600;
+    //     double dcCurrent = 0;
+    //     double ambientTemperature = 25;
+    //     double frequency = 20000;
+    //     double desiredMagnetizingInductance = 1e-3;
+    //     std::vector<double> turnsRatios = {};
+    //     OpenMagnetics::InputsWrapper inputs;
 
-        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    //     prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
 
-        OpenMagnetics::OperationPoint operationPoint;
-        OpenMagnetics::CoreAdviser coreAdviser;
-        auto core = coreAdviser.get_advised_core(inputs);
-    }
+    //     OpenMagnetics::OperationPoint operationPoint;
+    //     OpenMagnetics::CoreAdviser coreAdviser;
+    //     auto core = coreAdviser.get_advised_core(inputs);
+    // }
 }

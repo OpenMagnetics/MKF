@@ -1,4 +1,5 @@
 #include "CoreLosses.h"
+#include "Resistivity.h"
 
 #include "../tests/TestingUtils.h"
 #include "Constants.h"
@@ -491,7 +492,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper
                                                                      OperationPointExcitation excitation,
                                                                      double temperature) {
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    auto parameters = get_roshen_parameters(core.get_functional_description().get_material(), excitation, temperature);
+    auto parameters = get_roshen_parameters(core, excitation, temperature);
     double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, excitation);
     double eddyCurrentsVolumetricLosses = get_eddy_current_losses_density(core, excitation, parameters["resistivity"]);
     double excessEddyCurrentsVolumetricLosses = 0;
@@ -511,47 +512,19 @@ std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper
     return result;
 }
 
-std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreMaterialDataOrNameUnion material,
+std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreWrapper core,
                                                                            OperationPointExcitation excitation,
                                                                            double temperature) {
     std::map<std::string, double> roshenParameters;
-    OpenMagnetics::CoreMaterial materialData;
-    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
-    // long loading operations)
-    if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
-    }
-    else {
-        materialData = std::get<OpenMagnetics::CoreMaterial>(material);
-    }
+    auto materialData =  core.get_material();
 
     auto roshenData = get_method_data(materialData, "roshen");
 
-    auto coerciveForceData = materialData.get_coercive_force().value();
-    auto remanenceData = materialData.get_remanence().value();
-    auto saturationData = materialData.get_saturation();
-    auto resistivityData = materialData.get_resistivity();
+    roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
+    roshenParameters["remanence"] = core.get_remanence(temperature);
+    roshenParameters["saturationMagneticFluxDensity"] = core.get_magnetic_flux_density_saturation(temperature, false);
+    roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_fielda_strength_saturation(temperature);
 
-    roshenParameters["coerciveForce"] =
-        coerciveForceData[0].get_magnetic_field() -
-        (coerciveForceData[0].get_temperature() - temperature) *
-            (coerciveForceData[0].get_magnetic_field() - coerciveForceData[1].get_magnetic_field()) /
-            (coerciveForceData[0].get_temperature() - coerciveForceData[1].get_temperature());
-    roshenParameters["remanence"] =
-        remanenceData[0].get_magnetic_flux_density() -
-        (remanenceData[0].get_temperature() - temperature) *
-            (remanenceData[0].get_magnetic_flux_density() - remanenceData[1].get_magnetic_flux_density()) /
-            (remanenceData[0].get_temperature() - remanenceData[1].get_temperature());
-    roshenParameters["saturationMagneticFieldStrength"] =
-        saturationData[0].get_magnetic_field() -
-        (saturationData[0].get_temperature() - temperature) *
-            (saturationData[0].get_magnetic_field() - saturationData[1].get_magnetic_field()) /
-            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
-    roshenParameters["saturationMagneticFluxDensity"] =
-        saturationData[0].get_magnetic_flux_density() -
-        (saturationData[0].get_temperature() - temperature) *
-            (saturationData[0].get_magnetic_flux_density() - saturationData[1].get_magnetic_flux_density()) /
-            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
     if (roshenData.get_coefficients()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
         double frequency = excitation.get_frequency();
@@ -574,21 +547,9 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreM
                              roshenParameters["resistivityFrequencyCoefficient"] * frequency;
         roshenParameters["resistivity"] = resistivity;
     }
-    else if (resistivityData.size() < 2) {
-        roshenParameters["resistivity"] = resistivityData[0].get_value();
-    }
     else {
-        size_t n = resistivityData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
-
-        for (size_t i = 0; i < n; i++) {
-            xx(i) = resistivityData[i].get_temperature().value();
-            yy(i) = resistivityData[i].get_value();
-        }
-
-        interp.setData(xx, yy);
-        double resistivity = interp(temperature);
+        auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::CORE_MATERIAL);
+        auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
         roshenParameters["resistivity"] = resistivity;
     }
 

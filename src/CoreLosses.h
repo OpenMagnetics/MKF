@@ -56,6 +56,20 @@ class CoreLossesModel {
         _steinmetzDatum = steinmetzDatum;
     }
 
+    double get_magnetic_flux_density_from_volumetric_losses(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum, double volumetricLosses, double frequency, double temperature) {
+        double temperatureTerm = 1;
+        double k = steinmetzDatum.get_k();
+        double alpha = steinmetzDatum.get_alpha();
+        double beta = steinmetzDatum.get_beta();
+        if (steinmetzDatum.get_ct0() && steinmetzDatum.get_ct1() && steinmetzDatum.get_ct2()) {
+            double ct0 = steinmetzDatum.get_ct0().value();
+            double ct1 = steinmetzDatum.get_ct1().value();
+            double ct2 = steinmetzDatum.get_ct2().value();
+            temperatureTerm = ct2 * pow(temperature, 2) - ct1 * temperature + ct0;
+        }
+        return pow(volumetricLosses / k / pow(frequency, alpha) / temperatureTerm, 1 / beta);
+    }
+
     static double apply_temperature_coefficients(double volumetricLosses,
                                                  SteinmetzCoreLossesMethodRangeDatum steinmetzDatum,
                                                  double temperature) {
@@ -206,7 +220,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
     double get_excess_eddy_current_losses_density(OperationPointExcitation excitation,
                                                   double resistivity,
                                                   double alphaTimesN0);
-    std::map<std::string, double> get_roshen_parameters(CoreMaterialDataOrNameUnion material,
+    std::map<std::string, double> get_roshen_parameters(CoreWrapper core,
                                                         OperationPointExcitation excitation,
                                                         double temperature);
 };

@@ -163,13 +163,19 @@ SUITE(Data) {
 
     TEST(Bobbins) {
         auto data_file_path = mas_path + "data/bobbins.ndjson";
-        auto schema_file_path = mas_path + "schemas/magnetic/core/bobbin.json";
+        auto schema_file_path = mas_path + "schemas/magnetic/bobbin.json";
         validate_ndjson(schema_file_path, data_file_path);
     }
 
     TEST(Materials) {
         auto data_file_path = mas_path + "data/materials.ndjson";
         auto schema_file_path = mas_path + "schemas/magnetic/core/material.json";
+        validate_ndjson(schema_file_path, data_file_path);
+    }
+
+    TEST(Wires) {
+        auto data_file_path = mas_path + "data/wires.ndjson";
+        auto schema_file_path = mas_path + "schemas/magnetic/wire.json";
         validate_ndjson(schema_file_path, data_file_path);
     }
 }

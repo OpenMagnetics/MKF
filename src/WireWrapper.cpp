@@ -1,0 +1,85 @@
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include "Constants.h"
+#include "Utils.h"
+#include "WireWrapper.h"
+#include "../tests/TestingUtils.h"
+#include <libInterpolate/Interpolate.hpp>
+
+std::map<std::string, _1D::LinearInterpolator<double>> wireFillingFactorInterps;
+std::map<std::string, double> minWireConductingWidths;
+std::map<std::string, double> maxWireConductingWidths;
+
+namespace OpenMagnetics {
+    InsulationWireCoating WireWrapper::get_coating(WireS wire) {
+        // If the coating is a string, we have to load its data from the database
+        if (std::holds_alternative<std::string>(wire.get_coating().value())) {
+            throw std::runtime_error("Coating database not implemented yet");
+        }
+        else {
+            return std::get<InsulationWireCoating>(wire.get_coating().value());
+        }
+
+    }
+
+    double WireWrapper::get_filling_factor(double conductingDiameter, int grade, WireStandard standard, bool includeAirInCell){
+        if (wireDatabase.empty()) {
+            load_databases(true);
+        }
+
+        std::string standarString = static_cast<std::string>(magic_enum::enum_name(standard));
+        std::string key = std::to_string(grade) + " " + standarString;
+
+        if (!wireFillingFactorInterps.contains(key)) {
+            std::vector<double> wireConductingDiameters;
+            std::vector<double> fillingFactors;
+
+            for (auto& datum : wireDatabase) {
+                auto coating = get_coating(datum.second);
+                if (coating.get_grade().value() == grade && datum.second.get_standard().value() == standard) {
+                    double wireOuterDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_outer_diameter().value()); 
+                    double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
+                    double wireNumberConductors = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_number_conductors().value()); 
+                    double outerArea;
+                    if (includeAirInCell) {
+                        outerArea = pow(wireOuterDiameter, 2);
+                    } else {
+                        outerArea = std::numbers::pi * pow(wireOuterDiameter / 2, 2);
+                    }
+                    double conductiveArea = std::numbers::pi * pow(wireConductingDiameter / 2, 2) * wireNumberConductors;
+                    double wireFillingFactor = conductiveArea / outerArea;
+                    wireConductingDiameters.push_back(wireConductingDiameter);
+                    fillingFactors.push_back(wireFillingFactor);
+                }
+            }
+
+            size_t n = wireConductingDiameters.size();
+            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+
+            if (standard == WireStandard::NEMA_MW_1000_C) {
+                // Invert the vector so interpolation works fine
+                std::reverse(wireConductingDiameters.begin(), wireConductingDiameters.end());
+                std::reverse(fillingFactors.begin(), fillingFactors.end());
+            }
+            minWireConductingWidths[key] = wireConductingDiameters[0];
+            maxWireConductingWidths[key] = wireConductingDiameters[n - 1];
+
+            for (size_t i = 0; i < n; i++) {
+                xx(i) = wireConductingDiameters[i];
+                yy(i) = fillingFactors[i];
+            }
+            wireFillingFactorInterps[key].setData(xx, yy);
+        }
+
+
+        conductingDiameter = std::max(conductingDiameter, minWireConductingWidths[key]);
+        conductingDiameter = std::min(conductingDiameter, maxWireConductingWidths[key]);
+
+        double fillingFactor = wireFillingFactorInterps[key](conductingDiameter);
+        return fillingFactor;
+    }
+
+} // namespace OpenMagnetics
