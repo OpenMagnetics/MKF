@@ -1,6 +1,8 @@
 #include "CoreAdviser.h"
 #include "MagnetizingInductance.h"
 #include "MagneticEnergy.h"
+#include "WireWrapper.h"
+#include "BobbinWrapper.h"
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
@@ -13,7 +15,38 @@
 namespace OpenMagnetics {
 
 std::vector<Magnetic> CoreAdviser::MagneticCoreFilterAreaProduct::filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models) {
-    return unfilteredMagnetics;
+    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_voltage().value().get_waveform().value().get_data();
+    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_current().value().get_waveform().value().get_data();
+    std::vector<double> powerWaveformData;
+    std::transform(voltageWaveformData.begin(), voltageWaveformData.end(), 
+                   currentWaveformData.begin(), std::back_inserter(powerWaveformData), std::multiplies<double>());
+    double powerMean = std::accumulate(std::begin(powerWaveformData), std::end(powerWaveformData), 0.0) / powerWaveformData.size();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_frequency();
+    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
+    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
+
+    json excitationJson = json();
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+
+    // double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
+
+    for (auto& magnetic : unfilteredMagnetics){
+        double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(1.1e-05);
+        // double bobbinFillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.002, 0.005);
+        // double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
+        auto core = static_cast<CoreWrapper>(magnetic.get_core());
+        std::cout << core.get_name().value() << std::endl;
+        auto magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, false);
+        excitationJson["magneticFluxDensity"]["processed"]["peak"] = 1;
+        excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2;
+        OpenMagnetics::OperationPointExcitation excitation(excitationJson);
+        auto referenceCoreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+
+    }
+
 }
 
 std::vector<Magnetic> CoreAdviser::MagneticCoreFilterEnergyStored::filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models) {

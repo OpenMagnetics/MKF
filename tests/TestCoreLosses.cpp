@@ -671,8 +671,8 @@ double run_test_core_losses(OpenMagnetics::CoreLossesModels modelName,
     double error = abs(expectedVolumetricLosses - calculatedVolumetricCoreLosses) / expectedVolumetricLosses;
 
     if (error > maximumAdmittedErrorVolumetricCoreLossesValue) {
-        std::cout << "error " << error * 100 << " %" << std::endl;
-        OpenMagneticsTesting::print_json(excitationJson);
+        // std::cout << "error " << error * 100 << " %" << std::endl;
+        // OpenMagneticsTesting::print_json(excitationJson);
     }
     if (testMaximumErrors[modelName] < error) {
         testMaximumErrors[modelName] = error;

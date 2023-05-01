@@ -1,4 +1,5 @@
 #pragma once
+#include "BobbinWrapper.h"
 
 #include "Constants.h"
 #include "json.hpp"
@@ -11,21 +12,97 @@
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
+#include <libInterpolate/Interpolate.hpp>
 
-extern std::map<std::string, json> coreMaterialDatabase;
-extern std::map<std::string, json> coreShapeDatabase;
+extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
+extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
+extern std::map<std::string, OpenMagnetics::WireS> wireDatabase;
+extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 extern OpenMagnetics::Constants constants;
+
+extern _1D::LinearInterpolator<double> bobbinFillingFactorInterpWidth;
+extern _1D::LinearInterpolator<double> bobbinFillingFactorInterpHeight;
+extern std::map<std::string, _1D::LinearInterpolator<double>> wireFillingFactorInterps;
+extern double minBobbinWidth;
+extern double maxBobbinWidth;
+extern double minBobbinHeight;
+extern double maxBobbinHeight;
+extern std::map<std::string, double> minWireConductingWidths;
+extern std::map<std::string, double> maxWireConductingWidths;
+
 
 namespace OpenMagnetics {
 
+enum class DimensionalValues : int {
+    MAXIMUM,
+    NOMINAL,
+    MINIMUM
+};
+enum class GappingType : int {
+    GRINDED,
+    SPACER,
+    RESIDUAL,
+    DISTRIBUTED
+};
+
+
+template<OpenMagnetics::DimensionalValues preferredValue>
+double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue) {
+    double doubleValue = 0;
+    if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
+        switch (preferredValue) {
+            case OpenMagnetics::DimensionalValues::MAXIMUM:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case OpenMagnetics::DimensionalValues::NOMINAL:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
+                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue =
+                        (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
+                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
+                        2;
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case OpenMagnetics::DimensionalValues::MINIMUM:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                break;
+            default:
+                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
+        }
+    }
+    else if (std::holds_alternative<double>(dimensionValue)) {
+        doubleValue = std::get<double>(dimensionValue);
+    }
+    else {
+        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
+    }
+    return doubleValue;
+}
+
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
+OpenMagnetics::WireS find_wire_by_name(std::string name);
 
 void load_databases(bool withAliases=true);
 
 std::vector<std::string> get_material_names();
-
 std::vector<std::string> get_shape_names();
+std::vector<std::string> get_wire_names();
 
 template<int decimals> double roundFloat(double value);
 

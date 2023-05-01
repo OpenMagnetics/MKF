@@ -7,7 +7,6 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
-// #include <WindingTemplate.hpp>
 #include "Constants.h"
 #include "Utils.h"
 #include "WindingWrapper.h"

@@ -1,8 +1,9 @@
 #include "CoreWrapper.h"
+#include "WireWrapper.h"
+#include <libInterpolate/Interpolate.hpp>
 
 #include "Defaults.h"
 #include "Constants.h"
-#include "Utils.h"
 #include "json.hpp"
 
 #include <cmath>
@@ -21,104 +22,17 @@ using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-std::map<std::string, CoreMaterial> coreMaterialDatabase;
-std::map<std::string, json> coreShapeDatabase;
-auto constants = Constants();
 
-void load_databases(bool withAliases) {
-    {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/materials.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
-            CoreMaterial coreMaterial(jf);
-            coreMaterialDatabase[jf["name"]] = coreMaterial;
-        }
-    }
-
-    {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/shapes.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
-            CoreShape coreShape(jf);
-            coreShapeDatabase[jf["name"]] = coreShape;
-            if (withAliases) {
-                for (auto& alias : jf["aliases"]) {
-                    coreShapeDatabase[alias] = coreShape;
-                }
-            }
-        }
-    }
+double roundFloat(double value, size_t decimals) {
+    return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
-std::vector<std::string> get_material_names() {
-    if (coreMaterialDatabase.empty()) {
-        load_databases();
-    }
-
-    std::vector<std::string> materialNames;
-
-    for (auto& datum : coreMaterialDatabase) {
-        materialNames.push_back(datum.first);
-    }
-
-    return materialNames;
-}
-
-std::vector<std::string> get_shape_names() {
-    if (coreShapeDatabase.empty()) {
-        load_databases(true);
-    }
-
-    std::vector<std::string> shapeNames;
-
-    for (auto& datum : coreShapeDatabase) {
-        shapeNames.push_back(datum.first);
-    }
-
-    return shapeNames;
-}
-
-OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
-    if (coreMaterialDatabase.empty()) {
-        load_databases();
-    }
-    if (coreMaterialDatabase.count(name)) {
-        return coreMaterialDatabase[name];
-    }
-    else {
-        return json::parse("{}");
-    }
-}
-
-OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
-    if (coreShapeDatabase.empty()) {
-        load_databases();
-    }
-    if (coreShapeDatabase.count(name)) {
-        return coreShapeDatabase[name];
-    }
-    else {
-        return json::parse("{}");
-    }
-}
 
 template<int decimals> double roundFloat(double value) {
     if (value < 0)
         return floor(value * pow(10, decimals)) / pow(10, decimals);
     else
         return ceil(value * pow(10, decimals)) / pow(10, decimals);
-}
-
-double roundFloat(double value, size_t decimals) {
-    return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
 CoreShape flatten_dimensions(CoreShape shape) {
@@ -133,55 +47,7 @@ CoreShape flatten_dimensions(CoreShape shape) {
     return flattenedShape;
 }
 
-template<OpenMagnetics::DimensionalValues preferredValue>
-double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue) {
-    double doubleValue = 0;
-    if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
-        switch (preferredValue) {
-            case OpenMagnetics::DimensionalValues::MAXIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case OpenMagnetics::DimensionalValues::NOMINAL:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue =
-                        (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
-                        2;
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case OpenMagnetics::DimensionalValues::MINIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                break;
-            default:
-                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
-        }
-    }
-    else if (std::holds_alternative<double>(dimensionValue)) {
-        doubleValue = std::get<double>(dimensionValue);
-    }
-    else {
-        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
-    }
-    return doubleValue;
-}
-
-class E : public CorePiece {
+class CorePieceE : public CorePiece {
   public:
     void process_extra_data() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -269,7 +135,7 @@ class E : public CorePiece {
     }
 };
 
-class ETD : public E {
+class CorePieceEtd : public CorePieceE {
   public:
     double get_lateral_leg_area() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -358,7 +224,7 @@ class ETD : public E {
     }
 };
 
-class EL : public E {
+class CorePieceEl : public CorePieceE {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -452,7 +318,7 @@ class EL : public E {
     }
 };
 
-class EFD : public EL {
+class CorePieceEfd : public CorePieceEl {
   public:
     void process_columns() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -534,15 +400,15 @@ class EFD : public EL {
     }
 };
 
-class ER : public ETD {};
+class CorePieceEr : public CorePieceEtd {};
 
-class PLANAR_ER : public ETD {};
+class CorePiecePlanarEr : public CorePieceEtd {};
 
-class PLANAR_E : public E {};
+class CorePiecePlanarE : public CorePieceE {};
 
-class PLANAR_EL : public EL {};
+class CorePiecePlanarEl : public CorePieceEl {};
 
-class EC : public ETD {
+class CorePieceEc : public CorePieceEtd {
   public:
     double get_lateral_leg_area() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -556,9 +422,9 @@ class EC : public ETD {
     }
 };
 
-class EQ : public ETD {};
+class CorePieceEq : public CorePieceEtd {};
 
-class EP : public E {
+class CorePieceEp : public CorePieceE {
   public:
     double get_lateral_leg_area() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -698,7 +564,7 @@ class EP : public E {
     }
 };
 
-class LP : public EP {
+class CorePieceLp : public CorePieceEp {
   public:
     void process_columns() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -731,7 +597,7 @@ class LP : public EP {
     }
 };
 
-class EPX : public EP {
+class CorePieceEpx : public CorePieceEp {
   public:
     void process_columns() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -786,7 +652,7 @@ class EPX : public EP {
     }
 };
 
-class RM : public CorePiece {
+class CorePieceRm : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -946,7 +812,7 @@ class RM : public CorePiece {
     }
 };
 
-class PQ : public CorePiece {
+class CorePiecePq : public CorePiece {
   public:
     void process_extra_data() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1090,7 +956,7 @@ class PQ : public CorePiece {
     }
 };
 
-class PM : public CorePiece {
+class CorePiecePm : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1236,7 +1102,7 @@ class PM : public CorePiece {
     }
 };
 
-class P : public CorePiece {
+class CorePieceP : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1376,7 +1242,7 @@ class P : public CorePiece {
     }
 };
 
-class U : public CorePiece {
+class CorePieceU : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1486,7 +1352,7 @@ class U : public CorePiece {
     }
 };
 
-class UR : public CorePiece {
+class CorePieceUr : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1657,7 +1523,7 @@ class UR : public CorePiece {
     }
 };
 
-class UT : public CorePiece {
+class CorePieceUt : public CorePiece {
   public:
     void process_winding_window() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1746,7 +1612,7 @@ class UT : public CorePiece {
     }
 };
 
-class T : public CorePiece {
+class CorePieceT : public CorePiece {
   public:
     void process_extra_data() {
         auto dimensions = get_shape().get_dimensions().value();
@@ -1807,127 +1673,127 @@ class T : public CorePiece {
 std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
-        std::shared_ptr<CorePiece> piece(new E);
+        std::shared_ptr<CorePiece> piece(new CorePieceE);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EC) {
-        std::shared_ptr<CorePiece> piece(new EC);
+        std::shared_ptr<CorePiece> piece(new CorePieceEc);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EFD) {
-        std::shared_ptr<CorePiece> piece(new EFD);
+        std::shared_ptr<CorePiece> piece(new CorePieceEfd);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EL) {
-        std::shared_ptr<CorePiece> piece(new EL);
+        std::shared_ptr<CorePiece> piece(new CorePieceEl);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EP) {
-        std::shared_ptr<CorePiece> piece(new EP);
+        std::shared_ptr<CorePiece> piece(new CorePieceEp);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EPX) {
-        std::shared_ptr<CorePiece> piece(new EPX);
+        std::shared_ptr<CorePiece> piece(new CorePieceEpx);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::LP) {
-        std::shared_ptr<CorePiece> piece(new LP);
+        std::shared_ptr<CorePiece> piece(new CorePieceLp);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EQ) {
-        std::shared_ptr<CorePiece> piece(new EQ);
+        std::shared_ptr<CorePiece> piece(new CorePieceEq);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ER) {
-        std::shared_ptr<CorePiece> piece(new ER);
+        std::shared_ptr<CorePiece> piece(new CorePieceEr);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ETD) {
-        std::shared_ptr<CorePiece> piece(new ETD);
+        std::shared_ptr<CorePiece> piece(new CorePieceEtd);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::P) {
-        std::shared_ptr<CorePiece> piece(new P);
+        std::shared_ptr<CorePiece> piece(new CorePieceP);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_E) {
-        std::shared_ptr<CorePiece> piece(new PLANAR_E);
+        std::shared_ptr<CorePiece> piece(new CorePiecePlanarE);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_EL) {
-        std::shared_ptr<CorePiece> piece(new PLANAR_EL);
+        std::shared_ptr<CorePiece> piece(new CorePiecePlanarEl);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_ER) {
-        std::shared_ptr<CorePiece> piece(new PLANAR_ER);
+        std::shared_ptr<CorePiece> piece(new CorePiecePlanarEr);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PM) {
-        std::shared_ptr<CorePiece> piece(new PM);
+        std::shared_ptr<CorePiece> piece(new CorePiecePm);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PQ) {
-        std::shared_ptr<CorePiece> piece(new PQ);
+        std::shared_ptr<CorePiece> piece(new CorePiecePq);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::RM) {
-        std::shared_ptr<CorePiece> piece(new RM);
+        std::shared_ptr<CorePiece> piece(new CorePieceRm);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::U) {
-        std::shared_ptr<CorePiece> piece(new U);
+        std::shared_ptr<CorePiece> piece(new CorePieceU);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UR) {
-        std::shared_ptr<CorePiece> piece(new UR);
+        std::shared_ptr<CorePiece> piece(new CorePieceUr);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UT) {
-        std::shared_ptr<CorePiece> piece(new UT);
+        std::shared_ptr<CorePiece> piece(new CorePieceUt);
         piece->set_shape(shape);
         piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::T) {
-        std::shared_ptr<CorePiece> piece(new T);
+        std::shared_ptr<CorePiece> piece(new CorePieceT);
         piece->set_shape(shape);
         piece->process();
         return piece;
@@ -2565,8 +2431,7 @@ void CoreWrapper::process_gap() {
 }
 
 CoreMaterial CoreWrapper::get_material() {
-    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
-    // long loading operations)
+    // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_material())) {
         auto material_data = OpenMagnetics::find_core_material_by_name(
             std::get<std::string>(get_functional_description().get_material()));
@@ -2645,29 +2510,139 @@ void CoreWrapper::process_data() {
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
 }
 
-double CoreWrapper::get_magnetic_flux_density_saturation(double temperature) {
+double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
     auto defaults = Defaults();
-    if (std::holds_alternative<std::string>(get_functional_description().get_material()) &&
-        std::get<std::string>(get_functional_description().get_material()) != "dummy") {
-        auto material_data = OpenMagnetics::find_core_material_by_name(
-            std::get<std::string>(get_functional_description().get_material()));
-        get_mutable_functional_description().set_material(material_data);
-    }
-
-    auto coreMaterial =  std::get<OpenMagnetics::CoreMaterial>(get_functional_description().get_material());
+    auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
     double saturationMagneticFluxDensity;
-    if (saturationData.size() > 1) {
-        saturationMagneticFluxDensity = 
-            saturationData[0].get_magnetic_flux_density() -
-            (saturationData[0].get_temperature() - temperature) *
-                (saturationData[0].get_magnetic_flux_density() - saturationData[1].get_magnetic_flux_density()) /
-                (saturationData[0].get_temperature() - saturationData[1].get_temperature());
+
+    if (saturationData.size() == 0) {
+        throw std::runtime_error("Missing saturation data in core material");
     }
-    else {
+    else if (saturationData.size() == 1) {
         saturationMagneticFluxDensity = saturationData[0].get_magnetic_flux_density();
     }
+    else if (saturationData.size() == 2) {
+        saturationMagneticFluxDensity = saturationData[0].get_magnetic_flux_density() -
+        (saturationData[0].get_temperature() - temperature) *
+            (saturationData[0].get_magnetic_flux_density() - saturationData[1].get_magnetic_flux_density()) /
+            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
+    }
+    else {
+        size_t n = saturationData.size();
+        _1D::CubicSplineInterpolator<double> interp;
+        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
 
-    return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;
+        for (size_t i = 0; i < n; i++) {
+            xx(i) = saturationData[i].get_temperature();
+            yy(i) = saturationData[i].get_magnetic_flux_density();
+        }
+        interp.setData(xx, yy);
+        saturationMagneticFluxDensity = interp(temperature);
+    }
+
+    if (proportion)
+        return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;
+    else
+        return saturationMagneticFluxDensity;
+}
+
+double CoreWrapper::get_magnetic_fielda_strength_saturation(double temperature) {
+    auto coreMaterial =  get_material();
+    auto saturationData = coreMaterial.get_saturation();
+    double saturationMagneticFieldStrength;
+
+    if (saturationData.size() == 0) {
+        throw std::runtime_error("Missing saturation data in core material");
+    }
+    else if (saturationData.size() == 1) {
+        saturationMagneticFieldStrength = saturationData[0].get_magnetic_field();
+    }
+    else if (saturationData.size() == 2) {
+        saturationMagneticFieldStrength = saturationData[0].get_magnetic_field() -
+        (saturationData[0].get_temperature() - temperature) *
+            (saturationData[0].get_magnetic_field() - saturationData[1].get_magnetic_field()) /
+            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
+    }
+    else {
+        size_t n = saturationData.size();
+        _1D::CubicSplineInterpolator<double> interp;
+        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+
+        for (size_t i = 0; i < n; i++) {
+            xx(i) = saturationData[i].get_temperature();
+            yy(i) = saturationData[i].get_magnetic_field();
+        }
+        interp.setData(xx, yy);
+        saturationMagneticFieldStrength = interp(temperature);
+    }
+
+    return saturationMagneticFieldStrength;
+}
+
+double CoreWrapper::get_remanence(double temperature) {
+    auto coreMaterial =  get_material();
+    auto remanenceData = coreMaterial.get_remanence().value();
+    double remanence;
+
+    if (remanenceData.size() == 0) {
+        throw std::runtime_error("Missing remanence data in core material");
+    }
+    else if (remanenceData.size() == 1) {
+        remanence = remanenceData[0].get_magnetic_flux_density();
+    }
+    else if (remanenceData.size() == 2) {
+        remanence = remanenceData[0].get_magnetic_flux_density() -
+        (remanenceData[0].get_temperature() - temperature) *
+            (remanenceData[0].get_magnetic_flux_density() - remanenceData[1].get_magnetic_flux_density()) /
+            (remanenceData[0].get_temperature() - remanenceData[1].get_temperature());
+    }
+    else {
+        size_t n = remanenceData.size();
+        _1D::CubicSplineInterpolator<double> interp;
+        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+
+        for (size_t i = 0; i < n; i++) {
+            xx(i) = remanenceData[i].get_temperature();
+            yy(i) = remanenceData[i].get_magnetic_flux_density();
+        }
+        interp.setData(xx, yy);
+        remanence = interp(temperature);
+    }
+
+    return remanence;
+}
+
+double CoreWrapper::get_coercive_force(double temperature) {
+    auto coreMaterial =  get_material();
+    auto coerciveForceData = coreMaterial.get_coercive_force().value();
+    double coerciveForce;
+
+    if (coerciveForceData.size() == 0) {
+        throw std::runtime_error("Missing coerciveForce data in core material");
+    }
+    else if (coerciveForceData.size() == 1) {
+        coerciveForce = coerciveForceData[0].get_magnetic_field();
+    }
+    else if (coerciveForceData.size() == 2) {
+        coerciveForce = coerciveForceData[0].get_magnetic_field() -
+        (coerciveForceData[0].get_temperature() - temperature) *
+            (coerciveForceData[0].get_magnetic_field() - coerciveForceData[1].get_magnetic_field()) /
+            (coerciveForceData[0].get_temperature() - coerciveForceData[1].get_temperature());
+    }
+    else {
+        size_t n = coerciveForceData.size();
+        _1D::CubicSplineInterpolator<double> interp;
+        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+
+        for (size_t i = 0; i < n; i++) {
+            xx(i) = coerciveForceData[i].get_temperature();
+            yy(i) = coerciveForceData[i].get_magnetic_field();
+        }
+        interp.setData(xx, yy);
+        coerciveForce = interp(temperature);
+    }
+
+    return coerciveForce;
 }
 } // namespace OpenMagnetics

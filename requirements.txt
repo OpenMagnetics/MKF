@@ -1,2 +1,3 @@
 ninja
 pybind11
+tabula-py
