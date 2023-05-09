@@ -1721,7 +1721,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
         CHECK(dutyCycle == 0.25);
     }
 
@@ -1749,7 +1749,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
 
         CHECK(dutyCycle == 0.75);
     }
@@ -2288,7 +2288,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
         CHECK(dutyCycle == 1);
     }
 
@@ -2316,7 +2316,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operation_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::tryGetDutyCycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
 
         CHECK(dutyCycle == 0.42);
     }

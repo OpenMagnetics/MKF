@@ -34,13 +34,20 @@ class BobbinWrapper : public Bobbin {
   public:
     BobbinWrapper(const json& j) {
         from_json(j, *this);
-        auto processor = BobbinDataProcessor::factory(*this);
-        
-        set_processed_description((*processor).process_data(*this));
+        if (get_functional_description()) {
+            auto processor = BobbinDataProcessor::factory(*this);
+            set_processed_description((*processor).process_data(*this));
+        }
+        else {
+            if (!get_processed_description()) {
+                throw std::runtime_error("Missing data in bobbin");
+            }
+        }
     }
     BobbinWrapper() = default;
     virtual ~BobbinWrapper() = default;
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
+    static BobbinWrapper create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
 
 };
 } // namespace OpenMagnetics

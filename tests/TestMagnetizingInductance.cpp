@@ -1,4 +1,5 @@
 #include "MagnetizingInductance.h"
+#include "BobbinWrapper.h"
 #include "TestingUtils.h"
 #include "Utils.h"
 #include "json.hpp"
@@ -37,6 +38,7 @@ SUITE(MagnetizingInductance) {
         json windingFunctionalDescriptionJson = json::array();
         windingFunctionalDescriptionJson.push_back(primaryWindingJson);
         json windingJson = json();
+        windingJson["bobbin"] = "Dummy";
         windingJson["functionalDescription"] = windingFunctionalDescriptionJson;
         OpenMagnetics::WindingWrapper windingAux(windingJson);
         winding = windingAux;
@@ -87,7 +89,7 @@ SUITE(MagnetizingInductance) {
             "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1",
             "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}})");
         json windingData =
-            json::parse(R"({"functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
         json operationPointData = json::parse(
@@ -142,7 +144,7 @@ SUITE(MagnetizingInductance) {
             "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null,
             "processedDescription": null})");
         json windingData =
-            json::parse(R"({"functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 23, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
         json operationPointData = json::parse(
@@ -167,7 +169,7 @@ SUITE(MagnetizingInductance) {
 
         json coreData = json::parse(R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "High Flux 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": null, "name": "My Core", "processedDescription": null})");
         json windingData =
-            json::parse(R"({"bobbin": null, "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 24, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})");
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 24, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})");
         json inputsData = json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0001279222825940401}, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})");
 
         OpenMagnetics::CoreWrapper core(coreData);
@@ -452,7 +454,7 @@ SUITE(MagnetizingInductance) {
             "windingWindows": [{"angle": null, "area": 0.00025696000000000003, "coordinates": [0.00625, 0.0],
             "height": 0.0292, "radialHeight": null, "width": 0.0088}]}})");
         json windingData =
-            json::parse(R"({"functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 40, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
         json inputsData = json::parse(
@@ -486,38 +488,38 @@ SUITE(MagnetizingInductance) {
     TEST(Test_Gapping_Web) {
         // This tests checks that the operation is not crashing
         json coreData = json::parse(
-            "{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000369, \"coordinates\": [0.0, "
-            "0.05, 0.0], \"distanceClosestNormalSurface\": -0.077551, \"distanceClosestParallelSurface\": "
-            "0.011524999999999999, \"length\": 0.1, \"sectionDimensions\": [0.02165, 0.02165], \"shape\": \"round\", "
-            "\"type\": \"subtractive\"}, {\"area\": 0.000184, \"coordinates\": [0.026126, 0.0, 0.0], "
-            "\"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, "
-            "\"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": "
-            "\"residual\"}, {\"area\": 0.000184, \"coordinates\": [-0.026126, 0.0, 0.0], "
-            "\"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, "
-            "\"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": "
-            "\"residual\"}], \"material\": \"3C95\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": "
-            "{\"aliases\": [\"ETD 54\"], \"dimensions\": {\"A\": 0.0545, \"B\": 0.0276, \"C\": 0.0189, \"D\": 0.0202, "
-            "\"E\": 0.0412, \"F\": 0.0189}, \"family\": \"etd\", \"familySubtype\": null, \"magneticCircuit\": "
-            "\"open\", \"name\": \"ETD 54/28/19\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, "
-            "\"geometricalDescription\": null, \"processedDescription\": null}");
+            R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
+            0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
+            0.011524999999999999, "length": 0.1, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
+            "type": "subtractive"}, {"area": 0.000184, "coordinates": [0.026126, 0.0, 0.0],
+            "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
+            "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
+            "residual"}, {"area": 0.000184, "coordinates": [-0.026126, 0.0, 0.0],
+            "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
+            "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
+            "residual"}], "material": "3C95", "name": "My Core", "numberStacks": 1, "shape":
+            {"aliases": ["ETD 54"], "dimensions": {"A": 0.0545, "B": 0.0276, "C": 0.0189, "D": 0.0202,
+            "E": 0.0412, "F": 0.0189}, "family": "etd", "familySubtype": null, "magneticCircuit":
+            "open", "name": "ETD 54/28/19", "type": "standard"}, "type": "two-piece set"},
+            "geometricalDescription": null, "processedDescription": null})");
         json windingData =
-            json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", "
-                        "\"numberParallels\": 1, \"numberTurns\": 1, \"wire\": \"Dummy\"}], \"layersDescription\": "
-                        "null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+                        "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription":
+                        null, "sectionsDescription": null, "turnsDescription": null})");
         json inputsData = json::parse(
-            "{\"designRequirements\": {\"altitude\": null, \"cti\": null, \"insulationType\": null, "
-            "\"leakageInductance\": null, \"magnetizingInductance\": {\"excludeMaximum\": null, \"excludeMinimum\": "
-            "null, \"maximum\": null, \"minimum\": null, \"nominal\": 0.004654652816558039}, \"name\": null, "
-            "\"operationTemperature\": null, \"overvoltageCategory\": null, \"pollutionDegree\": null, "
-            "\"turnsRatios\": []}, \"operationPoints\": [{\"conditions\": {\"ambientRelativeHumidity\": null, "
-            "\"ambientTemperature\": 25.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": "
-            "[{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
-            "\"data\": [41.0, 51.0, 41.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
-            "\"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": "
-            "null, \"name\": \"My Operation Point\", \"voltage\": {\"harmonics\": null, \"processed\": null, "
-            "\"waveform\": {\"ancillaryLabel\": null, \"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, "
-            "7.5], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, "
-            "1e-05]}}}], \"name\": null}]}");
+            R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
+            "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
+            null, "maximum": null, "minimum": null, "nominal": 0.004654652816558039}, "name": null,
+            "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
+            "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null,
+            "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
+            [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
+            "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
+            "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent":
+            null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null,
+            "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
+            7.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05,
+            1e-05]}}}], "name": null}]})");
         OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
 
         OpenMagnetics::CoreWrapper core(coreData);
@@ -591,35 +593,35 @@ SUITE(MagnetizingInductance) {
     TEST(Test_Gapping_Web_No_Voltage) {
         // This tests checks that the operation is not crashing
         json coreData = json::parse(
-            "{\"functionalDescription\": {\"bobbin\": null, \"gapping\": [{\"area\": 0.000369, \"coordinates\": [0.0, "
-            "0.05, 0.0], \"distanceClosestNormalSurface\": -0.077551, \"distanceClosestParallelSurface\": "
-            "0.011524999999999999, \"length\": 0.1, \"sectionDimensions\": [0.02165, 0.02165], \"shape\": \"round\", "
-            "\"type\": \"subtractive\"}, {\"area\": 0.000184, \"coordinates\": [0.026126, 0.0, 0.0], "
-            "\"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, "
-            "\"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": "
-            "\"residual\"}, {\"area\": 0.000184, \"coordinates\": [-0.026126, 0.0, 0.0], "
-            "\"distanceClosestNormalSurface\": 0.022448, \"distanceClosestParallelSurface\": 0.011524999999999999, "
-            "\"length\": 5e-06, \"sectionDimensions\": [0.007551, 0.02165], \"shape\": \"irregular\", \"type\": "
-            "\"residual\"}], \"material\": \"3C95\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": "
-            "{\"aliases\": [\"ETD 54\"], \"dimensions\": {\"A\": 0.0545, \"B\": 0.0276, \"C\": 0.0189, \"D\": 0.0202, "
-            "\"E\": 0.0412, \"F\": 0.0189}, \"family\": \"etd\", \"familySubtype\": null, \"magneticCircuit\": "
-            "\"open\", \"name\": \"ETD 54/28/19\", \"type\": \"standard\"}, \"type\": \"two-piece set\"}, "
-            "\"geometricalDescription\": null, \"processedDescription\": null}");
+            R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
+            0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
+            0.011524999999999999, "length": 0.1, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
+            "type": "subtractive"}, {"area": 0.000184, "coordinates": [0.026126, 0.0, 0.0],
+            "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
+            "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
+            "residual"}, {"area": 0.000184, "coordinates": [-0.026126, 0.0, 0.0],
+            "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
+            "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
+            "residual"}], "material": "3C95", "name": "My Core", "numberStacks": 1, "shape":
+            {"aliases": ["ETD 54"], "dimensions": {"A": 0.0545, "B": 0.0276, "C": 0.0189, "D": 0.0202,
+            "E": 0.0412, "F": 0.0189}, "family": "etd", "familySubtype": null, "magneticCircuit":
+            "open", "name": "ETD 54/28/19", "type": "standard"}, "type": "two-piece set"},
+            "geometricalDescription": null, "processedDescription": null})");
         json windingData =
-            json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", "
-                        "\"numberParallels\": 1, \"numberTurns\": 1, \"wire\": \"Dummy\"}], \"layersDescription\": "
-                        "null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+                        "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription":
+                        null, "sectionsDescription": null, "turnsDescription": null})");
         json inputsData = json::parse(
-            "{\"designRequirements\": {\"altitude\": null, \"cti\": null, \"insulationType\": null, "
-            "\"leakageInductance\": null, \"magnetizingInductance\": {\"excludeMaximum\": null, \"excludeMinimum\": "
-            "null, \"maximum\": null, \"minimum\": null, \"nominal\": 0.00004654652816558039}, \"name\": null, "
-            "\"operationTemperature\": null, \"overvoltageCategory\": null, \"pollutionDegree\": null, "
-            "\"turnsRatios\": []}, \"operationPoints\": [{\"conditions\": {\"ambientRelativeHumidity\": null, "
-            "\"ambientTemperature\": 25.0, \"cooling\": null, \"name\": null}, \"excitationsPerWinding\": "
-            "[{\"current\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
-            "\"data\": [41.0, 51.0, 41.0], \"numberPeriods\": null, \"time\": [0.0, 2.5e-06, 1e-05]}}, \"frequency\": "
-            "100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": "
-            "\"My Operation Point\"}], \"name\": null}]}");
+            R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
+            "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
+            null, "maximum": null, "minimum": null, "nominal": 0.00004654652816558039}, "name": null,
+            "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
+            "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null,
+            "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
+            [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
+            "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency":
+            100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name":
+            "My Operation Point"}], "name": null}]})");
         OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
 
         OpenMagnetics::CoreWrapper core(coreData);
@@ -677,28 +679,27 @@ SUITE(MagnetizingInductance) {
         // This tests checks that the operation is not crashing
 
         json coreData = json::parse(
-            "{\"functionalDescription\": {\"gapping\": [{\"area\": null, \"coordinates\": null, "
-            "\"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, \"length\": 0.001, "
-            "\"sectionDimensions\": null, \"shape\": null, \"type\": \"subtractive\"}, {\"area\": null, "
-            "\"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": null, "
-            "\"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}, {\"area\": "
-            "null, \"coordinates\": null, \"distanceClosestNormalSurface\": null, \"distanceClosestParallelSurface\": "
-            "null, \"length\": 1e-05, \"sectionDimensions\": null, \"shape\": null, \"type\": \"residual\"}], "
-            "\"material\": \"3C97\", \"name\": \"My Core\", \"numberStacks\": 1, \"shape\": {\"aliases\": [], "
-            "\"dimensions\": {\"A\": 0.0391, \"B\": 0.0198, \"C\": 0.0125, \"D\": 0.0146, \"E\": 0.030100000000000002, "
-            "\"F\": 0.0125, \"G\": 0.0, \"H\": 0.0}, \"family\": \"etd\", \"familySubtype\": \"1\", "
-            "\"magneticCircuit\": null, \"name\": \"ETD 39/20/13\", \"type\": \"standard\"}, \"type\": \"two-piece "
-            "set\"}}");
+            R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null,
+            "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001,
+            "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null,
+            "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null,
+            "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area":
+            null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface":
+            null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}],
+            "material": "3C97", "name": "My Core", "numberStacks": 1, "shape": {"aliases": [],
+            "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002,
+            "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1",
+            "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}})");
         json windingData =
-            json::parse("{\"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": \"Primary\", "
-                        "\"numberParallels\": 1, \"numberTurns\": 10, \"wire\": \"Dummy\"}], \"layersDescription\": "
-                        "null, \"sectionsDescription\": null, \"turnsDescription\": null}");
+            json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
+                        "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}], "layersDescription":
+                        null, "sectionsDescription": null, "turnsDescription": null})");
         json operationPointData = json::parse(
-            "{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 25.0, \"cooling\": null, "
-            "\"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, "
-            "\"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": "
-            "[0.0, 2.5e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticField\": null, \"magneticFluxDensity\": null, "
-            "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}],\"name\": null}");
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null,
+            "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null,
+            "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time":
+            [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null,
+            "magnetizingCurrent": null, "name": "My Operation Point"}],"name": null})");
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::WindingWrapper winding(windingData);

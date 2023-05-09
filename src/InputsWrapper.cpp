@@ -71,7 +71,7 @@ void fft(std::vector<std::complex<double>>& x) {
     }
 }
 
-double InputsWrapper::tryGetDutyCycle(Waveform waveform, double frequency) {
+double InputsWrapper::try_get_duty_cycle(Waveform waveform, double frequency) {
     if (waveform.get_time()) {
         std::vector<double> data = waveform.get_data();
         std::vector<double> time = waveform.get_time().value();
