@@ -69,7 +69,7 @@ class InputsWrapper : public Inputs {
                                                       double dcCurrent,
                                                       std::vector<double> turnsRatios = {});
 
-    static double tryGetDutyCycle(Waveform waveform, double frequency);
+    static double try_get_duty_cycle(Waveform waveform, double frequency);
 
     static double get_waveform_coefficient(OperationPoint* operationPoint);
 

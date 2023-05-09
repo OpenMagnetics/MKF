@@ -163,4 +163,38 @@ OpenMagnetics::WireS find_wire_by_name(std::string name) {
     }
 }
 
+OpenMagnetics::Bobbin find_bobbin_by_name(std::string name) {
+    if (bobbinDatabase.empty()) {
+        load_databases();
+    }
+    if (bobbinDatabase.count(name)) {
+        return bobbinDatabase[name];
+    }
+    else {
+        return json::parse("{}");
+    }
+}
+
+bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName){
+    for (auto& leftDimension : dimensionsByName) {
+        std::string leftName = leftDimension.first;
+        std::vector<double> leftDimensions = leftDimension.second;
+        std::vector<double> leftCoordinates = coordinatesByName[leftName];
+        for (auto& rightDimension : dimensionsByName) {
+            std::string rightName = rightDimension.first;
+            if (rightName == leftName) {
+                continue;
+            }
+            std::vector<double> rightDimensions = rightDimension.second;
+            std::vector<double> rightCoordinates = coordinatesByName[rightName];
+
+            if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
+                roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace OpenMagnetics

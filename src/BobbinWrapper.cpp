@@ -29,7 +29,7 @@ double maxBobbinHeight;
 namespace OpenMagnetics {
 
 std::map<std::string, Dimension> flatten_dimensions(Bobbin bobbin) {
-    std::map<std::string, Dimension> dimensions = bobbin.get_functional_description().get_dimensions();
+    std::map<std::string, Dimension> dimensions = bobbin.get_functional_description().value().get_dimensions();
     std::map<std::string, Dimension> flattenedDimensions;
     for (auto& dimension : dimensions) {
         double value = resolve_dimensional_values<OpenMagnetics::DimensionalValues::NOMINAL>(dimension.second);
@@ -187,7 +187,7 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
 
 std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin) {
 
-    auto family = bobbin.get_functional_description().get_family();
+    auto family = bobbin.get_functional_description().value().get_family();
     if (family == BobbinFamily::E) {
         std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEDataProcessor);
         return bobbinDataGenerator;
@@ -225,7 +225,6 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
 }
 
 double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windingWindowHeight){
-    bool loadInterpolateros = false;
     if (bobbinDatabase.empty()) {
         load_databases(true);
 
@@ -245,7 +244,7 @@ double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windi
 
 
         for (auto& datum : bobbinDatabase) {
-            auto coreShapeName = datum.second.get_functional_description().get_shape();
+            auto coreShapeName = datum.second.get_functional_description().value().get_shape();
             auto coreShape = find_core_shape_by_name(coreShapeName);
             auto corePiece = OpenMagnetics::CorePiece::factory(coreShape);
 
@@ -308,4 +307,22 @@ double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windi
 
     return (fillingFactorWidth + fillingFactorHeight) / 2;
 }
+
+BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
+    json bobbinJson;
+
+    bobbinJson["processedDescription"] = json();
+    bobbinJson["processedDescription"]["windingWindows"] = json::array();
+    bobbinJson["processedDescription"]["wallThickness"] = 0.001;
+    bobbinJson["processedDescription"]["columnThickness"] = 0.001;
+    json windingWindow = json();
+    windingWindow["height"] = windingWindowHeight;
+    windingWindow["width"] = windingWindowWidth;
+    windingWindow["coordinates"] = {windingWindowWidth, 0, 0};
+    bobbinJson["processedDescription"]["windingWindows"].push_back(windingWindow);
+
+    BobbinWrapper bobbin(bobbinJson);
+    return bobbin;
+}
+
 } // namespace OpenMagnetics

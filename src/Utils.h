@@ -97,6 +97,7 @@ double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue) {
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireS find_wire_by_name(std::string name);
+OpenMagnetics::Bobbin find_bobbin_by_name(std::string name);
 
 void load_databases(bool withAliases=true);
 
@@ -112,5 +113,7 @@ double roundFloat(double value, size_t decimals);
 
 CoreShape flatten_dimensions(CoreShape shape);
 
-double tryGetDutyCycle(Waveform waveform, double frequency);
+double try_get_duty_cycle(Waveform waveform, double frequency);
+
+bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
 } // namespace OpenMagnetics
