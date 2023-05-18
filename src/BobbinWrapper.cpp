@@ -315,6 +315,8 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, dou
     bobbinJson["processedDescription"]["windingWindows"] = json::array();
     bobbinJson["processedDescription"]["wallThickness"] = 0.001;
     bobbinJson["processedDescription"]["columnThickness"] = 0.001;
+    bobbinJson["processedDescription"]["columnShape"] = ColumnShape::ROUND;
+    bobbinJson["processedDescription"]["columnDepth"] = windingWindowWidth / 2;
     json windingWindow = json();
     windingWindow["height"] = windingWindowHeight;
     windingWindow["width"] = windingWindowWidth;

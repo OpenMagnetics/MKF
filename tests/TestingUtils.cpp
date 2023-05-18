@@ -103,6 +103,13 @@ void print(std::vector<double> data) {
     std::cout << std::endl;
 }
 
+void print(std::vector<uint64_t> data) {
+    for (auto i : data) {
+        std::cout << i << ' ';
+    }
+    std::cout << std::endl;
+}
+
 void print(std::vector<std::string> data) {
     for (auto i : data) {
         std::cout << i << ' ';
