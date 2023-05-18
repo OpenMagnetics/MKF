@@ -19,6 +19,7 @@ json get_spacer_gap(double gapLength);
 json get_residual_gap();
 
 void print(std::vector<double> data);
+void print(std::vector<uint64_t> data);
 void print(std::vector<std::string> data);
 void print(double data);
 void print(std::string data);
