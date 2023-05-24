@@ -14,6 +14,7 @@ struct Constants {
     const double magnetic_flux_density_saturation = 0.352; // HARDCODED TODO: replace when materials are implemented
 
     const double spacer_protuding_percentage = 0.2;
+    const double windingPainterScale = 1e6;
 
     const double number_points_samples_waveforms = 128;
     const double minimum_distributed_fringing_factor = 1.05;

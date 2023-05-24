@@ -122,7 +122,7 @@ SUITE(MagnetizingInductance) {
             null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}],
             "material": {"bhCycle": null, "curieTemperature": 500.0, "remanence": null, "resistivity": [{"value": 5, "temperature": 20}], "family": "High Flux",
             "manufacturerInfo": {"cost": null, "name": "Magnetics", "reference": null, "status": null},
-            "materialComposition": "ironPowder", "name": "High Flux 26", "permeability": {"amplitude":
+            "materialComposition": "powder", "name": "High Flux 26", "permeability": {"amplitude":
             null, "initial": {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak":
             null, "modifiers": {"EQ/LP": {"frequencyFactor": null, "magneticFieldDcBiasFactor": {"a": 0.01,
             "b": 1.58277e-17, "c": 3.243}, "method": "Magnetics", "temperatureFactor": null}, "default":

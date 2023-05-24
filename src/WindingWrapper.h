@@ -22,21 +22,8 @@ namespace OpenMagnetics {
 using nlohmann::json;
 
 class WindingWrapper : public Winding {
-    public:
-        uint8_t _interleavingLevel = 1;
-        OrientationEnum _windingOrientation = OrientationEnum::HORIZONTAL;
-        OrientationEnum _layersOrientation = OrientationEnum::VERTICAL;
-        TurnsAlignmentEnum _turnsAlignment = TurnsAlignmentEnum::CENTERED;
-        WindingWrapper(const json& j, uint8_t interleavingLevel = 1,
-                       OrientationEnum orientationEnum = OrientationEnum::HORIZONTAL,
-                       OrientationEnum layersOrientation = OrientationEnum::VERTICAL,
-                       TurnsAlignmentEnum turnsAlignment = TurnsAlignmentEnum::CENTERED) {
-            _interleavingLevel = interleavingLevel;
-            _windingOrientation = orientationEnum;
-            _layersOrientation = layersOrientation;
-            _turnsAlignment = turnsAlignment;
-            from_json(j, *this);
-
+    private:
+        void process() {
             std::string bobbinName = "";
             if (std::holds_alternative<std::string>(get_bobbin())) {
                 bobbinName = std::get<std::string>(get_bobbin());
@@ -81,6 +68,50 @@ class WindingWrapper : public Winding {
                     }
                 }
             }
+        }
+    public:
+        uint8_t _interleavingLevel = 1;
+        OrientationEnum _windingOrientation = OrientationEnum::HORIZONTAL;
+        OrientationEnum _layersOrientation = OrientationEnum::VERTICAL;
+        TurnsAlignmentEnum _turnsAlignment = TurnsAlignmentEnum::CENTERED;
+
+        WindingWrapper(const json& j, uint8_t interleavingLevel = 1,
+                       OrientationEnum orientationEnum = OrientationEnum::HORIZONTAL,
+                       OrientationEnum layersOrientation = OrientationEnum::VERTICAL,
+                       TurnsAlignmentEnum turnsAlignment = TurnsAlignmentEnum::CENTERED) {
+            _interleavingLevel = interleavingLevel;
+            _windingOrientation = orientationEnum;
+            _layersOrientation = layersOrientation;
+            _turnsAlignment = turnsAlignment;
+            from_json(j, *this);
+
+            process();
+
+        }
+
+        WindingWrapper(const Winding winding) {
+            bool processNewData = false;
+
+            set_functional_description(winding.get_functional_description());
+            set_bobbin(winding.get_bobbin());
+
+            if (winding.get_sections_description()) {
+                processNewData = true;
+                set_sections_description(winding.get_sections_description());
+            }
+            if (winding.get_layers_description()) {
+                processNewData = true;
+                set_layers_description(winding.get_layers_description());
+            }
+            if (winding.get_turns_description()) {
+                processNewData = true;
+                set_turns_description(winding.get_turns_description());
+            }
+
+            if (processNewData) {
+                process();
+            }
+
         }
         WindingWrapper() = default;
         virtual ~WindingWrapper() = default;

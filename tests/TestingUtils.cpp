@@ -7,6 +7,49 @@
 
 namespace OpenMagneticsTesting {
 
+
+OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
+                                                std::vector<uint64_t> numberParallels,
+                                                double bobbinHeight,
+                                                double bobbinWidth,
+                                                std::vector<double> bobbinCenterCoodinates,
+                                                uint64_t interleavingLevel,
+                                                OpenMagnetics::OrientationEnum windingOrientation,
+                                                OpenMagnetics::OrientationEnum layersOrientation){
+    json windingJson;
+    windingJson["functionalDescription"] = json::array();
+
+    windingJson["bobbin"] = json();
+    windingJson["bobbin"]["processedDescription"] = json();
+    windingJson["bobbin"]["processedDescription"]["wallThickness"] = 0.001;
+    windingJson["bobbin"]["processedDescription"]["columnThickness"] = 0.001;
+    windingJson["bobbin"]["processedDescription"]["columnShape"] = OpenMagnetics::ColumnShape::ROUND;
+    windingJson["bobbin"]["processedDescription"]["columnDepth"] = bobbinCenterCoodinates[0] - bobbinWidth / 2;
+    windingJson["bobbin"]["processedDescription"]["windingWindows"] = json::array();
+
+    json windingWindow;
+    windingWindow["height"] = bobbinHeight;
+    windingWindow["width"] = bobbinWidth;
+    windingWindow["coordinates"] = json::array();
+    for (auto& coord : bobbinCenterCoodinates) {
+        windingWindow["coordinates"].push_back(coord);
+    }
+    windingJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
+
+    for (size_t i = 0; i < numberTurns.size(); ++i){
+        json individualWindingJson;
+        individualWindingJson["name"] = "winding " + std::to_string(i);
+        individualWindingJson["numberTurns"] = numberTurns[i];
+        individualWindingJson["numberParallels"] = numberParallels[i];
+        individualWindingJson["isolationSide"] = "primary";
+        individualWindingJson["wire"] = "0.475 - Grade 1";
+        windingJson["functionalDescription"].push_back(individualWindingJson);
+    }
+
+    OpenMagnetics::WindingWrapper winding(windingJson, interleavingLevel, windingOrientation, layersOrientation);
+    return winding;
+}
+
 OpenMagnetics::CoreWrapper get_core(std::string shapeName,
                                     json basicGapping,
                                     int numberStacks,
@@ -113,6 +156,13 @@ void print(std::vector<uint64_t> data) {
 void print(std::vector<std::string> data) {
     for (auto i : data) {
         std::cout << i << ' ';
+    }
+    std::cout << std::endl;
+}
+
+void print(std::vector<SVG::Point> data) {
+    for (auto i : data) {
+        std::cout << '(' << i.first << ", " << i.second << "), ";
     }
     std::cout << std::endl;
 }
