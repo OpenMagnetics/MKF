@@ -324,10 +324,10 @@ SUITE(CoreProcessedDescription) {
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_width(), 0.0062, 0.0062 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_depth(), 0.0062 * numberStacks,
                     0.0062 * numberStacks * 0.2);
-        CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_width(), 0.0012, 0.0012 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_minimum_width().value(), 0.0012, 0.0012 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_depth(), 0.01 * numberStacks,
                     0.01 * numberStacks * 0.2);
-        CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_width(), 0.0012, 0.0012 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_minimum_width().value(), 0.0012, 0.0012 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_depth(), 0.01 * numberStacks,
                     0.01 * numberStacks * 0.2);
         CHECK(core.get_processed_description()->get_columns()[0].get_shape() == OpenMagnetics::ColumnShape::ROUND);
@@ -660,10 +660,10 @@ SUITE(CoreProcessedDescription) {
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_width(), 0.011, 0.011 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_depth(), 0.011 * numberStacks,
                     0.011 * numberStacks * 0.2);
-        CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_width(), 0.002, 0.002 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_minimum_width().value(), 0.002, 0.002 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[1].get_depth(), 0.020 * numberStacks,
                     0.020 * numberStacks * 0.2);
-        CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_width(), 0.002, 0.002 * 0.2);
+        CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_minimum_width().value(), 0.002, 0.002 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[2].get_depth(), 0.020 * numberStacks,
                     0.020 * numberStacks * 0.2);
         CHECK(core.get_processed_description()->get_columns()[0].get_shape() == OpenMagnetics::ColumnShape::ROUND);
@@ -1548,7 +1548,7 @@ SUITE(CoreGeometricalDescription) {
     std::string filePath = __FILE__;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
 
-    TEST(E_19_8_5) {
+    TEST(E_19_8_5_Geometrical_Description) {
         auto coreFilePath = masPath + "samples/magnetic/core/core_E_19_8_5_N87_substractive.json";
         std::ifstream json_file(coreFilePath);
 
@@ -1563,7 +1563,7 @@ SUITE(CoreGeometricalDescription) {
                   .size() > 0);
         CHECK_EQUAL(geometrical_description.size(), 2u);
         CHECK(geometrical_description[0].get_machining());
-        CHECK(geometrical_description[1].get_machining());
+        CHECK(!geometrical_description[1].get_machining());
         CHECK(geometrical_description[0].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
         CHECK(geometrical_description[1].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
     }
@@ -1608,28 +1608,30 @@ SUITE(CoreGeometricalDescription) {
         CHECK_EQUAL(geometrical_description.size(), 1u);
     }
 
-    TEST(Web_0) {
-        auto coreJson = json::parse(
-            "{\"name\": \"Custom_0\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000114, \"coordinates\": "
-            "[0.0, -0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, \"length\": 0.0001, "
-            "\"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, {\"area\": "
-            "0.000114, \"coordinates\": [0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.008451, \"length\": "
-            "0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": \"subtractive\"}, "
-            "{\"area\": 0.000114, \"coordinates\": [0.0, 0.00425, 0.0], \"distanceClosestNormalSurface\": 0.004201, "
-            "\"length\": 0.0001, \"sectionDimensions\": [0.012, 0.012], \"shape\": \"round\", \"type\": "
-            "\"subtractive\"}, {\"area\": 0.000205, \"coordinates\": [0.017925, 0.0, 0.0], "
-            "\"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, 0.02], "
-            "\"shape\": \"irregular\", \"type\": \"residual\"}, {\"area\": 0.000205, \"coordinates\": [-0.017925, 0.0, "
-            "0.0], \"distanceClosestNormalSurface\": 0.0085, \"length\": 5e-06, \"sectionDimensions\": [0.01025, "
-            "0.02], \"shape\": \"irregular\", \"type\": \"residual\"}], \"material\": \"3C97\", \"numberStacks\": 1, "
-            "\"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.03, \"B\": 0.011800000000000001, \"C\": 0.02, "
-            "\"D\": 0.0085, \"E\": 0.0256, \"F\": 0.012, \"G\": 0.017, \"H\": 0.0}, \"family\": \"lp\", "
-            "\"familySubtype\": \"1\", \"name\": \"Custom\", \"type\": \"custom\"}, \"type\": \"two-piece set\"}}");
+    TEST(Core_Web_0) {
+        auto coreJson = json::parse(R"(
+            {"name": "Custom_0", "functionalDescription": {"gapping": [{"area": 0.000114, "coordinates":
+            [0.0, -0.00425, 0.0], "distanceClosestNormalSurface": 0.004201, "length": 0.0001,
+            "sectionDimensions": [0.012, 0.012], "shape": "round", "type": "subtractive"}, {"area":
+            0.000114, "coordinates": [0.0, 0.0, 0.0], "distanceClosestNormalSurface": 0.008451, "length":
+            0.0001, "sectionDimensions": [0.012, 0.012], "shape": "round", "type": "subtractive"},
+            {"area": 0.000114, "coordinates": [0.0, 0.00425, 0.0], "distanceClosestNormalSurface": 0.004201,
+            "length": 0.0001, "sectionDimensions": [0.012, 0.012], "shape": "round", "type":
+            "subtractive"}, {"area": 0.000205, "coordinates": [0.017925, 0.0, 0.0],
+            "distanceClosestNormalSurface": 0.0085, "length": 5e-06, "sectionDimensions": [0.01025, 0.02],
+            "shape": "irregular", "type": "residual"}, {"area": 0.000205, "coordinates": [-0.017925, 0.0,
+            0.0], "distanceClosestNormalSurface": 0.0085, "length": 5e-06, "sectionDimensions": [0.01025,
+            0.02], "shape": "irregular", "type": "residual"}], "material": "3C97", "numberStacks": 1,
+            "shape": {"aliases": [], "dimensions": {"A": 0.03, "B": 0.011800000000000001, "C": 0.02,
+            "D": 0.0085, "E": 0.0256, "F": 0.012, "G": 0.017, "H": 0.0}, "family": "lp",
+            "familySubtype": "1", "name": "Custom", "type": "custom"}, "type": "two-piece set"}})");
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
         auto geometrical_description = *(core.get_geometrical_description());
 
+    std::cout << "geometrical_description[0].get_machining()->size()" << std::endl;
+    std::cout << geometrical_description[0].get_machining()->size() << std::endl;
         CHECK_EQUAL(*(core.get_name()), "Custom_0");
         CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
                   .get_mutable_volumetric_losses()["default"]

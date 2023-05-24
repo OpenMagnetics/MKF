@@ -147,12 +147,15 @@ class CoreWrapper : public MagneticCore {
     int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
     int find_exact_column_index_by_coordinates(std::vector<double> coordinates);
     std::vector<CoreGap> find_gaps_by_type(GapType gappingType);
+    std::vector<CoreGap> find_gaps_by_column(ColumnElement column);
     void scale_to_stacks(int64_t numberStacks);
     bool is_gapping_missaligned();
     void process_gap();
     void distribute_and_process_gap();
     void process_data();
     CoreMaterial get_material();
+    std::vector<ColumnElement> get_columns();
+    std::vector<WindingWindowElement> get_winding_windows();
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);

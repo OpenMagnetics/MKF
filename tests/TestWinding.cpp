@@ -37,48 +37,6 @@ SUITE(WindingFunctionalDescription) {
     }
 }
 
-OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
-                                                std::vector<uint64_t> numberParallels,
-                                                double bobbinHeight,
-                                                double bobbinWidth,
-                                                std::vector<double> bobbinCenterCoodinates,
-                                                uint64_t interleavingLevel,
-                                                OpenMagnetics::OrientationEnum windingOrientation = OpenMagnetics::OrientationEnum::HORIZONTAL,
-                                                OpenMagnetics::OrientationEnum layersOrientation = OpenMagnetics::OrientationEnum::VERTICAL){
-    json windingJson;
-    windingJson["functionalDescription"] = json::array();
-
-    windingJson["bobbin"] = json();
-    windingJson["bobbin"]["processedDescription"] = json();
-    windingJson["bobbin"]["processedDescription"]["wallThickness"] = 0.001;
-    windingJson["bobbin"]["processedDescription"]["columnThickness"] = 0.001;
-    windingJson["bobbin"]["processedDescription"]["columnShape"] = OpenMagnetics::ColumnShape::ROUND;
-    windingJson["bobbin"]["processedDescription"]["columnDepth"] = bobbinCenterCoodinates[0] - bobbinWidth / 2;
-    windingJson["bobbin"]["processedDescription"]["windingWindows"] = json::array();
-
-    json windingWindow;
-    windingWindow["height"] = bobbinHeight;
-    windingWindow["width"] = bobbinWidth;
-    windingWindow["coordinates"] = json::array();
-    for (auto& coord : bobbinCenterCoodinates) {
-        windingWindow["coordinates"].push_back(coord);
-    }
-    windingJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
-
-    for (size_t i = 0; i < numberTurns.size(); ++i){
-        json individualWindingJson;
-        individualWindingJson["name"] = "winding " + std::to_string(i);
-        individualWindingJson["numberTurns"] = numberTurns[i];
-        individualWindingJson["numberParallels"] = numberParallels[i];
-        individualWindingJson["isolationSide"] = "primary";
-        individualWindingJson["wire"] = "0.475 - Grade 1";
-        windingJson["functionalDescription"].push_back(individualWindingJson);
-    }
-
-    OpenMagnetics::WindingWrapper winding(windingJson, interleavingLevel, windingOrientation, layersOrientation);
-    return winding;
-}
-
 SUITE(WindingSectionsDescription) {
     void quick_check_sections_description(OpenMagnetics::WindingWrapper winding,
                                           std::vector<uint64_t> numberTurns,
@@ -148,7 +106,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 2;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel);
     }
@@ -161,7 +119,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 2;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel);
 
@@ -175,7 +133,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 2;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel);
 
@@ -189,7 +147,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 7;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel);
 
@@ -203,7 +161,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 7;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel);
 
@@ -217,7 +175,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 2;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
@@ -231,7 +189,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 3;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -244,7 +202,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 3;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -257,7 +215,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 3;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -270,7 +228,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 3;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -283,7 +241,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 3;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -296,7 +254,7 @@ SUITE(WindingSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint64_t interleavingLevel = 7;
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
 
         quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::OrientationEnum::VERTICAL);
     }
@@ -316,7 +274,7 @@ SUITE(WindingSectionsDescription) {
             auto windingOrientation = std::rand() % 2? OpenMagnetics::OrientationEnum::VERTICAL : OpenMagnetics::OrientationEnum::HORIZONTAL;
 
 
-            auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+            auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, windingOrientation);
         }
     }
@@ -347,7 +305,7 @@ SUITE(WindingSectionsDescription) {
                 bobbinHeight *= numberTurns.size();
             }
 
-            auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+            auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             quick_check_sections_description(winding, numberTurns, numberParallels, interleavingLevel, windingOrientation);
         }
     }
@@ -413,7 +371,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -429,7 +387,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -444,7 +402,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -460,7 +418,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -475,7 +433,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -491,7 +449,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -507,7 +465,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         auto layersDescription = winding.get_layers_description().value();
         quick_check_layers_description(winding);
     }
@@ -523,7 +481,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
      
         quick_check_layers_description(winding);
     }
@@ -541,7 +499,7 @@ SUITE(WindingLayersDescription) {
 
         auto windingOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
         auto layersOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         quick_check_layers_description(winding, layersOrientation);
     }
@@ -559,7 +517,7 @@ SUITE(WindingLayersDescription) {
 
         auto windingOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
         auto layersOrientation = OpenMagnetics::OrientationEnum::HORIZONTAL;
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         quick_check_layers_description(winding, layersOrientation);
     }
@@ -577,7 +535,7 @@ SUITE(WindingLayersDescription) {
 
         auto windingOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
         auto layersOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         quick_check_layers_description(winding, layersOrientation);
     }
@@ -595,7 +553,7 @@ SUITE(WindingLayersDescription) {
 
         auto windingOrientation = OpenMagnetics::OrientationEnum::VERTICAL;
         auto layersOrientation = OpenMagnetics::OrientationEnum::HORIZONTAL;
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         quick_check_layers_description(winding, layersOrientation);
     }
@@ -612,7 +570,7 @@ SUITE(WindingLayersDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
         auto windingOrientation = OpenMagnetics::OrientationEnum::HORIZONTAL;
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
      
         quick_check_layers_description(winding);
     }
@@ -628,7 +586,7 @@ SUITE(WindingLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         quick_check_layers_description(winding);
     }
@@ -654,7 +612,7 @@ SUITE(WindingLayersDescription) {
             // std::cout << "numberMaximumLayers: " << numberMaximumLayers << std::endl;
             // std::cout << "interleavingLevel: " << interleavingLevel << std::endl;
 
-            auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+            auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
             quick_check_layers_description(winding);
         }
     }
@@ -704,7 +662,7 @@ SUITE(WindingTurnsDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
 
-        auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         quick_check_turns_description(winding);
     }
 
@@ -734,7 +692,7 @@ SUITE(WindingTurnsDescription) {
                 bobbinHeight *= numberTurns.size();
             }
 
-            auto winding = get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+            auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             quick_check_turns_description(winding);
         }
     }
