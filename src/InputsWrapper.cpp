@@ -378,9 +378,7 @@ ElectromagneticParameter InputsWrapper::reflect_waveform(ElectromagneticParamete
                                                          double ratio) {
     ElectromagneticParameter reflected_waveform;
     auto primaryWaveform = primaryElectromagneticParameter.get_waveform().value();
-    Waveform waveform(primaryWaveform);
-    json primaryWaveformJson;
-    OpenMagnetics::to_json(primaryWaveformJson, primaryElectromagneticParameter);
+    Waveform waveform = primaryWaveform;
 
     waveform.set_data({});
     for (auto& datum : primaryWaveform.get_data()) {
@@ -393,34 +391,66 @@ ElectromagneticParameter InputsWrapper::reflect_waveform(ElectromagneticParamete
 }
 
 std::pair<bool, std::string> InputsWrapper::check_integrity() {
-    auto operation_points = get_mutable_operation_points();
+    auto operationPoints = get_mutable_operation_points();
     auto turnsRatios = get_design_requirements().get_turns_ratios();
+    auto magnetizingInductance = get_requirement_value(get_design_requirements().get_magnetizing_inductance());
     std::pair<bool, std::string> result;
     result.first = true;
     result.second = "";
 
-    for (auto& operation_point : operation_points) {
+    for (auto& operation_point : operationPoints) {
         if (operation_point.get_excitations_per_winding().size() == 0) {
             result.first = false;
             throw std::invalid_argument("Missing excitation for primary");
         }
     }
 
-    for (size_t i = 0; i < operation_points.size(); ++i) {
-        if (turnsRatios.size() > operation_points[i].get_excitations_per_winding().size() - 1) {
-            if (turnsRatios.size() == 1 && operation_points[i].get_excitations_per_winding().size() == 1) {
+    for (size_t i = 0; i < operationPoints.size(); ++i) {
+        std::vector<OperationPointExcitation> processed_excitations_per_winding;
+
+
+        for (auto& excitation : operationPoints[i].get_mutable_excitations_per_winding()) {
+            // Here we processed this excitation voltage
+            if (excitation.get_voltage()) {
+                auto voltage_excitation = excitation.get_voltage().value();
+                voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
+                excitation.set_voltage(voltage_excitation);
+            }
+            // Here we processed this excitation current
+            if (excitation.get_current()) {
+                auto current_excitation = excitation.get_current().value();
+                current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
+                excitation.set_current(current_excitation);
+            }
+            else {
+                auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
+                auto sampledWaveform = get_sampled_waveform(voltageWaveform, excitation.get_frequency());
+                excitation.set_current(
+                    get_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
+            }
+            processed_excitations_per_winding.push_back(excitation);
+        }
+        operationPoints[i].set_excitations_per_winding(processed_excitations_per_winding);
+    }
+
+    for (size_t i = 0; i < operationPoints.size(); ++i) {
+
+        if (turnsRatios.size() > operationPoints[i].get_excitations_per_winding().size() - 1) {
+            if (turnsRatios.size() == 1 && operationPoints[i].get_excitations_per_winding().size() == 1) {
                 // We are missing excitation only for secondary
-                for (size_t i = 0; i < turnsRatios.size(); ++i) {
-                    if (i >= operation_points[i].get_excitations_per_winding().size() - 1) {
-                        double turnRatio = get_requirement_value(turnsRatios[i]);
-                        auto excitationOfPrimaryWinding = operation_points[i].get_excitations_per_winding()[0];
+                for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
+                    if (turnRatioIndex >= operationPoints[i].get_excitations_per_winding().size() - 1) {
+                        double turnRatio = get_requirement_value(turnsRatios[turnRatioIndex]);
+                        auto excitationOfPrimaryWinding = operationPoints[i].get_excitations_per_winding()[0];
                         OperationPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
 
                         excitationOfThisWinding.set_voltage(
                             reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnRatio));
+
+
                         excitationOfThisWinding.set_current(
                             reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnRatio));
-                        operation_points[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
+                        operationPoints[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
                     }
                 }
                 result.second = "Had to create the excitations of some windings based on primary";
@@ -431,12 +461,8 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         }
     }
 
-    set_operation_points(operation_points);
+    set_operation_points(operationPoints);
 
-    for (auto& operation_point : get_mutable_operation_points()) {
-        json operation_pointJson;
-        OpenMagnetics::to_json(operation_pointJson, operation_point);
-    }
     return result;
 }
 
@@ -707,7 +733,13 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
 
     inputsJson["designRequirements"] = json();
     inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
-    inputsJson["designRequirements"]["turnsRatios"] = turnsRatios;
+    json turnsRatiosJson = json::array();
+    for (auto& turnsRatio : turnsRatios) {
+        json turnsRatioJson = json();
+        turnsRatioJson["nominal"] = turnsRatio;
+        turnsRatiosJson.push_back(turnsRatioJson);
+    }
+    inputsJson["designRequirements"]["turnsRatios"] = turnsRatiosJson;
 
     InputsWrapper inputs(inputsJson);
 
@@ -715,13 +747,17 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
         inputs.get_mutable_operation_points()[0].get_mutable_excitations_per_winding()[0].get_voltage().value();
 
     auto operationPoint = inputs.get_mutable_operation_points()[0];
-    auto excitation = operationPoint.get_mutable_excitations_per_winding()[0];
-    auto magnetizingCurrentElectromagneticParameter = get_magnetizing_current(excitation, magnetizingInductance);
-    excitation.set_current(
-        InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
-    excitation.set_magnetizing_current(
-        InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
-    operationPoint.set_excitations_per_winding(std::vector<OperationPointExcitation>({excitation}));
+
+    std::vector<OperationPointExcitation> excitationsWithDcCurrent;
+    for (auto& excitation : operationPoint.get_mutable_excitations_per_winding()) {
+        auto magnetizingCurrentElectromagneticParameter = get_magnetizing_current(excitation, magnetizingInductance);
+        excitation.set_current(
+            InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
+        excitation.set_magnetizing_current(
+            InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
+        excitationsWithDcCurrent.push_back(excitation);
+    }
+    operationPoint.set_excitations_per_winding(excitationsWithDcCurrent);
     inputs.set_operation_point_by_index(operationPoint, 0);
 
     return inputs;

@@ -16,6 +16,7 @@ struct Defaults {
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserReferenceFrequency = 100000;
     const double coreAdviserReferenceMagneticFluxDensityProportion = 0.5;
+    const double magneticFluxDensitySaturation = 0.5;
 };
 } // namespace OpenMagnetics
 

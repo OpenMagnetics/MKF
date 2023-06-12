@@ -1,8 +1,11 @@
 #if !defined(CONSTANTS_H)
-#    define CONSTANTS_H 1
-#    pragma once
+#define CONSTANTS_H 1
+#pragma once
 
-#    include <numbers>
+#include <numbers>
+#include <vector>
+#include <string>
+
 
 namespace OpenMagnetics {
 struct Constants {
@@ -15,6 +18,7 @@ struct Constants {
 
     const double spacer_protuding_percentage = 0.2;
     const double windingPainterScale = 1e6;
+    const std::vector<std::string> windingPainterColorsScale = {"#B0D4D3", "#A3CCCC", "#96C5C4", "#89BEBD", "#7BB7B6", "#6EAFAE", "#61A8A7", "#539796", "#509190", "#488483", "#417676"};
 
     const double number_points_samples_waveforms = 128;
     const double minimum_distributed_fringing_factor = 1.05;

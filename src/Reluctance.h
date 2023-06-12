@@ -29,53 +29,56 @@ enum class ReluctanceModels : int {
 
 class ReluctanceModel {
   private:
+    double _magneticFluxDensitySaturation = 0.4;
   protected:
   public:
     virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
     double get_ungapped_core_reluctance(CoreWrapper core, OperationPoint* operationPoint = nullptr) {
         auto constants = Constants();
-        OpenMagnetics::InitialPermeability initial_permeability;
+        OpenMagnetics::InitialPermeability initialPermeability;
 
-        double initial_permeability_value;
+        auto coreMaterial = core.get_functional_description().get_material();
+
+        double initialPermeabilityValue;
         if (operationPoint != nullptr) {
             double temperature =
                 operationPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
             auto frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
-            initial_permeability_value = initial_permeability.get_initial_permeability(
-                core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
+            initialPermeabilityValue = initialPermeability.get_initial_permeability(
+                coreMaterial, &temperature, nullptr, &frequency);
         }
         else {
-            initial_permeability_value =
-                initial_permeability.get_initial_permeability(core.get_functional_description().get_material());
+            initialPermeabilityValue =
+                initialPermeability.get_initial_permeability(coreMaterial);
+            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
         }
-        double absolute_permeability = constants.vacuum_permeability * initial_permeability_value;
-        double effective_area = core.get_processed_description()->get_effective_parameters().get_effective_area();
-        double effective_length = core.get_processed_description()->get_effective_parameters().get_effective_length();
+        double absolutePermeability = constants.vacuum_permeability * initialPermeabilityValue;
+        double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+        double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
-        double reluctance_core = effective_length / (absolute_permeability * effective_area);
-        return reluctance_core;
+        double reluctanceCore = effectiveLength / (absolutePermeability * effectiveArea);
+        return reluctanceCore;
     }
 
-    double get_ungapped_core_reluctance(CoreWrapper core, double initial_permeability) {
+    double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability) {
         auto constants = Constants();
-        double absolute_permeability = constants.vacuum_permeability * initial_permeability;
-        double effective_area = core.get_processed_description()->get_effective_parameters().get_effective_area();
-        double effective_length = core.get_processed_description()->get_effective_parameters().get_effective_length();
+        double absolutePermeability = constants.vacuum_permeability * initialPermeability;
+        double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+        double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
-        double reluctance_core = effective_length / (absolute_permeability * effective_area);
-        return reluctance_core;
+        double reluctanceCore = effectiveLength / (absolutePermeability * effectiveArea);
+        return reluctanceCore;
     }
-    double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringing_factor) {
+    double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
         auto constants = Constants();
-        double magnetic_flux_density_saturation =
-            constants.magnetic_flux_density_saturation; // HARDCODED TODO: replace when materials are implemented
-        auto gap_length = gapInfo.get_length();
-        auto gap_area = *(gapInfo.get_area());
+        auto gapLength = gapInfo.get_length();
+        auto gapArea = *(gapInfo.get_area());
 
-        double energy_stored_in_gap = 0.5 / constants.vacuum_permeability * gap_length * gap_area * fringing_factor *
-                                      pow(magnetic_flux_density_saturation, 2);
+        double energyStoredInGap = 0.5 / constants.vacuum_permeability * gapLength * gapArea * fringingFactor *
+                                      pow(_magneticFluxDensitySaturation, 2);
 
-        return energy_stored_in_gap;
+        return energyStoredInGap;
     }
     static std::map<std::string, std::string> get_models_information() {
         std::map<std::string, std::string> information;
@@ -111,32 +114,32 @@ class ReluctanceModel {
         return errors;
     }
     static std::map<std::string, std::string> get_models_external_links() {
-        std::map<std::string, std::string> external_links;
-        external_links["Zhang"] = "https://ieeexplore.ieee.org/document/9332553";
-        external_links["Muehlethaler"] = "https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/"
+        std::map<std::string, std::string> externalLinks;
+        externalLinks["Zhang"] = "https://ieeexplore.ieee.org/document/9332553";
+        externalLinks["Muehlethaler"] = "https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/"
                                          "10_A_Novel_Approach_ECCEAsia2011_01.pdf";
-        external_links["Partridge"] =
+        externalLinks["Partridge"] =
             "https://www.goodreads.com/book/show/30187347-transformer-and-inductor-design-handbook";
-        external_links["Effective Area"] =
+        externalLinks["Effective Area"] =
             "https://www.goodreads.com/book/show/18227470-high-frequency-magnetic-components?ref=nav_sb_ss_1_33";
-        external_links["Effective Length"] =
+        externalLinks["Effective Length"] =
             "https://www.goodreads.com/book/show/18227470-high-frequency-magnetic-components?ref=nav_sb_ss_1_33";
-        external_links["Stenglein"] = "https://ieeexplore.ieee.org/document/7695271/";
-        external_links["Balakrishnan"] = "https://ieeexplore.ieee.org/document/602560";
-        external_links["Classic"] = "https://en.wikipedia.org/wiki/Magnetic_reluctance";
-        return external_links;
+        externalLinks["Stenglein"] = "https://ieeexplore.ieee.org/document/7695271/";
+        externalLinks["Balakrishnan"] = "https://ieeexplore.ieee.org/document/602560";
+        externalLinks["Classic"] = "https://en.wikipedia.org/wiki/Magnetic_reluctance";
+        return externalLinks;
     }
     static std::map<std::string, std::string> get_models_internal_links() {
-        std::map<std::string, std::string> internal_links;
-        internal_links["Zhang"] = "";
-        internal_links["Muehlethaler"] = "/musings/10_gap_reluctance_and_muehlethaler_method";
-        internal_links["Partridge"] = "";
-        internal_links["Effective Area"] = "";
-        internal_links["Effective Length"] = "";
-        internal_links["Stenglein"] = "/musings/11_inductance_variables_and_stenglein_method";
-        internal_links["Balakrishnan"] = "";
-        internal_links["Classic"] = "";
-        return internal_links;
+        std::map<std::string, std::string> internalLinks;
+        internalLinks["Zhang"] = "";
+        internalLinks["Muehlethaler"] = "/musings/10_gap_reluctance_and_muehlethaler_method";
+        internalLinks["Partridge"] = "";
+        internalLinks["Effective Area"] = "";
+        internalLinks["Effective Length"] = "";
+        internalLinks["Stenglein"] = "/musings/11_inductance_variables_and_stenglein_method";
+        internalLinks["Balakrishnan"] = "";
+        internalLinks["Classic"] = "";
+        return internalLinks;
     }
     double get_core_reluctance(CoreWrapper core, OperationPoint* operationPoint = nullptr) {
         auto coreReluctance = get_ungapped_core_reluctance(core, operationPoint);
@@ -168,16 +171,16 @@ class ReluctanceModel {
             return 0;
         }
         for (const auto& gap : gapping) {
-            auto gap_reluctance = get_gap_reluctance(gap);
+            auto gapReluctance = get_gap_reluctance(gap);
             auto gapColumn = core.find_closest_column_by_coordinates(*gap.get_coordinates());
             if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
-                calculatedLateralReluctance += 1 / gap_reluctance["reluctance"];
+                calculatedLateralReluctance += 1 / gapReluctance["reluctance"];
             }
             else {
-                calculatedCentralReluctance += gap_reluctance["reluctance"];
+                calculatedCentralReluctance += gapReluctance["reluctance"];
             }
-            if (gap_reluctance["fringing_factor"] < 1) {
-                std::cout << "fringing_factor " << gap_reluctance["fringing_factor"] << std::endl;
+            if (gapReluctance["fringing_factor"] < 1) {
+                std::cout << "fringing_factor " << gapReluctance["fringing_factor"] << std::endl;
             }
         }
         calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
@@ -207,8 +210,8 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
     }
 
     double get_reluctance_type_1(double l, double w, double h) {
-        double basic_reluctance = get_basic_reluctance(l, w, h);
-        return 1 / (1 / (basic_reluctance + basic_reluctance) + 1 / (basic_reluctance + basic_reluctance));
+        double basicReluctance = get_basic_reluctance(l, w, h);
+        return 1 / (1 / (basicReluctance + basicReluctance) + 1 / (basicReluctance + basicReluctance));
     }
 };
 

@@ -16,6 +16,9 @@ std::map<std::string, double> maxWireConductingWidths;
 namespace OpenMagnetics {
     InsulationWireCoating WireWrapper::get_coating(WireS wire) {
         // If the coating is a string, we have to load its data from the database
+        if (!wire.get_coating()) {
+            throw std::runtime_error("Wire has no coating");
+        }
         if (std::holds_alternative<std::string>(wire.get_coating().value())) {
             throw std::runtime_error("Coating database not implemented yet");
         }
@@ -81,5 +84,22 @@ namespace OpenMagnetics {
         double fillingFactor = wireFillingFactorInterps[key](conductingDiameter);
         return fillingFactor;
     }
+
+    int WireWrapper::get_equivalent_insulation_layers(double voltageToInsulate) {
+        auto coating = get_coating(*this);
+        // 0.85 according to IEC 61558
+        // https://www.elektrisola.com/en/Products/Fully-Insulated-Wire/Breakdown-Voltage
+        auto voltageCoveredByWire = coating.get_breakdown_voltage().value() * 0.85;
+        int timesVoltageisCovered = floor(voltageCoveredByWire / voltageToInsulate);
+        int numberLayers;
+        if (coating.get_number_layers()) {
+            numberLayers = coating.get_number_layers().value();
+        }
+        else {
+            numberLayers = 1;
+        }
+        return std::min(numberLayers, timesVoltageisCovered);
+    }
+
 
 } // namespace OpenMagnetics

@@ -468,6 +468,7 @@ class CorePieceEp : public CorePieceE {
             lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 ) -
                               std::get<double>(dimensions["K"]));
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
+            lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
             lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
             lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
             lateralColumn.set_coordinates({0, 0, roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_depth() / 2)});
@@ -598,10 +599,11 @@ class CorePieceEpx : public CorePieceEp {
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
         if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
-            lateralColumn.set_depth(                roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 )-
+            lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 )-
                               std::get<double>(dimensions["K"]));
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(                roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
+            lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
+            lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
             lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
             lateralColumn.set_coordinates({
                 0, 0,
@@ -611,8 +613,8 @@ class CorePieceEpx : public CorePieceEp {
         }
         else {
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(                roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
-            lateralColumn.set_depth(                roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
+            lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+            lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
             lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
             lateralColumn.set_coordinates({
                 roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0,
@@ -1230,7 +1232,7 @@ class CorePieceU : public CorePiece {
         windingWindow.set_height(std::get<double>(dimensions["D"]));
         windingWindow.set_width(windingWindowWidth);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1249,7 +1251,7 @@ class CorePieceU : public CorePiece {
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
         if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-            mainColumn.set_width(                roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+            mainColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
         }
         else {
             mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
@@ -1336,7 +1338,7 @@ class CorePieceUr : public CorePiece {
         windingWindow.set_height(std::get<double>(dimensions["D"]));
         windingWindow.set_width(windingWindowWidth);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1388,13 +1390,13 @@ class CorePieceUr : public CorePiece {
             lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
             lateralColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
             lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-            lateralColumn.set_area(                roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+            lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         }
         else {
             lateralColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
             lateralColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
             lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["H"])));
-            lateralColumn.set_area(                roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+            lateralColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         }
         lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
         lateralColumn.set_coordinates({roundFloat<6>((std::get<double>(dimensions["A"]) + windingWindowWidth) / 2), 0, 0});
@@ -1507,7 +1509,7 @@ class CorePieceUt : public CorePiece {
         mainColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
         if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-            mainColumn.set_width(                roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+            mainColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
         }
         else {
             mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
@@ -2137,8 +2139,13 @@ std::vector<CoreGap> CoreWrapper::find_gaps_by_column(ColumnElement column) {
     std::vector<CoreGap> foundGaps;
     double columnLeftLimit = column.get_coordinates()[0] - column.get_width() / 2;
     double columnRightLimit = column.get_coordinates()[0] + column.get_width() / 2;
+    double columnFrontLimit = column.get_coordinates()[2] + column.get_depth() / 2;
+    double columnBackLimit = column.get_coordinates()[2] - column.get_depth() / 2;
     for (auto& gap : get_functional_description().get_gapping()) {
-        if (gap.get_coordinates().value()[0] >= columnLeftLimit && gap.get_coordinates().value()[0] <= columnRightLimit) {
+        if (gap.get_coordinates().value()[0] >= columnLeftLimit &&
+            gap.get_coordinates().value()[0] <= columnRightLimit &&
+            gap.get_coordinates().value()[2] <= columnFrontLimit &&
+            gap.get_coordinates().value()[2] >= columnBackLimit) {
             foundGaps.push_back(gap);
         }
     }
@@ -2498,6 +2505,9 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
     else
         return saturationMagneticFluxDensity;
 }
+double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
+    return get_magnetic_flux_density_saturation(25, proportion);
+}
 
 double CoreWrapper::get_magnetic_fielda_strength_saturation(double temperature) {
     auto coreMaterial =  get_material();
@@ -2604,6 +2614,9 @@ std::vector<ColumnElement> CoreWrapper::get_columns() {
 
 std::vector<WindingWindowElement> CoreWrapper::get_winding_windows() {
     return get_processed_description().value().get_winding_windows();
+}
+CoreShapeFamily CoreWrapper::get_shape_family() {
+    return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
 }
 
 } // namespace OpenMagnetics

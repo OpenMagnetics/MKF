@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18.0)
 
 project(MKF_Project)
 
-SET(CMAKE_CXX_STANDARD 20)
+SET(CMAKE_CXX_STANDARD 23)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
@@ -47,7 +47,7 @@ FetchContent_Declare(libInterpolate
         GIT_REPOSITORY https://github.com/CD3/libInterpolate)
 
 FetchContent_Declare(svg
-        GIT_REPOSITORY https://github.com/vincentlaucsb/svg)
+        GIT_REPOSITORY https://github.com/AlfVII/svg)
 
 FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate svg)
 

@@ -72,4 +72,40 @@ SUITE(Bobbin) {
 
         CHECK_CLOSE(expectedValue, fillingFactor, max_error * expectedValue);
     }
+
+    TEST(Get_Winding_Window_Dimensions_Medium) {
+        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.012, 0.027);
+
+        double expectedWidthValue = 0.00985;
+        double expectedHeightValue = 0.0237;
+        double width = windingWindowDimensions.first;
+        double height = windingWindowDimensions.second;
+
+        CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
+        CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
+
+    TEST(Get_Winding_Window_Dimensions_Too_Small) {
+        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.002, 0.002);
+
+        double expectedWidthValue = 0.00116;
+        double expectedHeightValue = 0.001;
+        double width = windingWindowDimensions.first;
+        double height = windingWindowDimensions.second;
+
+        CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
+        CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
+
+    TEST(Get_Winding_Window_Dimensions_Too_Large) {
+        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.1, 0.1);
+
+        double expectedWidthValue = 0.09575;
+        double expectedHeightValue = 0.0943;
+        double width = windingWindowDimensions.first;
+        double height = windingWindowDimensions.second;
+
+        CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
+        CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
 }

@@ -10,12 +10,53 @@ namespace OpenMagneticsTesting {
 
 OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
                                                 std::vector<uint64_t> numberParallels,
+                                                std::string shapeName,
+                                                uint64_t interleavingLevel,
+                                                OpenMagnetics::WindingOrientation windingOrientation,
+                                                OpenMagnetics::WindingOrientation layersOrientation,
+                                                OpenMagnetics::CoilAlignment turnsAlignment,
+                                                OpenMagnetics::CoilAlignment sectionsAlignment,
+                                                std::vector<OpenMagnetics::WireWrapper> wires){
+    json windingJson;
+    windingJson["functionalDescription"] = json::array();
+
+    auto core = get_core(shapeName, json::parse("[]"), 1, "Dummy");
+    auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
+    json bobbinJson;
+    OpenMagnetics::to_json(bobbinJson, bobbin);
+
+    windingJson["bobbin"] = bobbinJson;
+
+    for (size_t i = 0; i < numberTurns.size(); ++i){
+        json individualWindingJson;
+        individualWindingJson["name"] = "winding " + std::to_string(i);
+        individualWindingJson["numberTurns"] = numberTurns[i];
+        individualWindingJson["numberParallels"] = numberParallels[i];
+        individualWindingJson["isolationSide"] = "primary";
+        if (i < wires.size()) {
+            individualWindingJson["wire"] = wires[i];
+        }
+        else {
+            individualWindingJson["wire"] = "0.475 - Grade 1";
+        }
+        windingJson["functionalDescription"].push_back(individualWindingJson);
+    }
+
+    OpenMagnetics::WindingWrapper winding(windingJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+    return winding;
+}
+
+OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
+                                                std::vector<uint64_t> numberParallels,
                                                 double bobbinHeight,
                                                 double bobbinWidth,
                                                 std::vector<double> bobbinCenterCoodinates,
                                                 uint64_t interleavingLevel,
-                                                OpenMagnetics::OrientationEnum windingOrientation,
-                                                OpenMagnetics::OrientationEnum layersOrientation){
+                                                OpenMagnetics::WindingOrientation windingOrientation,
+                                                OpenMagnetics::WindingOrientation layersOrientation,
+                                                OpenMagnetics::CoilAlignment turnsAlignment,
+                                                OpenMagnetics::CoilAlignment sectionsAlignment,
+                                                std::vector<OpenMagnetics::WireWrapper> wires){
     json windingJson;
     windingJson["functionalDescription"] = json::array();
 
@@ -42,11 +83,16 @@ OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurn
         individualWindingJson["numberTurns"] = numberTurns[i];
         individualWindingJson["numberParallels"] = numberParallels[i];
         individualWindingJson["isolationSide"] = "primary";
-        individualWindingJson["wire"] = "0.475 - Grade 1";
+        if (i < wires.size()) {
+            individualWindingJson["wire"] = wires[i];
+        }
+        else {
+            individualWindingJson["wire"] = "0.475 - Grade 1";
+        }
         windingJson["functionalDescription"].push_back(individualWindingJson);
     }
 
-    OpenMagnetics::WindingWrapper winding(windingJson, interleavingLevel, windingOrientation, layersOrientation);
+    OpenMagnetics::WindingWrapper winding(windingJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return winding;
 }
 

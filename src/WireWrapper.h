@@ -43,5 +43,43 @@ class WireWrapper : public WireS {
 
         static InsulationWireCoating get_coating(WireS wire);
         static double get_filling_factor(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
+        void set_nominal_value_conducting_diameter(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_conducting_diameter(aux);
+        }
+
+        void set_nominal_value_conducting_height(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_conducting_height(aux);
+        }
+
+        void set_nominal_value_conducting_width(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_conducting_width(aux);
+        }
+
+        void set_nominal_value_outer_diameter(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_outer_diameter(aux);
+        }
+
+        void set_nominal_value_outer_height(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_outer_height(aux);
+        }
+
+        void set_nominal_value_outer_width(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_outer_width(aux);
+        }
+
+        int get_equivalent_insulation_layers(double voltageToInsulate);
+
 };
 } // namespace OpenMagnetics

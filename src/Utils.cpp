@@ -22,6 +22,7 @@ std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
 std::map<std::string, OpenMagnetics::WireS> wireDatabase;
 std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
+std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 
 namespace OpenMagnetics {
@@ -81,6 +82,19 @@ void load_databases(bool withAliases) {
             json jf = json::parse(myline);
             BobbinWrapper bobbin(jf);
             bobbinDatabase[jf["name"]] = bobbin;
+        }
+    }
+
+    {
+        std::string filePath = __FILE__;
+        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+        auto dataFilePath = masPath + "data/insulation_materials.ndjson";
+        std::ifstream ndjsonFile(dataFilePath);
+        std::string myline;
+        while (std::getline(ndjsonFile, myline)) {
+            json jf = json::parse(myline);
+            InsulationMaterialWrapper insulationMaterial(jf);
+            insulationMaterialDatabase[jf["name"]] = insulationMaterial;
         }
     }
 }
@@ -169,6 +183,18 @@ OpenMagnetics::Bobbin find_bobbin_by_name(std::string name) {
     }
     if (bobbinDatabase.count(name)) {
         return bobbinDatabase[name];
+    }
+    else {
+        return json::parse("{}");
+    }
+}
+
+OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string name) {
+    if (insulationMaterialDatabase.empty()) {
+        load_databases();
+    }
+    if (insulationMaterialDatabase.count(name)) {
+        return insulationMaterialDatabase[name];
     }
     else {
         return json::parse("{}");
