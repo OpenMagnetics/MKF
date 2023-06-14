@@ -915,6 +915,46 @@ SUITE(WindingPainter) {
         CHECK(std::filesystem::exists(outFile));
     }
 
+    TEST(Test_Painter_Foil_With_Insulation_Centered) {
+        std::vector<uint64_t> numberTurns = {4};
+        std::vector<uint64_t> numberParallels = {1};
+        uint64_t interleavingLevel = 1;
+        uint64_t numberStacks = 1;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_outer_height(0.014);
+        wire.set_nominal_value_outer_width(0.0002);
+        wire.set_nominal_value_conducting_height(0.0139);
+        wire.set_nominal_value_conducting_width(0.0001);
+        wire.set_type("foil");
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
+
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Foil_With_Insulation_Centered.svg");
+        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_winding(winding);
+
+        windingPainter.paint_core(magnetic);
+        windingPainter.paint_bobbin(magnetic);
+        auto svg = windingPainter.paint_winding_turns(magnetic);
+
+        CHECK(svg->get_children<SVG::Group>().size() == 3);
+        CHECK(svg->get_children<SVG::Polygon>().size() == 7);
+        CHECK(std::filesystem::exists(outFile));
+    }
+
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Centered) {
         std::vector<uint64_t> numberTurns = {23, 23};
         std::vector<uint64_t> numberParallels = {2, 2};
@@ -1482,6 +1522,49 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation.svg");
+        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_winding(winding);
+
+        windingPainter.paint_core(magnetic);
+        windingPainter.paint_bobbin(magnetic);
+        auto svg = windingPainter.paint_winding_turns(magnetic);
+
+        CHECK(svg->get_children<SVG::Group>().size() == 3);
+        CHECK(svg->get_children<SVG::Polygon>().size() == 11);
+        CHECK(std::filesystem::exists(outFile));
+    }
+
+    TEST(Test_Turns_Not_Fitting) {
+        std::vector<uint64_t> numberTurns = {42, 42};
+        std::vector<uint64_t> numberParallels = {6, 6};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint64_t interleavingLevel = 2;
+        uint64_t numberStacks = 1;
+        std::string coreShape = "PQ 40/40";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        OpenMagnetics::WireWrapper wire;
+        wire.set_type("round");
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
+
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
+
+        double voltagePeakToPeak = 20000;
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        winding.set_inputs(inputs);
+        winding.wind();
+        winding.delimit_and_compact();
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Turns_Not_Fitting.svg");
         OpenMagnetics::WindingPainter windingPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
