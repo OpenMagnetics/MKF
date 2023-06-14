@@ -1546,6 +1546,7 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_outer_diameter(0.0015);
         wire.set_type("round");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
 
