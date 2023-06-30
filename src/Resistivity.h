@@ -18,7 +18,7 @@ enum class ResistivityModels : int {
     WIRE_MATERIAL
 };
 
-using ResistivityMaterial = std::variant<CoreMaterial, WireMaterial>;
+using ResistivityMaterial = std::variant<CoreMaterial, WireMaterial, std::string>;
 
 
 class ResistivityModel {

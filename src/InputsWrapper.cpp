@@ -280,6 +280,22 @@ double InputsWrapper::get_requirement_value(NumericRequirement requirement) {
     }
 }
 
+
+double InputsWrapper::check_requirement(NumericRequirement requirement, double value){
+    if (requirement.get_minimum() && requirement.get_maximum()) {
+        return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
+    }
+    else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
+        return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
+    }
+    else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
+        return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
+    }
+    else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
+        return value == requirement.get_nominal().value();
+    }
+}
+
 ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
@@ -831,7 +847,7 @@ double InputsWrapper::get_waveform_coefficient(OperationPoint* operationPoint) {
     source = std::vector<double>(source.begin(), source.end() - source.size() / 2);
 
     for (size_t i = 0; i < source.size() - 1; i++) {
-        integral += (source[i + 1] - source[i]) / 2. + source[i];
+        integral += fabs(source[i + 1] - source[i]) / 2. + source[i];
     }
     integral *= time_per_point;
 

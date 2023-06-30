@@ -2488,6 +2488,9 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
             (saturationData[0].get_temperature() - saturationData[1].get_temperature());
     }
     else {
+        std::sort(saturationData.begin(), saturationData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
+                return b1.get_temperature() < b2.get_temperature();
+        });
         size_t n = saturationData.size();
         _1D::CubicSplineInterpolator<double> interp;
         _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
@@ -2509,7 +2512,7 @@ double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
     return get_magnetic_flux_density_saturation(25, proportion);
 }
 
-double CoreWrapper::get_magnetic_fielda_strength_saturation(double temperature) {
+double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
     auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
     double saturationMagneticFieldStrength;
@@ -2527,6 +2530,9 @@ double CoreWrapper::get_magnetic_fielda_strength_saturation(double temperature) 
             (saturationData[0].get_temperature() - saturationData[1].get_temperature());
     }
     else {
+        std::sort(saturationData.begin(), saturationData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
+                return b1.get_temperature() < b2.get_temperature();
+        });
         size_t n = saturationData.size();
         _1D::CubicSplineInterpolator<double> interp;
         _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
@@ -2560,6 +2566,9 @@ double CoreWrapper::get_remanence(double temperature) {
             (remanenceData[0].get_temperature() - remanenceData[1].get_temperature());
     }
     else {
+        std::sort(remanenceData.begin(), remanenceData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
+                return b1.get_temperature() < b2.get_temperature();
+        });
         size_t n = remanenceData.size();
         _1D::CubicSplineInterpolator<double> interp;
         _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
@@ -2593,6 +2602,9 @@ double CoreWrapper::get_coercive_force(double temperature) {
             (coerciveForceData[0].get_temperature() - coerciveForceData[1].get_temperature());
     }
     else {
+        std::sort(coerciveForceData.begin(), coerciveForceData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
+                return b1.get_temperature() < b2.get_temperature();
+        });
         size_t n = coerciveForceData.size();
         _1D::CubicSplineInterpolator<double> interp;
         _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
@@ -2615,8 +2627,34 @@ std::vector<ColumnElement> CoreWrapper::get_columns() {
 std::vector<WindingWindowElement> CoreWrapper::get_winding_windows() {
     return get_processed_description().value().get_winding_windows();
 }
+
 CoreShapeFamily CoreWrapper::get_shape_family() {
     return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
+}
+
+std::string CoreWrapper::get_shape_name() {
+    return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_name().value();
+}
+
+std::string CoreWrapper::get_material_name() {
+    return get_material().get_name();
+}
+
+std::vector<std::string> CoreWrapper::get_available_core_losses_methods(){
+    std::vector<std::string> methods;
+    auto volumetricLossesMethodsVariants = get_material().get_volumetric_losses();
+    for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
+        auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+        for (auto& volumetricLossesMethod : volumetricLossesMethods) {
+            if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
+                auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
+                if (std::find(methods.begin(), methods.end(), methodData.get_method()) == methods.end()) {
+                    methods.push_back(methodData.get_method());
+                }
+            }
+        }
+    }
+    return methods;
 }
 
 } // namespace OpenMagnetics

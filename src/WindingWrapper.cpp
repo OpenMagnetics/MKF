@@ -22,55 +22,55 @@ using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-std::vector<bool> WindingWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots) {
-    std::vector<bool> windByConsecutiveTurns;
+std::vector<WindingStyle> WindingWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots) {
+    std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
         if (numberTurns[i] == numberSlots) {
-            windByConsecutiveTurns.push_back(false);
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
             log("Winding winding " + std::to_string(i) + " by putting together parallels of the same turn, as the number of turns is equal to the number of sections.");
             continue;
         }
         if (numberParallels[i] == numberSlots) {
-            windByConsecutiveTurns.push_back(true);
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is equal to the number of sections.");
             continue;
         }
         if (numberParallels[i] % numberSlots == 0) {
-            windByConsecutiveTurns.push_back(true);
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is divisible by the number of sections.");
             continue;
         }
         if (numberTurns[i] % numberSlots == 0) {
-            windByConsecutiveTurns.push_back(false);
+            windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
             log("Winding winding " + std::to_string(i) + " by putting together parallels of the same turn, as the number of turns is divisible by the number of sections.");
             continue;
         }
-        windByConsecutiveTurns.push_back(true);
+        windByConsecutiveTurns.push_back(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
         log("Winding winding " + std::to_string(i) + " by putting together turns of the same parallel, as the number of parallels is smaller than the number of turns.");
 
     }
     return windByConsecutiveTurns;
 }
 
-bool WindingWrapper::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots) {
+WindingStyle WindingWrapper::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots) {
     if (numberTurns == numberSlots) {
         log("Winding layer by putting together parallels of the same turn, as the number of turns is equal to the number of layers.");
-        return false;
+        return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
     }
     if (numberParallels == numberSlots) {
         log("Winding layer by putting together turns of the same parallel, as the number of parallels is equal to the number of layers.");
-        return true;
+        return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
     }
     if (numberParallels % numberSlots == 0) {
         log("Winding layer by putting together turns of the same parallel, as the number of parallels is divisible by the number of layers.");
-        return true;
+        return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
     }
     if (numberTurns % numberSlots == 0) {
         log("Winding layer by putting together parallels of the same turn, as the number of turns is divisible by the number of layers.");
-        return false;
+        return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
     }
     log("Winding layer by putting together turns of the same parallel, as neither the number of parallels nor the number of turns is divisible by the number of turns.");
-    return true;
+    return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
 }
 
 std::vector<uint64_t> WindingWrapper::get_number_turns() {
@@ -192,11 +192,11 @@ double WindingWrapper::verticalFillingFactor(Layer layer) {
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, uint8_t slots, uint64_t numberTurns, uint64_t numberParallels, 
-                                                                   std::vector<double> remainingParallelsProportion, bool windByConsecutiveTurns,
+                                                                   std::vector<double> remainingParallelsProportion, WindingStyle windByConsecutiveTurns,
                                                                    std::vector<double> totalParallelsProportion) {
     uint64_t physicalTurnsThisSlot = 0;
     std::vector<double> slotParallelsProportion(numberParallels, 0);
-    if (windByConsecutiveTurns) {
+    if (windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
         size_t remainingPhysicalTurns = 0;
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
             remainingPhysicalTurns += round(remainingParallelsProportion[parallelIndex] * numberTurns);
@@ -263,16 +263,15 @@ void WindingWrapper::calculate_insulation() {
             auto inputs = _inputs.value();
             auto wireLeftTopWinding = wirePerWinding[leftTopWindingIndex];
             auto wireRightBottomWinding = wirePerWinding[rightBottomWindingIndex];
-            auto wireCoatingLeftTopWinding = WireWrapper::get_coating(wireLeftTopWinding);
-            auto wireCoatingRightBottomWinding = WireWrapper::get_coating(wireRightBottomWinding);
             double totalVoltageToInsulate = 0;
+            double dielectricVoltageToInsulate = 0;
+
             for (auto& operationPoint : inputs.get_operation_points()) {
                 auto excitationLeftTopWinding = operationPoint.get_excitations_per_winding()[leftTopWindingIndex];
                 auto excitationRightBottomWinding = operationPoint.get_excitations_per_winding()[rightBottomWindingIndex];
                 totalVoltageToInsulate = std::max(totalVoltageToInsulate, excitationLeftTopWinding.get_voltage().value().get_processed().value().get_rms().value() + excitationRightBottomWinding.get_voltage().value().get_processed().value().get_rms().value());
             }
-            auto timesVoltageIsCoveredByWireInsulationLeftTopWinding = wireLeftTopWinding.get_equivalent_insulation_layers(totalVoltageToInsulate);
-            auto timesVoltageIsCoveredByWireInsulationRightBottomWinding = wireRightBottomWinding.get_equivalent_insulation_layers(totalVoltageToInsulate);
+
             int timesVoltageNeedsToBeCovered;
             InsulationType neededInsulationType;
             if (inputs.get_design_requirements().get_insulation_type()) {
@@ -281,16 +280,23 @@ void WindingWrapper::calculate_insulation() {
                     case InsulationType::BASIC:
                     case InsulationType::FUNCTIONAL:
                         timesVoltageNeedsToBeCovered = 1;
+                        dielectricVoltageToInsulate = totalVoltageToInsulate;
                         break;
                     case InsulationType::SUPPLEMENTARY:
                         timesVoltageNeedsToBeCovered = 2;
+                        dielectricVoltageToInsulate = 2 * totalVoltageToInsulate + 1000;
                         break;
                     case InsulationType::DOUBLE:
+                        timesVoltageNeedsToBeCovered = 3;
+                        dielectricVoltageToInsulate = 2 * totalVoltageToInsulate + 1000;
+                        break;
                     case InsulationType::REINFORCED:
                         timesVoltageNeedsToBeCovered = 3;
+                        dielectricVoltageToInsulate = 2 * (2 * totalVoltageToInsulate + 1000);
                         break;
                     default:
                         timesVoltageNeedsToBeCovered = 1;
+                        dielectricVoltageToInsulate = 2 * totalVoltageToInsulate + 1000;
                         break;
 
                 }
@@ -298,90 +304,96 @@ void WindingWrapper::calculate_insulation() {
             else {
                 neededInsulationType = InsulationType::FUNCTIONAL;
                 timesVoltageNeedsToBeCovered = 1;
+                dielectricVoltageToInsulate = totalVoltageToInsulate;
             }
+
+            auto timesVoltageIsCoveredByWireInsulationLeftTopWinding = wireLeftTopWinding.get_equivalent_insulation_layers(dielectricVoltageToInsulate);
+            auto timesVoltageIsCoveredByWireInsulationRightBottomWinding = wireRightBottomWinding.get_equivalent_insulation_layers(dielectricVoltageToInsulate);
             std::string neededInsulationTypeString = std::string{magic_enum::enum_name(neededInsulationType)};
 
             int timesVoltageNotCoveredByWires = timesVoltageNeedsToBeCovered - timesVoltageIsCoveredByWireInsulationLeftTopWinding - timesVoltageIsCoveredByWireInsulationRightBottomWinding;
             auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
 
             if (timesVoltageNotCoveredByWires > 0) {
-                if (insulationMaterialDatabase.empty()) {
-                    load_databases(true);
-                }
-
-                double maxAmbientTemperature = 0;
-                for (auto& operationPoint : inputs.get_operation_points()) {
-                     maxAmbientTemperature = std::max(maxAmbientTemperature, operationPoint.get_conditions().get_ambient_temperature());
-                }
-
-                double smallestInsulationThicknessCoveringRemaining = DBL_MAX;
-                double chosenMaterialThickness = 0;
-                size_t chosenNumberLayers = 0;
-                InsulationMaterialWrapper chosenMaterial;
-
-
-                for (auto& insulationMaterial : insulationMaterialDatabase) {
-
-                    if (insulationMaterial.second.get_melting_point()) {
-                        if (insulationMaterial.second.get_melting_point().value() < maxAmbientTemperature) {
-                            continue;
-                        }
-                    }
-
-                    for (auto& aux : insulationMaterial.second.get_available_thicknesses()) {
-                        int layersNeeded = ceil(totalVoltageToInsulate / aux.second);
-                        double totalThicknessNeeded = layersNeeded * aux.first;
-                        if (totalThicknessNeeded < smallestInsulationThicknessCoveringRemaining) {
-                            smallestInsulationThicknessCoveringRemaining = totalThicknessNeeded;
-                            chosenMaterial = insulationMaterial.second;
-                            chosenMaterialThickness = aux.first;
-                            chosenNumberLayers = layersNeeded;
-                        }
-                    }
-                }
-
-                _insulationLayers[windingsMapKey] = std::vector<Layer>();
-
-                for (size_t layerIndex = 0; layerIndex < chosenNumberLayers; ++layerIndex) {
-                    Layer layer;
-                    layer.set_partial_windings(std::vector<PartialWinding>{});
-                    // layer.set_section(section.get_name());
-                    layer.set_type(ElectricalType::INSULATION);
-                    layer.set_name("temp");
-                    layer.set_orientation(_layersOrientation);
-                    layer.set_turns_alignment(_turnsAlignment);
-                    if (_layersOrientation == WindingOrientation::VERTICAL) {
-                        layer.set_dimensions(std::vector<double>{chosenMaterialThickness, windingWindowHeight});
-                    }
-                    else if (_layersOrientation == WindingOrientation::HORIZONTAL) {
-                        layer.set_dimensions(std::vector<double>{windingWindowWidth, chosenMaterialThickness});
-                    }
-                    // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
-                    layer.set_filling_factor(1);
-                    _insulationLayers[windingsMapKey].push_back(layer);
-                }
-                _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(chosenNumberLayers) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
-
-                Section section;
-                section.set_name("temp");
-                section.set_partial_windings(std::vector<PartialWinding>{});
-                section.set_layers_orientation(_layersOrientation);
-                section.set_type(ElectricalType::INSULATION);
-                if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    section.set_dimensions(std::vector<double>{smallestInsulationThicknessCoveringRemaining, windingWindowHeight});
-                }
-                else if (_windingOrientation == WindingOrientation::VERTICAL) {
-                    section.set_dimensions(std::vector<double>{windingWindowWidth, smallestInsulationThicknessCoveringRemaining});
-                }
-                // section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
-                section.set_filling_factor(1);
-                _insulationSections[windingsMapKey] = section;
                 _insulationSectionsLog[windingsMapKey] = "Adding an insulation section, because wires are counting for " + std::to_string(timesVoltageNotCoveredByWires) + " full isolation, and " + neededInsulationTypeString + " needs " + std::to_string(timesVoltageNeedsToBeCovered) + " times.";
-
             }
             else {
-                _insulationSectionsLog[windingsMapKey] = "No insulation section needed, because wires are enough for covering " + neededInsulationTypeString + " Insulation.";
+                dielectricVoltageToInsulate = 1;  // Just to have minimum mechanical layer
+                _insulationSectionsLog[windingsMapKey] = "No insulation section needed, because wires are enough for covering " + neededInsulationTypeString + " Insulation. Just adding minimum mechanical layer";
             }
+
+
+            if (insulationMaterialDatabase.empty()) {
+                load_databases(true);
+            }
+
+            double maxAmbientTemperature = 0;
+            for (auto& operationPoint : inputs.get_operation_points()) {
+                 maxAmbientTemperature = std::max(maxAmbientTemperature, operationPoint.get_conditions().get_ambient_temperature());
+            }
+
+            double smallestInsulationThicknessCoveringRemaining = DBL_MAX;
+            double chosenMaterialThickness = 0;
+            size_t chosenNumberLayers = 0;
+            InsulationMaterialWrapper chosenMaterial;
+
+
+            for (auto& insulationMaterial : insulationMaterialDatabase) {
+
+                if (insulationMaterial.second.get_melting_point()) {
+                    if (insulationMaterial.second.get_melting_point().value() < maxAmbientTemperature) {
+                        continue;
+                    }
+                }
+
+                for (auto& aux : insulationMaterial.second.get_available_thicknesses()) {
+                    int layersNeeded = ceil(dielectricVoltageToInsulate / aux.second);
+                    double totalThicknessNeeded = layersNeeded * aux.first;
+                    if (totalThicknessNeeded < smallestInsulationThicknessCoveringRemaining) {
+                        smallestInsulationThicknessCoveringRemaining = totalThicknessNeeded;
+                        chosenMaterial = insulationMaterial.second;
+                        chosenMaterialThickness = aux.first;
+                        chosenNumberLayers = layersNeeded;
+                    }
+                }
+            }
+
+            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+
+            for (size_t layerIndex = 0; layerIndex < chosenNumberLayers; ++layerIndex) {
+                Layer layer;
+                layer.set_partial_windings(std::vector<PartialWinding>{});
+                // layer.set_section(section.get_name());
+                layer.set_type(ElectricalType::INSULATION);
+                layer.set_name("temp");
+                layer.set_orientation(_layersOrientation);
+                layer.set_turns_alignment(_turnsAlignment);
+                if (_layersOrientation == WindingOrientation::VERTICAL) {
+                    layer.set_dimensions(std::vector<double>{chosenMaterialThickness, windingWindowHeight});
+                }
+                else if (_layersOrientation == WindingOrientation::HORIZONTAL) {
+                    layer.set_dimensions(std::vector<double>{windingWindowWidth, chosenMaterialThickness});
+                }
+                // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+                layer.set_filling_factor(1);
+                _insulationLayers[windingsMapKey].push_back(layer);
+            }
+            _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(chosenNumberLayers) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
+
+            Section section;
+            section.set_name("temp");
+            section.set_partial_windings(std::vector<PartialWinding>{});
+            section.set_layers_orientation(_layersOrientation);
+            section.set_type(ElectricalType::INSULATION);
+            if (_windingOrientation == WindingOrientation::HORIZONTAL) {
+                section.set_dimensions(std::vector<double>{smallestInsulationThicknessCoveringRemaining, windingWindowHeight});
+            }
+            else if (_windingOrientation == WindingOrientation::VERTICAL) {
+                section.set_dimensions(std::vector<double>{windingWindowWidth, smallestInsulationThicknessCoveringRemaining});
+            }
+            // section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
+            section.set_filling_factor(1);
+            _insulationSections[windingsMapKey] = section;
         }
     }
 
@@ -412,7 +424,10 @@ void WindingWrapper::wind_by_sections() {
         for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
             if (_inputs && !(sectionIndex == (_interleavingLevel - 1U) && windingIndex == (get_functional_description().size() - 1))) {
                 auto nextWindingIndex = (windingIndex + 1) % get_functional_description().size();
-                auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
+                auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex}; 
+                if (!_insulationSections.contains(windingsMapKey)) {
+                    continue;
+                }
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
 
                     totalInsulationWidth += _insulationSections[windingsMapKey].get_dimensions()[0];
@@ -468,6 +483,7 @@ void WindingWrapper::wind_by_sections() {
             section.set_dimensions(std::vector<double>{interleavedWidth, interleavedHeight});
             section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
             section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (interleavedWidth * interleavedHeight));
+            section.set_winding_style(windByConsecutiveTurns[windingIndex]);
             sectionsDescription.push_back(section);
 
             for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
@@ -620,7 +636,18 @@ void WindingWrapper::wind_by_layers() {
                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
             }
 
-            bool windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
+            WindingStyle windByConsecutiveTurns;
+            if (sections[sectionIndex].get_winding_style()) {
+                windByConsecutiveTurns = sections[sectionIndex].get_winding_style().value();
+            }
+            else {
+                windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
+            }
+
+            if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
+                windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+            }
+
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
@@ -645,6 +672,7 @@ void WindingWrapper::wind_by_layers() {
                 layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
                 layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
+                layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
 
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
@@ -828,32 +856,79 @@ void WindingWrapper::wind_by_turns() {
                 }
             }
 
-            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
-                for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
-                    Turn turn;
-                    turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
-                    turn.set_layer(layer.get_name());
-                    if (bobbinColumnShape == ColumnShape::ROUND) {
-                        turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
-                    }
-                    else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
-                        double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
-                        turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
-                    }
-                    else {
-                        throw std::runtime_error("only round or rectangular columns supported for bobbins");
-                    }
-                    turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(turnIndex));
-                    turn.set_orientation(TurnOrientation::CLOCKWISE);
-                    turn.set_parallel(parallelIndex);
-                    turn.set_section(layer.get_section().value());
-                    turn.set_winding(partialWinding.get_winding());
-                    turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+            if (!layer.get_winding_style()) {
+                layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+            }
 
-                    turns.push_back(turn);
-                    currentTurnCenterWidth += currentTurnWidthIncrement;
-                    currentTurnCenterHeight -= currentTurnHeightIncrement;
+            // std::cout << "WIND_BY_CONSECUTIVE_TURNS: " << bool(layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) << std::endl;
+            // std::cout << "WIND_BY_CONSECUTIVE_PARALLELS: " << bool(layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) << std::endl;
+
+            if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+                    for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                        Turn turn;
+                        turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
+                        turn.set_layer(layer.get_name());
+                        if (bobbinColumnShape == ColumnShape::ROUND) {
+                            turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                        }
+                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                            double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
+                            turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                        }
+                        else {
+                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                        }
+                        turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                        turn.set_orientation(TurnOrientation::CLOCKWISE);
+                        turn.set_parallel(parallelIndex);
+                        turn.set_section(layer.get_section().value());
+                        turn.set_winding(partialWinding.get_winding());
+                        turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+
+                        turns.push_back(turn);
+                        currentTurnCenterWidth += currentTurnWidthIncrement;
+                        currentTurnCenterHeight -= currentTurnHeightIncrement;
+                        currentTurnIndex[windingIndex][parallelIndex]++; 
+                    }
+                }
+            }
+            else {
+                int64_t firstParallelIndex = 0;
+                while (roundFloat(partialWinding.get_parallels_proportion()[firstParallelIndex], 10) == 0) {
+                    firstParallelIndex++;
+                }
+                int64_t numberTurns = round(partialWinding.get_parallels_proportion()[firstParallelIndex] * get_number_turns(windingIndex));
+                for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                        if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                            Turn turn;
+                            turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
+                            turn.set_layer(layer.get_name());
+                            if (bobbinColumnShape == ColumnShape::ROUND) {
+                                turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                            }
+                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                                double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
+                                turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                            }
+                            else {
+                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            }
+                            turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                            turn.set_orientation(TurnOrientation::CLOCKWISE);
+                            turn.set_parallel(parallelIndex);
+                            turn.set_section(layer.get_section().value());
+                            turn.set_winding(partialWinding.get_winding());
+                            turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+
+                            turns.push_back(turn);
+                            currentTurnCenterWidth += currentTurnWidthIncrement;
+                            currentTurnCenterHeight -= currentTurnHeightIncrement;
+                            currentTurnIndex[windingIndex][parallelIndex]++; 
+                        }
+                    }
                 }
             }
         }
@@ -865,30 +940,32 @@ void WindingWrapper::wind_by_turns() {
 void WindingWrapper::delimit_and_compact() {
     { // Delimit
         auto layers = get_layers_description().value();
-        for (size_t i = 0; i < layers.size(); ++i) {
-            if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
-                if (turnsInLayer.size() == 0) {
-                    throw std::runtime_error("No turns in layer: " + layers[i].get_name());
-                }
-                auto layerCoordinates = layers[i].get_coordinates();
-                double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
-                double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
-                double currentLayerMaximumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) + turnsInLayer[0].get_dimensions().value()[1] / 2;
-                double currentLayerMinimumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) - turnsInLayer[0].get_dimensions().value()[1] / 2;
+        if (get_turns_description()) {
+            for (size_t i = 0; i < layers.size(); ++i) {
+                if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+                    auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
+                    if (turnsInLayer.size() == 0) {
+                        throw std::runtime_error("No turns in layer: " + layers[i].get_name());
+                    }
+                    auto layerCoordinates = layers[i].get_coordinates();
+                    double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
+                    double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
+                    double currentLayerMaximumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) + turnsInLayer[0].get_dimensions().value()[1] / 2;
+                    double currentLayerMinimumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) - turnsInLayer[0].get_dimensions().value()[1] / 2;
 
-                for (auto& turn : turnsInLayer) {
-                    currentLayerMaximumWidth = std::max(currentLayerMaximumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) + turn.get_dimensions().value()[0] / 2);
-                    currentLayerMinimumWidth = std::min(currentLayerMinimumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) - turn.get_dimensions().value()[0] / 2);
-                    currentLayerMaximumHeight = std::max(currentLayerMaximumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) + turn.get_dimensions().value()[1] / 2);
-                    currentLayerMinimumHeight = std::min(currentLayerMinimumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) - turn.get_dimensions().value()[1] / 2);
+                    for (auto& turn : turnsInLayer) {
+                        currentLayerMaximumWidth = std::max(currentLayerMaximumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) + turn.get_dimensions().value()[0] / 2);
+                        currentLayerMinimumWidth = std::min(currentLayerMinimumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) - turn.get_dimensions().value()[0] / 2);
+                        currentLayerMaximumHeight = std::max(currentLayerMaximumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) + turn.get_dimensions().value()[1] / 2);
+                        currentLayerMinimumHeight = std::min(currentLayerMinimumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) - turn.get_dimensions().value()[1] / 2);
+                    }
+                    layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                               layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                    layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
+                                                               currentLayerMaximumHeight - currentLayerMinimumHeight}));
                 }
-                layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
-                                                           layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
-                layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
-                                                           currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                set_layers_description(layers);
             }
-            set_layers_description(layers);
         }
 
         auto sections = get_sections_description().value();
@@ -922,7 +999,6 @@ void WindingWrapper::delimit_and_compact() {
     { // Compact
         auto sections = get_sections_description().value();
         auto layers = get_layers_description().value();
-        auto turns = get_turns_description().value();
 
         auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
         double windingWindowHeight = windingWindows[0].get_height().value();
@@ -1002,6 +1078,10 @@ void WindingWrapper::delimit_and_compact() {
 
         }
 
+        std::vector<Turn> turns;
+        if (get_turns_description()) {
+            turns = get_turns_description().value();
+        }
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
                 currentCoilWidth += sections[sectionIndex].get_dimensions()[0] / 2;
@@ -1050,9 +1130,11 @@ void WindingWrapper::delimit_and_compact() {
                 currentCoilHeight -= sections[sectionIndex].get_dimensions()[1] / 2 + paddingAmongSectionHeight;
             }
         }
+        if (get_turns_description()) {
+            set_turns_description(turns);
+        }
         set_sections_description(sections);
         set_layers_description(layers);
-        set_turns_description(turns);
     }
 }
 

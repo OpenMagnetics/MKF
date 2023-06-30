@@ -14,10 +14,10 @@ std::map<std::string, double> minWireConductingWidths;
 std::map<std::string, double> maxWireConductingWidths;
 
 namespace OpenMagnetics {
-    InsulationWireCoating WireWrapper::get_coating(WireS wire) {
+    std::optional<InsulationWireCoating> WireWrapper::get_coating(WireS wire) {
         // If the coating is a string, we have to load its data from the database
         if (!wire.get_coating()) {
-            throw std::runtime_error("Wire has no coating");
+            return std::nullopt;
         }
         if (std::holds_alternative<std::string>(wire.get_coating().value())) {
             throw std::runtime_error("Coating database not implemented yet");
@@ -41,21 +41,28 @@ namespace OpenMagnetics {
             std::vector<double> fillingFactors;
 
             for (auto& datum : wireDatabase) {
-                auto coating = get_coating(datum.second);
-                if (coating.get_grade().value() == grade && datum.second.get_standard().value() == standard) {
-                    double wireOuterDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_outer_diameter().value()); 
-                    double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
-                    double wireNumberConductors = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_number_conductors().value()); 
-                    double outerArea;
-                    if (includeAirInCell) {
-                        outerArea = pow(wireOuterDiameter, 2);
-                    } else {
-                        outerArea = std::numbers::pi * pow(wireOuterDiameter / 2, 2);
+                if (get_coating(datum.second)) {
+                    auto coating = get_coating(datum.second).value();
+                    if (coating.get_grade().value() == grade && datum.second.get_standard().value() == standard) {
+                        double wireOuterDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_outer_diameter().value()); 
+                        double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
+                        double wireNumberConductors = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_number_conductors().value()); 
+                        double outerArea;
+                        if (includeAirInCell) {
+                            outerArea = pow(wireOuterDiameter, 2);
+                        } else {
+                            outerArea = std::numbers::pi * pow(wireOuterDiameter / 2, 2);
+                        }
+                        double conductiveArea = std::numbers::pi * pow(wireConductingDiameter / 2, 2) * wireNumberConductors;
+                        double wireFillingFactor = conductiveArea / outerArea;
+                        wireConductingDiameters.push_back(wireConductingDiameter);
+                        fillingFactors.push_back(wireFillingFactor);
                     }
-                    double conductiveArea = std::numbers::pi * pow(wireConductingDiameter / 2, 2) * wireNumberConductors;
-                    double wireFillingFactor = conductiveArea / outerArea;
+                }
+                else {
+                    double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
                     wireConductingDiameters.push_back(wireConductingDiameter);
-                    fillingFactors.push_back(wireFillingFactor);
+                    fillingFactors.push_back(1);
                 }
             }
 
@@ -86,7 +93,10 @@ namespace OpenMagnetics {
     }
 
     int WireWrapper::get_equivalent_insulation_layers(double voltageToInsulate) {
-        auto coating = get_coating(*this);
+        if (!get_coating(*this)) {
+            return 0;
+        }
+        auto coating = get_coating(*this).value();
         // 0.85 according to IEC 61558
         // https://www.elektrisola.com/en/Products/Fully-Insulated-Wire/Breakdown-Voltage
         auto voltageCoveredByWire = coating.get_breakdown_voltage().value() * 0.85;

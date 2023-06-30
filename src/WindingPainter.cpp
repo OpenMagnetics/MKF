@@ -44,10 +44,10 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_sections(Magnetic magnetic
 
         auto sectionSvg = _root->get_children<SVG::Polygon>().back();
         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".section_" +  std::to_string(i)).set_attr("fill", constants.windingPainterColorsScale[(i * 2) % constants.windingPainterColorsScale.size()]);
+            _root->style(".section_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleSections[i % constants.windingPainterColorsScaleSections.size()]);
         }
         else {
-            _root->style(".section_" +  std::to_string(i)).set_attr("fill", "#E37E00");
+            _root->style(".section_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", "#E37E00");
         }
         sectionSvg->set_attr("class", "section_" +  std::to_string(i));
     }
@@ -91,10 +91,10 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) 
 
         auto layerSvg = _root->get_children<SVG::Polygon>().back();
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".layer_" +  std::to_string(i)).set_attr("fill", constants.windingPainterColorsScale[(i * 2) % constants.windingPainterColorsScale.size()]);
+            _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleLayers[i % constants.windingPainterColorsScaleLayers.size()]);
         }
         else {
-            _root->style(".layer_" +  std::to_string(i)).set_attr("fill", "#E37E00");
+            _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", "#E37E00");
         }
         layerSvg->set_attr("class", "layer_" +  std::to_string(i));
     }
@@ -131,21 +131,47 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
                                    resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_diameter().value()) / 2 * constants.windingPainterScale);
 
             auto turnSvg = _root->get_children<SVG::Circle>().back();
-            _root->style(".turn_" +  std::to_string(i)).set_attr("fill", constants.windingPainterColorsScale[turns[i].get_parallel() % constants.windingPainterColorsScale.size()]);
+            _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[windingIndex % constants.windingPainterColorsScaleTurns.size()]);
+            // _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[turns[i].get_parallel() % constants.windingPainterColorsScaleTurns.size()]);
             turnSvg->set_attr("class", "turn_" +  std::to_string(i));
+
+            if (wire.get_conducting_diameter()) {
+                *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.windingPainterScale,
+                                       (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.windingPainterScale,
+                                       resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_diameter().value()) / 2 * constants.windingPainterScale);
+
+                turnSvg = _root->get_children<SVG::Circle>().back();
+                turnSvg->set_attr("class", "copper");
+            }
         }
         else {
-            std::vector<SVG::Point> turnPoints = {};
-            turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - turns[i].get_dimensions().value()[0] / 2, turns[i].get_coordinates()[1] + turns[i].get_dimensions().value()[1] / 2));
-            turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + turns[i].get_dimensions().value()[0] / 2, turns[i].get_coordinates()[1] + turns[i].get_dimensions().value()[1] / 2));
-            turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + turns[i].get_dimensions().value()[0] / 2, turns[i].get_coordinates()[1] - turns[i].get_dimensions().value()[1] / 2));
-            turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - turns[i].get_dimensions().value()[0] / 2, turns[i].get_coordinates()[1] - turns[i].get_dimensions().value()[1] / 2));
+            {
+                std::vector<SVG::Point> turnPoints = {};
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
 
-            *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
+                *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
 
-            auto turnSvg = _root->get_children<SVG::Polygon>().back();
-            _root->style(".turn_" +  std::to_string(i)).set_attr("fill", constants.windingPainterColorsScale[turns[i].get_parallel() % constants.windingPainterColorsScale.size()]);
-            turnSvg->set_attr("class", "turn_" +  std::to_string(i));
+                auto turnSvg = _root->get_children<SVG::Polygon>().back();
+                _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[turns[i].get_parallel() % constants.windingPainterColorsScaleTurns.size()]);
+                turnSvg->set_attr("class", "turn_" +  std::to_string(i));
+            }
+
+            if (wire.get_conducting_width() && wire.get_conducting_height()) {
+                std::vector<SVG::Point> turnPoints = {};
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
+
+                *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
+
+                auto turnSvg = _root->get_children<SVG::Polygon>().back();
+                turnSvg->set_attr("class", "copper");
+            }
+            
         }
     }
 
@@ -164,7 +190,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
 
             auto layerSvg = _root->get_children<SVG::Polygon>().back();
 
-            _root->style(".layer_" +  std::to_string(i)).set_attr("fill", "#E37E00");
+            _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", "#E37E00");
             layerSvg->set_attr("class", "layer_" +  std::to_string(i));
         }
     }

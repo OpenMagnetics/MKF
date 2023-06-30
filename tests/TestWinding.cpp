@@ -350,7 +350,7 @@ SUITE(WindingSectionsDescription) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
         auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        double voltagePeakToPeak = 20000;
+        double voltagePeakToPeak = 400;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
         winding.set_inputs(inputs);
         winding.wind();
@@ -684,7 +684,7 @@ SUITE(WindingLayersDescription) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
         auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
-        double voltagePeakToPeak = 20000;
+        double voltagePeakToPeak = 400;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
         winding.set_inputs(inputs);
         winding.wind();
@@ -695,6 +695,54 @@ SUITE(WindingLayersDescription) {
 }
 
 SUITE(WindingTurnsDescription) {
+
+    void quick_check_layers_description(OpenMagnetics::WindingWrapper winding,
+                                          OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL) {
+        if (!winding.get_layers_description()) {
+            return;
+        }
+        auto sections = winding.get_sections_description().value();
+        std::map<std::string, std::vector<double>> dimensionsByName;
+        std::map<std::string, std::vector<double>> coordinatesByName;
+
+        for (auto& section : sections){
+            auto layers = winding.get_layers_by_section(section.get_name());
+            if(section.get_type() == OpenMagnetics::ElectricalType::INSULATION) {
+            }
+            else {
+                auto sectionParallelsProportionExpected = section.get_partial_windings()[0].get_parallels_proportion();
+                std::vector<double> sectionParallelsProportion(sectionParallelsProportionExpected.size(), 0);
+                for (auto& layer : layers){
+                    for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
+                        sectionParallelsProportion[i] += layer.get_partial_windings()[0].get_parallels_proportion()[i];
+                    }
+                    CHECK(layer.get_filling_factor().value() > 0);
+
+                    dimensionsByName[layer.get_name()] = layer.get_dimensions();
+                    coordinatesByName[layer.get_name()] = layer.get_coordinates();
+                }
+                for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
+                    CHECK(OpenMagnetics::roundFloat(sectionParallelsProportion[i], 9) == OpenMagnetics::roundFloat(sectionParallelsProportionExpected[i], 9));
+                }
+                for (size_t i = 0; i < layers.size() - 1; ++i){
+                    if (layersOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
+                        CHECK(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
+                        CHECK(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);
+                        CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                    } 
+                    else if (layersOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                        CHECK(layers[i].get_coordinates()[1] > layers[i + 1].get_coordinates()[1]);
+                        CHECK(layers[i].get_coordinates()[0] == layers[i + 1].get_coordinates()[0]);
+                        CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                    }
+                }
+            }
+
+        }
+
+        CHECK(!OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName));
+    }
+
 
     void quick_check_turns_description(OpenMagnetics::WindingWrapper winding) {
         if (!winding.get_turns_description()) {
@@ -715,6 +763,10 @@ SUITE(WindingTurnsDescription) {
             parallelProportion[windingIndex][turn.get_parallel()] += 1.0 / winding.get_number_turns(windingIndex);
             dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
             coordinatesByName[turn.get_name()] = turn.get_coordinates();
+        // json mierda;
+        // to_json(mierda, turn);
+
+        // std::cout << "mierda: " << mierda << std::endl;
 
         }
 
@@ -771,6 +823,62 @@ SUITE(WindingTurnsDescription) {
             auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             quick_check_turns_description(winding);
         }
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_0) {
+        std::vector<uint64_t> numberTurns;
+        std::vector<uint64_t> numberParallels;
+        uint64_t numberPhysicalTurns = std::numeric_limits<uint64_t>::max();
+        for (size_t windingIndex = 0; windingIndex < 1UL; ++windingIndex)
+        {
+            numberTurns.push_back(4);
+            numberParallels.push_back(12);
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns.back() * numberParallels.back());
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint64_t interleavingLevel = 10;
+        interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
+        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        quick_check_turns_description(winding);
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_1) {
+        std::vector<uint64_t> numberTurns = {80};
+        std::vector<uint64_t> numberParallels = {3};
+        uint64_t numberPhysicalTurns = std::numeric_limits<uint64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint64_t interleavingLevel = 9;
+        interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
+        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        quick_check_layers_description(winding);
+        quick_check_turns_description(winding);
     }
 
 }

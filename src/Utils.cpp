@@ -23,6 +23,7 @@ std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
 std::map<std::string, OpenMagnetics::WireS> wireDatabase;
 std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
+std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 
 namespace OpenMagnetics {
@@ -95,6 +96,19 @@ void load_databases(bool withAliases) {
             json jf = json::parse(myline);
             InsulationMaterialWrapper insulationMaterial(jf);
             insulationMaterialDatabase[jf["name"]] = insulationMaterial;
+        }
+    }
+
+    {
+        std::string filePath = __FILE__;
+        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+        auto dataFilePath = masPath + "data/wire_materials.ndjson";
+        std::ifstream ndjsonFile(dataFilePath);
+        std::string myline;
+        while (std::getline(ndjsonFile, myline)) {
+            json jf = json::parse(myline);
+            WireMaterial wireMaterial(jf);
+            wireMaterialDatabase[jf["name"]] = wireMaterial;
         }
     }
 }
@@ -195,6 +209,18 @@ OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string n
     }
     if (insulationMaterialDatabase.count(name)) {
         return insulationMaterialDatabase[name];
+    }
+    else {
+        return json::parse("{}");
+    }
+}
+
+OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
+    if (wireMaterialDatabase.empty()) {
+        load_databases();
+    }
+    if (wireMaterialDatabase.count(name)) {
+        return wireMaterialDatabase[name];
     }
     else {
         return json::parse("{}");

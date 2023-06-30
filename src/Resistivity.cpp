@@ -36,7 +36,8 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
 };
 
 double ResistivityWireMaterialModel::get_resistivity(ResistivityMaterial materialData, double temperature) {
-    return 42;
+    auto resistivityData = std::get<WireMaterial>(materialData).get_resistivity();
+    return resistivityData.get_reference_value() * (1 + resistivityData.get_temperature_coefficient() * (temperature - resistivityData.get_reference_temperature()));
 };
 
 std::shared_ptr<ResistivityModel> ResistivityModel::factory(ResistivityModels modelName) {

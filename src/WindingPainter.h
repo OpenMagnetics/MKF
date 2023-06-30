@@ -12,6 +12,7 @@ class WindingPainter : public Winding {
     private:
         std::filesystem::path _filepath = ".";
         std::filesystem::path _filename = "_.svg";
+        double _opacity = 1;
     public:
         SVG::SVG* _root;
         WindingPainter(std::filesystem::path filepath){
@@ -20,9 +21,13 @@ class WindingPainter : public Winding {
             _root = new SVG::SVG();
             _root->style(".ferrite").set_attr("fill", "#7b7c7d");
             _root->style(".bobbin").set_attr("fill", "#1b1b1b");
+            _root->style(".copper").set_attr("fill", "#B87333");
         };
         virtual ~WindingPainter() = default;
 
+    void set_opacity(double opacity) {
+        _opacity = opacity;
+    }
     SVG::SVG* paint_core(Magnetic magnetic);
     SVG::SVG* paint_two_piece_set_core(CoreWrapper core);
     SVG::SVG* paint_bobbin(Magnetic magnetic);

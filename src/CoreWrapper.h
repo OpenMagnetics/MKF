@@ -160,9 +160,12 @@ class CoreWrapper : public MagneticCore {
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_magnetic_flux_density_saturation(bool proportion = true);
     double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);
-    double get_magnetic_fielda_strength_saturation(double temperature);
+    double get_magnetic_field_strength_saturation(double temperature);
     CoreShapeFamily get_shape_family();
+    std::string get_shape_name();
+    std::string get_material_name();
     double get_remanence(double temperature);
     double get_coercive_force(double temperature);
+    std::vector<std::string> get_available_core_losses_methods();
 };
 } // namespace OpenMagnetics

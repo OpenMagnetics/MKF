@@ -31,17 +31,32 @@ class CoreAdviser {
 
     class MagneticCoreFilter {
       public:
-        static std::vector<Magnetic> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs);
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs);
     };
 
     class MagneticCoreFilterAreaProduct : public MagneticCoreFilter {
       public:
-        static std::vector<Magnetic> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
     };
 
     class MagneticCoreFilterEnergyStored : public MagneticCoreFilter {
       public:
-        static std::vector<Magnetic> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
+    };
+
+    class MagneticCoreFilterWindingWindowArea : public MagneticCoreFilter {
+      public:
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
+    };
+
+    class MagneticCoreFilterCoreLosses : public MagneticCoreFilter {
+      public:
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models);
+    };
+
+    class MagneticCoreFilterCoreTemperature : public MagneticCoreFilter {
+      public:
+        static std::pair<std::vector<Magnetic>, std::map<std::string, double>> filter_magnetics(std::vector<Magnetic> unfilteredMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, std::map<std::string, double> precalculatedCoreLosses);
     };
 
 };
