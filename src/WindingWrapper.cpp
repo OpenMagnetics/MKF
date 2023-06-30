@@ -991,6 +991,10 @@ void WindingWrapper::delimit_and_compact() {
                                                            sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
                 sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
                                                        currentSectionMaximumHeight - currentSectionMinimumHeight}));
+                std::cout << "sectionIndex: " << i << std::endl;
+                std::cout << "currentSectionMaximumHeight: " << currentSectionMaximumHeight << std::endl;
+                std::cout << "currentSectionMinimumHeight: " << currentSectionMinimumHeight << std::endl;
+                std::cout << "currentSectionMaximumHeight - currentSectionMinimumHeight: " << currentSectionMaximumHeight - currentSectionMinimumHeight << std::endl;
             }
         }
         set_sections_description(sections);
@@ -1012,10 +1016,17 @@ void WindingWrapper::delimit_and_compact() {
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
                 totalSectionsWidth += sections[sectionIndex].get_dimensions()[0];
-                totalSectionsHeight = std::max(totalSectionsHeight, sections[sectionIndex].get_dimensions()[1]);
+                std::cout << "sectionIndex: " << sectionIndex << std::endl;
+                std::cout << "totalSectionsHeight: " << totalSectionsHeight << std::endl;
+                std::cout << "sections[sectionIndex].get_dimensions()[1]: " << sections[sectionIndex].get_dimensions()[1] << std::endl;
+                if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
+                    totalSectionsHeight = std::max(totalSectionsHeight, sections[sectionIndex].get_dimensions()[1]);
+                }
             }
             else {
-                totalSectionsWidth = std::max(totalSectionsWidth, sections[sectionIndex].get_dimensions()[0]);
+                if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
+                    totalSectionsWidth = std::max(totalSectionsWidth, sections[sectionIndex].get_dimensions()[0]);
+                }
                 totalSectionsHeight += sections[sectionIndex].get_dimensions()[1];
             }
         }
@@ -1029,7 +1040,20 @@ void WindingWrapper::delimit_and_compact() {
             case CoilAlignment::INNER_OR_TOP:
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    currentCoilHeight = 0;
+                    std::cout << "totalSectionsHeight: " << totalSectionsHeight << std::endl;
+                    std::cout << "windingWindowHeight: " << windingWindowHeight << std::endl;
+                    switch (_turnsAlignment) {
+                        case CoilAlignment::INNER_OR_TOP:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::OUTER_OR_BOTTOM:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::CENTERED:
+                        case CoilAlignment::SPREAD:
+                            currentCoilHeight = 0;
+                            break;
+                    }
                 }
                 else {
                     currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2;
@@ -1038,7 +1062,18 @@ void WindingWrapper::delimit_and_compact() {
             case CoilAlignment::OUTER_OR_BOTTOM:
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - totalSectionsWidth;
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    currentCoilHeight = 0;
+                    switch (_turnsAlignment) {
+                        case CoilAlignment::INNER_OR_TOP:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::OUTER_OR_BOTTOM:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::CENTERED:
+                        case CoilAlignment::SPREAD:
+                            currentCoilHeight = 0;
+                            break;
+                    }
                 }
                 else {
                     currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight;
@@ -1047,7 +1082,18 @@ void WindingWrapper::delimit_and_compact() {
             case CoilAlignment::SPREAD:
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    currentCoilHeight = 0;
+                    switch (_turnsAlignment) {
+                        case CoilAlignment::INNER_OR_TOP:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::OUTER_OR_BOTTOM:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::CENTERED:
+                        case CoilAlignment::SPREAD:
+                            currentCoilHeight = 0;
+                            break;
+                    }
                     paddingAmongSectionWidth = windingWindows[0].get_width().value() - totalSectionsWidth;
                     if (sections.size() > 1) {
                         paddingAmongSectionWidth /= sections.size() - 1;
@@ -1067,7 +1113,18 @@ void WindingWrapper::delimit_and_compact() {
             case CoilAlignment::CENTERED:
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 ;
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    currentCoilHeight = 0;
+                    switch (_turnsAlignment) {
+                        case CoilAlignment::INNER_OR_TOP:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::OUTER_OR_BOTTOM:
+                            currentCoilHeight = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + totalSectionsHeight / 2;
+                            break;
+                        case CoilAlignment::CENTERED:
+                        case CoilAlignment::SPREAD:
+                            currentCoilHeight = 0;
+                            break;
+                    }
                 }
                 else {
                     currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + totalSectionsHeight / 2;
@@ -1095,9 +1152,16 @@ void WindingWrapper::delimit_and_compact() {
 
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
                 // compactingShiftWidth += sections[sectionIndex].get_dimensions()[0] / 2;
+                if (sections[sectionIndex].get_type() == ElectricalType::INSULATION) {
+                    compactingShiftHeight = 0;
+                }
+
             }
             else {
                 compactingShiftWidth -= sections[sectionIndex].get_dimensions()[0] / 2;
+                if (sections[sectionIndex].get_type() == ElectricalType::INSULATION) {
+                    compactingShiftWidth = 0;
+                }
             }
 
             if (compactingShiftWidth != 0 || compactingShiftHeight != 0) {

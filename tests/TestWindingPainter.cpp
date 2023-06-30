@@ -1584,4 +1584,5 @@ SUITE(WindingPainter) {
             std::cerr << e.what() << std::endl;
         }
     }
+
 }
