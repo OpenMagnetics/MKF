@@ -20,6 +20,7 @@ extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
 extern std::map<std::string, OpenMagnetics::WireS> wireDatabase;
 extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
+extern std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
 extern OpenMagnetics::Constants constants;
 
 extern _1D::LinearInterpolator<double> bobbinFillingFactorInterpWidth;
@@ -108,6 +109,7 @@ OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireS find_wire_by_name(std::string name);
 OpenMagnetics::Bobbin find_bobbin_by_name(std::string name);
 OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string name);
+OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
 
 void load_databases(bool withAliases=true);
 

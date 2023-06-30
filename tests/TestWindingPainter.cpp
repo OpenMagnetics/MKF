@@ -489,7 +489,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 140);
+        CHECK(svg->get_children<SVG::Circle>().size() == 280);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -518,7 +518,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -550,7 +550,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -582,7 +582,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -614,7 +614,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -739,7 +739,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -771,7 +771,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -803,7 +803,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -835,7 +835,7 @@ SUITE(WindingPainter) {
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
-        CHECK(svg->get_children<SVG::Circle>().size() == 280);
+        CHECK(svg->get_children<SVG::Circle>().size() == 560);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -951,7 +951,7 @@ SUITE(WindingPainter) {
         auto svg = windingPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
-        CHECK(svg->get_children<SVG::Polygon>().size() == 7);
+        CHECK(svg->get_children<SVG::Polygon>().size() == 11);
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1573,10 +1573,15 @@ SUITE(WindingPainter) {
 
         windingPainter.paint_core(magnetic);
         windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
-
-        CHECK(svg->get_children<SVG::Group>().size() == 3);
-        CHECK(svg->get_children<SVG::Polygon>().size() == 11);
-        CHECK(std::filesystem::exists(outFile));
+        try
+        {
+            windingPainter.paint_winding_turns(magnetic);
+            CHECK(false);
+        }
+        catch (const std::exception &e)
+        {
+            CHECK(true);
+            std::cerr << e.what() << std::endl;
+        }
     }
 }

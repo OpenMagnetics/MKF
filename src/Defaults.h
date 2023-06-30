@@ -14,8 +14,12 @@ struct Defaults {
         OpenMagnetics::CoreTemperatureModels::MANIKTALA;
     const OpenMagnetics::ReluctanceModels reluctanceModelDefault = OpenMagnetics::ReluctanceModels::ZHANG;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
-    const double coreAdviserReferenceFrequency = 100000;
-    const double coreAdviserReferenceMagneticFluxDensityProportion = 0.5;
+    const double coreAdviserFrequencyReference = 100000;
+    const double coreAdviserMagneticFluxDensityReference = 0.5;
+    const double coreAdviserMaximumCurrentDensity = 7000000;
+    const double coreAdviserThresholdValidity = 0.9;
+    const double coreAdviserMaximumCoreTemperature = 150;
+    const double coreAdviserMaximumPercentagePowerCoreLosses = 0.05;
     const double magneticFluxDensitySaturation = 0.5;
 };
 } // namespace OpenMagnetics

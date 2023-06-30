@@ -523,7 +523,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
     roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
     roshenParameters["remanence"] = core.get_remanence(temperature);
     roshenParameters["saturationMagneticFluxDensity"] = core.get_magnetic_flux_density_saturation(temperature, false);
-    roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_fielda_strength_saturation(temperature);
+    roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_field_strength_saturation(temperature);
 
     if (roshenData.get_coefficients()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -780,8 +780,6 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperationPo
     return excessEddyCurrentLossesDensity;
 }
 
-
-
 std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
                                                                    OperationPointExcitation excitation,
                                                                    double temperature) {
@@ -814,6 +812,163 @@ std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWr
     result["totalVolumetricLosses"] = volumetricLosses;
 
     return result;
+}
+
+double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
+                                                                ElectromagneticParameter magneticFluxDensity,
+                                                                double temperature,
+                                                                double coreLosses) {
+    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
+                                       magneticFluxDensity.get_processed().value().get_offset();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+
+    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    double frequency = 100000;
+
+    steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+    double alpha = steinmetzDatum.get_alpha();
+    double convergeAlpha = 0;
+
+    do {
+        double k = steinmetzDatum.get_k();
+        alpha = steinmetzDatum.get_alpha();
+        double beta = steinmetzDatum.get_beta();
+        double volumetricLosses = coreLosses / effectiveVolume / CoreLossesModel::apply_temperature_coefficients(1, steinmetzDatum, temperature);
+
+        frequency = pow(volumetricLosses / (k * pow(magneticFluxDensityAcPeak, beta)), 1 / alpha);
+        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        convergeAlpha = steinmetzDatum.get_alpha();
+    }
+    while (convergeAlpha != alpha);
+
+    return frequency;
+}
+
+ElectromagneticParameter CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+                                                                                              double frequency,
+                                                                                              double temperature,
+                                                                                              double coreLosses) {
+    ElectromagneticParameter magneticFluxDensity;
+    Processed processed;
+    processed.set_label(WaveformLabel::SINUSOIDAL);
+    processed.set_offset(0);
+    magneticFluxDensity.set_processed(processed);
+
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+
+    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+
+    steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+
+    double k = steinmetzDatum.get_k();
+    double alpha = steinmetzDatum.get_alpha();
+    double beta = steinmetzDatum.get_beta();
+    double volumetricLosses = coreLosses / effectiveVolume / CoreLossesModel::apply_temperature_coefficients(1, steinmetzDatum, temperature);
+
+    double magneticFluxDensityAcPeak = pow(volumetricLosses / (k * pow(frequency, alpha)), 1 / beta);
+
+    processed.set_peak(magneticFluxDensityAcPeak);
+    processed.set_peak_to_peak(magneticFluxDensityAcPeak * 2);
+    magneticFluxDensity.set_processed(processed);
+    return magneticFluxDensity;
+}
+
+double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,
+                                                                    ElectromagneticParameter magneticFluxDensity,
+                                                                    double temperature,
+                                                                    double coreLosses) {
+
+    double frequency = -1;
+    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+    auto materialData = core.get_material();
+    double volumetricLosses = coreLosses / effectiveVolume;
+
+    if (materialData.get_manufacturer_info().get_name() == "Micrometals") {
+        auto micrometalsData = get_method_data(materialData, "micrometals");
+        double a = micrometalsData.get_a().value();
+        double b = micrometalsData.get_b().value();
+        double c = micrometalsData.get_c().value();
+        double d = micrometalsData.get_d().value();
+        double equation_a = d * pow(magneticFluxDensityAcPeak, 2);
+        double equation_b = 1 / (a / pow(magneticFluxDensityAcPeak, 3) + b / pow(magneticFluxDensityAcPeak, 2.3) + c / pow(magneticFluxDensityAcPeak, 1.65));
+        double equation_c = -volumetricLosses;
+        frequency = (-equation_b + sqrt(pow(equation_b, 2) - 4 * equation_a * equation_c)) / (2 * equation_a);
+    }
+
+    if (materialData.get_manufacturer_info().get_name() == "Magnetics") {
+        auto micrometalsData = get_method_data(materialData, "magnetics");
+        double a = micrometalsData.get_a().value();
+        double b = micrometalsData.get_b().value();
+        double c = micrometalsData.get_c().value();
+        frequency = pow(volumetricLosses / (a * pow(magneticFluxDensityAcPeak, b)), 1 / c);
+    }
+
+    return frequency;
+}
+
+double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
+                                                       ElectromagneticParameter magneticFluxDensity,
+                                                       double temperature,
+                                                       double coreLosses) {
+    double minimumError = DBL_MAX;
+    double frequencyMinimumError = -1;
+    OperationPointExcitation operationPointExcitation;
+    operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+
+
+    for (int frequency = 10000; frequency < 2000000; frequency+=5000)
+    {
+        operationPointExcitation.set_frequency(frequency);
+
+        auto coreLossesCalculated = get_core_losses(core, operationPointExcitation, temperature);
+        double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
+        if (error < minimumError) {
+            minimumError = error;
+            frequencyMinimumError = frequency;
+        }
+    }
+    return frequencyMinimumError;
+}
+
+ElectromagneticParameter CoreLossesModel::_get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+                                                                                     double frequency,
+                                                                                     double temperature,
+                                                                                     double coreLosses) {
+
+    OperationPointExcitation operationPointExcitation;
+    ElectromagneticParameter magneticFluxDensity;
+    Processed processed;
+    operationPointExcitation.set_frequency(frequency);
+    processed.set_label(WaveformLabel::SINUSOIDAL);
+    processed.set_offset(0);
+
+    double previousMinimumError = DBL_MAX;
+    double minimumError = DBL_MAX;
+    ElectromagneticParameter magneticFluxDensityMinimumError;
+
+
+    for (int i = 5; i < 1000; i+=5)
+    {
+        processed.set_peak(double(i) / 1000);
+        processed.set_peak_to_peak(2 * double(i) / 1000);
+        magneticFluxDensity.set_processed(processed);
+        operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+
+        auto coreLossesCalculated = get_core_losses(core, operationPointExcitation, temperature);
+        double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
+        if (error < minimumError) {
+            minimumError = error;
+            magneticFluxDensityMinimumError = magneticFluxDensity;
+        }
+        if (previousMinimumError < error) {
+            break;
+        }
+        else {
+            previousMinimumError = error;
+        }
+    }
+    return magneticFluxDensityMinimumError;
 }
 
 } // namespace OpenMagnetics

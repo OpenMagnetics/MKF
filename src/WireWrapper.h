@@ -41,7 +41,7 @@ class WireWrapper : public WireS {
         WireWrapper() = default;
         virtual ~WireWrapper() = default;
 
-        static InsulationWireCoating get_coating(WireS wire);
+        static std::optional<InsulationWireCoating> get_coating(WireS wire);
         static double get_filling_factor(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
         void set_nominal_value_conducting_diameter(double value) {
             DimensionWithTolerance aux;
