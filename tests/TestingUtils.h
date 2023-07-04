@@ -33,6 +33,18 @@ OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurn
                                                 OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
                                                 std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
 
+OpenMagnetics::WindingWrapper get_quick_winding_no_compact(std::vector<uint64_t> numberTurns,
+                                                           std::vector<uint64_t> numberParallels,
+                                                           double bobbinHeight,
+                                                           double bobbinWidth,
+                                                           std::vector<double> bobbinCenterCoodinates,
+                                                           uint64_t interleavingLevel,
+                                                           OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
+                                                           OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
+                                                           OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                                           OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                                           std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+
 OpenMagnetics::CoreWrapper get_core(std::string shapeName,
                                     json basicGapping,
                                     int numberStacks = 1,
@@ -43,6 +55,7 @@ json get_spacer_gap(double gapLength);
 json get_residual_gap();
 
 void print(std::vector<double> data);
+void print(std::vector<int64_t> data);
 void print(std::vector<uint64_t> data);
 void print(std::vector<std::string> data);
 void print(std::vector<SVG::Point> data);

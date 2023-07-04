@@ -263,39 +263,6 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     return sampledWaveform;
 }
 
-double InputsWrapper::get_requirement_value(NumericRequirement requirement) {
-    if (!requirement.get_nominal()) {
-        if (requirement.get_minimum() && requirement.get_maximum()) {
-            return (requirement.get_minimum().value() + requirement.get_maximum().value()) / 2;
-        }
-        else if (requirement.get_minimum()) {
-            return requirement.get_minimum().value();
-        }
-        else {
-            return requirement.get_maximum().value();
-        }
-    }
-    else {
-        return requirement.get_nominal().value();
-    }
-}
-
-
-double InputsWrapper::check_requirement(NumericRequirement requirement, double value){
-    if (requirement.get_minimum() && requirement.get_maximum()) {
-        return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
-    }
-    else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
-        return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
-    }
-    else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
-        return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
-    }
-    else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
-        return value == requirement.get_nominal().value();
-    }
-}
-
 ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
@@ -409,7 +376,7 @@ ElectromagneticParameter InputsWrapper::reflect_waveform(ElectromagneticParamete
 std::pair<bool, std::string> InputsWrapper::check_integrity() {
     auto operationPoints = get_mutable_operation_points();
     auto turnsRatios = get_design_requirements().get_turns_ratios();
-    auto magnetizingInductance = get_requirement_value(get_design_requirements().get_magnetizing_inductance());
+    auto magnetizingInductance = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
     std::pair<bool, std::string> result;
     result.first = true;
     result.second = "";
@@ -456,7 +423,7 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
                 // We are missing excitation only for secondary
                 for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
                     if (turnRatioIndex >= operationPoints[i].get_excitations_per_winding().size() - 1) {
-                        double turnRatio = get_requirement_value(turnsRatios[turnRatioIndex]);
+                        double turnRatio = resolve_dimensional_values(turnsRatios[turnRatioIndex]);
                         auto excitationOfPrimaryWinding = operationPoints[i].get_excitations_per_winding()[0];
                         OperationPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
 
@@ -715,7 +682,7 @@ void InputsWrapper::process_waveforms() {
     std::vector<OperationPoint> processed_operation_points;
     for (auto& operation_point : operation_points) {
         processed_operation_points.push_back(process_operation_point(
-            operation_point, get_requirement_value(get_design_requirements().get_magnetizing_inductance())));
+            operation_point, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
     }
     set_operation_points(processed_operation_points);
 }
@@ -748,7 +715,9 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
     inputsJson["operationPoints"].push_back(operationPointJson);
 
     inputsJson["designRequirements"] = json();
+    inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = magnetizingInductance * 0.8;
     inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
+    inputsJson["designRequirements"]["magnetizingInductance"]["maximum"] = magnetizingInductance * 1.2;
     json turnsRatiosJson = json::array();
     for (auto& turnsRatio : turnsRatios) {
         json turnsRatioJson = json();

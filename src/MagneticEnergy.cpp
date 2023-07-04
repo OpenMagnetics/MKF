@@ -76,10 +76,10 @@ double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, Operat
 
 }
 
-NumericRequirement MagneticEnergy::required_magnetic_energy(InputsWrapper inputs){
-    NumericRequirement desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
+DimensionWithTolerance MagneticEnergy::required_magnetic_energy(InputsWrapper inputs){
+    DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
     auto magnetizingCurrentPeak = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_magnetizing_current().value().get_processed().value().get_peak().value();
-    NumericRequirement magneticEnergyRequirement;
+    DimensionWithTolerance magneticEnergyRequirement;
     auto get_energy = [magnetizingCurrentPeak](double magnetizingInductance)
     {
         return magnetizingInductance * pow(magnetizingCurrentPeak, 2) / 2;

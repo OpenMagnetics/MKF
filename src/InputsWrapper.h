@@ -32,8 +32,6 @@ class InputsWrapper : public Inputs {
     InputsWrapper() = default;
     virtual ~InputsWrapper() = default;
 
-    static double get_requirement_value(NumericRequirement requirement);
-    static double check_requirement(NumericRequirement requirement, double value);
     std::pair<bool, std::string> check_integrity();
     void process_waveforms();
     static OperationPoint process_operation_point(OperationPoint operationPoint, double magnetizingInductance);

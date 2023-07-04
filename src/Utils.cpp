@@ -227,6 +227,68 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     }
 }
 
+double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue) {
+    double doubleValue = 0;
+    if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
+        switch (preferredValue) {
+            case OpenMagnetics::DimensionalValues::MAXIMUM:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case OpenMagnetics::DimensionalValues::NOMINAL:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
+                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue =
+                        (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
+                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
+                        2;
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case OpenMagnetics::DimensionalValues::MINIMUM:
+                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                break;
+            default:
+                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
+        }
+    }
+    else if (std::holds_alternative<double>(dimensionValue)) {
+        doubleValue = std::get<double>(dimensionValue);
+    }
+    else {
+        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
+    }
+    return doubleValue;
+}
+
+bool check_requirement(DimensionWithTolerance requirement, double value){
+    if (requirement.get_minimum() && requirement.get_maximum()) {
+        return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
+    }
+    else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
+        return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
+    }
+    else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
+        return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
+    }
+    else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
+        return value == requirement.get_nominal().value();
+    }
+}
+
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName){
     for (auto& leftDimension : dimensionsByName) {
         std::string leftName = leftDimension.first;

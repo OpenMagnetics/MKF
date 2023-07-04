@@ -168,10 +168,11 @@ double MagnetizingInductance::get_inductance_from_number_turns_and_gapping(CoreW
     return inductance_and_magnetic_flux_density.first;
 }
 
-int MagnetizingInductance::get_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs) {
+int MagnetizingInductance::get_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs, DimensionalValues preferredValue) {
     auto operationPoint = inputs->get_operation_point(0);
     double desiredMagnetizingInductance =
-        InputsWrapper::get_requirement_value(inputs->get_design_requirements().get_magnetizing_inductance());
+        resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance(), preferredValue);
+
     double temperature = operationPoint.get_conditions().get_ambient_temperature();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     double frequency = operationPoint.get_mutable_excitations_per_winding()[0].get_frequency();
@@ -294,7 +295,7 @@ std::vector<CoreGap> MagnetizingInductance::get_gapping_from_number_turns_and_in
     auto operationPoint = inputs->get_operation_point(0);
     double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
     double desiredMagnetizingInductance =
-        InputsWrapper::get_requirement_value(inputs->get_design_requirements().get_magnetizing_inductance());
+        resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
     double temperature = operationPoint.get_conditions().get_ambient_temperature();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(operationPoint);

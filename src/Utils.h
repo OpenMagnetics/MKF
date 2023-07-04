@@ -55,55 +55,8 @@ enum class GappingType : int {
     DISTRIBUTED
 };
 
-
-template<OpenMagnetics::DimensionalValues preferredValue>
-double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue) {
-    double doubleValue = 0;
-    if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
-        switch (preferredValue) {
-            case OpenMagnetics::DimensionalValues::MAXIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case OpenMagnetics::DimensionalValues::NOMINAL:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue =
-                        (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
-                        2;
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case OpenMagnetics::DimensionalValues::MINIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                break;
-            default:
-                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
-        }
-    }
-    else if (std::holds_alternative<double>(dimensionValue)) {
-        doubleValue = std::get<double>(dimensionValue);
-    }
-    else {
-        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
-    }
-    return doubleValue;
-}
-
+double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+bool check_requirement(DimensionWithTolerance requirement, double value);
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireS find_wire_by_name(std::string name);

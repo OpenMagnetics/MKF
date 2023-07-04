@@ -38,7 +38,7 @@ std::map<std::string, Dimension> flatten_dimensions(Bobbin bobbin) {
     std::map<std::string, Dimension> dimensions = bobbin.get_functional_description().value().get_dimensions();
     std::map<std::string, Dimension> flattenedDimensions;
     for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values<OpenMagnetics::DimensionalValues::NOMINAL>(dimension.second);
+        double value = resolve_dimensional_values(dimension.second);
         flattenedDimensions[dimension.first] = value;
     }
     return flattenedDimensions;

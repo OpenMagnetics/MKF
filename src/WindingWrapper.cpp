@@ -22,6 +22,97 @@ using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
+
+
+WindingWrapper::WindingWrapper(const json& j, uint8_t interleavingLevel,
+                               WindingOrientation windingOrientation,
+                               WindingOrientation layersOrientation,
+                               CoilAlignment turnsAlignment,
+                               CoilAlignment sectionAlignment,
+                               bool delimitAndCompact) {
+    _interleavingLevel = interleavingLevel;
+    _windingOrientation = windingOrientation;
+    _layersOrientation = layersOrientation;
+    _turnsAlignment = turnsAlignment;
+    _sectionAlignment = sectionAlignment;
+    from_json(j, *this);
+
+    if (wind() && delimitAndCompact) {
+        delimit_and_compact();
+    }
+
+}
+
+WindingWrapper::WindingWrapper(const Winding winding, bool delimitAndCompact) {
+    bool hasSectionsData = false;
+    bool hasLayersData = false;
+    bool hasTurnsData = false;
+
+    set_functional_description(winding.get_functional_description());
+    set_bobbin(winding.get_bobbin());
+
+    if (winding.get_sections_description()) {
+        hasSectionsData = true;
+        set_sections_description(winding.get_sections_description());
+    }
+    if (winding.get_layers_description()) {
+        hasLayersData = true;
+        set_layers_description(winding.get_layers_description());
+    }
+    if (winding.get_turns_description()) {
+        hasTurnsData = true;
+        set_turns_description(winding.get_turns_description());
+    }
+
+    if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
+        if (wind() && delimitAndCompact) {
+            delimit_and_compact();
+        }
+    }
+
+}
+
+bool WindingWrapper::wind() {
+    std::string bobbinName = "";
+    if (std::holds_alternative<std::string>(get_bobbin())) {
+        bobbinName = std::get<std::string>(get_bobbin());
+        if (bobbinName != "Dummy") {
+            auto bobbinData = OpenMagnetics::find_bobbin_by_name(std::get<std::string>(get_bobbin()));
+            set_bobbin(bobbinData);
+        }
+    }
+
+    if (bobbinName != "Dummy") {
+        bool wind = true;                
+        for (auto& winding : get_mutable_functional_description()) {
+            if (std::holds_alternative<std::string>(winding.get_wire())) {
+                std::string wireName = std::get<std::string>(winding.get_wire());
+                if (wireName == "Dummy") {
+                    wind = false;
+                    break;
+                }
+                auto wire = find_wire_by_name(wireName);
+                winding.set_wire(wire);
+            }
+        }
+
+        if (wind) {
+            if (_inputs) {
+                calculate_insulation();
+            }
+            wind_by_sections();
+            wind_by_layers();
+            if (are_sections_and_layers_fitting()) {
+                wind_by_turns();
+                return true;
+            }
+
+        }
+    }
+    return false;
+}
+
+
 std::vector<WindingStyle> WindingWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
@@ -240,12 +331,12 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
 
 double get_area_used_in_wires(WireS wire, uint64_t physicalTurns) {
         if (wire.get_type() == "round") {
-            double wireDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_diameter().value());
+            double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
             return physicalTurns * pow(wireDiameter, 2);
         }
         else {
-            double wireWidth = resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value());
-            double wireHeight = resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value());
+            double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
+            double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
             return physicalTurns * wireWidth * wireHeight;
         }
 }
@@ -587,7 +678,7 @@ void WindingWrapper::wind_by_layers() {
             }
 
             if (wirePerWinding[windingIndex].get_type() == "round") {
-                double wireDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_diameter().value());
+                double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::VERTICAL) {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireDiameter;
                     maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireDiameter);
@@ -601,8 +692,8 @@ void WindingWrapper::wind_by_layers() {
                 }
             }
             else {
-                double wireWidth = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_width().value());
-                double wireHeight = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_height().value());
+                double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
+                double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::VERTICAL) {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
                     maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
@@ -791,12 +882,12 @@ void WindingWrapper::wind_by_turns() {
             auto physicalTurnsInLayer = get_number_turns(layer);
             auto alignment = layer.get_turns_alignment().value();
             if (wirePerWinding[windingIndex].get_type() == "round") {
-                wireWidth = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_diameter().value());
-                wireHeight = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_diameter().value());
+                wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
+                wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
             }
             else {
-                wireWidth = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_width().value());
-                wireHeight = resolve_dimensional_values<DimensionalValues::NOMINAL>(wirePerWinding[windingIndex].get_outer_height().value());
+                wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
+                wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
             }
             if (layer.get_orientation() == WindingOrientation::VERTICAL) {
                 totalLayerWidth = layer.get_dimensions()[0];
@@ -860,8 +951,6 @@ void WindingWrapper::wind_by_turns() {
                 layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
             }
 
-            // std::cout << "WIND_BY_CONSECUTIVE_TURNS: " << bool(layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) << std::endl;
-            // std::cout << "WIND_BY_CONSECUTIVE_PARALLELS: " << bool(layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) << std::endl;
 
             if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
@@ -991,10 +1080,6 @@ void WindingWrapper::delimit_and_compact() {
                                                            sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
                 sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
                                                        currentSectionMaximumHeight - currentSectionMinimumHeight}));
-                std::cout << "sectionIndex: " << i << std::endl;
-                std::cout << "currentSectionMaximumHeight: " << currentSectionMaximumHeight << std::endl;
-                std::cout << "currentSectionMinimumHeight: " << currentSectionMinimumHeight << std::endl;
-                std::cout << "currentSectionMaximumHeight - currentSectionMinimumHeight: " << currentSectionMaximumHeight - currentSectionMinimumHeight << std::endl;
             }
         }
         set_sections_description(sections);
@@ -1016,9 +1101,6 @@ void WindingWrapper::delimit_and_compact() {
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
                 totalSectionsWidth += sections[sectionIndex].get_dimensions()[0];
-                std::cout << "sectionIndex: " << sectionIndex << std::endl;
-                std::cout << "totalSectionsHeight: " << totalSectionsHeight << std::endl;
-                std::cout << "sections[sectionIndex].get_dimensions()[1]: " << sections[sectionIndex].get_dimensions()[1] << std::endl;
                 if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
                     totalSectionsHeight = std::max(totalSectionsHeight, sections[sectionIndex].get_dimensions()[1]);
                 }
@@ -1040,8 +1122,6 @@ void WindingWrapper::delimit_and_compact() {
             case CoilAlignment::INNER_OR_TOP:
                 currentCoilWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
                 if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-                    std::cout << "totalSectionsHeight: " << totalSectionsHeight << std::endl;
-                    std::cout << "windingWindowHeight: " << windingWindowHeight << std::endl;
                     switch (_turnsAlignment) {
                         case CoilAlignment::INNER_OR_TOP:
                             currentCoilHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - totalSectionsHeight / 2;
@@ -1053,6 +1133,8 @@ void WindingWrapper::delimit_and_compact() {
                         case CoilAlignment::SPREAD:
                             currentCoilHeight = 0;
                             break;
+                        default:
+                            throw std::runtime_error("No such section alignment");
                     }
                 }
                 else {
@@ -1073,6 +1155,8 @@ void WindingWrapper::delimit_and_compact() {
                         case CoilAlignment::SPREAD:
                             currentCoilHeight = 0;
                             break;
+                        default:
+                            throw std::runtime_error("No such section alignment");
                     }
                 }
                 else {
@@ -1093,6 +1177,8 @@ void WindingWrapper::delimit_and_compact() {
                         case CoilAlignment::SPREAD:
                             currentCoilHeight = 0;
                             break;
+                        default:
+                            throw std::runtime_error("No such section alignment");
                     }
                     paddingAmongSectionWidth = windingWindows[0].get_width().value() - totalSectionsWidth;
                     if (sections.size() > 1) {
@@ -1124,6 +1210,8 @@ void WindingWrapper::delimit_and_compact() {
                         case CoilAlignment::SPREAD:
                             currentCoilHeight = 0;
                             break;
+                        default:
+                            throw std::runtime_error("No such section alignment");
                     }
                 }
                 else {
@@ -1139,6 +1227,20 @@ void WindingWrapper::delimit_and_compact() {
         if (get_turns_description()) {
             turns = get_turns_description().value();
         }
+
+        auto bobbinColumnShape = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_shape();
+        auto bobbinColumnDepth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_depth();
+        double bobbinColumnWidth;
+        if (std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_width()) {
+            bobbinColumnWidth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_width().value();
+        }
+        else {
+            auto bobbinWindingWindow = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0];
+            double bobbinWindingWindowWidth = bobbinWindingWindow.get_width().value();
+            double bobbinWindingWindowCenterWidth = bobbinWindingWindow.get_coordinates().value()[0];
+            bobbinColumnWidth = bobbinWindingWindowCenterWidth - bobbinWindingWindowWidth / 2;
+        }
+
         for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
                 currentCoilWidth += sections[sectionIndex].get_dimensions()[0] / 2;
@@ -1182,6 +1284,17 @@ void WindingWrapper::delimit_and_compact() {
                                     turns[turnIndex].get_coordinates()[0] - compactingShiftWidth,
                                     turns[turnIndex].get_coordinates()[1] - compactingShiftHeight
                                 }));
+
+                                if (bobbinColumnShape == ColumnShape::ROUND) {
+                                    turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0]);
+                                }
+                                else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                                    double currentTurnCornerRadius = turns[turnIndex].get_coordinates()[0] - bobbinColumnWidth;
+                                    turns[turnIndex].set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                                }
+                                else {
+                                    throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                                }
                             }
                         }
                     }
