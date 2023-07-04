@@ -128,7 +128,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         if (wirePerWinding[windingIndex].get_type() == "round") {
             *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.windingPainterScale,
                                    (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.windingPainterScale,
-                                   resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_diameter().value()) / 2 * constants.windingPainterScale);
+                                   resolve_dimensional_values(wire.get_outer_diameter().value()) / 2 * constants.windingPainterScale);
 
             auto turnSvg = _root->get_children<SVG::Circle>().back();
             _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[windingIndex % constants.windingPainterColorsScaleTurns.size()]);
@@ -138,7 +138,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
             if (wire.get_conducting_diameter()) {
                 *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.windingPainterScale,
                                        (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.windingPainterScale,
-                                       resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_diameter().value()) / 2 * constants.windingPainterScale);
+                                       resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2 * constants.windingPainterScale);
 
                 turnSvg = _root->get_children<SVG::Circle>().back();
                 turnSvg->set_attr("class", "copper");
@@ -147,10 +147,10 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         else {
             {
                 std::vector<SVG::Point> turnPoints = {};
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_outer_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_outer_height().value()) / 2));
 
                 *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
 
@@ -161,10 +161,10 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
 
             if (wire.get_conducting_width() && wire.get_conducting_height()) {
                 std::vector<SVG::Point> turnPoints = {};
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
-                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values<DimensionalValues::NOMINAL>(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_conducting_height().value()) / 2));
+                turnPoints.push_back(SVG::Point(turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_conducting_height().value()) / 2));
 
                 *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
 

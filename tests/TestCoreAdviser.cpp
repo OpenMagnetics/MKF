@@ -24,7 +24,7 @@ SUITE(CoreAdviser) {
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double frequency = 100000;
-        double desiredMagnetizingInductance = 10e-5;
+        double desiredMagnetizingInductance = 10e-3;
         std::vector<double> turnsRatios = {};
         OpenMagnetics::InputsWrapper inputs;
 

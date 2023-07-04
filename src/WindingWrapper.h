@@ -63,44 +63,9 @@ class WindingWrapper : public Winding {
                        WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
                        WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
-                       CoilAlignment sectionAlignment = CoilAlignment::CENTERED) {
-            _interleavingLevel = interleavingLevel;
-            _windingOrientation = windingOrientation;
-            _layersOrientation = layersOrientation;
-            _turnsAlignment = turnsAlignment;
-            _sectionAlignment = sectionAlignment;
-            from_json(j, *this);
-
-            wind();
-
-        }
-
-        WindingWrapper(const Winding winding) {
-            bool hasSectionsData = false;
-            bool hasLayersData = false;
-            bool hasTurnsData = false;
-
-            set_functional_description(winding.get_functional_description());
-            set_bobbin(winding.get_bobbin());
-
-            if (winding.get_sections_description()) {
-                hasSectionsData = true;
-                set_sections_description(winding.get_sections_description());
-            }
-            if (winding.get_layers_description()) {
-                hasLayersData = true;
-                set_layers_description(winding.get_layers_description());
-            }
-            if (winding.get_turns_description()) {
-                hasTurnsData = true;
-                set_turns_description(winding.get_turns_description());
-            }
-
-            if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
-                wind();
-            }
-
-        }
+                       CoilAlignment sectionAlignment = CoilAlignment::CENTERED,
+                       bool delimitAndCompact = true);
+        WindingWrapper(const Winding winding, bool delimitAndCompact = true);
         WindingWrapper() = default;
         virtual ~WindingWrapper() = default;
 
@@ -122,42 +87,7 @@ class WindingWrapper : public Winding {
             _inputs = inputs;
         }
 
-        void wind() {
-            std::string bobbinName = "";
-            if (std::holds_alternative<std::string>(get_bobbin())) {
-                bobbinName = std::get<std::string>(get_bobbin());
-                if (bobbinName != "Dummy") {
-                    auto bobbinData = OpenMagnetics::find_bobbin_by_name(std::get<std::string>(get_bobbin()));
-                    set_bobbin(bobbinData);
-                }
-            }
-
-            if (bobbinName != "Dummy") {
-                bool wind = true;                
-                for (auto& winding : get_mutable_functional_description()) {
-                    if (std::holds_alternative<std::string>(winding.get_wire())) {
-                        std::string wireName = std::get<std::string>(winding.get_wire());
-                        if (wireName == "Dummy") {
-                            wind = false;
-                            break;
-                        }
-                        auto wire = find_wire_by_name(wireName);
-                        winding.set_wire(wire);
-                    }
-                }
-
-                if (wind) {
-                    if (_inputs) {
-                        calculate_insulation();
-                    }
-                    wind_by_sections();
-                    wind_by_layers();
-                    if (are_sections_and_layers_fitting()) {
-                        wind_by_turns();
-                    }
-                }
-            }
-        }
+        bool wind();
 
         uint64_t get_number_turns(size_t windingIndex) {
             return get_functional_description()[windingIndex].get_number_turns();

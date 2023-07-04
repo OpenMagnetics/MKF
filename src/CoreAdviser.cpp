@@ -372,7 +372,7 @@ CoreWrapper CoreAdviser::get_advised_core(InputsWrapper inputs) {
     magnetics = aux.first;
 
     for (size_t i = 0; i < magnetics.size(); ++i){
-        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(cores[i], &inputs);
+        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(cores[i], &inputs, DimensionalValues::MINIMUM);
         magnetics[i].get_mutable_winding().get_mutable_functional_description()[0].set_number_turns(numberTurns);
     }
 

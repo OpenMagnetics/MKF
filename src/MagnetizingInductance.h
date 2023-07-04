@@ -1,6 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include "Defaults.h"
+#include "Utils.h"
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
@@ -41,7 +42,7 @@ class MagnetizingInductance {
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
 
-    int get_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs);
+    int get_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
     std::pair<double, ElectromagneticParameter> get_inductance_and_magnetic_flux_density(
         CoreWrapper core,

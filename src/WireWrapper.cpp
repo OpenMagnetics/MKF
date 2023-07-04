@@ -28,6 +28,17 @@ namespace OpenMagnetics {
 
     }
 
+    WireWrapper WireWrapper::get_strand(WireS wire) {
+        // If the strand is a string, we have to load its data from the database
+        if (std::holds_alternative<std::string>(wire.get_strand().value())) {
+            throw std::runtime_error("Litz database not implemented yet");
+        }
+        else {
+            return WireWrapper(std::get<WireSolid>(wire.get_strand().value()));
+        }
+
+    }
+
     double WireWrapper::get_filling_factor(double conductingDiameter, int grade, WireStandard standard, bool includeAirInCell){
         if (wireDatabase.empty()) {
             load_databases(true);
@@ -44,9 +55,9 @@ namespace OpenMagnetics {
                 if (get_coating(datum.second)) {
                     auto coating = get_coating(datum.second).value();
                     if (coating.get_grade().value() == grade && datum.second.get_standard().value() == standard) {
-                        double wireOuterDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_outer_diameter().value()); 
-                        double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
-                        double wireNumberConductors = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_number_conductors().value()); 
+                        double wireOuterDiameter = resolve_dimensional_values(datum.second.get_outer_diameter().value()); 
+                        double wireConductingDiameter = resolve_dimensional_values(datum.second.get_conducting_diameter().value()); 
+                        double wireNumberConductors = resolve_dimensional_values(datum.second.get_number_conductors().value()); 
                         double outerArea;
                         if (includeAirInCell) {
                             outerArea = pow(wireOuterDiameter, 2);
@@ -60,7 +71,7 @@ namespace OpenMagnetics {
                     }
                 }
                 else {
-                    double wireConductingDiameter = resolve_dimensional_values<DimensionalValues::NOMINAL>(datum.second.get_conducting_diameter().value()); 
+                    double wireConductingDiameter = resolve_dimensional_values(datum.second.get_conducting_diameter().value()); 
                     wireConductingDiameters.push_back(wireConductingDiameter);
                     fillingFactors.push_back(1);
                 }
@@ -110,6 +121,5 @@ namespace OpenMagnetics {
         }
         return std::min(numberLayers, timesVoltageisCovered);
     }
-
 
 } // namespace OpenMagnetics
