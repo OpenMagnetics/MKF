@@ -1630,8 +1630,6 @@ SUITE(CoreGeometricalDescription) {
 
         auto geometrical_description = *(core.get_geometrical_description());
 
-    std::cout << "geometrical_description[0].get_machining()->size()" << std::endl;
-    std::cout << geometrical_description[0].get_machining()->size() << std::endl;
         CHECK_EQUAL(*(core.get_name()), "Custom_0");
         CHECK(std::get<OpenMagnetics::CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
                   .get_mutable_volumetric_losses()["default"]

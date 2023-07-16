@@ -16,7 +16,7 @@ SUITE(WindingOhmicLosses) {
         OpenMagnetics::Processed processed;
         std::vector<OpenMagnetics::OperationPointExcitation> excitations;
         for (auto& dcCurrent : dcCurrents) {
-            processed.set_offset(dcCurrent);
+            processed.set_rms(dcCurrent);
             current.set_processed(processed);
             operationPointExcitation.set_current(current);
             excitations.push_back(operationPointExcitation);
@@ -26,7 +26,7 @@ SUITE(WindingOhmicLosses) {
         return operationPoint;
     }
 
-    OpenMagnetics::WindingWrapper get_winding(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels) {
+    OpenMagnetics::CoilWrapper get_coil(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels) {
         uint64_t numberPhysicalTurns = std::numeric_limits<uint64_t>::max();
         for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
         {
@@ -39,7 +39,7 @@ SUITE(WindingOhmicLosses) {
         interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
         return winding;
     }
 
@@ -159,12 +159,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1};
 
         auto operationPoint = get_operation_point_with_dc_current({1});
-        auto winding = get_winding(numberTurns, numberParallels);
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 3.1e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_Two_Turns) {
@@ -173,12 +173,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1};
 
         auto operationPoint = get_operation_point_with_dc_current({1});
-        auto winding = get_winding(numberTurns, numberParallels);
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 6.2e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels) {
@@ -187,12 +187,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {2};
 
         auto operationPoint = get_operation_point_with_dc_current({1});
-        auto winding = get_winding(numberTurns, numberParallels);
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 3.1e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_One_Turn_Double_Current) {
@@ -201,12 +201,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1};
 
         auto operationPoint = get_operation_point_with_dc_current({2});
-        auto winding = get_winding(numberTurns, numberParallels);
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 12.4e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings) {
@@ -215,13 +215,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1, 2};
 
         auto operationPoint = get_operation_point_with_dc_current({1, 1});
-        auto winding = get_winding(numberTurns, numberParallels);
-        winding.delimit_and_compact();
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 6.55e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns) {
@@ -230,13 +229,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1, 2};
 
         auto operationPoint = get_operation_point_with_dc_current({1, 1});
-        auto winding = get_winding(numberTurns, numberParallels);
-        winding.delimit_and_compact();
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 2 * 6.55e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings_High_Temp) {
@@ -245,13 +243,12 @@ SUITE(WindingOhmicLosses) {
         std::vector<uint64_t> numberParallels = {1, 2};
 
         auto operationPoint = get_operation_point_with_dc_current({1, 1});
-        auto winding = get_winding(numberTurns, numberParallels);
-        winding.delimit_and_compact();
+        auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double OhmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
         double expectedOhmicLosses = 9.2e-3;
-        CHECK_CLOSE(expectedOhmicLosses, OhmicLosses, expectedOhmicLosses * maximumError);
+        CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
 
 }

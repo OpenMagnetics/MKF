@@ -1,7 +1,6 @@
 #include "CoreLosses.h"
 #include "Resistivity.h"
 
-#include "../tests/TestingUtils.h"
 #include "Constants.h"
 #include "InputsWrapper.h"
 
@@ -230,7 +229,7 @@ std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper c
             timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
         }
         volumetricLossesSum +=
-            pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
+            pow(fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
             timeDifference;
     }
 

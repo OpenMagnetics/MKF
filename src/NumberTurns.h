@@ -19,6 +19,12 @@ class NumberTurns {
             increment_number_turns();
         }
 
+        NumberTurns(double initialPrimaryNumberTurns) {
+            int64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking afor a new one will increment turns by one
+            _currentNumberTurns.push_back(InitialPrimaryNumberTurnsMinusOne);
+            increment_number_turns();
+        }
+
         std::vector<int64_t> get_next_number_turns_combination();
         void increment_number_turns();
 };

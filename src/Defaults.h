@@ -20,6 +20,8 @@ struct Defaults {
     const double coreAdviserThresholdValidity = 0.9;
     const double coreAdviserMaximumCoreTemperature = 150;
     const double coreAdviserMaximumPercentagePowerCoreLosses = 0.05;
+    const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 100;
+    const uint64_t coreAdviserMaximumNumberStacks = 4;
     const double magneticFluxDensitySaturation = 0.5;
 };
 } // namespace OpenMagnetics

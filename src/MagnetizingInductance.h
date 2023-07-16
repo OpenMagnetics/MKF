@@ -6,7 +6,7 @@
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
 #include <MAS.hpp>
-#include <WindingWrapper.h>
+#include <CoilWrapper.h>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -33,11 +33,11 @@ class MagnetizingInductance {
         }
     }
     double get_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                        WindingWrapper winding,
+                                                        CoilWrapper winding,
                                                         OperationPoint* operationPoint);
 
     std::vector<CoreGap> get_gapping_from_number_turns_and_inductance(CoreWrapper core,
-                                                                      WindingWrapper winding,
+                                                                      CoilWrapper winding,
                                                                       InputsWrapper* inputs,
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
@@ -46,7 +46,7 @@ class MagnetizingInductance {
 
     std::pair<double, ElectromagneticParameter> get_inductance_and_magnetic_flux_density(
         CoreWrapper core,
-        WindingWrapper winding,
+        CoilWrapper winding,
         OperationPoint* operationPoint);
 };
 

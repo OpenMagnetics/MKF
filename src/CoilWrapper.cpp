@@ -10,12 +10,11 @@
 #include <vector>
 #include "Constants.h"
 #include "Utils.h"
-#include "WindingWrapper.h"
+#include "CoilWrapper.h"
 #include "json.hpp"
 #include "InsulationMaterialWrapper.h"
 
 #include <magic_enum.hpp>
-#include "../tests/TestingUtils.h"
 
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
@@ -24,7 +23,7 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 
 
-WindingWrapper::WindingWrapper(const json& j, uint8_t interleavingLevel,
+CoilWrapper::CoilWrapper(const json& j, uint8_t interleavingLevel,
                                WindingOrientation windingOrientation,
                                WindingOrientation layersOrientation,
                                CoilAlignment turnsAlignment,
@@ -43,25 +42,25 @@ WindingWrapper::WindingWrapper(const json& j, uint8_t interleavingLevel,
 
 }
 
-WindingWrapper::WindingWrapper(const Winding winding, bool delimitAndCompact) {
+CoilWrapper::CoilWrapper(const Coil coil, bool delimitAndCompact) {
     bool hasSectionsData = false;
     bool hasLayersData = false;
     bool hasTurnsData = false;
 
-    set_functional_description(winding.get_functional_description());
-    set_bobbin(winding.get_bobbin());
+    set_functional_description(coil.get_functional_description());
+    set_bobbin(coil.get_bobbin());
 
-    if (winding.get_sections_description()) {
+    if (coil.get_sections_description()) {
         hasSectionsData = true;
-        set_sections_description(winding.get_sections_description());
+        set_sections_description(coil.get_sections_description());
     }
-    if (winding.get_layers_description()) {
+    if (coil.get_layers_description()) {
         hasLayersData = true;
-        set_layers_description(winding.get_layers_description());
+        set_layers_description(coil.get_layers_description());
     }
-    if (winding.get_turns_description()) {
+    if (coil.get_turns_description()) {
         hasTurnsData = true;
-        set_turns_description(winding.get_turns_description());
+        set_turns_description(coil.get_turns_description());
     }
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
@@ -72,7 +71,7 @@ WindingWrapper::WindingWrapper(const Winding winding, bool delimitAndCompact) {
 
 }
 
-bool WindingWrapper::wind() {
+bool CoilWrapper::wind() {
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
         bobbinName = std::get<std::string>(get_bobbin());
@@ -113,7 +112,7 @@ bool WindingWrapper::wind() {
 }
 
 
-std::vector<WindingStyle> WindingWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots) {
+std::vector<WindingStyle> CoilWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
         if (numberTurns[i] == numberSlots) {
@@ -143,7 +142,7 @@ std::vector<WindingStyle> WindingWrapper::wind_by_consecutive_turns(std::vector<
     return windByConsecutiveTurns;
 }
 
-WindingStyle WindingWrapper::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots) {
+WindingStyle CoilWrapper::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots) {
     if (numberTurns == numberSlots) {
         log("Winding layer by putting together parallels of the same turn, as the number of turns is equal to the number of layers.");
         return WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
@@ -164,7 +163,7 @@ WindingStyle WindingWrapper::wind_by_consecutive_turns(uint64_t numberTurns, uin
     return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
 }
 
-std::vector<uint64_t> WindingWrapper::get_number_turns() {
+std::vector<uint64_t> CoilWrapper::get_number_turns() {
     std::vector<uint64_t> numberTurns;
     for (auto & winding : get_functional_description()) {
         numberTurns.push_back(winding.get_number_turns());
@@ -172,7 +171,7 @@ std::vector<uint64_t> WindingWrapper::get_number_turns() {
     return numberTurns;
 }
 
-std::vector<Layer> WindingWrapper::get_layers_by_section(std::string sectionName) {
+std::vector<Layer> CoilWrapper::get_layers_by_section(std::string sectionName) {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
     for (auto & layer : layers) {
@@ -184,7 +183,7 @@ std::vector<Layer> WindingWrapper::get_layers_by_section(std::string sectionName
     return foundLayers;
 }
 
-std::vector<Turn> WindingWrapper::get_turns_by_layer(std::string layerName) {
+std::vector<Turn> CoilWrapper::get_turns_by_layer(std::string layerName) {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
@@ -196,7 +195,7 @@ std::vector<Turn> WindingWrapper::get_turns_by_layer(std::string layerName) {
     return foundTurns;
 }
 
-std::vector<uint64_t> WindingWrapper::get_number_parallels() {
+std::vector<uint64_t> CoilWrapper::get_number_parallels() {
     std::vector<uint64_t> numberParallels;
     for (auto & winding : get_functional_description()) {
         numberParallels.push_back(winding.get_number_parallels());
@@ -205,16 +204,16 @@ std::vector<uint64_t> WindingWrapper::get_number_parallels() {
 }
 
 
-WindingFunctionalDescription WindingWrapper::get_winding_by_name(std::string name) {
-    for (auto& windingFunctionalDescription : get_functional_description()) {
-        if (windingFunctionalDescription.get_name() == name) {
-            return windingFunctionalDescription;
+CoilFunctionalDescription CoilWrapper::get_winding_by_name(std::string name) {
+    for (auto& CoilFunctionalDescription : get_functional_description()) {
+        if (CoilFunctionalDescription.get_name() == name) {
+            return CoilFunctionalDescription;
         }
     }
     throw std::runtime_error("No such a winding name: " + name);
 }
 
-size_t WindingWrapper::get_winding_index_by_name(std::string name) {
+size_t CoilWrapper::get_winding_index_by_name(std::string name) {
     for (size_t i=0; i<get_functional_description().size(); ++i) {
         if (get_functional_description()[i].get_name() == name) {
             return i;
@@ -223,7 +222,7 @@ size_t WindingWrapper::get_winding_index_by_name(std::string name) {
     throw std::runtime_error("No such a winding name: " + name);
 }
 
-std::vector<WireWrapper> WindingWrapper::get_wires() {
+std::vector<WireWrapper> CoilWrapper::get_wires() {
     std::vector<WireWrapper> wirePerWinding;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
@@ -232,7 +231,7 @@ std::vector<WireWrapper> WindingWrapper::get_wires() {
     return wirePerWinding;
 }
 
-double WindingWrapper::horizontalFillingFactor(Section section) {
+double CoilWrapper::horizontalFillingFactor(Section section) {
     auto layers = get_layers_by_section(section.get_name());
     double sectionWidth = section.get_dimensions()[0];
     double layersWidth = 0;
@@ -247,7 +246,7 @@ double WindingWrapper::horizontalFillingFactor(Section section) {
     return layersWidth / sectionWidth;
 }
 
-double WindingWrapper::verticalFillingFactor(Section section) {
+double CoilWrapper::verticalFillingFactor(Section section) {
     auto layers = get_layers_by_section(section.get_name());
     double sectionHeight = section.get_dimensions()[1];
     double layersHeight = 0;
@@ -262,7 +261,7 @@ double WindingWrapper::verticalFillingFactor(Section section) {
     return layersHeight / sectionHeight;
 }
 
-double WindingWrapper::horizontalFillingFactor(Layer layer) {
+double CoilWrapper::horizontalFillingFactor(Layer layer) {
     auto turns = get_turns_by_layer(layer.get_name());
     double layerWidth = layer.get_dimensions()[0];
     double turnsWidth = 0;
@@ -272,7 +271,7 @@ double WindingWrapper::horizontalFillingFactor(Layer layer) {
     return turnsWidth / layerWidth;
 }
 
-double WindingWrapper::verticalFillingFactor(Layer layer) {
+double CoilWrapper::verticalFillingFactor(Layer layer) {
     auto turns = get_turns_by_layer(layer.get_name());
     double layerHeight = layer.get_dimensions()[1];
     double turnsHeight = 0;
@@ -342,7 +341,7 @@ double get_area_used_in_wires(WireS wire, uint64_t physicalTurns) {
 }
 
 
-void WindingWrapper::calculate_insulation() {
+void CoilWrapper::calculate_insulation() {
     auto wirePerWinding = get_wires();
 
     auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
@@ -365,8 +364,15 @@ void WindingWrapper::calculate_insulation() {
 
             int timesVoltageNeedsToBeCovered;
             InsulationType neededInsulationType;
-            if (inputs.get_design_requirements().get_insulation_type()) {
-                neededInsulationType = inputs.get_design_requirements().get_insulation_type().value();
+            bool insulationTypeSpecified = false;
+            if (inputs.get_design_requirements().get_insulation()) {
+                if (inputs.get_design_requirements().get_insulation().value().get_insulation_type()) {
+                    insulationTypeSpecified = true;
+                }
+            }
+
+            if (insulationTypeSpecified) {
+                neededInsulationType = inputs.get_design_requirements().get_insulation().value().get_insulation_type().value();
                 switch (neededInsulationType) {
                     case InsulationType::BASIC:
                     case InsulationType::FUNCTIONAL:
@@ -389,7 +395,6 @@ void WindingWrapper::calculate_insulation() {
                         timesVoltageNeedsToBeCovered = 1;
                         dielectricVoltageToInsulate = 2 * totalVoltageToInsulate + 1000;
                         break;
-
                 }
             }
             else {
@@ -490,7 +495,7 @@ void WindingWrapper::calculate_insulation() {
 
 }
 
-void WindingWrapper::wind_by_sections() {
+void CoilWrapper::wind_by_sections() {
     std::vector<Section> sectionsDescription;
     auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), _interleavingLevel);
     auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
@@ -646,7 +651,7 @@ void WindingWrapper::wind_by_sections() {
 
 }
 
-void WindingWrapper::wind_by_layers() {
+void CoilWrapper::wind_by_layers() {
     if (!get_sections_description()) {
         return;
     }
@@ -838,7 +843,7 @@ void WindingWrapper::wind_by_layers() {
     set_layers_description(layers);
 }
 
-void WindingWrapper::wind_by_turns() {
+void CoilWrapper::wind_by_turns() {
     if (!get_layers_description()) {
         return;
     }
@@ -1026,7 +1031,7 @@ void WindingWrapper::wind_by_turns() {
     set_turns_description(turns);
 }
 
-void WindingWrapper::delimit_and_compact() {
+void CoilWrapper::delimit_and_compact() {
     { // Delimit
         auto layers = get_layers_description().value();
         if (get_turns_description()) {

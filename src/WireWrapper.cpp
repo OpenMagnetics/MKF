@@ -6,7 +6,6 @@
 #include "Constants.h"
 #include "Utils.h"
 #include "WireWrapper.h"
-#include "../tests/TestingUtils.h"
 #include <libInterpolate/Interpolate.hpp>
 
 std::map<std::string, _1D::LinearInterpolator<double>> wireFillingFactorInterps;

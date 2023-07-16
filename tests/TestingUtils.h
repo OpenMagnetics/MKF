@@ -2,7 +2,7 @@
 
 #include "Constants.h"
 #include "CoreWrapper.h"
-#include "WindingWrapper.h"
+#include "CoilWrapper.h"
 #include "svg.hpp"
 
 #include <filesystem>
@@ -11,39 +11,39 @@
 #include <vector>
 
 namespace OpenMagneticsTesting {
-OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
-                                                std::vector<uint64_t> numberParallels,
-                                                std::string shapeName,
-                                                uint64_t interleavingLevel,
-                                                OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
-                                                OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
-                                                OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
+                                          std::vector<uint64_t> numberParallels,
+                                          std::string shapeName,
+                                          uint64_t interleavingLevel,
+                                          OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
+                                          OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
+                                          OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                          OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
 
-OpenMagnetics::WindingWrapper get_quick_winding(std::vector<uint64_t> numberTurns,
-                                                std::vector<uint64_t> numberParallels,
-                                                double bobbinHeight,
-                                                double bobbinWidth,
-                                                std::vector<double> bobbinCenterCoodinates,
-                                                uint64_t interleavingLevel,
-                                                OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
-                                                OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
-                                                OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
+                                          std::vector<uint64_t> numberParallels,
+                                          double bobbinHeight,
+                                          double bobbinWidth,
+                                          std::vector<double> bobbinCenterCoodinates,
+                                          uint64_t interleavingLevel,
+                                          OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
+                                          OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
+                                          OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                          OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
 
-OpenMagnetics::WindingWrapper get_quick_winding_no_compact(std::vector<uint64_t> numberTurns,
-                                                           std::vector<uint64_t> numberParallels,
-                                                           double bobbinHeight,
-                                                           double bobbinWidth,
-                                                           std::vector<double> bobbinCenterCoodinates,
-                                                           uint64_t interleavingLevel,
-                                                           OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
-                                                           OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
-                                                           OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                           OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                           std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<uint64_t> numberTurns,
+                                                     std::vector<uint64_t> numberParallels,
+                                                     double bobbinHeight,
+                                                     double bobbinWidth,
+                                                     std::vector<double> bobbinCenterCoodinates,
+                                                     uint64_t interleavingLevel,
+                                                     OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL,
+                                                     OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
+                                                     OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                                     OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
+                                                     std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
 
 OpenMagnetics::CoreWrapper get_core(std::string shapeName,
                                     json basicGapping,

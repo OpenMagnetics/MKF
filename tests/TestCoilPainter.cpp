@@ -1,4 +1,4 @@
-#include "WindingPainter.h"
+#include "CoilPainter.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 
@@ -9,7 +9,7 @@
 #include <string>
 
 
-SUITE(WindingPainter) {
+SUITE(CoilPainter) {
     std::string filePath = __FILE__;
     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
 
@@ -22,17 +22,17 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Distributed_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(coil);
 
-        auto svg = windingPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_core(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 1);
         CHECK(svg->get_children<SVG::Polygon>().size() == 4);
@@ -48,17 +48,17 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.001, 9);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Distributed_Gap_Many.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        auto svg = windingPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_core(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 1);
         CHECK(svg->get_children<SVG::Polygon>().size() == 10);
@@ -74,17 +74,17 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        auto svg = windingPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_core(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 1);
         CHECK(svg->get_children<SVG::Polygon>().size() == 2);
@@ -100,17 +100,17 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.001, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_U_Core_Distributed_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        auto svg = windingPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_core(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 1);
         CHECK(svg->get_children<SVG::Polygon>().size() == 4);
@@ -126,17 +126,17 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_U_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        auto svg = windingPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_core(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 1);
         CHECK(svg->get_children<SVG::Polygon>().size() == 2);
@@ -152,18 +152,18 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        auto svg = windingPainter.paint_bobbin(magnetic);
+        coilPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_bobbin(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 2);
         CHECK(svg->get_children<SVG::Polygon>().size() == 5);
@@ -179,18 +179,18 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Sections.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 2);
         CHECK(svg->get_children<SVG::Polygon>().size() == 6);
@@ -206,19 +206,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_And_Section.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -234,19 +234,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_And_Sections.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 9);
@@ -262,19 +262,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Epx_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -295,19 +295,19 @@ SUITE(WindingPainter) {
         gapping.push_back(basicSpacerGap);
         gapping.push_back(basicSpacerGap);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Epx_Core_Spacer_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -323,19 +323,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_P_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -352,19 +352,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_U80_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -380,19 +380,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Ep_Core_Grinded_Gap.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -413,21 +413,21 @@ SUITE(WindingPainter) {
             std::string coreMaterial = "3C97";
             auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-            auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+            auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
             auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
             std::replace( shapeName.begin(), shapeName.end(), '/', '_');
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Core_" + shapeName + ".svg");
-            OpenMagnetics::WindingPainter windingPainter(outFile);
+            OpenMagnetics::CoilPainter coilPainter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
-            magnetic.set_winding(winding);
+            magnetic.set_coil(winding);
 
-            windingPainter.paint_core(magnetic);
-            windingPainter.paint_bobbin(magnetic);
-            auto svg = windingPainter.paint_winding_sections(magnetic);
+            coilPainter.paint_core(magnetic);
+            coilPainter.paint_bobbin(magnetic);
+            auto svg = coilPainter.paint_winding_sections(magnetic);
 
             CHECK(svg->get_children<SVG::Group>().size() == 3);
             CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -445,19 +445,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Layers_No_Interleaving.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_layers(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_layers(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -473,19 +473,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Turns_No_Interleaving.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -502,19 +502,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -534,19 +534,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Top_Alignment.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -566,19 +566,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Bottom_Alignment.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -598,19 +598,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Spread_Alignment.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -630,19 +630,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 9);
@@ -661,19 +661,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Vectical_Layers.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_layers(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_layers(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 45);
@@ -692,19 +692,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Horizontal_Layers.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_layers(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_layers(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 9);
@@ -723,19 +723,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Horizontal_Layers_Spread_Turns.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -755,19 +755,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Horizontal_Layers_Inner_Turns.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -787,19 +787,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Horizontal_Layers_Outer_Turns.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -819,19 +819,19 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Vertical_Sections_Horizontal_Layers_Centered_Turns.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 3);
@@ -858,19 +858,19 @@ SUITE(WindingPainter) {
         wire.set_type("foil");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Foil_Centered.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -896,19 +896,19 @@ SUITE(WindingPainter) {
         wire.set_type("foil");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Foil_Top.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -936,19 +936,19 @@ SUITE(WindingPainter) {
         wire.set_type("foil");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Foil_With_Insulation_Centered.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 11);
@@ -968,23 +968,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Centered.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1004,23 +1004,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Centered.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1040,23 +1040,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Top.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1076,23 +1076,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Inner.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1112,23 +1112,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Outer.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1148,23 +1148,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Bottom.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1184,23 +1184,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1220,23 +1220,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_Two_Sections.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 5);
@@ -1256,23 +1256,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_One_Section.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 4);
@@ -1292,23 +1292,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 7);
@@ -1328,23 +1328,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_Two_Sections.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 5);
@@ -1364,23 +1364,23 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         winding.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_One_Section.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
-        // auto svg = windingPainter.paint_winding_layers(magnetic);
-        svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
+        // auto svg = coilPainter.paint_winding_layers(magnetic);
+        svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 4);
         CHECK(svg->get_children<SVG::Polygon>().size() == 4);
@@ -1401,7 +1401,7 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
@@ -1412,14 +1412,14 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Vertical_Sections_And_Insulation.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 12);
@@ -1441,7 +1441,7 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
@@ -1452,14 +1452,14 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Horizontal_Sections_And_Insulation.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_sections(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_sections(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 12);
@@ -1476,7 +1476,7 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
@@ -1487,14 +1487,14 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Layers_And_Insulation.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_layers(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_layers(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 19);
@@ -1511,7 +1511,7 @@ SUITE(WindingPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
@@ -1522,14 +1522,14 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
-        auto svg = windingPainter.paint_winding_turns(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
+        auto svg = coilPainter.paint_winding_turns(magnetic);
 
         CHECK(svg->get_children<SVG::Group>().size() == 3);
         CHECK(svg->get_children<SVG::Polygon>().size() == 11);
@@ -1555,7 +1555,7 @@ SUITE(WindingPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_winding(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
@@ -1566,16 +1566,16 @@ SUITE(WindingPainter) {
 
         auto outFile = outputFilePath;
         outFile.append("Test_Turns_Not_Fitting.svg");
-        OpenMagnetics::WindingPainter windingPainter(outFile);
+        OpenMagnetics::CoilPainter coilPainter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_winding(winding);
+        magnetic.set_coil(winding);
 
-        windingPainter.paint_core(magnetic);
-        windingPainter.paint_bobbin(magnetic);
+        coilPainter.paint_core(magnetic);
+        coilPainter.paint_bobbin(magnetic);
         try
         {
-            windingPainter.paint_winding_turns(magnetic);
+            coilPainter.paint_winding_turns(magnetic);
             CHECK(false);
         }
         catch (const std::exception &e)

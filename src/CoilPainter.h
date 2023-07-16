@@ -1,21 +1,21 @@
 #pragma once
 
 #include "CoreWrapper.h"
-#include "WindingWrapper.h"
+#include "CoilWrapper.h"
 #include "Utils.h"
 #include "svg.hpp"
 #include <MAS.hpp>
 
 namespace OpenMagnetics {
 
-class WindingPainter : public Winding {
+class CoilPainter : public Coil {
     private:
         std::filesystem::path _filepath = ".";
         std::filesystem::path _filename = "_.svg";
         double _opacity = 1;
     public:
         SVG::SVG* _root;
-        WindingPainter(std::filesystem::path filepath){
+        CoilPainter(std::filesystem::path filepath){
             _filename = filepath.filename();
             _filepath = filepath.remove_filename();
             _root = new SVG::SVG();
@@ -23,7 +23,7 @@ class WindingPainter : public Winding {
             _root->style(".bobbin").set_attr("fill", "#1b1b1b");
             _root->style(".copper").set_attr("fill", "#B87333");
         };
-        virtual ~WindingPainter() = default;
+        virtual ~CoilPainter() = default;
 
     void set_opacity(double opacity) {
         _opacity = opacity;

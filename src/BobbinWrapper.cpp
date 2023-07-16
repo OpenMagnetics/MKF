@@ -13,7 +13,6 @@
 #include <streambuf>
 #include <vector>
 #include <libInterpolate/Interpolate.hpp>
-#include "../tests/TestingUtils.h"
 
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;

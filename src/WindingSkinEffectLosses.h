@@ -2,7 +2,7 @@
 #include "Constants.h"
 #include "MAS.hpp"
 #include "Resistivity.h"
-#include "WindingWrapper.h"
+#include "CoilWrapper.h"
 #include "WireWrapper.h"
 #include "Utils.h"
 
