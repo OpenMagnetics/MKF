@@ -2161,9 +2161,9 @@ void CoreWrapper::scale_to_stacks(int64_t numberStacks) {
     processedDescription.get_mutable_effective_parameters().set_effective_volume(
         processedDescription.get_effective_parameters().get_effective_volume() * numberStacks);
     processedDescription.set_depth(processedDescription.get_depth() * numberStacks);
-    for (auto& windingWindow : processedDescription.get_mutable_columns()) {
-        windingWindow.set_area(windingWindow.get_area() * numberStacks);
-        windingWindow.set_depth(windingWindow.get_depth() * numberStacks);
+    for (auto& column : processedDescription.get_mutable_columns()) {
+        column.set_area(column.get_area() * numberStacks);
+        column.set_depth(column.get_depth() * numberStacks);
     }
     set_processed_description(processedDescription);
 }
@@ -2656,5 +2656,10 @@ std::vector<std::string> CoreWrapper::get_available_core_losses_methods(){
     }
     return methods;
 }
+
+OpenMagnetics::CoreType CoreWrapper::get_type() {
+    return get_functional_description().get_type();
+}
+
 
 } // namespace OpenMagnetics

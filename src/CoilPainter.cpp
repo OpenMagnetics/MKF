@@ -1,8 +1,7 @@
-#include "WindingPainter.h"
+#include "CoilPainter.h"
 #include "MAS.hpp"
 #include "Utils.h"
 #include "json.hpp"
-#include "../tests/TestingUtils.h"
 
 namespace OpenMagnetics {
 
@@ -10,22 +9,22 @@ std::vector<SVG::Point> scale_points(std::vector<SVG::Point> points, double imag
     auto constants = Constants();
     std::vector<SVG::Point> scaledPoints;
     for (auto& point : points) {
-        scaledPoints.push_back(SVG::Point(point.first * constants.windingPainterScale, (imageHeight / 2 - point.second) * constants.windingPainterScale));
+        scaledPoints.push_back(SVG::Point(point.first * constants.coilPainterScale, (imageHeight / 2 - point.second) * constants.coilPainterScale));
     }
     return scaledPoints;
 }
 
-SVG::SVG* WindingPainter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
     auto constants = Constants();
-    WindingWrapper winding = WindingWrapper(magnetic.get_winding());
+    CoilWrapper winding = CoilWrapper(magnetic.get_coil());
     CoreWrapper core = magnetic.get_core();
     double imageHeight = core.get_processed_description().value().get_height();
 
-    if (!magnetic.get_winding().get_sections_description()) {
+    if (!magnetic.get_coil().get_sections_description()) {
         throw std::runtime_error("Winding sections not created");
     }
 
-    auto sections = magnetic.get_winding().get_sections_description().value();
+    auto sections = magnetic.get_coil().get_sections_description().value();
 
     auto shapes = _root->add_child<SVG::Group>();
     for (size_t i = 0; i < sections.size(); ++i){
@@ -44,7 +43,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_sections(Magnetic magnetic
 
         auto sectionSvg = _root->get_children<SVG::Polygon>().back();
         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".section_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleSections[i % constants.windingPainterColorsScaleSections.size()]);
+            _root->style(".section_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleSections[i % constants.coilPainterColorsScaleSections.size()]);
         }
         else {
             _root->style(".section_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", "#E37E00");
@@ -60,9 +59,9 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_sections(Magnetic magnetic
     return _root;
 }
 
-SVG::SVG* WindingPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
     auto constants = Constants();
-    WindingWrapper winding = magnetic.get_winding();
+    CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
     double imageHeight = core.get_processed_description().value().get_height();
 
@@ -91,7 +90,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) 
 
         auto layerSvg = _root->get_children<SVG::Polygon>().back();
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleLayers[i % constants.windingPainterColorsScaleLayers.size()]);
+            _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleLayers[i % constants.coilPainterColorsScaleLayers.size()]);
         }
         else {
             _root->style(".layer_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", "#E37E00");
@@ -107,9 +106,9 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) 
     return _root;
 }
 
-SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
     auto constants = Constants();
-    WindingWrapper winding = magnetic.get_winding();
+    CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
     double imageHeight = core.get_processed_description().value().get_height();
     auto wirePerWinding = winding.get_wires();
@@ -126,19 +125,19 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
         if (wirePerWinding[windingIndex].get_type() == "round") {
-            *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.windingPainterScale,
-                                   (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.windingPainterScale,
-                                   resolve_dimensional_values(wire.get_outer_diameter().value()) / 2 * constants.windingPainterScale);
+            *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.coilPainterScale,
+                                   (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.coilPainterScale,
+                                   resolve_dimensional_values(wire.get_outer_diameter().value()) / 2 * constants.coilPainterScale);
 
             auto turnSvg = _root->get_children<SVG::Circle>().back();
-            _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[windingIndex % constants.windingPainterColorsScaleTurns.size()]);
-            // _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[turns[i].get_parallel() % constants.windingPainterColorsScaleTurns.size()]);
+            _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[windingIndex % constants.coilPainterColorsScaleTurns.size()]);
+            // _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
             turnSvg->set_attr("class", "turn_" +  std::to_string(i));
 
             if (wire.get_conducting_diameter()) {
-                *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.windingPainterScale,
-                                       (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.windingPainterScale,
-                                       resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2 * constants.windingPainterScale);
+                *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.coilPainterScale,
+                                       (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.coilPainterScale,
+                                       resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2 * constants.coilPainterScale);
 
                 turnSvg = _root->get_children<SVG::Circle>().back();
                 turnSvg->set_attr("class", "copper");
@@ -155,7 +154,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
                 *shapes << SVG::Polygon(scale_points(turnPoints, imageHeight));
 
                 auto turnSvg = _root->get_children<SVG::Polygon>().back();
-                _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.windingPainterColorsScaleTurns[turns[i].get_parallel() % constants.windingPainterColorsScaleTurns.size()]);
+                _root->style(".turn_" +  std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
                 turnSvg->set_attr("class", "turn_" +  std::to_string(i));
             }
 
@@ -203,8 +202,8 @@ SVG::SVG* WindingPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
     return _root;
 }
 
-SVG::SVG* WindingPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
-    auto bobbinProcessedDescription = std::get<Bobbin>(magnetic.get_winding().get_bobbin()).get_processed_description().value();
+SVG::SVG* CoilPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
+    auto bobbinProcessedDescription = std::get<Bobbin>(magnetic.get_coil().get_bobbin()).get_processed_description().value();
     CoreWrapper core = magnetic.get_core();
     double imageHeight = core.get_processed_description().value().get_height();
 
@@ -252,7 +251,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     return _root;
 }
 
-SVG::SVG* WindingPainter::paint_two_piece_set_core(CoreWrapper core) {
+SVG::SVG* CoilPainter::paint_two_piece_set_core(CoreWrapper core) {
     std::vector<SVG::Point> topPiecePoints = {};
     std::vector<SVG::Point> bottomPiecePoints = {};
     std::vector<std::vector<SVG::Point>> gapChunks = {};
@@ -388,7 +387,7 @@ SVG::SVG* WindingPainter::paint_two_piece_set_core(CoreWrapper core) {
     return _root;
 }
 
-SVG::SVG* WindingPainter::paint_core(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_core(Magnetic magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     switch(shape.get_family()) {
@@ -401,7 +400,7 @@ SVG::SVG* WindingPainter::paint_core(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* WindingPainter::paint_bobbin(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_bobbin(Magnetic magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     switch(shape.get_family()) {
@@ -414,7 +413,7 @@ SVG::SVG* WindingPainter::paint_bobbin(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* WindingPainter::paint_winding_sections(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_sections(Magnetic magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -428,7 +427,7 @@ SVG::SVG* WindingPainter::paint_winding_sections(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* WindingPainter::paint_winding_layers(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_layers(Magnetic magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -442,7 +441,7 @@ SVG::SVG* WindingPainter::paint_winding_layers(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* WindingPainter::paint_winding_turns(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_turns(Magnetic magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();

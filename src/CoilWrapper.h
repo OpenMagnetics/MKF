@@ -22,13 +22,13 @@ using json = nlohmann::json;
 namespace OpenMagnetics {
 using nlohmann::json;
 
-class WindingWrapper : public Winding {
+class CoilWrapper : public Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
         std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationLayers;
         std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
         std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
-        std::string windingLog;
+        std::string coilLog;
         bool are_sections_and_layers_fitting() {
             double windTurns = true;
             if (!get_sections_description()) {
@@ -59,15 +59,15 @@ class WindingWrapper : public Winding {
         CoilAlignment _sectionAlignment = CoilAlignment::CENTERED;
         std::optional<InputsWrapper> _inputs;
 
-        WindingWrapper(const json& j, uint8_t interleavingLevel = 1,
+        CoilWrapper(const json& j, uint8_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
                        WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::CENTERED,
                        bool delimitAndCompact = true);
-        WindingWrapper(const Winding winding, bool delimitAndCompact = true);
-        WindingWrapper() = default;
-        virtual ~WindingWrapper() = default;
+        CoilWrapper(const Coil coil, bool delimitAndCompact = true);
+        CoilWrapper() = default;
+        virtual ~CoilWrapper() = default;
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
@@ -77,10 +77,10 @@ class WindingWrapper : public Winding {
         void calculate_insulation();
         void delimit_and_compact();
         void log(std::string entry) {
-            windingLog += entry + "\n";
+            coilLog += entry + "\n";
         }
         std::string read_log() {
-            return windingLog;
+            return coilLog;
         }
 
         void set_inputs(InputsWrapper inputs) {
@@ -131,7 +131,7 @@ class WindingWrapper : public Winding {
 
         std::vector<uint64_t> get_number_parallels();
 
-        WindingFunctionalDescription get_winding_by_name(std::string name);
+        CoilFunctionalDescription get_winding_by_name(std::string name);
 
         size_t get_winding_index_by_name(std::string name);
 

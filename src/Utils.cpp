@@ -287,6 +287,8 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
     else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
         return value == requirement.get_nominal().value();
     }
+
+    return false;
 }
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName){

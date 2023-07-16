@@ -1,6 +1,5 @@
 #include "MagnetizingInductance.h"
 
-#include "../tests/TestingUtils.h"
 #include "InputsWrapper.h"
 #include "MagneticField.h"
 #include "Reluctance.h"
@@ -40,7 +39,7 @@ void set_current_as_magnetizing_current(OperationPoint* operationPoint) {
 
 std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductance_and_magnetic_flux_density(
     CoreWrapper core,
-    WindingWrapper winding,
+    CoilWrapper winding,
     OperationPoint* operationPoint) {
 
     InputsWrapper::make_waveform_size_power_of_two(operationPoint);
@@ -161,7 +160,7 @@ std::pair<double, ElectromagneticParameter> MagnetizingInductance::get_inductanc
 }
 
 double MagnetizingInductance::get_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                                           WindingWrapper winding,
+                                                                           CoilWrapper winding,
                                                                            OperationPoint* operationPoint) {
     auto inductance_and_magnetic_flux_density = get_inductance_and_magnetic_flux_density(core, winding, operationPoint);
 
@@ -287,7 +286,7 @@ CoreWrapper get_core_with_spacer_gapping(CoreWrapper core, double gapLength) {
 }
 
 std::vector<CoreGap> MagnetizingInductance::get_gapping_from_number_turns_and_inductance(CoreWrapper core,
-                                                                                         WindingWrapper winding,
+                                                                                         CoilWrapper winding,
                                                                                          InputsWrapper* inputs,
                                                                                          GappingType gappingType,
                                                                                          size_t decimals) {

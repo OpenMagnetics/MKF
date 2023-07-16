@@ -1,6 +1,5 @@
 #include "InputsWrapper.h"
 
-#include "../tests/TestingUtils.h"
 #include "Constants.h"
 #include "Utils.h"
 #include "json.hpp"
@@ -331,7 +330,7 @@ ElectromagneticParameter InputsWrapper::add_offset_to_excitation(Electromagnetic
 
 Waveform get_magnetizing_current_waveform(Waveform sourceWaveform,
                                           double frequency,
-                                          double magnetizing_inductance,
+                                          double magnetizingInductance,
                                           double dcCurrent = 0) {
     std::vector<double> source = sourceWaveform.get_data();
     std::vector<double> integration;
@@ -339,9 +338,9 @@ Waveform get_magnetizing_current_waveform(Waveform sourceWaveform,
 
     double integral = 0;
     integration.push_back(integral);
-    double time_per_point = 1 / frequency / source.size();
+    double timePerPoint = 1 / frequency / source.size();
     for (auto& point : source) {
-        integral += point / magnetizing_inductance * time_per_point;
+        integral += point / magnetizingInductance * timePerPoint;
         integration.push_back(integral);
     }
 

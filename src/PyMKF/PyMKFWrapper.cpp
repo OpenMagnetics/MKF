@@ -79,17 +79,17 @@ json get_gap_reluctance_model_information(){
 }
 
 double get_inductance_from_number_turns_and_gapping(json coreData,
-                                                    json windingData,
+                                                    json coilData,
                                                     json operationPointData,
                                                     json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
-    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::CoilWrapper coil(coilData);
     OpenMagnetics::OperationPoint operationPoint(operationPointData);
 
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, coil, &operationPoint);
 
     return magnetizingInductance;
 }
@@ -110,13 +110,13 @@ double get_number_turns_from_gapping_and_inductance(json coreData,
 }
 
 py::list get_gapping_from_number_turns_and_inductance(json coreData,
-                                                      json windingData,
+                                                      json coilData,
                                                       json inputsData,
                                                       std::string gappingTypeString,
                                                       size_t decimals,
                                                       json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
-    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::CoilWrapper coil(coilData);
     OpenMagnetics::InputsWrapper inputs(inputsData);
 
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
@@ -124,7 +124,7 @@ py::list get_gapping_from_number_turns_and_inductance(json coreData,
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
     std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core,
-                                                                                                                      winding,
+                                                                                                                      coil,
                                                                                                                       &inputs,
                                                                                                                       gappingType, 
                                                                                                                       decimals);
@@ -149,11 +149,11 @@ json get_steinmetz_coefficients(std::string material, double frequency){
 }
 
 json get_core_losses(json coreData,
-                     json windingData,
+                     json coilData,
                      json inputsData,    
                      json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
-    OpenMagnetics::WindingWrapper winding(windingData);
+    OpenMagnetics::CoilWrapper coil(coilData);
     OpenMagnetics::InputsWrapper inputs(inputsData);
     auto operationPoint = inputs.get_operation_point(0);
     OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
@@ -195,7 +195,7 @@ json get_core_losses(json coreData,
         excitation = operationPoint.get_excitations_per_winding()[0];
         operationPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
-        magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+        magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, coil, &operationPoint).second;
         excitation.set_magnetic_flux_density(magneticFluxDensity);
 
         result = coreLossesModel->get_core_losses(core, excitation, temperature);

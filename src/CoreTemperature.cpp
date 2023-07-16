@@ -1,6 +1,5 @@
 #include "CoreTemperature.h"
 
-#include "../tests/TestingUtils.h"
 #include "Constants.h"
 #include "InputsWrapper.h"
 
