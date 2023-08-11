@@ -663,7 +663,7 @@ double run_test_core_losses(OpenMagnetics::CoreLossesModels modelName,
     excitationJson["magneticFieldStrength"]["processed"]["label"] = waveformShape;
     excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
 
-    OpenMagnetics::OperationPointExcitation excitation(excitationJson);
+    OpenMagnetics::OperatingPointExcitation excitation(excitationJson);
 
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
     double calculatedVolumetricCoreLosses = coreLosses["totalVolumetricLosses"];
@@ -2093,25 +2093,25 @@ SUITE(CoreLossesFromWeb) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             "{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, \"cooling\": null, "
             "\"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, "
             "\"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticFieldStrength\": null, "
-            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", "
+            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operating Point\", "
             "\"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2137,23 +2137,23 @@ SUITE(CoreLossesFromWeb) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(
             json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, "
                         "\"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": "
                         "null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, "
                         "-5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
-                        "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}"));
+                        "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2166,18 +2166,18 @@ SUITE(CoreLossesFromWeb) {
         auto winding = OpenMagnetics::CoilWrapper(
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 41, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
         auto inputs = OpenMagnetics::InputsWrapper(
-            json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00034861070852064337}, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-8.0, 8.0, -8.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})"));
+            json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00034861070852064337}, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-8.0, 8.0, -8.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2191,18 +2191,18 @@ SUITE(CoreLossesFromWeb) {
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "3C97", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
         auto winding = OpenMagnetics::CoilWrapper(json::parse(
             R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
-            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [6.885, 6.885, -2.2949999999999995, -2.2949999999999995, 6.885], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [6.885, 6.885, -2.2949999999999995, -2.2949999999999995, 6.885], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2230,23 +2230,23 @@ SUITE(CoreLossesFromWeb) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(
             json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, "
                         "\"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": "
                         "null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 15.0, "
                         "-5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
-                        "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}"));
+                        "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2260,18 +2260,18 @@ SUITE(CoreLossesFromWeb) {
         auto winding = OpenMagnetics::CoilWrapper(
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 23, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
         auto inputs = OpenMagnetics::InputsWrapper(
-            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 3.8810245456770865e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operationPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123000.0, "current": null, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point Alf sin", "voltage": {"harmonics": null, "processed": null, "waveform": {"data": [0.0, 0.0, 15.4, 15.4, 0.0, 0.0, -15.4, -15.4, 0.0, 0.0], "numberPeriods": null, "ancillaryLabel": "Square with Dead-Time", "time": [0.0, 1.2601626016260166e-06, 1.2601626016260166e-06, 2.8048780487804875e-06, 2.8048780487804875e-06, 5.325203252032522e-06, 5.325203252032522e-06, 6.869918699186992e-06, 6.869918699186992e-06, 8.130081300813007e-06]}}}], "name": null}]})"));
+            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 3.8810245456770865e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123000.0, "current": null, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point Alf sin", "voltage": {"harmonics": null, "processed": null, "waveform": {"data": [0.0, 0.0, 15.4, 15.4, 0.0, 0.0, -15.4, -15.4, 0.0, 0.0], "numberPeriods": null, "ancillaryLabel": "Square with Dead-Time", "time": [0.0, 1.2601626016260166e-06, 1.2601626016260166e-06, 2.8048780487804875e-06, 2.8048780487804875e-06, 5.325203252032522e-06, 5.325203252032522e-06, 6.869918699186992e-06, 6.869918699186992e-06, 8.130081300813007e-06]}}}], "name": null}]})"));
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2285,18 +2285,18 @@ SUITE(CoreLossesFromWeb) {
         auto winding = OpenMagnetics::CoilWrapper(
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
         auto inputs = OpenMagnetics::InputsWrapper(
-            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 2e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operationPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})"));
+            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 2e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2308,18 +2308,18 @@ SUITE(CoreLossesFromWeb) {
         auto winding = OpenMagnetics::CoilWrapper(
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 26, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
         auto inputs = OpenMagnetics::InputsWrapper(
-            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0009443757859214556}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operationPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})"));
+            json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0009443757859214556}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2348,18 +2348,18 @@ SUITE(CoreLossesFromWeb) {
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "XFlux 60", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
         auto winding = OpenMagnetics::CoilWrapper(json::parse(
             R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
-            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2375,18 +2375,18 @@ SUITE(CoreLossesFromWeb) {
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "MS 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
         auto winding = OpenMagnetics::CoilWrapper(json::parse(
             R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
-            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2416,23 +2416,23 @@ SUITE(CoreLossesFromWeb) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(
             json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, "
                         "\"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": "
                         "null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, "
                         "-5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
-                        "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}"));
+                        "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2470,25 +2470,25 @@ SUITE(FrequencyFromCoreLosses) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             "{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, \"cooling\": null, "
             "\"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, "
             "\"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 324578.0, \"magneticFieldStrength\": null, "
-            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", "
+            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operating Point\", "
             "\"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2519,25 +2519,25 @@ SUITE(FrequencyFromCoreLosses) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             "{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, \"cooling\": null, "
             "\"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, "
             "\"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 324578.0, \"magneticFieldStrength\": null, "
-            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operation Point\", "
+            "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operating Point\", "
             "\"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2568,23 +2568,23 @@ SUITE(FrequencyFromCoreLosses) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(
             json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, "
                         "\"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": "
                         "null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, "
                         "-5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
                         "\"frequency\": 215684.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
-                        "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}"));
+                        "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2601,18 +2601,18 @@ SUITE(FrequencyFromCoreLosses) {
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "MS 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
         auto winding = OpenMagnetics::CoilWrapper(json::parse(
             R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
-            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123987.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123987.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2643,21 +2643,21 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
             "\"My Core\"}"));
         double temperature = 42;
         double frequency = 423568;
-        OpenMagnetics::OperationPointExcitation operationPointExcitation;
-        OpenMagnetics::ElectromagneticParameter magneticFluxDensity;
+        OpenMagnetics::OperatingPointExcitation operatingPointExcitation;
+        OpenMagnetics::SignalDescriptor magneticFluxDensity;
         OpenMagnetics::Processed processed;
-        operationPointExcitation.set_frequency(frequency);
+        operatingPointExcitation.set_frequency(frequency);
         processed.set_label(OpenMagnetics::WaveformLabel::SINUSOIDAL);
         processed.set_offset(0);
         processed.set_peak(0.3);
         processed.set_peak_to_peak(0.6);
         magneticFluxDensity.set_processed(processed);
-        operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
-        auto coreLosses = coreLossesModel->get_core_losses(core, operationPointExcitation, temperature);
+        auto coreLosses = coreLossesModel->get_core_losses(core, operatingPointExcitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operationPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
@@ -2680,21 +2680,21 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
             "\"My Core\"}"));
         double temperature = 42;
         double frequency = 423568;
-        OpenMagnetics::OperationPointExcitation operationPointExcitation;
-        OpenMagnetics::ElectromagneticParameter magneticFluxDensity;
+        OpenMagnetics::OperatingPointExcitation operatingPointExcitation;
+        OpenMagnetics::SignalDescriptor magneticFluxDensity;
         OpenMagnetics::Processed processed;
-        operationPointExcitation.set_frequency(frequency);
+        operatingPointExcitation.set_frequency(frequency);
         processed.set_label(OpenMagnetics::WaveformLabel::SINUSOIDAL);
         processed.set_offset(0);
         processed.set_peak(0.3);
         processed.set_peak_to_peak(0.6);
         magneticFluxDensity.set_processed(processed);
-        operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
-        auto coreLosses = coreLossesModel->get_core_losses(core, operationPointExcitation, temperature);
+        auto coreLosses = coreLossesModel->get_core_losses(core, operatingPointExcitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operationPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
@@ -2720,23 +2720,23 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
             json::parse("{\"bobbin\": \"Dummy\", \"functionalDescription\": [{\"isolationSide\": \"primary\", \"name\": "
                         "\"Primary\", \"numberParallels\": 1, \"numberTurns\": 33, \"wire\": \"Dummy\"}], "
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
-        auto operationPoint = OpenMagnetics::OperationPoint(
+        auto operatingPoint = OpenMagnetics::OperatingPoint(
             json::parse("{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, "
                         "\"cooling\": null, \"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": "
                         "null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, "
                         "-5.0], \"numberPeriods\": null, \"time\": [0.0, 2.4999999999999998e-06, 1e-05]}}, "
                         "\"frequency\": 215684.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
-                        "\"magnetizingCurrent\": null, \"name\": \"My Operation Point\"}], \"name\": null}"));
+                        "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -2753,18 +2753,18 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "MS 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
         auto winding = OpenMagnetics::CoilWrapper(json::parse(
             R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
-        auto operationPoint = OpenMagnetics::OperationPoint(json::parse(
-            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123987.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123987.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-        OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
-        double temperature = operationPoint.get_conditions().get_ambient_temperature();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);

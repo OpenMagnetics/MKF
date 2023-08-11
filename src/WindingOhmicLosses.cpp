@@ -54,7 +54,7 @@ double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double
     return dcResistance;
 };
 
-double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperationPoint operationPoint, double temperature) {
+double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
     auto turns = winding.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
     std::vector<double> parallelResistancePerWinding;
@@ -64,7 +64,7 @@ double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperationPoint 
     for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
         seriesResistancePerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
         dcCurrentPerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
-        dcCurrentPerWinding.push_back(operationPoint.get_excitations_per_winding()[windingIndex].get_current().value().get_processed().value().get_rms().value());
+        dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value().get_processed().value().get_rms().value());
     }
 
     for (auto& turn : turns) {

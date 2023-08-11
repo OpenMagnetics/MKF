@@ -80,16 +80,16 @@ json get_gap_reluctance_model_information(){
 
 double get_inductance_from_number_turns_and_gapping(json coreData,
                                                     json coilData,
-                                                    json operationPointData,
+                                                    json operatingPointData,
                                                     json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
     OpenMagnetics::CoilWrapper coil(coilData);
-    OpenMagnetics::OperationPoint operationPoint(operationPointData);
+    OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
 
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, coil, &operationPoint);
+    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
 
     return magnetizingInductance;
 }
@@ -155,13 +155,13 @@ json get_core_losses(json coreData,
     OpenMagnetics::CoreWrapper core(coreData);
     OpenMagnetics::CoilWrapper coil(coilData);
     OpenMagnetics::InputsWrapper inputs(inputsData);
-    auto operationPoint = inputs.get_operation_point(0);
-    OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+    auto operatingPoint = inputs.get_operating_point(0);
+    OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
     if (!excitation.get_current()) {
         auto magnetizingCurrent = OpenMagnetics::InputsWrapper::get_magnetizing_current(excitation, magnetizingInductance);
         excitation.set_current(magnetizingCurrent);
-        operationPoint.get_mutable_excitations_per_winding()[0] = excitation;
+        operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
     }
 
     auto defaults = OpenMagnetics::Defaults();
@@ -184,18 +184,18 @@ json get_core_losses(json coreData,
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
 
-    double temperature = operationPoint.get_conditions().get_ambient_temperature();
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
     double temperatureAfterLosses = temperature;
-    OpenMagnetics::ElectromagneticParameter magneticFluxDensity;
+    OpenMagnetics::SignalDescriptor magneticFluxDensity;
     json result;
 
     do {
         temperature = temperatureAfterLosses;
 
-        excitation = operationPoint.get_excitations_per_winding()[0];
-        operationPoint.get_mutable_conditions().set_ambient_temperature(temperature);
+        excitation = operatingPoint.get_excitations_per_winding()[0];
+        operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
-        magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, coil, &operationPoint).second;
+        magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
         excitation.set_magnetic_flux_density(magneticFluxDensity);
 
         result = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -206,11 +206,11 @@ json get_core_losses(json coreData,
 
     result["magneticFluxDensityPeak"] = magneticFluxDensity.get_processed().value().get_peak().value();
     result["magneticFluxDensityAcPeak"] = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
-    result["voltageRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value();
-    result["currentRms"] = operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
-    result["apparentPower"] = operationPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value() * operationPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
+    result["voltageRms"] = operatingPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value();
+    result["currentRms"] = operatingPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
+    result["apparentPower"] = operatingPoint.get_mutable_excitations_per_winding()[0].get_voltage().value().get_processed().value().get_rms().value() * operatingPoint.get_mutable_excitations_per_winding()[0].get_current().value().get_processed().value().get_rms().value();
     result["maximumCoreTemperature"] = temperatureAfterLosses;
-    result["maximumCoreTemperatureRise"] = temperatureAfterLosses - operationPoint.get_conditions().get_ambient_temperature();
+    result["maximumCoreTemperatureRise"] = temperatureAfterLosses - operatingPoint.get_conditions().get_ambient_temperature();
 
     if (models["coreLosses"] == "ROSHEN") {
         result["_hysteresisMajorLoopTop"] = coreLossesModel->_hysteresisMajorLoopTop;

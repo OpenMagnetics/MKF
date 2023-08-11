@@ -1852,26 +1852,26 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                 std::vector<double> coordinates = {0, currentHeight, currentDepth};
                 topPiece.set_coordinates(coordinates);
                 topPiece.set_rotation(std::vector<double>({std::numbers::pi, std::numbers::pi, 0}));
-                for (auto& operation : machining) {
-                    if (operation.get_coordinates()[1] >= 0 &&
-                        operation.get_coordinates()[1] < operation.get_length() / 2) {
-                        Machining brokenDownOperation;
-                        brokenDownOperation.set_coordinates(operation.get_coordinates());
-                        brokenDownOperation.set_length(operation.get_length() / 2 + operation.get_coordinates()[1]);
-                        brokenDownOperation.get_mutable_coordinates()[1] = brokenDownOperation.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperation);
+                for (auto& operating : machining) {
+                    if (operating.get_coordinates()[1] >= 0 &&
+                        operating.get_coordinates()[1] < operating.get_length() / 2) {
+                        Machining brokenDownOperating;
+                        brokenDownOperating.set_coordinates(operating.get_coordinates());
+                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
+                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
+                        topHalfMachining.push_back(brokenDownOperating);
                     }
-                    else if (operation.get_coordinates()[1] < 0 &&
-                             (operation.get_coordinates()[1] + operation.get_length() / 2) >
+                    else if (operating.get_coordinates()[1] < 0 &&
+                             (operating.get_coordinates()[1] + operating.get_length() / 2) >
                                  0) {
-                        Machining brokenDownOperation;
-                        brokenDownOperation.set_coordinates(operation.get_coordinates());
-                        brokenDownOperation.set_length(operation.get_length() / 2 + operation.get_coordinates()[1]);
-                        brokenDownOperation.get_mutable_coordinates()[1] = brokenDownOperation.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperation);
+                        Machining brokenDownOperating;
+                        brokenDownOperating.set_coordinates(operating.get_coordinates());
+                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
+                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
+                        topHalfMachining.push_back(brokenDownOperating);
                     }
-                    else if (operation.get_coordinates()[1] > 0) {
-                        topHalfMachining.push_back(operation);
+                    else if (operating.get_coordinates()[1] > 0) {
+                        topHalfMachining.push_back(operating);
                     }
                 }
 
@@ -1882,26 +1882,26 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
 
                 std::vector<Machining> bottomHalfMachining;
 
-                for (auto& operation : machining) {
-                    if (operation.get_coordinates()[1] <= 0 &&
-                        (-operation.get_coordinates()[1] < operation.get_length() / 2)) {
-                        Machining brokenDownOperation;
-                        brokenDownOperation.set_coordinates(operation.get_coordinates());
-                        brokenDownOperation.set_length(operation.get_length() / 2 - operation.get_coordinates()[1]);
-                        brokenDownOperation.get_mutable_coordinates()[1] = -brokenDownOperation.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperation);
+                for (auto& operating : machining) {
+                    if (operating.get_coordinates()[1] <= 0 &&
+                        (-operating.get_coordinates()[1] < operating.get_length() / 2)) {
+                        Machining brokenDownOperating;
+                        brokenDownOperating.set_coordinates(operating.get_coordinates());
+                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
+                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
+                        bottomHalfMachining.push_back(brokenDownOperating);
                     }
-                    else if (operation.get_coordinates()[1] > 0 &&
-                             (operation.get_coordinates()[1] - operation.get_length() / 2) <
+                    else if (operating.get_coordinates()[1] > 0 &&
+                             (operating.get_coordinates()[1] - operating.get_length() / 2) <
                                  0) {
-                        Machining brokenDownOperation;
-                        brokenDownOperation.set_coordinates(operation.get_coordinates());
-                        brokenDownOperation.set_length(operation.get_length() / 2 - operation.get_coordinates()[1]);
-                        brokenDownOperation.get_mutable_coordinates()[1] = -brokenDownOperation.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperation);
+                        Machining brokenDownOperating;
+                        brokenDownOperating.set_coordinates(operating.get_coordinates());
+                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
+                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
+                        bottomHalfMachining.push_back(brokenDownOperating);
                     }
-                    else if (operation.get_coordinates()[1] < 0) {
-                        bottomHalfMachining.push_back(operation);
+                    else if (operating.get_coordinates()[1] < 0) {
+                        bottomHalfMachining.push_back(operating);
                     }
                 }
 
@@ -2418,7 +2418,7 @@ void CoreWrapper::process_data() {
     }
 
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
-    // long loading operations)
+    // long loading operatings)
     if (_includeMaterialData && std::holds_alternative<std::string>(get_functional_description().get_material()) &&
         std::get<std::string>(get_functional_description().get_material()) != "dummy") {
         auto material_data = OpenMagnetics::find_core_material_by_name(

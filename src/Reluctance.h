@@ -33,18 +33,18 @@ class ReluctanceModel {
   protected:
   public:
     virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
-    double get_ungapped_core_reluctance(CoreWrapper core, OperationPoint* operationPoint = nullptr) {
+    double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr) {
         auto constants = Constants();
         OpenMagnetics::InitialPermeability initialPermeability;
 
         auto coreMaterial = core.get_functional_description().get_material();
 
         double initialPermeabilityValue;
-        if (operationPoint != nullptr) {
+        if (operatingPoint != nullptr) {
             double temperature =
-                operationPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+                operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
             _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
-            auto frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
+            auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
             initialPermeabilityValue = initialPermeability.get_initial_permeability(
                 coreMaterial, &temperature, nullptr, &frequency);
         }
@@ -141,8 +141,8 @@ class ReluctanceModel {
         internalLinks["Classic"] = "";
         return internalLinks;
     }
-    double get_core_reluctance(CoreWrapper core, OperationPoint* operationPoint = nullptr) {
-        auto coreReluctance = get_ungapped_core_reluctance(core, operationPoint);
+    double get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr) {
+        auto coreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
 
         if (std::isnan(coreReluctance)) {
             throw std::runtime_error("Core Reluctance must be a number, not NaN");

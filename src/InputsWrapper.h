@@ -34,32 +34,32 @@ class InputsWrapper : public Inputs {
 
     std::pair<bool, std::string> check_integrity();
     void process_waveforms();
-    static OperationPoint process_operation_point(OperationPoint operationPoint, double magnetizingInductance);
+    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance);
 
     static bool is_waveform_sampled(Waveform waveform);
     static Waveform get_sampled_waveform(Waveform waveform, double frequency);
-    static Processed get_processed_data(ElectromagneticParameter excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
+    static Processed get_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
     static Harmonics get_harmonics_data(Waveform waveform, double frequency);
-    ElectromagneticParameter reflect_waveform(ElectromagneticParameter excitation, double ratio);
-    static ElectromagneticParameter standarize_waveform(ElectromagneticParameter parameter, double frequency);
-    OperationPoint get_operation_point(size_t index);
-    OperationPointExcitation get_winding_excitation(size_t operationPointIndex, size_t windingIndex);
-    OperationPointExcitation get_primary_excitation(size_t operationPointIndex);
-    static OperationPointExcitation get_primary_excitation(OperationPoint operationPoint);
+    SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
+    static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
+    OperatingPoint get_operating_point(size_t index);
+    OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex, size_t windingIndex);
+    OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex);
+    static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
 
-    static ElectromagneticParameter get_induced_voltage(OperationPointExcitation& excitation,
+    static SignalDescriptor get_induced_voltage(OperatingPointExcitation& excitation,
                                                         double magnetizingInductance);
-    static ElectromagneticParameter get_magnetizing_current(OperationPointExcitation& excitation,
+    static SignalDescriptor get_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance);
-    static ElectromagneticParameter get_magnetizing_current(OperationPointExcitation& excitation,
+    static SignalDescriptor get_magnetizing_current(OperatingPointExcitation& excitation,
                                                             Waveform sampledWaveform,
                                                             double magnetizingInductance);
-    static ElectromagneticParameter add_offset_to_excitation(ElectromagneticParameter electromagneticParameter,
+    static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);
-    static void make_waveform_size_power_of_two(OperationPoint* operationPoint);
+    static void make_waveform_size_power_of_two(OperatingPoint* operatingPoint);
 
-    static InputsWrapper create_quick_operation_point(double frequency,
+    static InputsWrapper create_quick_operating_point(double frequency,
                                                       double magnetizingInductance,
                                                       double temperature,
                                                       WaveformLabel waveShape,
@@ -70,10 +70,10 @@ class InputsWrapper : public Inputs {
 
     static double try_get_duty_cycle(Waveform waveform, double frequency);
 
-    static double get_waveform_coefficient(OperationPoint* operationPoint);
+    static double get_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    void set_operation_point_by_index(const OperationPoint& value, size_t index) {
-        get_mutable_operation_points()[index] = value;
+    void set_operating_point_by_index(const OperatingPoint& value, size_t index) {
+        get_mutable_operating_points()[index] = value;
     }
 
     void from_json(const json& j, Inputs& x);
@@ -81,12 +81,12 @@ class InputsWrapper : public Inputs {
 
     inline void from_json(const json& j, InputsWrapper& x) {
         x.set_design_requirements(j.at("designRequirements").get<DesignRequirements>());
-        x.set_operation_points(j.at("operationPoints").get<std::vector<OperationPoint>>());
+        x.set_operating_points(j.at("operatingPoints").get<std::vector<OperatingPoint>>());
     }
     inline void to_json(json& j, const InputsWrapper& x) {
         j = json::object();
         j["designRequirements"] = x.get_design_requirements();
-        j["operationPoints"] = x.get_operation_points();
+        j["operatingPoints"] = x.get_operating_points();
     }
 };
 } // namespace OpenMagnetics

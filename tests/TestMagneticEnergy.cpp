@@ -22,7 +22,7 @@ SUITE(MagneticEnergy) {
                                  OpenMagnetics::InputsWrapper& inputs, double peakToPeak = 20, int numberStacks = 1) {
         double dutyCycle = 0.5;
 
-        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL,
             peakToPeak, dutyCycle, dcCurrent);
 
@@ -40,14 +40,14 @@ SUITE(MagneticEnergy) {
 
         prepare_test_parameters(0, ambientTemperature, frequency, -1, gapping, coreShape,
                                 coreMaterial, core, inputs);
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
 
         OpenMagnetics::MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.48;
 
-        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operationPoint);
+        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 
@@ -62,14 +62,14 @@ SUITE(MagneticEnergy) {
 
         prepare_test_parameters(0, ambientTemperature, frequency, -1, gapping, coreShape,
                                 coreMaterial, core, inputs);
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
 
         OpenMagnetics::MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
         double expectedValue = 0.124;
 
-        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operationPoint);
+        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 

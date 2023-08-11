@@ -32,7 +32,7 @@ void load_databases(bool withAliases) {
     {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/materials.ndjson";
+        auto dataFilePath = masPath + "data/core_materials.ndjson";
         std::ifstream ndjsonFile(dataFilePath);
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {
@@ -45,7 +45,7 @@ void load_databases(bool withAliases) {
     {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/shapes.ndjson";
+        auto dataFilePath = masPath + "data/core_shapes.ndjson";
         std::ifstream ndjsonFile(dataFilePath);
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {

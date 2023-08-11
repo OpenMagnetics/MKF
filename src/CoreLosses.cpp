@@ -89,7 +89,7 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
     double frequency) {
     OpenMagnetics::CoreMaterial materialData;
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
-    // long loading operations)
+    // long loading operatings)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
         materialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
     }
@@ -139,7 +139,7 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
 }
 
 std::map<std::string, double> CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
-                                                                        OperationPointExcitation excitation,
+                                                                        OperatingPointExcitation excitation,
                                                                         double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -192,7 +192,7 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
 }
 
 std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
-                                                                   OperationPointExcitation excitation,
+                                                                   OperatingPointExcitation excitation,
                                                                    double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -244,7 +244,7 @@ std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper c
 }
 
 std::map<std::string, double> CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
-                                                                     OperationPointExcitation excitation,
+                                                                     OperatingPointExcitation excitation,
                                                                      double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -302,7 +302,7 @@ std::map<std::string, double> CoreLossesAlbachModel::get_core_losses(CoreWrapper
 }
 
 std::map<std::string, double> CoreLossesMSEModel::get_core_losses(CoreWrapper core,
-                                                                  OperationPointExcitation excitation,
+                                                                  OperatingPointExcitation excitation,
                                                                   double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -378,7 +378,7 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
 }
 
 std::map<std::string, double> CoreLossesNSEModel::get_core_losses(CoreWrapper core,
-                                                                  OperationPointExcitation excitation,
+                                                                  OperatingPointExcitation excitation,
                                                                   double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -431,7 +431,7 @@ std::map<std::string, double> CoreLossesNSEModel::get_core_losses(CoreWrapper co
 }
 
 std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper core,
-                                                                   OperationPointExcitation excitation,
+                                                                   OperatingPointExcitation excitation,
                                                                    double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -488,7 +488,7 @@ std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper c
 }
 
 std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
-                                                                     OperationPointExcitation excitation,
+                                                                     OperatingPointExcitation excitation,
                                                                      double temperature) {
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     auto parameters = get_roshen_parameters(core, excitation, temperature);
@@ -512,7 +512,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper
 }
 
 std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreWrapper core,
-                                                                           OperationPointExcitation excitation,
+                                                                           OperatingPointExcitation excitation,
                                                                            double temperature) {
     std::map<std::string, double> roshenParameters;
     auto materialData =  core.get_material();
@@ -580,7 +580,7 @@ std::map<std::string, double> get_major_loop_parameters(double saturationMagneti
 }
 
 double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
-                                                            OperationPointExcitation excitation) {
+                                                            OperatingPointExcitation excitation) {
     auto constants = Constants();
     double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
     double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
@@ -712,7 +712,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
 }
 
 double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
-                                                              OperationPointExcitation excitation,
+                                                              OperatingPointExcitation excitation,
                                                               double resistivity) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -746,7 +746,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
     return eddyCurrentLossesDensity;
 }
 
-double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperationPointExcitation excitation,
+double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
                                                                      double resistivity,
                                                                      double alphaTimesN0) {
     auto constants = Constants();
@@ -780,7 +780,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperationPo
 }
 
 std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
-                                                                   OperationPointExcitation excitation,
+                                                                   OperatingPointExcitation excitation,
                                                                    double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -814,7 +814,7 @@ std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWr
 }
 
 double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
-                                                                ElectromagneticParameter magneticFluxDensity,
+                                                                SignalDescriptor magneticFluxDensity,
                                                                 double temperature,
                                                                 double coreLosses) {
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
@@ -843,11 +843,11 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core
     return frequency;
 }
 
-ElectromagneticParameter CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                                               double frequency,
                                                                                               double temperature,
                                                                                               double coreLosses) {
-    ElectromagneticParameter magneticFluxDensity;
+    SignalDescriptor magneticFluxDensity;
     Processed processed;
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
@@ -873,7 +873,7 @@ ElectromagneticParameter CoreLossesSteinmetzModel::get_magnetic_flux_density_fro
 }
 
 double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,
-                                                                    ElectromagneticParameter magneticFluxDensity,
+                                                                    SignalDescriptor magneticFluxDensity,
                                                                     double temperature,
                                                                     double coreLosses) {
 
@@ -907,20 +907,20 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper co
 }
 
 double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
-                                                       ElectromagneticParameter magneticFluxDensity,
+                                                       SignalDescriptor magneticFluxDensity,
                                                        double temperature,
                                                        double coreLosses) {
     double minimumError = DBL_MAX;
     double frequencyMinimumError = -1;
-    OperationPointExcitation operationPointExcitation;
-    operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+    OperatingPointExcitation operatingPointExcitation;
+    operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
 
     for (int frequency = 10000; frequency < 2000000; frequency+=5000)
     {
-        operationPointExcitation.set_frequency(frequency);
+        operatingPointExcitation.set_frequency(frequency);
 
-        auto coreLossesCalculated = get_core_losses(core, operationPointExcitation, temperature);
+        auto coreLossesCalculated = get_core_losses(core, operatingPointExcitation, temperature);
         double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
         if (error < minimumError) {
             minimumError = error;
@@ -930,21 +930,21 @@ double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
     return frequencyMinimumError;
 }
 
-ElectromagneticParameter CoreLossesModel::_get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                                      double frequency,
                                                                                      double temperature,
                                                                                      double coreLosses) {
 
-    OperationPointExcitation operationPointExcitation;
-    ElectromagneticParameter magneticFluxDensity;
+    OperatingPointExcitation operatingPointExcitation;
+    SignalDescriptor magneticFluxDensity;
     Processed processed;
-    operationPointExcitation.set_frequency(frequency);
+    operatingPointExcitation.set_frequency(frequency);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
 
     double previousMinimumError = DBL_MAX;
     double minimumError = DBL_MAX;
-    ElectromagneticParameter magneticFluxDensityMinimumError;
+    SignalDescriptor magneticFluxDensityMinimumError;
 
 
     for (int i = 5; i < 1000; i+=5)
@@ -952,9 +952,9 @@ ElectromagneticParameter CoreLossesModel::_get_magnetic_flux_density_from_core_l
         processed.set_peak(double(i) / 1000);
         processed.set_peak_to_peak(2 * double(i) / 1000);
         magneticFluxDensity.set_processed(processed);
-        operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
-        auto coreLossesCalculated = get_core_losses(core, operationPointExcitation, temperature);
+        auto coreLossesCalculated = get_core_losses(core, operatingPointExcitation, temperature);
         double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
         if (error < minimumError) {
             minimumError = error;

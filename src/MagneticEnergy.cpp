@@ -12,14 +12,14 @@
 namespace OpenMagnetics {
 
 
-double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperationPoint* operationPoint){
+double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
     auto constants = Constants();
-    double temperature = operationPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+    double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
     OpenMagnetics::InitialPermeability initialPermeability;
     double initialPermeabilityValue;
-    if (operationPoint != nullptr) {
-        auto frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
+    if (operatingPoint != nullptr) {
+        auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
         initialPermeabilityValue = initialPermeability.get_initial_permeability(
             core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
     }
@@ -61,12 +61,12 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
 
 }
 
-double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, OperationPoint* operationPoint){
+double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
     double totalEnergy = 0;
-    double temperature = operationPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+    double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
 
-    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, operationPoint);
+    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, operatingPoint);
     for (auto& gap_info : core.get_functional_description().get_gapping()) {
         auto gapEnergy = get_gap_maximum_magnetic_energy(gap_info, magneticFluxDensitySaturation);
         totalEnergy += gapEnergy;
@@ -78,7 +78,7 @@ double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, Operat
 
 DimensionWithTolerance MagneticEnergy::required_magnetic_energy(InputsWrapper inputs){
     DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
-    auto magnetizingCurrentPeak = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_magnetizing_current().value().get_processed().value().get_peak().value();
+    auto magnetizingCurrentPeak = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_magnetizing_current().value().get_processed().value().get_peak().value();
     DimensionWithTolerance magneticEnergyRequirement;
     auto get_energy = [magnetizingCurrentPeak](double magnetizingInductance)
     {
