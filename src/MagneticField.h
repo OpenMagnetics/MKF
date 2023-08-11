@@ -19,14 +19,14 @@ class MagneticField {
   private:
   protected:
   public:
-    static ElectromagneticParameter get_magnetic_flux(ElectromagneticParameter magnetizingCurrent,
+    static SignalDescriptor get_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                       double reluctance,
                                                       double numberTurns,
                                                       double frequency);
-    static ElectromagneticParameter get_magnetic_flux_density(ElectromagneticParameter magneticFlux,
+    static SignalDescriptor get_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                               double area,
                                                               double frequency);
-    static ElectromagneticParameter get_magnetic_field_strength(ElectromagneticParameter magneticFluxDensity,
+    static SignalDescriptor get_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
                                                                 double initialPermeability,
                                                                 double frequency);
 };

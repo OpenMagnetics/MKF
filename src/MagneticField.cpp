@@ -11,11 +11,11 @@
 
 namespace OpenMagnetics {
 
-ElectromagneticParameter MagneticField::get_magnetic_flux(ElectromagneticParameter magnetizingCurrent,
+SignalDescriptor MagneticField::get_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                           double reluctance,
                                                           double numberTurns,
                                                           double frequency) {
-    ElectromagneticParameter magneticFlux;
+    SignalDescriptor magneticFlux;
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
     auto magnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
@@ -45,10 +45,10 @@ ElectromagneticParameter MagneticField::get_magnetic_flux(ElectromagneticParamet
 
     return magneticFlux;
 }
-ElectromagneticParameter MagneticField::get_magnetic_flux_density(ElectromagneticParameter magneticFlux,
+SignalDescriptor MagneticField::get_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                                   double area,
                                                                   double frequency) {
-    ElectromagneticParameter magneticFluxDensity;
+    SignalDescriptor magneticFluxDensity;
     Waveform magneticFluxDensityWaveform;
     std::vector<double> magneticFluxDensityData;
     auto magneticFluxWaveform = magneticFlux.get_waveform().value();
@@ -70,10 +70,10 @@ ElectromagneticParameter MagneticField::get_magnetic_flux_density(Electromagneti
     return magneticFluxDensity;
 }
 
-ElectromagneticParameter MagneticField::get_magnetic_field_strength(ElectromagneticParameter magneticFluxDensity,
+SignalDescriptor MagneticField::get_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
                                                                     double initialPermeability,
                                                                     double frequency) {
-    ElectromagneticParameter magneticFieldStrength;
+    SignalDescriptor magneticFieldStrength;
     Waveform magneticFieldStrengthWaveform;
     std::vector<double> magneticFieldStrengthData;
     auto constants = Constants();

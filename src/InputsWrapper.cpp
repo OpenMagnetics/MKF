@@ -137,8 +137,8 @@ std::vector<double> linear_spaced_array(double startingValue, double endingValue
 
 // In case the waveform comes defined with processed data only, we create a MAS format waveform from it, as the rest of
 // the code depends on it.
-ElectromagneticParameter InputsWrapper::standarize_waveform(ElectromagneticParameter parameter, double frequency) {
-    ElectromagneticParameter standardized_parameter(parameter);
+SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor parameter, double frequency) {
+    SignalDescriptor standardized_parameter(parameter);
     if (!parameter.get_waveform()) {
         Waveform waveform;
         double period = 1 / frequency;
@@ -262,7 +262,7 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     return sampledWaveform;
 }
 
-ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcitation& excitation,
+SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
     Waveform sourceWaveform = excitation.get_current().value().get_waveform().value();
@@ -274,7 +274,7 @@ ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcita
     std::vector<double> derivativeTime;
     std::vector<double> voltageData;
     Waveform voltageWaveform;
-    ElectromagneticParameter voltageElectromagneticParameter;
+    SignalDescriptor voltageSignalDescriptor;
     Waveform resultWaveform(sourceWaveform);
 
     if (isWaveformSampled) {
@@ -299,20 +299,20 @@ ElectromagneticParameter InputsWrapper::get_induced_voltage(OperationPointExcita
 
     voltageWaveform.set_data(voltageData);
     voltageWaveform.set_time(time);
-    voltageElectromagneticParameter.set_waveform(voltageWaveform);
+    voltageSignalDescriptor.set_waveform(voltageWaveform);
     auto sampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, excitation.get_frequency());
-    voltageElectromagneticParameter.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
-    voltageElectromagneticParameter.set_processed(
-        get_processed_data(voltageElectromagneticParameter, sampledWaveform, true, true));
+    voltageSignalDescriptor.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
+    voltageSignalDescriptor.set_processed(
+        get_processed_data(voltageSignalDescriptor, sampledWaveform, true, true));
 
     resultWaveform.set_data(derivative);
-    return voltageElectromagneticParameter;
+    return voltageSignalDescriptor;
 }
 
-ElectromagneticParameter InputsWrapper::add_offset_to_excitation(ElectromagneticParameter electromagneticParameter,
+SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                                  double offset,
                                                                  double frequency) {
-    auto waveform = electromagneticParameter.get_waveform().value();
+    auto waveform = signalDescriptor.get_waveform().value();
     std::vector<double> source = waveform.get_data();
     std::vector<double> modified_data;
 
@@ -321,11 +321,11 @@ ElectromagneticParameter InputsWrapper::add_offset_to_excitation(Electromagnetic
     }
 
     waveform.set_data(modified_data);
-    electromagneticParameter.set_waveform(waveform);
+    signalDescriptor.set_waveform(waveform);
     auto sampledWaveform = InputsWrapper::get_sampled_waveform(waveform, frequency);
-    electromagneticParameter.set_harmonics(get_harmonics_data(sampledWaveform, frequency));
-    electromagneticParameter.set_processed(get_processed_data(electromagneticParameter, sampledWaveform, true, true));
-    return electromagneticParameter;
+    signalDescriptor.set_harmonics(get_harmonics_data(sampledWaveform, frequency));
+    signalDescriptor.set_processed(get_processed_data(signalDescriptor, sampledWaveform, true, true));
+    return signalDescriptor;
 }
 
 Waveform get_magnetizing_current_waveform(Waveform sourceWaveform,
@@ -356,42 +356,42 @@ Waveform get_magnetizing_current_waveform(Waveform sourceWaveform,
     return resultWaveform;
 }
 
-ElectromagneticParameter InputsWrapper::reflect_waveform(ElectromagneticParameter primaryElectromagneticParameter,
+SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor primarySignalDescriptor,
                                                          double ratio) {
-    ElectromagneticParameter reflected_waveform;
-    auto primaryWaveform = primaryElectromagneticParameter.get_waveform().value();
+    SignalDescriptor reflected_waveform;
+    auto primaryWaveform = primarySignalDescriptor.get_waveform().value();
     Waveform waveform = primaryWaveform;
 
     waveform.set_data({});
     for (auto& datum : primaryWaveform.get_data()) {
         waveform.get_mutable_data().push_back(datum * ratio);
     }
-    // waveform.set_time(primaryElectromagneticParameter.get_waveform().value().get_time());
+    // waveform.set_time(primarySignalDescriptor.get_waveform().value().get_time());
     reflected_waveform.set_waveform(waveform);
 
     return reflected_waveform;
 }
 
 std::pair<bool, std::string> InputsWrapper::check_integrity() {
-    auto operationPoints = get_mutable_operation_points();
+    auto operatingPoints = get_mutable_operating_points();
     auto turnsRatios = get_design_requirements().get_turns_ratios();
     auto magnetizingInductance = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
     std::pair<bool, std::string> result;
     result.first = true;
     result.second = "";
 
-    for (auto& operation_point : operationPoints) {
-        if (operation_point.get_excitations_per_winding().size() == 0) {
+    for (auto& operating_point : operatingPoints) {
+        if (operating_point.get_excitations_per_winding().size() == 0) {
             result.first = false;
             throw std::invalid_argument("Missing excitation for primary");
         }
     }
 
-    for (size_t i = 0; i < operationPoints.size(); ++i) {
-        std::vector<OperationPointExcitation> processed_excitations_per_winding;
+    for (size_t i = 0; i < operatingPoints.size(); ++i) {
+        std::vector<OperatingPointExcitation> processed_excitations_per_winding;
 
 
-        for (auto& excitation : operationPoints[i].get_mutable_excitations_per_winding()) {
+        for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
             if (excitation.get_voltage()) {
                 auto voltage_excitation = excitation.get_voltage().value();
@@ -412,19 +412,19 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
             }
             processed_excitations_per_winding.push_back(excitation);
         }
-        operationPoints[i].set_excitations_per_winding(processed_excitations_per_winding);
+        operatingPoints[i].set_excitations_per_winding(processed_excitations_per_winding);
     }
 
-    for (size_t i = 0; i < operationPoints.size(); ++i) {
+    for (size_t i = 0; i < operatingPoints.size(); ++i) {
 
-        if (turnsRatios.size() > operationPoints[i].get_excitations_per_winding().size() - 1) {
-            if (turnsRatios.size() == 1 && operationPoints[i].get_excitations_per_winding().size() == 1) {
+        if (turnsRatios.size() > operatingPoints[i].get_excitations_per_winding().size() - 1) {
+            if (turnsRatios.size() == 1 && operatingPoints[i].get_excitations_per_winding().size() == 1) {
                 // We are missing excitation only for secondary
                 for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
-                    if (turnRatioIndex >= operationPoints[i].get_excitations_per_winding().size() - 1) {
+                    if (turnRatioIndex >= operatingPoints[i].get_excitations_per_winding().size() - 1) {
                         double turnRatio = resolve_dimensional_values(turnsRatios[turnRatioIndex]);
-                        auto excitationOfPrimaryWinding = operationPoints[i].get_excitations_per_winding()[0];
-                        OperationPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
+                        auto excitationOfPrimaryWinding = operatingPoints[i].get_excitations_per_winding()[0];
+                        OperatingPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
 
                         excitationOfThisWinding.set_voltage(
                             reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnRatio));
@@ -432,7 +432,7 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
 
                         excitationOfThisWinding.set_current(
                             reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnRatio));
-                        operationPoints[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
+                        operatingPoints[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
                     }
                 }
                 result.second = "Had to create the excitations of some windings based on primary";
@@ -443,12 +443,12 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         }
     }
 
-    set_operation_points(operationPoints);
+    set_operating_points(operatingPoints);
 
     return result;
 }
 
-Processed InputsWrapper::get_processed_data(ElectromagneticParameter excitation,
+Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
                                             bool force = false,
                                             bool includeAdvancedData = true) {
@@ -590,7 +590,7 @@ Harmonics InputsWrapper::get_harmonics_data(Waveform waveform, double frequency)
     return harmonics;
 }
 
-ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointExcitation& excitation,
+SignalDescriptor InputsWrapper::get_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform sampledWaveform,
                                                                 double magnetizingInductance) {
     double dcCurrent = 0;
@@ -608,7 +608,7 @@ ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointEx
 
     auto sampledMagnetizingCurrentWaveform =
         get_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
-    ElectromagneticParameter magnetizing_current_excitation;
+    SignalDescriptor magnetizing_current_excitation;
 
     magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
     magnetizing_current_excitation.set_harmonics(
@@ -618,7 +618,7 @@ ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointEx
     return magnetizing_current_excitation;
 }
 
-ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointExcitation& excitation,
+SignalDescriptor InputsWrapper::get_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 double magnetizingInductance) {
     double dcCurrent = 0;
     if (excitation.get_current()) {
@@ -632,7 +632,7 @@ ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointEx
 
     auto sampledMagnetizingCurrentWaveform =
         get_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
-    ElectromagneticParameter magnetizing_current_excitation;
+    SignalDescriptor magnetizing_current_excitation;
 
     magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
     magnetizing_current_excitation.set_harmonics(
@@ -642,9 +642,9 @@ ElectromagneticParameter InputsWrapper::get_magnetizing_current(OperationPointEx
     return magnetizing_current_excitation;
 }
 
-OperationPoint InputsWrapper::process_operation_point(OperationPoint operationPoint, double magnetizingInductance) {
-    std::vector<OperationPointExcitation> processed_excitations_per_winding;
-    for (auto& excitation : operationPoint.get_mutable_excitations_per_winding()) {
+OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance) {
+    std::vector<OperatingPointExcitation> processed_excitations_per_winding;
+    for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
         // Here we processed this excitation current
         if (excitation.get_current()) {
             auto current_excitation = excitation.get_current().value();
@@ -672,21 +672,21 @@ OperationPoint InputsWrapper::process_operation_point(OperationPoint operationPo
         }
         processed_excitations_per_winding.push_back(excitation);
     }
-    operationPoint.set_excitations_per_winding(processed_excitations_per_winding);
-    return operationPoint;
+    operatingPoint.set_excitations_per_winding(processed_excitations_per_winding);
+    return operatingPoint;
 }
 
 void InputsWrapper::process_waveforms() {
-    auto operation_points = get_mutable_operation_points();
-    std::vector<OperationPoint> processed_operation_points;
-    for (auto& operation_point : operation_points) {
-        processed_operation_points.push_back(process_operation_point(
-            operation_point, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
+    auto operating_points = get_mutable_operating_points();
+    std::vector<OperatingPoint> processed_operating_points;
+    for (auto& operating_point : operating_points) {
+        processed_operating_points.push_back(process_operating_point(
+            operating_point, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
     }
-    set_operation_points(processed_operation_points);
+    set_operating_points(processed_operating_points);
 }
 
-InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
+InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
                                                           double magnetizingInductance,
                                                           double temperature,
                                                           WaveformLabel waveShape,
@@ -696,11 +696,11 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
                                                           std::vector<double> turnsRatios) {
     json inputsJson;
 
-    inputsJson["operationPoints"] = json::array();
-    json operationPointJson = json();
-    operationPointJson["name"] = "Nominal";
-    operationPointJson["conditions"] = json();
-    operationPointJson["conditions"]["ambientTemperature"] = temperature;
+    inputsJson["operatingPoints"] = json::array();
+    json operatingPointJson = json();
+    operatingPointJson["name"] = "Nominal";
+    operatingPointJson["conditions"] = json();
+    operatingPointJson["conditions"]["ambientTemperature"] = temperature;
 
     json windingExcitation = json();
     windingExcitation["winding"] = "primary";
@@ -709,9 +709,9 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
     windingExcitation["voltage"]["processed"]["label"] = waveShape;
     windingExcitation["voltage"]["processed"]["offset"] = 0;
     windingExcitation["voltage"]["processed"]["peakToPeak"] = peakToPeak;
-    operationPointJson["excitationsPerWinding"] = json::array();
-    operationPointJson["excitationsPerWinding"].push_back(windingExcitation);
-    inputsJson["operationPoints"].push_back(operationPointJson);
+    operatingPointJson["excitationsPerWinding"] = json::array();
+    operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+    inputsJson["operatingPoints"].push_back(operatingPointJson);
 
     inputsJson["designRequirements"] = json();
     inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = magnetizingInductance * 0.8;
@@ -728,77 +728,77 @@ InputsWrapper InputsWrapper::create_quick_operation_point(double frequency,
     InputsWrapper inputs(inputsJson);
 
     auto voltage =
-        inputs.get_mutable_operation_points()[0].get_mutable_excitations_per_winding()[0].get_voltage().value();
+        inputs.get_mutable_operating_points()[0].get_mutable_excitations_per_winding()[0].get_voltage().value();
 
-    auto operationPoint = inputs.get_mutable_operation_points()[0];
+    auto operatingPoint = inputs.get_mutable_operating_points()[0];
 
-    std::vector<OperationPointExcitation> excitationsWithDcCurrent;
-    for (auto& excitation : operationPoint.get_mutable_excitations_per_winding()) {
-        auto magnetizingCurrentElectromagneticParameter = get_magnetizing_current(excitation, magnetizingInductance);
+    std::vector<OperatingPointExcitation> excitationsWithDcCurrent;
+    for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+        auto magnetizingCurrentSignalDescriptor = get_magnetizing_current(excitation, magnetizingInductance);
         excitation.set_current(
-            InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
+            InputsWrapper::add_offset_to_excitation(magnetizingCurrentSignalDescriptor, dcCurrent, frequency));
         excitation.set_magnetizing_current(
-            InputsWrapper::add_offset_to_excitation(magnetizingCurrentElectromagneticParameter, dcCurrent, frequency));
+            InputsWrapper::add_offset_to_excitation(magnetizingCurrentSignalDescriptor, dcCurrent, frequency));
         excitationsWithDcCurrent.push_back(excitation);
     }
-    operationPoint.set_excitations_per_winding(excitationsWithDcCurrent);
-    inputs.set_operation_point_by_index(operationPoint, 0);
+    operatingPoint.set_excitations_per_winding(excitationsWithDcCurrent);
+    inputs.set_operating_point_by_index(operatingPoint, 0);
 
     return inputs;
 }
 
-OperationPoint InputsWrapper::get_operation_point(size_t index) {
-    return get_mutable_operation_points()[index];
+OperatingPoint InputsWrapper::get_operating_point(size_t index) {
+    return get_mutable_operating_points()[index];
 }
 
-OperationPointExcitation InputsWrapper::get_winding_excitation(size_t operationPointIndex, size_t windingIndex) {
-    return get_mutable_operation_points()[operationPointIndex].get_mutable_excitations_per_winding()[windingIndex];
+OperatingPointExcitation InputsWrapper::get_winding_excitation(size_t operatingPointIndex, size_t windingIndex) {
+    return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 }
 
-OperationPointExcitation InputsWrapper::get_primary_excitation(size_t operationPointIndex) {
-    return get_mutable_operation_points()[operationPointIndex].get_mutable_excitations_per_winding()[0];
+OperatingPointExcitation InputsWrapper::get_primary_excitation(size_t operatingPointIndex) {
+    return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0];
 }
 
-OperationPointExcitation InputsWrapper::get_primary_excitation(OperationPoint operationPoint) {
-    return operationPoint.get_mutable_excitations_per_winding()[0];
+OperatingPointExcitation InputsWrapper::get_primary_excitation(OperatingPoint operatingPoint) {
+    return operatingPoint.get_mutable_excitations_per_winding()[0];
 }
 
-void InputsWrapper::make_waveform_size_power_of_two(OperationPoint* operationPoint) {
-    OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
-    double frequency = operationPoint->get_excitations_per_winding()[0].get_frequency();
+void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoint) {
+    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+    double frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
 
     // TODO: iterate over windings here in the future
 
     if (excitation.get_current()) {
-        auto current = operationPoint->get_excitations_per_winding()[0].get_current().value();
+        auto current = operatingPoint->get_excitations_per_winding()[0].get_current().value();
         auto currentWaveform = current.get_waveform().value();
         if (!is_size_power_of_2(currentWaveform.get_data())) {
             auto currentSampledWaveform = InputsWrapper::get_sampled_waveform(currentWaveform, frequency);
             current.set_waveform(currentSampledWaveform);
             current.set_harmonics(get_harmonics_data(currentSampledWaveform, frequency));
             current.set_processed(get_processed_data(current, currentSampledWaveform, true));
-            operationPoint->get_mutable_excitations_per_winding()[0].set_current(current);
+            operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
 
 
             currentWaveform = current.get_waveform().value();
 
-            currentWaveform = operationPoint->get_excitations_per_winding()[0].get_current().value().get_waveform().value();
+            currentWaveform = operatingPoint->get_excitations_per_winding()[0].get_current().value().get_waveform().value();
         }
     }
     if (excitation.get_voltage()) {
-        auto voltage = operationPoint->get_excitations_per_winding()[0].get_voltage().value();
+        auto voltage = operatingPoint->get_excitations_per_winding()[0].get_voltage().value();
         auto voltageWaveform = voltage.get_waveform().value();
         if (!is_size_power_of_2(voltageWaveform.get_data())) {
             auto voltageSampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, frequency);
             voltage.set_waveform(voltageSampledWaveform);
-            operationPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
+            operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
         }
     }
 }
 
-double InputsWrapper::get_waveform_coefficient(OperationPoint* operationPoint) {
+double InputsWrapper::get_waveform_coefficient(OperatingPoint* operatingPoint) {
     auto constants = Constants();
-    OperationPointExcitation excitation = InputsWrapper::get_primary_excitation(*operationPoint);
+    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
     double frequency = excitation.get_frequency();
     Waveform sampledWaveform = excitation.get_voltage().value().get_waveform().value();
 

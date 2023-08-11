@@ -57,8 +57,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
-    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_voltage().value().get_waveform().value().get_data();
-    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_current().value().get_waveform().value().get_data();
+    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value().get_data();
+    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value().get_data();
 
     std::map<std::string, double> materialScaledMagneticFluxDensities;
     std::map<std::string, double> bobbinFillingFactors;
@@ -74,8 +74,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     }
     powerMean /= voltageWaveformData.size();
 
-    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_frequency();
-    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
@@ -90,16 +90,16 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     double magneticFluxDensityReference = 0.18;
     double frequencyReference = 100000;
     double areaProductRequiredPreCalculation = powerMean / (primaryAreaFactor * 2 * frequency * defaults.coreAdviserMaximumCurrentDensity);
-    OperationPointExcitation operationPointExcitation;
-    ElectromagneticParameter magneticFluxDensity;
+    OperatingPointExcitation operatingPointExcitation;
+    SignalDescriptor magneticFluxDensity;
     Processed processed;
-    operationPointExcitation.set_frequency(frequencyReference);
+    operatingPointExcitation.set_frequency(frequencyReference);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
     processed.set_peak(magneticFluxDensityReference);
     processed.set_peak_to_peak(2 * magneticFluxDensityReference);
     magneticFluxDensity.set_processed(processed);
-    operationPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
+    operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
     for (auto& unfilteredPair : unfilteredMasMagnetics){
         MasWrapper mas = unfilteredPair.first;
@@ -125,12 +125,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
             auto coreLossesMethods = core.get_available_core_losses_methods();
             if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
-                double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operationPointExcitation, temperature)["totalLosses"];
+                double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature)["totalLosses"];
                 auto aux = coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                 magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
             }
             else {
-                double referenceCoreLosses = coreLossesModelProprietary->get_core_losses(core, operationPointExcitation, temperature)["totalLosses"];
+                double referenceCoreLosses = coreLossesModelProprietary->get_core_losses(core, operatingPointExcitation, temperature)["totalLosses"];
                 auto aux = coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                 magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
             }
@@ -173,13 +173,13 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
     OpenMagnetics::MagneticEnergy magneticEnergy(models);
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
     double requiredMagneticEnergy = magneticEnergy.required_magnetic_energy(inputs).get_nominal().value();
-    auto operationPoint = inputs.get_operation_point(0);
+    auto operatingPoint = inputs.get_operating_point(0);
 
     MagnetizingInductanceOutput magnetizingInductanceOutput;
     for (auto& unfilteredPair : unfilteredMasMagnetics){  
         MasWrapper mas = unfilteredPair.first;
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
-        double totalStorableMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), &operationPoint);
+        double totalStorableMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), &operatingPoint);
         if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
             double scoring = totalStorableMagneticEnergy;
             magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
@@ -198,10 +198,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
     }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
-    auto primaryCurrentRms = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_current().value().get_processed().value().get_rms().value();
+    auto primaryCurrentRms = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_processed().value().get_rms().value();
 
-    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_frequency();
-    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
     auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
     auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
     double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(2 * skinDepth);
@@ -254,8 +254,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
 
-    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_voltage().value().get_waveform().value().get_data();
-    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_current().value().get_waveform().value().get_data();
+    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value().get_data();
+    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value().get_data();
 
     double powerMean = 0;
     for (size_t i = 0; i < voltageWaveformData.size(); ++i)
@@ -264,14 +264,14 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
     }
     powerMean /= voltageWaveformData.size();
 
-    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
 
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    auto operationPoint = inputs.get_operation_point(0);
-    OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+    auto operatingPoint = inputs.get_operating_point(0);
+    OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
     size_t numberTimeouts = 0;
 
@@ -307,7 +307,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             currentTotalLosses = newTotalLosses;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             winding.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-            auto aux = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint);
+            auto aux = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
             auto magnetizingInductance = aux.first;
             auto magneticFluxDensity = aux.second;
 
@@ -334,7 +334,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             }
 
             if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
-                ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operationPoint, temperature);
+                ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
                 newTotalLosses = coreLosses + ohmicLosses;
             }
             else {
@@ -379,15 +379,15 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
 
-    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
 
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    auto operationPoint = inputs.get_operation_point(0);
-    OpenMagnetics::OperationPointExcitation excitation = operationPoint.get_excitations_per_winding()[0];
+    auto operatingPoint = inputs.get_operating_point(0);
+    OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
     for (auto& unfilteredPair : unfilteredMasMagnetics){
         MasWrapper mas = unfilteredPair.first;
@@ -397,7 +397,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
 
         double coreLosses;
         if (!mas.get_outputs()[0].get_core_losses()) {
-            auto magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint).second;
+            auto magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
             excitation.set_magnetic_flux_density(magneticFluxDensity);
             auto coreLossesMethods = core.get_available_core_losses_methods();
             if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
@@ -452,8 +452,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterDimens
 
 
 CoilWrapper get_dummy_coil(InputsWrapper inputs) {
-    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operation_point(0)).get_frequency();
-    double temperature = inputs.get_operation_point(0).get_conditions().get_ambient_temperature();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
     auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
     auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
 
@@ -499,7 +499,6 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
             cores.push_back(core);
         }
     }
-
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     std::vector<std::pair<MasWrapper, double>> masMagneticsWithStacks;
     std::vector<std::pair<MasWrapper, double>> masMagneticsWithoutStacks;
@@ -511,6 +510,9 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
     mas.get_mutable_outputs().push_back(outputs);
     magnetic.set_coil(std::move(coil));
     for (auto& core : cores){
+        // if (core.get_distributors_info().value().size() == 0) {
+        //     continue;
+        // }
         if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
@@ -532,6 +534,9 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
         }
     }
 
+    std::cout << "masMagneticsWithStacks.size(): " << masMagneticsWithStacks.size() << std::endl;
+    std::cout << "masMagneticsWithoutStacks.size(): " << masMagneticsWithoutStacks.size() << std::endl;
+ 
     CoreAdviserFilters firstFilter = CoreAdviserFilters::AREA_PRODUCT;
     double maxWeight = 0;
 

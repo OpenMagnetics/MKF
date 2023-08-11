@@ -356,9 +356,9 @@ void CoilWrapper::calculate_insulation() {
             double totalVoltageToInsulate = 0;
             double dielectricVoltageToInsulate = 0;
 
-            for (auto& operationPoint : inputs.get_operation_points()) {
-                auto excitationLeftTopWinding = operationPoint.get_excitations_per_winding()[leftTopWindingIndex];
-                auto excitationRightBottomWinding = operationPoint.get_excitations_per_winding()[rightBottomWindingIndex];
+            for (auto& operatingPoint : inputs.get_operating_points()) {
+                auto excitationLeftTopWinding = operatingPoint.get_excitations_per_winding()[leftTopWindingIndex];
+                auto excitationRightBottomWinding = operatingPoint.get_excitations_per_winding()[rightBottomWindingIndex];
                 totalVoltageToInsulate = std::max(totalVoltageToInsulate, excitationLeftTopWinding.get_voltage().value().get_processed().value().get_rms().value() + excitationRightBottomWinding.get_voltage().value().get_processed().value().get_rms().value());
             }
 
@@ -424,8 +424,8 @@ void CoilWrapper::calculate_insulation() {
             }
 
             double maxAmbientTemperature = 0;
-            for (auto& operationPoint : inputs.get_operation_points()) {
-                 maxAmbientTemperature = std::max(maxAmbientTemperature, operationPoint.get_conditions().get_ambient_temperature());
+            for (auto& operatingPoint : inputs.get_operating_points()) {
+                 maxAmbientTemperature = std::max(maxAmbientTemperature, operatingPoint.get_conditions().get_ambient_temperature());
             }
 
             double smallestInsulationThicknessCoveringRemaining = DBL_MAX;

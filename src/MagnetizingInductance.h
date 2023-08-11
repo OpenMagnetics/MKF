@@ -34,7 +34,7 @@ class MagnetizingInductance {
     }
     double get_inductance_from_number_turns_and_gapping(CoreWrapper core,
                                                         CoilWrapper winding,
-                                                        OperationPoint* operationPoint);
+                                                        OperatingPoint* operatingPoint);
 
     std::vector<CoreGap> get_gapping_from_number_turns_and_inductance(CoreWrapper core,
                                                                       CoilWrapper winding,
@@ -44,10 +44,10 @@ class MagnetizingInductance {
 
     int get_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
-    std::pair<double, ElectromagneticParameter> get_inductance_and_magnetic_flux_density(
+    std::pair<double, SignalDescriptor> get_inductance_and_magnetic_flux_density(
         CoreWrapper core,
         CoilWrapper winding,
-        OperationPoint* operationPoint);
+        OperatingPoint* operatingPoint);
 };
 
 } // namespace OpenMagnetics

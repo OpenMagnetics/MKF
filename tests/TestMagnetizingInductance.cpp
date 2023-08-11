@@ -24,7 +24,7 @@ SUITE(MagnetizingInductance) {
                                  double peakToPeak = 20, int numberStacks = 1) {
         double dutyCycle = 0.5;
 
-        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL,
             peakToPeak, dutyCycle, dcCurrent);
 
@@ -66,15 +66,15 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
 
     TEST(Test_Inductance_Ferrite_Web) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null,
@@ -92,25 +92,25 @@ SUITE(MagnetizingInductance) {
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
-        json operationPointData = json::parse(
+        json operatingPointData = json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null,
             "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time":
             [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null,
-            "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null,
+            "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null,
             "processed": null, "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.5, -2.5, 7.5],
             "numberPeriods": null, "time": [0.0, 2.5e-06, 2.5e-06, 1e-05, 1e-05]}}}],"name": null})");
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
-        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
     }
 
     TEST(Test_Inductance_Powder_Web) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": null, "coordinates": null,
@@ -147,38 +147,38 @@ SUITE(MagnetizingInductance) {
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 23, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
-        json operationPointData = json::parse(
+        json operatingPointData = json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 125.0, "cooling": null,
             "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time":
             [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null,
-            "magnetizingCurrent": null, "name": "My Operation Point", "voltage": {"harmonics": null,
+            "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null,
             "processed": null, "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.5, -2.5, 7.5],
             "numberPeriods": null, "time": [0.0, 2.5e-06, 2.5e-06, 1e-05, 1e-05]}}}], "name": null})");
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
-        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
     }
 
     TEST(Test_Inductance_High_Flux_40_Web) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
 
         json coreData = json::parse(R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "High Flux 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": null, "name": "My Core", "processedDescription": null})");
         json windingData =
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 24, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})");
-        json inputsData = json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0001279222825940401}, "name": null, "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operation Point", "voltage": null}], "name": null}]})");
+        json inputsData = json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0001279222825940401}, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})");
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
     }
 
@@ -201,9 +201,9 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -227,9 +227,9 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -253,9 +253,9 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -417,7 +417,7 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Classic_Web) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": null, "coordinates": null,
@@ -461,13 +461,13 @@ SUITE(MagnetizingInductance) {
             R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
             "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
             null, "maximum": null, "minimum": null, "nominal": 0.0004126820555843872}, "name": null,
-            "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
-            "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null,
+            "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
+            "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
             "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
             "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent":
-            null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null,
+            null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
             7.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05,
             1e-05]}}}], "name": null}]})");
@@ -486,7 +486,7 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Web) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
             0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
@@ -510,13 +510,13 @@ SUITE(MagnetizingInductance) {
             R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
             "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
             null, "maximum": null, "minimum": null, "nominal": 0.004654652816558039}, "name": null,
-            "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
-            "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null,
+            "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
+            "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
             "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}},
             "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent":
-            null, "name": "My Operation Point", "voltage": {"harmonics": null, "processed": null,
+            null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
             7.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05,
             1e-05]}}}], "name": null}]})");
@@ -557,8 +557,8 @@ SUITE(MagnetizingInductance) {
         double expectedMagneticFluxDensity =
             expectedInductanceValue * (currentPeakToPeak / 2) / numberTurns / effectiveArea;
 
-        auto operationPoint = inputs.get_operation_point(0);
-        auto ea = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operationPoint);
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto ea = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
 
         auto magnetizingInductance = ea.first;
         auto magneticFluxDensity = ea.second;
@@ -566,8 +566,8 @@ SUITE(MagnetizingInductance) {
         auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
         auto magneticFluxDensityWaveformPeak =
             *max_element(std::begin(magneticFluxDensityWaveform), std::end(magneticFluxDensityWaveform));
-        OpenMagnetics::OperationPointExcitation primaryExcitation =
-            OpenMagnetics::InputsWrapper::get_primary_excitation(operationPoint);
+        OpenMagnetics::OperatingPointExcitation primaryExcitation =
+            OpenMagnetics::InputsWrapper::get_primary_excitation(operatingPoint);
 
         CHECK_CLOSE(expectedInductanceValue, magnetizingInductance, max_error * expectedInductanceValue);
         CHECK_CLOSE(expectedMagneticFluxDensity, magneticFluxDensityWaveformPeak,
@@ -579,7 +579,7 @@ SUITE(MagnetizingInductance) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
             CHECK_CLOSE(currentPeakToPeak,
-                        operationPoint.get_mutable_excitations_per_winding()[0]
+                        operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
                             .get_processed()
@@ -591,7 +591,7 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Web_No_Voltage) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
             0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
@@ -615,13 +615,13 @@ SUITE(MagnetizingInductance) {
             R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null,
             "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum":
             null, "maximum": null, "minimum": null, "nominal": 0.00004654652816558039}, "name": null,
-            "operationTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
-            "turnsRatios": []}, "operationPoints": [{"conditions": {"ambientRelativeHumidity": null,
+            "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null,
+            "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null,
             "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding":
             [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null,
             "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency":
             100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name":
-            "My Operation Point"}], "name": null}]})");
+            "My Operating Point"}], "name": null}]})");
         OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
 
         OpenMagnetics::CoreWrapper core(coreData);
@@ -631,7 +631,7 @@ SUITE(MagnetizingInductance) {
             std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
         auto gapping =
             magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
-        auto primaryExcitation = inputs.get_operation_point(0).get_mutable_excitations_per_winding()[0];
+        auto primaryExcitation = inputs.get_operating_point(0).get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
         double voltagePeakToPeak = 248;
 
@@ -643,7 +643,7 @@ SUITE(MagnetizingInductance) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
             CHECK_CLOSE(currentPeakToPeak,
-                        inputs.get_operation_point(0)
+                        inputs.get_operating_point(0)
                             .get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
@@ -653,7 +653,7 @@ SUITE(MagnetizingInductance) {
                             .value(),
                         max_error * currentPeakToPeak);
             CHECK_CLOSE(currentPeakToPeak,
-                        inputs.get_operation_point(0)
+                        inputs.get_operating_point(0)
                             .get_mutable_excitations_per_winding()[0]
                             .get_current()
                             .value()
@@ -663,7 +663,7 @@ SUITE(MagnetizingInductance) {
                             .value(),
                         max_error * currentPeakToPeak);
             CHECK_CLOSE(voltagePeakToPeak,
-                        inputs.get_operation_point(0)
+                        inputs.get_operating_point(0)
                             .get_mutable_excitations_per_winding()[0]
                             .get_voltage()
                             .value()
@@ -676,7 +676,7 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Web_No_Voltage) {
-        // This tests checks that the operation is not crashing
+        // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
             R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null,
@@ -694,20 +694,20 @@ SUITE(MagnetizingInductance) {
             json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary",
                         "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}], "layersDescription":
                         null, "sectionsDescription": null, "turnsDescription": null})");
-        json operationPointData = json::parse(
+        json operatingPointData = json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null,
             "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null,
             "waveform": {"ancillaryLabel": null, "data": [-5.0, 5.0, -5.0], "numberPeriods": null, "time":
             [0.0, 2.5e-06, 1e-05]}}, "frequency": 100000.0, "magneticField": null, "magneticFluxDensity": null,
-            "magnetizingCurrent": null, "name": "My Operation Point"}],"name": null})");
+            "magnetizingCurrent": null, "name": "My Operating Point"}],"name": null})");
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
-        OpenMagnetics::OperationPoint operationPoint(operationPointData);
+        OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
-        auto primaryExcitation = operationPoint.get_mutable_excitations_per_winding()[0];
+        magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        auto primaryExcitation = operatingPoint.get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
         double voltagePeakToPeak = 105;
 
@@ -719,7 +719,7 @@ SUITE(MagnetizingInductance) {
             auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
             auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
             CHECK_CLOSE(currentPeakToPeak,
-                        operationPoint.get_mutable_excitations_per_winding()[0]
+                        operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_magnetizing_current()
                             .value()
                             .get_processed()
@@ -728,7 +728,7 @@ SUITE(MagnetizingInductance) {
                             .value(),
                         max_error * currentPeakToPeak);
             CHECK_CLOSE(currentPeakToPeak,
-                        operationPoint.get_mutable_excitations_per_winding()[0]
+                        operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_current()
                             .value()
                             .get_processed()
@@ -739,7 +739,7 @@ SUITE(MagnetizingInductance) {
         }
         if (primaryExcitation.get_voltage()) {
             CHECK_CLOSE(voltagePeakToPeak,
-                        operationPoint.get_mutable_excitations_per_winding()[0]
+                        operatingPoint.get_mutable_excitations_per_winding()[0]
                             .get_voltage()
                             .value()
                             .get_processed()
@@ -770,9 +770,9 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -796,15 +796,15 @@ SUITE(MagnetizingInductance) {
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
-        auto operationPoint = inputs.get_operation_point(0);
+        auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
 
         core = OpenMagneticsTesting::get_core(coreShape, gapping, 2, coreMaterial);
         double magnetizingInductance2Stacks =
-            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operationPoint);
+            magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
 
         expectedValue = magnetizingInductance * 2;
 

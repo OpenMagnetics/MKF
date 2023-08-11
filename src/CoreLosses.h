@@ -30,10 +30,10 @@ class CoreLossesModel {
   private:
   protected:
     double _get_frequency_from_core_losses(CoreWrapper core,
-                                           ElectromagneticParameter magneticFluxDensity,
+                                           SignalDescriptor magneticFluxDensity,
                                            double temperature,
                                            double coreLosses);
-    ElectromagneticParameter _get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor _get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses);
@@ -49,13 +49,13 @@ class CoreLossesModel {
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
     virtual std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                          OperationPointExcitation excitation,
+                                                          OperatingPointExcitation excitation,
                                                           double temperature) = 0;
     virtual double get_frequency_from_core_losses(CoreWrapper core,
-                                                  ElectromagneticParameter magneticFluxDensity,
+                                                  SignalDescriptor magneticFluxDensity,
                                                   double temperature,
                                                   double coreLosses) = 0;
-    virtual ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    virtual SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                                 double frequency,
                                                                                 double temperature,
                                                                                 double coreLosses) = 0;
@@ -102,7 +102,7 @@ class CoreLossesModel {
     static std::vector<std::string> get_methods(CoreMaterialDataOrNameUnion material) {
         OpenMagnetics::CoreMaterial materialData;
         // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
-        // avoid long loading operations)
+        // avoid long loading operatings)
         if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
             materialData =
                 OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
@@ -199,13 +199,13 @@ class CoreLossesModel {
 class CoreLossesSteinmetzModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses);
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses);
@@ -216,15 +216,15 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
 class CoreLossesIGSEModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -238,15 +238,15 @@ class CoreLossesIGSEModel : public CoreLossesModel {
 class CoreLossesBargModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -261,27 +261,27 @@ class CoreLossesBargModel : public CoreLossesModel {
 class CoreLossesRoshenModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
-    double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperationPointExcitation excitation);
-    double get_eddy_current_losses_density(CoreWrapper core, OperationPointExcitation excitation, double resistivity);
-    double get_excess_eddy_current_losses_density(OperationPointExcitation excitation,
+    double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
+    double get_eddy_current_losses_density(CoreWrapper core, OperatingPointExcitation excitation, double resistivity);
+    double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
                                                   double resistivity,
                                                   double alphaTimesN0);
     std::map<std::string, double> get_roshen_parameters(CoreWrapper core,
-                                                        OperationPointExcitation excitation,
+                                                        OperatingPointExcitation excitation,
                                                         double temperature);
 };
 
@@ -290,15 +290,15 @@ class CoreLossesRoshenModel : public CoreLossesModel {
 class CoreLossesAlbachModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -311,15 +311,15 @@ class CoreLossesAlbachModel : public CoreLossesModel {
 class CoreLossesNSEModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -333,15 +333,15 @@ class CoreLossesNSEModel : public CoreLossesModel {
 class CoreLossesMSEModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -354,15 +354,15 @@ class CoreLossesMSEModel : public CoreLossesModel {
 class CoreLossesGSEModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -374,13 +374,13 @@ class CoreLossesGSEModel : public CoreLossesModel {
 class CoreLossesProprietaryModel : public CoreLossesModel {
   public:
     std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperationPointExcitation excitation,
+                                                  OperatingPointExcitation excitation,
                                                   double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
-                                          ElectromagneticParameter magneticFluxDensity,
+                                          SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses);
-    ElectromagneticParameter get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {

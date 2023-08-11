@@ -14,7 +14,7 @@ SUITE(CoreAdviser) {
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, std::vector<double> turnsRatios,
                                  double desiredMagnetizingInductance, OpenMagnetics::InputsWrapper& inputs,
                                  double peakToPeak = 20, double dutyCycle = 0.5) {
-        inputs = OpenMagnetics::InputsWrapper::create_quick_operation_point(
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL,
             peakToPeak, dutyCycle, dcCurrent, turnsRatios);
     }
@@ -38,9 +38,11 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+
+        // std::cout << coreAdviser.read_log() << std::endl;
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
@@ -65,7 +67,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(true);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 
@@ -93,7 +95,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
@@ -121,7 +123,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
@@ -149,7 +151,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
@@ -177,7 +179,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 0.1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0.1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
@@ -205,7 +207,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 0.1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
@@ -233,7 +235,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
-        OpenMagnetics::OperationPoint operationPoint;
+        OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 

@@ -30,7 +30,7 @@ class CoilWrapper : public Coil {
         std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
         std::string coilLog;
         bool are_sections_and_layers_fitting() {
-            double windTurns = true;
+            bool windTurns = true;
             if (!get_sections_description()) {
                 return false;
             }
