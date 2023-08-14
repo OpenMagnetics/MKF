@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <execution>
+#include <magic_enum_utility.hpp>
 
 
 namespace OpenMagnetics {

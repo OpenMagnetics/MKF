@@ -56,7 +56,7 @@ namespace OpenMagnetics {
                     if (coating.get_grade().value() == grade && datum.second.get_standard().value() == standard) {
                         double wireOuterDiameter = resolve_dimensional_values(datum.second.get_outer_diameter().value()); 
                         double wireConductingDiameter = resolve_dimensional_values(datum.second.get_conducting_diameter().value()); 
-                        double wireNumberConductors = resolve_dimensional_values(datum.second.get_number_conductors().value()); 
+                        double wireNumberConductors = datum.second.get_number_conductors().value(); 
                         double outerArea;
                         if (includeAirInCell) {
                             outerArea = pow(wireOuterDiameter, 2);

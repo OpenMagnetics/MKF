@@ -157,7 +157,7 @@ SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor parameter, 
                 data = {-peakToPeak / 2 + offset, peakToPeak / 2 + offset, -peakToPeak / 2 + offset};
                 time = {0., dutyCycle * period, period};
                 break;
-            case OpenMagnetics::WaveformLabel::SQUARE: {
+            case OpenMagnetics::WaveformLabel::RECTANGULAR: {
                 double max = peakToPeak * (1 - dutyCycle);
                 double min = -peakToPeak * dutyCycle;
                 double dc = dutyCycle * period;
@@ -165,7 +165,7 @@ SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor parameter, 
                 time = {0, dc, dc, period, period};
                 break;
             }
-            case OpenMagnetics::WaveformLabel::SQUARE_WITH_DEAD_TIME: {
+            case OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR: {
                 double max = +peakToPeak / 2;
                 double min = -peakToPeak / 2;
                 double dc = dutyCycle * period;

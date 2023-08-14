@@ -610,7 +610,7 @@ SUITE(Inputs) {
                     max_error * 100000);
     }
 
-    TEST(Test_One_Operating_Point_One_Winding_Equidistant_Square) {
+    TEST(Test_One_Operating_Point_One_Winding_Equidistant_Rectangular) {
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -694,7 +694,7 @@ SUITE(Inputs) {
                     max_error * 100000);
     }
 
-    TEST(Test_One_Operating_Point_One_Winding_Square_Processed) {
+    TEST(Test_One_Operating_Point_One_Winding_Rectangular_Processed) {
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -706,7 +706,7 @@ SUITE(Inputs) {
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
         windingExcitation["current"]["processed"]["dutyCycle"] = 0.8;
-        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE;
+        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::RECTANGULAR;
         windingExcitation["current"]["processed"]["offset"] = 0;
         windingExcitation["current"]["processed"]["peakToPeak"] = 20;
         operatingPoint["excitationsPerWinding"] = json::array();
@@ -779,7 +779,7 @@ SUITE(Inputs) {
                     max_error * 100000);
     }
 
-    TEST(Test_One_Operating_Point_One_Winding_Square_With_Dead_Time_Processed) {
+    TEST(Test_One_Operating_Point_One_Winding_Bipolar_Rectangular_Processed) {
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -791,7 +791,7 @@ SUITE(Inputs) {
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
         windingExcitation["current"]["processed"]["dutyCycle"] = 0.42;
-        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE_WITH_DEAD_TIME;
+        windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR;
         windingExcitation["current"]["processed"]["offset"] = 0;
         windingExcitation["current"]["processed"]["peakToPeak"] = 13;
         operatingPoint["excitationsPerWinding"] = json::array();
@@ -1629,7 +1629,7 @@ SUITE(Inputs) {
         double magnetizingInductance = 10e-6;
 
         OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
-            frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SQUARE, peakToPeak,
+            frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
         auto max_error = 0.01;
 
@@ -1667,7 +1667,7 @@ SUITE(Inputs) {
         double magnetizingInductance = 10e-6;
 
         OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
-            frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SQUARE, peakToPeak,
+            frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
         auto max_error = 0.01;
 
@@ -1725,7 +1725,7 @@ SUITE(Inputs) {
         CHECK(dutyCycle == 0.25);
     }
 
-    TEST(Test_Get_Duty_Cycle_Square) {
+    TEST(Test_Get_Duty_Cycle_Rectangular) {
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -2424,7 +2424,7 @@ SUITE(Inputs) {
         CHECK_CLOSE(waveformCoefficient, expectedValue, max_error * expectedValue);
     }
 
-    TEST(Test_Waveform_Coefficient_Square) {
+    TEST(Test_Waveform_Coefficient_Rectangular) {
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -2435,7 +2435,7 @@ SUITE(Inputs) {
 
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
-        windingExcitation["voltage"]["processed"]["label"] = OpenMagnetics::WaveformLabel::SQUARE;
+        windingExcitation["voltage"]["processed"]["label"] = OpenMagnetics::WaveformLabel::RECTANGULAR;
         windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
         windingExcitation["voltage"]["processed"]["offset"] = 0;
         windingExcitation["voltage"]["processed"]["peakToPeak"] = 1000;

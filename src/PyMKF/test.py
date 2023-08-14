@@ -365,98 +365,15 @@ import PyMKF
 # mapStr += '};' 
 # print(mapStr)
 
-# models = {'coreLosses': 'STEINMETZ', 'gapReluctance': 'BALAKRISHNAN'}
-# core = {'functionalDescription': {'gapping': [{'area': 9.8e-05,
-#                                         'coordinates': [0.0, 0.0001, 0.0],
-#                                         'distanceClosestNormalSurface': 0.011301,
-#                                         'distanceClosestParallelSurface': 0.006999999999999999,
-#                                         'length': 0.0002,
-#                                         'sectionDimensions': [0.0092, 0.01065],
-#                                         'shape': 'rectangular',
-#                                         'type': 'subtractive'},
-#                                        {'area': 4.7e-05,
-#                                         'coordinates': [0.0138, 0.0, 0.0],
-#                                         'distanceClosestNormalSurface': 0.011498,
-#                                         'distanceClosestParallelSurface': 0.006999999999999999,
-#                                         'length': 5e-06,
-#                                         'sectionDimensions': [0.004401,
-#                                                               0.01065],
-#                                         'shape': 'rectangular',
-#                                         'type': 'residual'},
-#                                        {'area': 4.7e-05,
-#                                         'coordinates': [-0.0138, 0.0, 0.0],
-#                                         'distanceClosestNormalSurface': 0.011498,
-#                                         'distanceClosestParallelSurface': 0.006999999999999999,
-#                                         'length': 5e-06,
-#                                         'sectionDimensions': [0.004401,
-#                                                               0.01065],
-#                                         'shape': 'rectangular',
-#                                         'type': 'residual'}],
-#                            'material': 'XFlux 19',
-#                            'numberStacks': 1,
-#                            'shape': {'aliases': [],
-#                                      'dimensions': {'A': 0.032,
-#                                                     'B': 0.0161,
-#                                                     'C': 0.01065,
-#                                                     'D': 0.0115,
-#                                                     'E': 0.0232,
-#                                                     'F': 0.0092,
-#                                                     'G': 0.0,
-#                                                     'H': 0.0},
-#                                      'family': 'e',
-#                                      'familySubtype': None,
-#                                      'magneticCircuit': 'open',
-#                                      'name': 'E 32/16/11',
-#                                      'type': 'standard'},
-#                            'type': 'two-piece set'},
-#  'manufacturerInfo': None,
-#  'name': 'My Core'}
-# winding = {'bobbin': None,
-#  'functionalDescription': [{'isolationSide': 'primary',
-#                             'name': 'Primary',
-#                             'numberParallels': 1,
-#                             'numberTurns': 33,
-#                             'wire': 'Dummy'}],
-#  'layersDescription': None,
-#  'sectionsDescription': None,
-#  'turnsDescription': None}
-# inputs = {'conditions': {'ambientRelativeHumidity': None,
-#                 'ambientTemperature': 37.0,
-#                 'cooling': None,
-#                 'name': None},
-#  'excitationsPerWinding': [{'current': {'harmonics': None,
-#                                         'processed': None,
-#                                         'waveform': {'ancillaryLabel': None,
-#                                                      'data': [-5.0, 5.0, -5.0],
-#                                                      'numberPeriods': None,
-#                                                      'time': [0.0,
-#                                                               2.4999999999999998e-06,
-#                                                               1e-05]}},
-#                             'frequency': 100000.0,
-#                             'magneticFieldStrength': None,
-#                             'magneticFluxDensity': None,
-#                             'magnetizingCurrent': None,
-#                             'name': 'My Operating Point',
-#                             'voltage': {'harmonics': None,
-#                                         'processed': None,
-#                                         'waveform': {'ancillaryLabel': None,
-#                                                      'data': [700.5,
-#                                                               700.5,
-#                                                               -200.4999999999999996,
-#                                                               -200.4999999999999996,
-#                                                               700.5],
-#                                                      'numberPeriods': None,
-#                                                      'time': [0.0,
-#                                                               2.4999999999999998e-06,
-#                                                               2.4999999999999998e-06,
-#                                                               1e-05,
-#                                                               1e-05]}}}],
-#  'name': None}
+models = {'coreLosses': 'IGSE', 'coreTemperature': 'MANIKTALA', 'gapReluctance': 'ZHANG'}
+core = {'functionalDescription': {'gapping': [{'length': 0.001, 'type': 'subtractive', 'area': None, 'coordinates': None, 'distanceClosestNormalSurface': None, 'distanceClosestParallelSurface': None, 'sectionDimensions': None, 'shape': None}, {'length': 1e-05, 'type': 'residual', 'area': None, 'coordinates': None, 'distanceClosestNormalSurface': None, 'distanceClosestParallelSurface': None, 'sectionDimensions': None, 'shape': None}, {'length': 1e-05, 'type': 'residual', 'area': None, 'coordinates': None, 'distanceClosestNormalSurface': None, 'distanceClosestParallelSurface': None, 'sectionDimensions': None, 'shape': None}], 'material': '3C97', 'shape': {'family': 'etd', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0391, 'B': 0.0198, 'C': 0.0125, 'D': 0.0146, 'E': 0.030100000000000002, 'F': 0.0125, 'G': 0.0, 'H': 0.0}, 'familySubtype': '1', 'magneticCircuit': None, 'name': 'ETD 39/20/13'}, 'type': 'two-piece set', 'coating': None, 'numberStacks': 1}, 'distributorsInfo': None, 'manufacturerInfo': None, 'name': 'My Core'}
+winding = {'bobbin': 'Dummy', 'functionalDescription': [{'isolationSide': 'primary', 'name': 'Primary', 'numberParallels': 1, 'numberTurns': 23, 'wire': 'Dummy'}], 'layersDescription': None, 'sectionsDescription': None, 'turnsDescription': None}
+inputs = {'designRequirements': {'magnetizingInductance': {'excludeMaximum': None, 'excludeMinimum': None, 'maximum': None, 'minimum': 4.2e-05, 'nominal': None}, 'turnsRatios': [], 'insulation': {'altitude': {'excludeMaximum': None, 'excludeMinimum': None, 'maximum': 2000.0, 'minimum': -50.0, 'nominal': 2000.0}, 'cti': 'Group IIIb', 'insulationType': 'Double', 'mainSupplyVoltage': {'excludeMaximum': None, 'excludeMinimum': None, 'maximum': 340.0, 'minimum': 90.0, 'nominal': 220.0}, 'overvoltageCategory': 'OVC-III', 'pollutionDegree': 'P2', 'standards': ['IEC 60664-1']}, 'leakageInductance': [{'excludeMaximum': None, 'excludeMinimum': None, 'maximum': 3e-06, 'minimum': None, 'nominal': None}], 'market': 'Industrial', 'maximumDimensions': {'depth': None, 'height': 0.05, 'width': None}, 'maximumWeight': 300.0, 'name': 'My Design Requirements', 'operatingTemperature': {'excludeMaximum': None, 'excludeMinimum': None, 'maximum': 85.0, 'minimum': None, 'nominal': None}, 'strayCapacitance': [{'excludeMaximum': None, 'excludeMinimum': None, 'maximum': 5e-11, 'minimum': None, 'nominal': None}], 'terminalType': ['Flying Lead'], 'topology': 'Buck Converter'}, 'operatingPoints': [{'conditions': {'ambientTemperature': 25.0, 'ambientRelativeHumidity': None, 'cooling': None, 'name': None}, 'excitationsPerWinding': [{'frequency': 100000.0, 'current': {'harmonics': None, 'processed': None, 'waveform': {'data': [-5.0, 5.0, -5.0], 'numberPeriods': None, 'ancillaryLabel': None, 'time': [0.0, 2.5e-06, 1e-05]}}, 'magneticFieldStrength': None, 'magneticFluxDensity': None, 'magnetizingCurrent': None, 'name': 'My Operating Point', 'voltage': None}], 'name': None}]}
 
-# core_losses_result = PyMKF.get_core_losses(core,
-#                                            winding,
-#                                            inputs,
-#                                            models)
+core_losses_result = PyMKF.get_core_losses(core,
+                                           winding,
+                                           inputs,
+                                           models)
 
 # models = {'coreLosses': 'STEINMETZ', 'coreTemperature': 'MANIKTALA', 'gapReluctance': 'ZHANG'}
 # core = {'functionalDescription': {'gapping': [{'length': 0.001, 'type': 'subtractive', 'area': 0.000123, 'coordinates': [0.0, 0.0005, 0.0], 'distanceClosestNormalSurface': 0.0136, 'distanceClosestParallelSurface': 0.0088, 'sectionDimensions': [0.0125, 0.0125], 'shape': 'round'}, {'length': 5e-06, 'type': 'residual', 'area': 6.2e-05, 'coordinates': [0.017301, 0.0, 0.0], 'distanceClosestNormalSurface': 0.014598, 'distanceClosestParallelSurface': 0.0088, 'sectionDimensions': [0.004501, 0.0125], 'shape': 'irregular'}, {'length': 5e-06, 'type': 'residual', 'area': 6.2e-05, 'coordinates': [-0.017301, 0.0, 0.0], 'distanceClosestNormalSurface': 0.014598, 'distanceClosestParallelSurface': 0.0088, 'sectionDimensions': [0.004501, 0.0125], 'shape': 'irregular'}], 'material': '3C95', 'shape': {'family': 'etd', 'type': 'standard', 'aliases': [], 'dimensions': {'A': 0.0391, 'B': 0.0198, 'C': 0.0125, 'D': 0.0146, 'E': 0.030100000000000002, 'F': 0.0125, 'G': 0.0, 'H': 0.0}, 'familySubtype': '1', 'magneticCircuit': None, 'name': 'ETD 39/20/13'}, 'type': 'two-piece set', 'numberStacks': 1}, 'manufacturerInfo': None, 'name': 'My Core'}
@@ -809,5 +726,5 @@ import PyMKF
 
 # print(core_datum)
 
-steinmetz_coefficients = PyMKF.get_steinmetz_coefficients("JNP96A", 100000)
-print(steinmetz_coefficients)
+# steinmetz_coefficients = PyMKF.get_steinmetz_coefficients("JNP96A", 100000)
+# print(steinmetz_coefficients)

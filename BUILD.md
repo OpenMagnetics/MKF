@@ -9,11 +9,14 @@ sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
 sudo apt install cmake
 sudo apt install ninja-build
 nvm install node
+or
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+
 npm install -g quicktype
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-sudo apt install -y gcc-11 g++-11
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 10
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 10
+sudo apt install -y gcc-12 g++-12
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 10
 
 sudo apt-get install libboost-all-dev
 sudo apt install libeigen3-dev
