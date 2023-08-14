@@ -27,7 +27,7 @@ FetchContent_Declare(UnitTest++
 
 FetchContent_Declare(json
         GIT_REPOSITORY https://github.com/nlohmann/json/
-        GIT_TAG  tags/v3.10.0)
+        GIT_TAG  tags/v3.11.2)
 
 FetchContent_Declare(json-schema-validator
         GIT_REPOSITORY https://github.com/pboettch/json-schema-validator.git
@@ -35,7 +35,7 @@ FetchContent_Declare(json-schema-validator
 
 FetchContent_Declare(magic-enum
         GIT_REPOSITORY https://github.com/Neargye/magic_enum
-        GIT_TAG  tags/v0.8.1)
+        GIT_TAG  tags/v0.9.3)
 
 FetchContent_Declare(pybind11
         GIT_REPOSITORY https://github.com/pybind/pybind11.git)
