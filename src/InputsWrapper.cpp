@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 #include <limits>
 #include <magic_enum.hpp>
 #include <nlohmann/json-schema.hpp>
@@ -227,8 +227,7 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     auto constants = Constants();
 
     int n = waveform.get_data().size();
-    _1D::LinearInterpolator<double> interp;
-    _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+    std::vector<double> x, y;
 
     std::vector<double> time;
     auto data = waveform.get_data();
@@ -243,13 +242,13 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
         }
     }
     for (int i = 0; i < n; i++) {
-        xx(i) = time[i];
-        yy(i) = data[i];
+        x.push_back(time[i]);
+        y.push_back(data[i]);
     }
 
     auto sampledTime = linear_spaced_array(0, 1. / frequency, constants.number_points_samples_waveforms);
 
-    interp.setData(xx, yy);
+    tk::spline interp(x, y, tk::spline::cspline_hermite);
     std::vector<double> sampledData;
 
     for (int i = 0; i < constants.number_points_samples_waveforms; i++) {
@@ -467,7 +466,7 @@ Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
         dataToProcess = waveform.get_data();
 
         for (size_t i = 0; i < dataToProcess.size(); ++i) {
-            if (isnan(dataToProcess[i])) {
+            if (std::isnan(dataToProcess[i])) {
                 throw std::invalid_argument("Waveform data contains NaN");
             }
         }

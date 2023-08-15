@@ -12,16 +12,16 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
-_1D::LinearInterpolator<double> bobbinFillingFactorInterpWidth;
-_1D::LinearInterpolator<double> bobbinFillingFactorInterpHeight;
-_1D::LinearInterpolator<double> bobbinWindingWindowInterpWidth;
-_1D::LinearInterpolator<double> bobbinWindingWindowInterpHeight;
+tk::spline bobbinFillingFactorInterpWidth;
+tk::spline bobbinFillingFactorInterpHeight;
+tk::spline bobbinWindingWindowInterpWidth;
+tk::spline bobbinWindingWindowInterpHeight;
 double minBobbinWidth;
 double maxBobbinWidth;
 double minBobbinHeight;
@@ -238,10 +238,10 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
 
 void load_interpolators() {
     if (bobbinDatabase.empty() ||
-        bobbinFillingFactorInterpWidth.getXData().size() == 0 || 
-        bobbinFillingFactorInterpHeight.getXData().size() == 0 || 
-        bobbinWindingWindowInterpWidth.getXData().size() == 0 || 
-        bobbinWindingWindowInterpHeight.getXData().size() == 0) {
+        bobbinFillingFactorInterpWidth.get_x().size() == 0 || 
+        bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
+        bobbinWindingWindowInterpWidth.get_x().size() == 0 || 
+        bobbinWindingWindowInterpHeight.get_x().size() == 0) {
         load_databases(true);
 
         struct AuxFillingFactorWidth
@@ -291,7 +291,7 @@ void load_interpolators() {
 
         {
             size_t n = auxFillingFactorWidth.size();
-            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+            std::vector<double> x, y;
 
             std::sort(auxFillingFactorWidth.begin(), auxFillingFactorWidth.end(), [](const AuxFillingFactorWidth& b1, const AuxFillingFactorWidth& b2) {
                 return b1.windingWindowWidth < b2.windingWindowWidth;
@@ -300,15 +300,18 @@ void load_interpolators() {
             maxBobbinWidth = auxFillingFactorWidth[n - 1].windingWindowWidth;
 
             for (size_t i = 0; i < n; i++) {
-                xx(i) = auxFillingFactorWidth[i].windingWindowWidth;
-                yy(i) = auxFillingFactorWidth[i].fillingFactor;
+                if (x.size() == 0 || auxFillingFactorWidth[i].windingWindowWidth != x.back()) {
+                    x.push_back(auxFillingFactorWidth[i].windingWindowWidth);
+                    y.push_back(auxFillingFactorWidth[i].fillingFactor);
+                }
             }
 
-            bobbinFillingFactorInterpWidth.setData(xx, yy);
+            bobbinFillingFactorInterpWidth = tk::spline(x, y, tk::spline::cspline, true);
+
         }
         {
-            size_t n = auxFillingFactorWidth.size();
-            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+            size_t n = auxFillingFactorHeight.size();
+            std::vector<double> x, y;
 
             std::sort(auxFillingFactorHeight.begin(), auxFillingFactorHeight.end(), [](const AuxFillingFactorHeight& b1, const AuxFillingFactorHeight& b2) {
                 return b1.windingWindowHeight < b2.windingWindowHeight;
@@ -317,16 +320,18 @@ void load_interpolators() {
             maxBobbinHeight = auxFillingFactorHeight[n - 1].windingWindowHeight;
 
             for (size_t i = 0; i < n; i++) {
-                xx(i) = auxFillingFactorHeight[i].windingWindowHeight;
-                yy(i) = auxFillingFactorHeight[i].fillingFactor;
+                if (x.size() == 0 || auxFillingFactorHeight[i].windingWindowHeight != x.back()) {
+                    x.push_back(auxFillingFactorHeight[i].windingWindowHeight);
+                    y.push_back(auxFillingFactorHeight[i].fillingFactor);
+                }
             }
 
-            bobbinFillingFactorInterpHeight.setData(xx, yy);
+            bobbinFillingFactorInterpHeight = tk::spline(x, y, tk::spline::cspline, true);
         }
 
         {
             size_t n = auxWindingWindowWidth.size();
-            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+            std::vector<double> x, y;
 
             std::sort(auxWindingWindowWidth.begin(), auxWindingWindowWidth.end(), [](const AuxWindingWindowWidth& b1, const AuxWindingWindowWidth& b2) {
                 return b1.windingWindowWidth < b2.windingWindowWidth;
@@ -335,15 +340,17 @@ void load_interpolators() {
             maxWindingWindowWidth = auxWindingWindowWidth[n - 1].windingWindowWidth;
 
             for (size_t i = 0; i < n; i++) {
-                xx(i) = auxWindingWindowWidth[i].windingWindowWidth;
-                yy(i) = auxWindingWindowWidth[i].WindingWindow;
+                if (x.size() == 0 || auxWindingWindowWidth[i].windingWindowWidth != x.back()) {
+                    x.push_back(auxWindingWindowWidth[i].windingWindowWidth);
+                    y.push_back(auxWindingWindowWidth[i].WindingWindow);
+                }
             }
 
-            bobbinWindingWindowInterpWidth.setData(xx, yy);
+            bobbinWindingWindowInterpWidth = tk::spline(x, y, tk::spline::cspline, true);
         }
         {
-            size_t n = auxWindingWindowWidth.size();
-            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+            size_t n = auxWindingWindowHeight.size();
+            std::vector<double> x, y;
 
             std::sort(auxWindingWindowHeight.begin(), auxWindingWindowHeight.end(), [](const AuxWindingWindowHeight& b1, const AuxWindingWindowHeight& b2) {
                 return b1.windingWindowHeight < b2.windingWindowHeight;
@@ -352,11 +359,13 @@ void load_interpolators() {
             maxWindingWindowHeight = auxWindingWindowHeight[n - 1].windingWindowHeight;
 
             for (size_t i = 0; i < n; i++) {
-                xx(i) = auxWindingWindowHeight[i].windingWindowHeight;
-                yy(i) = auxWindingWindowHeight[i].WindingWindow;
+                if (x.size() == 0 || auxWindingWindowHeight[i].windingWindowHeight != x.back()) {
+                    x.push_back(auxWindingWindowHeight[i].windingWindowHeight);
+                    y.push_back(auxWindingWindowHeight[i].WindingWindow);
+                }
             }
 
-            bobbinWindingWindowInterpHeight.setData(xx, yy);
+            bobbinWindingWindowInterpHeight = tk::spline(x, y, tk::spline::cspline, true);
         }
     }
 }

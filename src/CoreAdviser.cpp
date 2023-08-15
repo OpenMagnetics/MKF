@@ -11,6 +11,7 @@
 #include <cctype>
 #include <iomanip>
 #include <iostream>
+#include <cfloat>
 #include <string>
 #include <vector>
 #include <execution>

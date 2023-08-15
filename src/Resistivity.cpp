@@ -1,5 +1,5 @@
 #include "Resistivity.h"
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 
 #include <cmath>
 #include <filesystem>
@@ -21,15 +21,16 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
     }
     else {
         size_t n = resistivityData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+        std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            xx(i) = resistivityData[i].get_temperature().value();
-            yy(i) = resistivityData[i].get_value();
+            if (x.size() == 0 || resistivityData[i].get_temperature().value() != x.back()) {
+                x.push_back(resistivityData[i].get_temperature().value());
+                y.push_back(resistivityData[i].get_value());
+            }
         }
 
-        interp.setData(xx, yy);
+        tk::spline interp(x, y, tk::spline::cspline, true);
         resistivity = interp(temperature);
     }
     return resistivity;

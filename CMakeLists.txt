@@ -43,13 +43,13 @@ FetchContent_Declare(pybind11
 FetchContent_Declare(pybind11_json
         GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
 
-FetchContent_Declare(libInterpolate
-        GIT_REPOSITORY https://github.com/CD3/libInterpolate)
+FetchContent_Declare(spline
+        GIT_REPOSITORY https://github.com/ttk592/spline.git)
 
 FetchContent_Declare(svg
         GIT_REPOSITORY https://github.com/AlfVII/svg)
 
-FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json libInterpolate svg)
+FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json spline svg)
 
 file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/CMakeLists.txt")
 file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/tests")
@@ -105,7 +105,7 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
 include_directories("/usr/include/eigen3/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
-include_directories("${CMAKE_BINARY_DIR}/_deps/libinterpolate-src/src")
+include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
 
