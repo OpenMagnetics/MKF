@@ -5,7 +5,6 @@
 #include <limits>
 #include <cfloat>
 #include <cmath>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -17,8 +16,6 @@
 
 #include <magic_enum.hpp>
 
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -292,7 +289,7 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
             remainingPhysicalTurns += round(remainingParallelsProportion[parallelIndex] * numberTurns);
         }
-        physicalTurnsThisSlot = std::min(remainingPhysicalTurns, uint64_t(ceil(double(remainingPhysicalTurns) / (slots - slotIndex))));
+        physicalTurnsThisSlot = std::min(uint64_t(remainingPhysicalTurns), uint64_t(ceil(double(remainingPhysicalTurns) / (slots - slotIndex))));
         uint64_t remainingPhysicalTurnsThisSection = physicalTurnsThisSlot;
 
         size_t currentParallel = 0;

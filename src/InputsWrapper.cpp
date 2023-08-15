@@ -11,18 +11,14 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include "spline.h"
 #include <limits>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <string>
 #include <valarray>
 #include <vector>
 
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -226,9 +222,6 @@ bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
 Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency) {
     auto constants = Constants();
 
-    int n = waveform.get_data().size();
-    std::vector<double> x, y;
-
     std::vector<double> time;
     auto data = waveform.get_data();
     if (!waveform.get_time()) { // This means the waveform is equidistant
@@ -238,21 +231,23 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
         time = waveform.get_time().value();
         // Check if we need to guess the frequency from the time vector
         if (frequency == 0) {
-            frequency = 1 / (time[n - 1] - time[0]);
+            frequency = 1 / (time[waveform.get_data().size() - 1] - time[0]);
         }
-    }
-    for (int i = 0; i < n; i++) {
-        x.push_back(time[i]);
-        y.push_back(data[i]);
     }
 
     auto sampledTime = linear_spaced_array(0, 1. / frequency, constants.number_points_samples_waveforms);
 
-    tk::spline interp(x, y, tk::spline::cspline_hermite);
     std::vector<double> sampledData;
 
     for (int i = 0; i < constants.number_points_samples_waveforms; i++) {
-        sampledData.push_back(interp(sampledTime[i]));
+        for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
+            if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
+                double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
+                double interpPoint = std::lerp(data[interpIndex], data[interpIndex + 1], proportion);
+                sampledData.push_back(interpPoint);
+                break;
+            }
+        }
     }
 
     Waveform sampledWaveform;

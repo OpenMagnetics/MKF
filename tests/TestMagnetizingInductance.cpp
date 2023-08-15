@@ -9,7 +9,6 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <typeinfo>
 #include <vector>
 
@@ -626,6 +625,7 @@ SUITE(MagnetizingInductance) {
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
+
         OpenMagnetics::InputsWrapper inputs(inputsData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));

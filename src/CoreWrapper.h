@@ -9,16 +9,12 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-using nlohmann::json;
 
 class CorePiece {
   private:
@@ -35,6 +31,8 @@ class CorePiece {
     virtual void process_columns() = 0;
     virtual void process_winding_window() = 0;
     virtual void process_extra_data() = 0;
+
+    virtual ~CorePiece() = default;
 
     /**
      * List of columns in the piece

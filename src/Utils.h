@@ -3,16 +3,11 @@
 #include "InsulationMaterialWrapper.h"
 
 #include "Constants.h"
-#include "json.hpp"
 
 #include <MAS.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <nlohmann/json-schema.hpp>
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
-using json = nlohmann::json;
 #include "spline.h"
 
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;

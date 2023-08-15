@@ -9,13 +9,10 @@
 #include <iostream>
 #include <limits>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
 
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;

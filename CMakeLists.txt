@@ -29,10 +29,6 @@ FetchContent_Declare(json
         GIT_REPOSITORY https://github.com/nlohmann/json/
         GIT_TAG  tags/v3.11.2)
 
-FetchContent_Declare(json-schema-validator
-        GIT_REPOSITORY https://github.com/pboettch/json-schema-validator.git
-        GIT_TAG  tags/2.1.0)
-
 FetchContent_Declare(magic-enum
         GIT_REPOSITORY https://github.com/Neargye/magic_enum
         GIT_TAG  tags/v0.9.3)
@@ -49,7 +45,7 @@ FetchContent_Declare(spline
 FetchContent_Declare(svg
         GIT_REPOSITORY https://github.com/AlfVII/svg)
 
-FetchContent_MakeAvailable(UnitTest++ json json-schema-validator magic-enum pybind11 pybind11_json spline svg)
+FetchContent_MakeAvailable(UnitTest++ json magic-enum pybind11 pybind11_json spline svg)
 
 file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/CMakeLists.txt")
 file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/tests")
@@ -109,7 +105,7 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${CMAKE_BINARY_DIR}/MAS/")
 
-target_link_libraries(MKF nlohmann_json::nlohmann_json nlohmann_json_schema_validator UnitTest++ pybind11_json pybind11::embed)
+target_link_libraries(MKF nlohmann_json::nlohmann_json UnitTest++ pybind11_json pybind11::embed)
 target_include_directories(MKF PUBLIC src/)
 
 file(GLOB TESTS_SOURCES

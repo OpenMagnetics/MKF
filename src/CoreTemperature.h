@@ -27,6 +27,8 @@ class CoreTemperatureModel {
   private:
   protected:
   public:
+    virtual ~CoreTemperatureModel() = default;
+    
     static std::shared_ptr<CoreTemperatureModel> factory(CoreTemperatureModels modelName);
     virtual std::map<std::string, double> get_core_temperature(CoreWrapper core,
                                                                double coreLosses,

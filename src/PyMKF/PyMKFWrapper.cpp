@@ -20,7 +20,7 @@ using json = nlohmann::json;
 
 
 #define STRINGIFY(x) #x
-#define MACRO_STRINGIFY(x) STRINGIFY(x)
+#define MACRO_STRINGIFY(x) STRINGIFY(x) 
 
 namespace py = pybind11;
 

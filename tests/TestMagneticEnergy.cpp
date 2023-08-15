@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <typeinfo>
 #include <vector>
 
