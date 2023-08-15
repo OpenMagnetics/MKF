@@ -13,7 +13,7 @@
 using nlohmann::json_uri;
 using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
@@ -23,11 +23,11 @@ extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulatio
 extern std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
 extern OpenMagnetics::Constants constants;
 
-extern _1D::LinearInterpolator<double> bobbinFillingFactorInterpWidth;
-extern _1D::LinearInterpolator<double> bobbinFillingFactorInterpHeight;
-extern _1D::LinearInterpolator<double> bobbinWindingWindowInterpWidth;
-extern _1D::LinearInterpolator<double> bobbinWindingWindowInterpHeight;
-extern std::map<std::string, _1D::LinearInterpolator<double>> wireFillingFactorInterps;
+extern tk::spline bobbinFillingFactorInterpWidth;
+extern tk::spline bobbinFillingFactorInterpHeight;
+extern tk::spline bobbinWindingWindowInterpWidth;
+extern tk::spline bobbinWindingWindowInterpHeight;
+extern std::map<std::string, tk::spline> wireFillingFactorInterps;
 extern double minBobbinWidth;
 extern double maxBobbinWidth;
 extern double minBobbinHeight;

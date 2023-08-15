@@ -1,6 +1,6 @@
 #include "CoreWrapper.h"
 #include "WireWrapper.h"
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 
 #include "Defaults.h"
 #include "Constants.h"
@@ -2492,14 +2492,15 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
                 return b1.get_temperature() < b2.get_temperature();
         });
         size_t n = saturationData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+        std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            xx(i) = saturationData[i].get_temperature();
-            yy(i) = saturationData[i].get_magnetic_flux_density();
+            if (x.size() == 0 || saturationData[i].get_temperature() != x.back()) {
+                x.push_back(saturationData[i].get_temperature());
+                y.push_back(saturationData[i].get_magnetic_flux_density());
+            }
         }
-        interp.setData(xx, yy);
+        tk::spline interp(x, y, tk::spline::cspline, true);
         saturationMagneticFluxDensity = interp(temperature);
     }
 
@@ -2534,14 +2535,15 @@ double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
                 return b1.get_temperature() < b2.get_temperature();
         });
         size_t n = saturationData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+        std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            xx(i) = saturationData[i].get_temperature();
-            yy(i) = saturationData[i].get_magnetic_field();
+            if (x.size() == 0 || saturationData[i].get_temperature() != x.back()) {
+                x.push_back(saturationData[i].get_temperature());
+                y.push_back(saturationData[i].get_magnetic_field());
+            }
         }
-        interp.setData(xx, yy);
+        tk::spline interp(x, y, tk::spline::cspline, true);
         saturationMagneticFieldStrength = interp(temperature);
     }
 
@@ -2570,14 +2572,15 @@ double CoreWrapper::get_remanence(double temperature) {
                 return b1.get_temperature() < b2.get_temperature();
         });
         size_t n = remanenceData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+        std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            xx(i) = remanenceData[i].get_temperature();
-            yy(i) = remanenceData[i].get_magnetic_flux_density();
+            if (x.size() == 0 || remanenceData[i].get_temperature() != x.back()) {
+                x.push_back(remanenceData[i].get_temperature());
+                y.push_back(remanenceData[i].get_magnetic_flux_density());
+            }
         }
-        interp.setData(xx, yy);
+        tk::spline interp(x, y, tk::spline::cspline, true);
         remanence = interp(temperature);
     }
 
@@ -2606,14 +2609,13 @@ double CoreWrapper::get_coercive_force(double temperature) {
                 return b1.get_temperature() < b2.get_temperature();
         });
         size_t n = coerciveForceData.size();
-        _1D::CubicSplineInterpolator<double> interp;
-        _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+        std::vector<double> x, y;
 
         for (size_t i = 0; i < n; i++) {
-            xx(i) = coerciveForceData[i].get_temperature();
-            yy(i) = coerciveForceData[i].get_magnetic_field();
+            x.push_back(coerciveForceData[i].get_temperature());
+            y.push_back(coerciveForceData[i].get_magnetic_field());
         }
-        interp.setData(xx, yy);
+        tk::spline interp(x, y, tk::spline::cspline, true);
         coerciveForce = interp(temperature);
     }
 

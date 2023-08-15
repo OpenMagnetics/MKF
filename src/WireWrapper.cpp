@@ -6,9 +6,9 @@
 #include "Constants.h"
 #include "Utils.h"
 #include "WireWrapper.h"
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 
-std::map<std::string, _1D::LinearInterpolator<double>> wireFillingFactorInterps;
+std::map<std::string, tk::spline> wireFillingFactorInterps;
 std::map<std::string, double> minWireConductingWidths;
 std::map<std::string, double> maxWireConductingWidths;
 
@@ -77,7 +77,7 @@ namespace OpenMagnetics {
             }
 
             size_t n = wireConductingDiameters.size();
-            _1D::LinearInterpolator<double>::VectorType xx(n), yy(n);
+            std::vector<double> x, y;
 
             if (standard == WireStandard::NEMA_MW_1000_C) {
                 // Invert the vector so interpolation works fine
@@ -88,10 +88,13 @@ namespace OpenMagnetics {
             maxWireConductingWidths[key] = wireConductingDiameters[n - 1];
 
             for (size_t i = 0; i < n; i++) {
-                xx(i) = wireConductingDiameters[i];
-                yy(i) = fillingFactors[i];
+                if (x.size() == 0 || wireConductingDiameters[i] != x.back()) {
+                    x.push_back(wireConductingDiameters[i]);
+                    y.push_back(fillingFactors[i]);
+                }
             }
-            wireFillingFactorInterps[key].setData(xx, yy);
+            tk::spline interp(x, y, tk::spline::cspline, true);
+            wireFillingFactorInterps[key] = interp;
         }
 
 

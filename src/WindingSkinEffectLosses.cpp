@@ -1,5 +1,4 @@
 #include "WindingSkinEffectLosses.h"
-#include <libInterpolate/Interpolate.hpp>
 
 #include <cmath>
 #include <filesystem>

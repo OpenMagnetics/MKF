@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 #include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
@@ -77,8 +77,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
 
         if (has_temperature_dependency) {
             int n = permeability_points.size();
-            _1D::CubicSplineInterpolator<double> interp;
-            _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
+            std::vector<double> x, y;
 
             double temperature_point;
             if (!has_temperature_requirement)
@@ -87,11 +86,13 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
                 temperature_point = *temperature;
 
             for (int i = 0; i < n; i++) {
-                xx(i) = *permeability_points[i].get_temperature();
-                yy(i) = permeability_points[i].get_value();
+                if (x.size() == 0 || (*permeability_points[i].get_temperature()) != x.back()) {
+                    x.push_back(*permeability_points[i].get_temperature());
+                    y.push_back(permeability_points[i].get_value());
+                }
             }
 
-            interp.setData(xx, yy);
+            tk::spline interp(x, y, tk::spline::cspline_hermite);
             initial_permeability_value = std::max(1., interp(temperature_point));
         }
         else {

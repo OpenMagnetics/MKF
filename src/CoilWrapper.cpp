@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <cfloat>
 #include <cmath>
 #include <nlohmann/json-schema.hpp>
 #include <numbers>

@@ -5,6 +5,7 @@
 #include "InputsWrapper.h"
 
 #include <cmath>
+#include <cfloat>
 #include <complex>
 #include <cstdlib>
 #include <ctime>
@@ -12,7 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <libInterpolate/Interpolate.hpp>
+#include "spline.h"
 #include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
@@ -467,15 +468,8 @@ std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper c
                                         1.075, 1.15, 1.2,  1.25,  1.275, 1.35, 1.4,  1.45};
 
     size_t n = dutyCycleValues.size();
-    _1D::CubicSplineInterpolator<double> interp;
-    _1D::CubicSplineInterpolator<double>::VectorType xx(n), yy(n);
 
-    for (size_t i = 0; i < n; i++) {
-        xx(i) = dutyCycleValues[i];
-        yy(i) = factorValues[i];
-    }
-
-    interp.setData(xx, yy);
+    tk::spline interp(dutyCycleValues, factorValues, tk::spline::cspline, true);
     double dutyCycleFactor = std::max(1., interp(dutyCycle));
 
     double volumetricLosses = dutyCycleFactor * lossesFrameT1;
