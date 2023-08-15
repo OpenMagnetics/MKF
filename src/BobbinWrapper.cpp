@@ -1,22 +1,16 @@
 #include "Utils.h"
 #include "CoreWrapper.h"
 #include "BobbinWrapper.h"
-#include "json.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
 #include "spline.h"
-
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
-using json = nlohmann::json;
 
 tk::spline bobbinFillingFactorInterpWidth;
 tk::spline bobbinFillingFactorInterpHeight;
@@ -306,7 +300,7 @@ void load_interpolators() {
                 }
             }
 
-            bobbinFillingFactorInterpWidth = tk::spline(x, y, tk::spline::cspline, true);
+            bobbinFillingFactorInterpWidth = tk::spline(x, y, tk::spline::cspline_hermite, true);
 
         }
         {
@@ -326,7 +320,7 @@ void load_interpolators() {
                 }
             }
 
-            bobbinFillingFactorInterpHeight = tk::spline(x, y, tk::spline::cspline, true);
+            bobbinFillingFactorInterpHeight = tk::spline(x, y, tk::spline::cspline_hermite, true);
         }
 
         {
@@ -346,7 +340,7 @@ void load_interpolators() {
                 }
             }
 
-            bobbinWindingWindowInterpWidth = tk::spline(x, y, tk::spline::cspline, true);
+            bobbinWindingWindowInterpWidth = tk::spline(x, y, tk::spline::cspline_hermite, true);
         }
         {
             size_t n = auxWindingWindowHeight.size();
@@ -365,7 +359,7 @@ void load_interpolators() {
                 }
             }
 
-            bobbinWindingWindowInterpHeight = tk::spline(x, y, tk::spline::cspline, true);
+            bobbinWindingWindowInterpHeight = tk::spline(x, y, tk::spline::cspline_hermite, true);
         }
     }
 }
@@ -418,8 +412,6 @@ std::pair<double, double> BobbinWrapper::get_winding_window_dimensions(double co
 }
 
 BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
-    json bobbinJson;
-
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     WindingWindowElement windingWindowElement;
 
@@ -439,8 +431,6 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, dou
 }
 
 BobbinWrapper BobbinWrapper::create_quick_bobbin(MagneticCore core) {
-    json bobbinJson;
-
     CoreWrapper coreWrapper(core);
 
     if (coreWrapper.get_processed_description().value().get_winding_windows().size() > 1) {

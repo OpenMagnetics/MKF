@@ -93,7 +93,7 @@ namespace OpenMagnetics {
                     y.push_back(fillingFactors[i]);
                 }
             }
-            tk::spline interp(x, y, tk::spline::cspline, true);
+            tk::spline interp(x, y, tk::spline::cspline_hermite, true);
             wireFillingFactorInterps[key] = interp;
         }
 

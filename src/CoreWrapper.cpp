@@ -12,13 +12,10 @@
 #include <iostream>
 #include <limits>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
 
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -2500,7 +2497,7 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
                 y.push_back(saturationData[i].get_magnetic_flux_density());
             }
         }
-        tk::spline interp(x, y, tk::spline::cspline, true);
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
         saturationMagneticFluxDensity = interp(temperature);
     }
 
@@ -2543,7 +2540,7 @@ double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
                 y.push_back(saturationData[i].get_magnetic_field());
             }
         }
-        tk::spline interp(x, y, tk::spline::cspline, true);
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
         saturationMagneticFieldStrength = interp(temperature);
     }
 
@@ -2580,7 +2577,7 @@ double CoreWrapper::get_remanence(double temperature) {
                 y.push_back(remanenceData[i].get_magnetic_flux_density());
             }
         }
-        tk::spline interp(x, y, tk::spline::cspline, true);
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
         remanence = interp(temperature);
     }
 
@@ -2615,7 +2612,7 @@ double CoreWrapper::get_coercive_force(double temperature) {
             x.push_back(coerciveForceData[i].get_temperature());
             y.push_back(coerciveForceData[i].get_magnetic_field());
         }
-        tk::spline interp(x, y, tk::spline::cspline, true);
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
         coerciveForce = interp(temperature);
     }
 

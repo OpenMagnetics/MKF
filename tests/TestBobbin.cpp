@@ -6,10 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <vector>
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 #include <typeinfo>
 
@@ -36,7 +33,7 @@ SUITE(Bobbin) {
     TEST(Get_Filling_Factors_Bobbin_Medium) {
         auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.009, 0.0275);
 
-        double expectedValue = 0.737;
+        double expectedValue = 0.73;
 
         CHECK_CLOSE(expectedValue, fillingFactor, max_error * expectedValue);
     }
@@ -44,7 +41,7 @@ SUITE(Bobbin) {
     TEST(Get_Filling_Factors_Bobbin_Small) {
         auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.002, 0.005);
 
-        double expectedValue = 0.55;
+        double expectedValue = 0.53;
 
         CHECK_CLOSE(expectedValue, fillingFactor, max_error * expectedValue);
     }
@@ -77,7 +74,7 @@ SUITE(Bobbin) {
         auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.012, 0.027);
 
         double expectedWidthValue = 0.00985;
-        double expectedHeightValue = 0.0244;
+        double expectedHeightValue = 0.0239;
         double width = windingWindowDimensions.first;
         double height = windingWindowDimensions.second;
 

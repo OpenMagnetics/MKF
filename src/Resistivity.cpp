@@ -30,7 +30,7 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
             }
         }
 
-        tk::spline interp(x, y, tk::spline::cspline, true);
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
         resistivity = interp(temperature);
     }
     return resistivity;

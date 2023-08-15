@@ -467,9 +467,7 @@ std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper c
     std::vector<double> factorValues = {1.45,  1.4,  1.35, 1.275, 1.25,  1.2,  1.15, 1.075, 1,
                                         1.075, 1.15, 1.2,  1.25,  1.275, 1.35, 1.4,  1.45};
 
-    size_t n = dutyCycleValues.size();
-
-    tk::spline interp(dutyCycleValues, factorValues, tk::spline::cspline, true);
+    tk::spline interp(dutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
     double dutyCycleFactor = std::max(1., interp(dutyCycle));
 
     double volumetricLosses = dutyCycleFactor * lossesFrameT1;

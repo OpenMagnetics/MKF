@@ -8,16 +8,12 @@
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <numbers>
 #include <streambuf>
 #include <vector>
-using nlohmann::json_uri;
-using nlohmann::json_schema::json_validator;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-using nlohmann::json;
 
 class InputsWrapper : public Inputs {
   public:
