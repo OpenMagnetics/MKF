@@ -35,6 +35,7 @@ class InputsWrapper : public Inputs {
     static bool is_waveform_sampled(Waveform waveform);
     static Waveform get_sampled_waveform(Waveform waveform, double frequency);
     static Processed get_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
+    static Processed get_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
     static Harmonics get_harmonics_data(Waveform waveform, double frequency);
     SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);

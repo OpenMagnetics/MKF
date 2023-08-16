@@ -453,58 +453,174 @@ Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
                                             bool force = false,
                                             bool includeAdvancedData = true) {
+
+    auto harmonics = excitation.get_harmonics().value();
+    // auto waveform = excitation.get_waveform().value();
+    return InputsWrapper::get_processed_data(harmonics, sampledWaveform, includeAdvancedData);
+    // auto constants = Constants();
+    // Processed processed;
+    // std::vector<double> dataToProcess;
+    // auto sampledDataToProcess = sampledWaveform.get_data();
+
+    // if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.number_points_samples_waveforms) {
+    //     sampledDataToProcess = get_sampled_waveform(sampledWaveform, 0).get_data();
+    // }
+
+    // if (!excitation.get_processed() || force) {
+    //     auto waveform = excitation.get_waveform().value();
+    //     dataToProcess = waveform.get_data();
+
+    //     for (size_t i = 0; i < dataToProcess.size(); ++i) {
+    //         if (std::isnan(dataToProcess[i])) {
+    //             throw std::invalid_argument("Waveform data contains NaN");
+    //         }
+    //     }
+
+    //     std::string labelString;
+    //     if (waveform.get_ancillary_label()) {
+    //         labelString = waveform.get_ancillary_label().value();
+    //     }
+    //     else {
+    //         labelString = "custom";
+    //     }
+    //     std::transform(labelString.begin(), labelString.end(), labelString.begin(),
+    //                    [](unsigned char c) { return std::toupper(c); });
+    //     std::transform(labelString.begin(), labelString.end(), labelString.begin(),
+    //                    [](unsigned char c) { return (c=='-' || c==' ')? '_' : c; });
+    //     std::optional<WaveformLabel> label;
+    //     try {
+    //         label = magic_enum::enum_cast<WaveformLabel>(labelString);
+    //         processed.set_label(label.value());
+
+    //         processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
+    //                              sampledDataToProcess.size());
+    //         processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
+    //                                    *min_element(dataToProcess.begin(), dataToProcess.end()));
+    //         processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
+    //     }
+    //     catch (...) {
+    //         throw std::invalid_argument("Unknown excitation label: " + labelString);
+    //     }
+    // }
+    // else {
+    //     processed = excitation.get_processed().value();
+    // }
+
+    // if (includeAdvancedData) {
+    //     if (!processed.get_effective_frequency() || force) {
+    //         double effectiveFrequency = 0;
+    //         std::vector<double> dividend;
+    //         std::vector<double> divisor;
+
+    //         for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
+    //             double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
+    //             double timeSquared = pow(harmonics.get_frequencies()[i], 2);
+    //             dividend.push_back(dataSquared * timeSquared);
+    //             divisor.push_back(dataSquared);
+    //         }
+    //         double sumDivisor = std::reduce(divisor.begin(), divisor.end());
+    //         if (sumDivisor > 0)
+    //             effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
+
+    //         processed.set_effective_frequency(effectiveFrequency);
+    //     }
+    //     if (!processed.get_ac_effective_frequency() || force) {
+    //         double effectiveFrequency = 0;
+    //         std::vector<double> dividend;
+    //         std::vector<double> divisor;
+
+    //         for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
+    //             double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
+    //             double timeSquared = pow(harmonics.get_frequencies()[i], 2);
+    //             dividend.push_back(dataSquared * timeSquared);
+    //             divisor.push_back(dataSquared);
+    //         }
+    //         double sumDivisor = std::reduce(divisor.begin(), divisor.end());
+    //         if (sumDivisor > 0)
+    //             effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
+
+    //         processed.set_ac_effective_frequency(effectiveFrequency);
+    //     }
+
+    //     if (!processed.get_rms() || force) {
+    //         double rms = 0.0;
+    //         for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
+    //             rms += sampledDataToProcess[i] * sampledDataToProcess[i];
+    //         }
+    //         rms /= sampledDataToProcess.size();
+    //         rms = sqrt(rms);
+    //         processed.set_rms(rms);
+    //     }
+    //     if (!processed.get_thd() || force) {
+    //         std::vector<double> dividend;
+    //         double divisor = harmonics.get_amplitudes()[1];
+    //         double thd = 0;
+    //         for (size_t i = 2; i < harmonics.get_amplitudes().size(); ++i) {
+    //             dividend.push_back(pow(harmonics.get_amplitudes()[i], 2));
+    //         }
+
+    //         if (divisor > 0)
+    //             thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
+    //         processed.set_thd(thd);
+    //     }
+    // }
+
+    // return processed;
+}
+
+Processed InputsWrapper::get_processed_data(Harmonics harmonics,
+                                            Waveform waveform,
+                                            bool includeAdvancedData = true) {
     auto constants = Constants();
     Processed processed;
     std::vector<double> dataToProcess;
-    auto harmonics = excitation.get_harmonics().value();
-    auto sampledDataToProcess = sampledWaveform.get_data();
+    auto sampledDataToProcess = waveform.get_data();
 
-    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.number_points_samples_waveforms) {
-        sampledDataToProcess = get_sampled_waveform(sampledWaveform, 0).get_data();
+    if (waveform.get_time() && waveform.get_data().size() < constants.number_points_samples_waveforms) {
+        auto frequency = harmonics.get_frequencies()[1];
+        sampledDataToProcess = get_sampled_waveform(waveform, frequency).get_data();
     }
 
-    if (!excitation.get_processed() || force) {
-        auto waveform = excitation.get_waveform().value();
-        dataToProcess = waveform.get_data();
+    for (size_t i = 0; i < sampledDataToProcess.size(); ++i) {
+    }
 
-        for (size_t i = 0; i < dataToProcess.size(); ++i) {
-            if (std::isnan(dataToProcess[i])) {
-                throw std::invalid_argument("Waveform data contains NaN");
-            }
-        }
+    dataToProcess = waveform.get_data();
 
-        std::string labelString;
-        if (waveform.get_ancillary_label()) {
-            labelString = waveform.get_ancillary_label().value();
+    for (size_t i = 0; i < dataToProcess.size(); ++i) {
+        if (std::isnan(dataToProcess[i])) {
+            throw std::invalid_argument("Waveform data contains NaN");
         }
-        else {
-            labelString = "custom";
-        }
-        std::transform(labelString.begin(), labelString.end(), labelString.begin(),
-                       [](unsigned char c) { return std::toupper(c); });
-        std::transform(labelString.begin(), labelString.end(), labelString.begin(),
-                       [](unsigned char c) { return (c=='-' || c==' ')? '_' : c; });
-        std::optional<WaveformLabel> label;
-        try {
-            label = magic_enum::enum_cast<WaveformLabel>(labelString);
-            processed.set_label(label.value());
+    }
 
-            processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
-                                 sampledDataToProcess.size());
-            processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
-                                       *min_element(dataToProcess.begin(), dataToProcess.end()));
-            processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
-        }
-        catch (...) {
-            throw std::invalid_argument("Unknown excitation label: " + labelString);
-        }
+    std::string labelString;
+    if (waveform.get_ancillary_label()) {
+        labelString = waveform.get_ancillary_label().value();
     }
     else {
-        processed = excitation.get_processed().value();
+        labelString = "custom";
+    }
+    std::transform(labelString.begin(), labelString.end(), labelString.begin(),
+                   [](unsigned char c) { return std::toupper(c); });
+    std::transform(labelString.begin(), labelString.end(), labelString.begin(),
+                   [](unsigned char c) { return (c=='-' || c==' ')? '_' : c; });
+    std::optional<WaveformLabel> label;
+    try {
+        label = magic_enum::enum_cast<WaveformLabel>(labelString);
+        processed.set_label(label.value());
+
+        processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
+                             sampledDataToProcess.size());
+        processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
+                                   *min_element(dataToProcess.begin(), dataToProcess.end()));
+        processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
+    }
+    catch (...) {
+        throw std::invalid_argument("Unknown excitation label: " + labelString);
     }
 
+
     if (includeAdvancedData) {
-        if (!processed.get_effective_frequency() || force) {
+         {
             double effectiveFrequency = 0;
             std::vector<double> dividend;
             std::vector<double> divisor;
@@ -521,7 +637,7 @@ Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
 
             processed.set_effective_frequency(effectiveFrequency);
         }
-        if (!processed.get_ac_effective_frequency() || force) {
+        {
             double effectiveFrequency = 0;
             std::vector<double> dividend;
             std::vector<double> divisor;
@@ -539,7 +655,7 @@ Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
             processed.set_ac_effective_frequency(effectiveFrequency);
         }
 
-        if (!processed.get_rms() || force) {
+        {
             double rms = 0.0;
             for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
                 rms += sampledDataToProcess[i] * sampledDataToProcess[i];
@@ -548,7 +664,7 @@ Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
             rms = sqrt(rms);
             processed.set_rms(rms);
         }
-        if (!processed.get_thd() || force) {
+        {
             std::vector<double> dividend;
             double divisor = harmonics.get_amplitudes()[1];
             double thd = 0;

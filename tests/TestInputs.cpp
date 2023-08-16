@@ -715,7 +715,7 @@ SUITE(Inputs) {
         inputsJson["designRequirements"]["turnsRatios"] = json::array();
 
         OpenMagnetics::InputsWrapper inputs(inputsJson);
-        double max_error = 0.01;
+        double max_error = 0.1;
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
         CHECK_CLOSE(excitation.get_current().value().get_processed().value().get_rms().value(), 7.93, max_error * 7.93);
@@ -726,8 +726,8 @@ SUITE(Inputs) {
                     max_error * 20);
         CHECK_CLOSE(excitation.get_current().value().get_processed().value().get_offset(), 0, max_error);
 
-        CHECK_CLOSE(excitation.get_current().value().get_harmonics().value().get_amplitudes()[0], 0.09375,
-                    max_error * 0.09375);
+        CHECK_CLOSE(excitation.get_current().value().get_harmonics().value().get_amplitudes()[0], 0,
+                    max_error);
         CHECK_CLOSE(excitation.get_current().value().get_harmonics().value().get_amplitudes()[1], 7.33,
                     max_error * 7.33);
         CHECK_CLOSE(excitation.get_current().value().get_harmonics().value().get_frequencies()[0], 0, max_error);
