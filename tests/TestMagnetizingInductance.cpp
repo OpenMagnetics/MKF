@@ -625,7 +625,6 @@ SUITE(MagnetizingInductance) {
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
-
         OpenMagnetics::InputsWrapper inputs(inputsData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));

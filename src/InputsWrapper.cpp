@@ -221,7 +221,6 @@ bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
 
 Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency) {
     auto constants = Constants();
-
     std::vector<double> time;
     auto data = waveform.get_data();
     if (!waveform.get_time()) { // This means the waveform is equidistant
@@ -240,14 +239,21 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     std::vector<double> sampledData;
 
     for (int i = 0; i < constants.number_points_samples_waveforms; i++) {
+        bool found = false;
         for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
             if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
                 double proportion = (sampledTime[i] - time[interpIndex]) / (time[interpIndex + 1] - time[interpIndex]);
                 double interpPoint = std::lerp(data[interpIndex], data[interpIndex + 1], proportion);
                 sampledData.push_back(interpPoint);
+                found = true;
                 break;
             }
         }
+    }
+
+    if (sampledData.size() != constants.number_points_samples_waveforms) {
+        std::cout << "sampledData.size(): " << sampledData.size() << std::endl;
+        throw std::invalid_argument("Wrong number of sampled points");
     }
 
     Waveform sampledWaveform;
@@ -270,6 +276,7 @@ SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& ex
     Waveform voltageWaveform;
     SignalDescriptor voltageSignalDescriptor;
     Waveform resultWaveform(sourceWaveform);
+    auto originalTime = time;
 
     if (isWaveformSampled) {
         source.push_back(source[0]);
@@ -281,10 +288,10 @@ SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& ex
         time.push_back(time[time.size() - 1] + time[1]);
     }
 
-
     std::adjacent_difference(source.begin(), source.end(), source.begin());
     derivative = std::vector<double>(source.begin() + 1, source.end());
     std::adjacent_difference(time.begin(), time.end(), time.begin());
+
     derivativeTime = std::vector<double>(time.begin() + 1, time.end());
 
     for (size_t i = 0; i < derivative.size(); ++i) {
@@ -292,7 +299,7 @@ SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& ex
     }
 
     voltageWaveform.set_data(voltageData);
-    voltageWaveform.set_time(time);
+    voltageWaveform.set_time(originalTime);
     voltageSignalDescriptor.set_waveform(voltageWaveform);
     auto sampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, excitation.get_frequency());
     voltageSignalDescriptor.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
