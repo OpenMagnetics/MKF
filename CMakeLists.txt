@@ -26,6 +26,10 @@ if(NOT DEFINED MAS_DIRECTORY)
         set(MAS_DIRECTORY "${CMAKE_BINARY_DIR}/MAS/")
 endif(NOT DEFINED MAS_DIRECTORY)
 
+if(NOT DEFINED MAS_DIR)
+        set(MAS_DIR "${PROJECT_SOURCE_DIR}/../MAS")
+endif(NOT DEFINED MAS_DIR)
+
 include(FetchContent)
 
 if(INCLUDE_MKF_TESTS)
@@ -77,7 +81,6 @@ find_program(NAMES libgtest-dev REQUIRED)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 
-set(MAS_DIR "${PROJECT_SOURCE_DIR}/../MAS")
 
 
 add_custom_command(
