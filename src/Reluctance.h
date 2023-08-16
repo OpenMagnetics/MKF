@@ -186,8 +186,8 @@ class ReluctanceModel {
         calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
         return calculatedReluctance;
     }
-    virtual ReluctanceModel() = default;
-    virtual ~ReluctanceModel() = default;
+    ReluctanceModel() = default;
+    ~ReluctanceModel() = default;
 
 
     static std::shared_ptr<ReluctanceModel> factory(ReluctanceModels modelName);
