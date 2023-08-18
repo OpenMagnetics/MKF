@@ -187,7 +187,7 @@ class ReluctanceModel {
         return calculatedReluctance;
     }
     ReluctanceModel() = default;
-    ~ReluctanceModel() = default;
+    virtual ~ReluctanceModel() = default;
 
 
     static std::shared_ptr<ReluctanceModel> factory(ReluctanceModels modelName);

@@ -110,6 +110,79 @@ void load_databases(bool withAliases) {
     }
 }
 
+void load_databases(json data, bool withAliases) {
+    for (auto& element : data["coreMaterials"].items()) {
+        json jf = element.value();
+        try {
+            CoreMaterial coreMaterial(jf);
+            coreMaterialDatabase[jf["name"]] = coreMaterial;
+        }
+        catch (...) {
+            std::cout << "error: " << jf << std::endl;
+            continue;
+        }
+    }
+
+    for (auto& element : data["coreShapes"].items()) {
+        json jf = element.value();
+
+        int familySubtype = 1;
+        if (jf["familySubtype"] != nullptr) {
+            familySubtype = jf["familySubtype"];
+        }
+
+        jf["familySubtype"] = std::to_string(familySubtype);
+        std::string family = jf["family"];
+        std::transform(family.begin(), family.end(), family.begin(), ::toupper);
+        std::replace(family.begin(), family.end(), ' ', '_');
+        jf["family"] = family;
+        CoreShape coreShape;
+        from_json(jf, coreShape);
+
+        coreShape.set_family(magic_enum::enum_cast<CoreShapeFamily>(family).value());
+
+        coreShapeDatabase[jf["name"]] = coreShape;
+
+        if (withAliases) {
+            for (auto& alias : jf["aliases"]) {
+                coreShapeDatabase[alias] = coreShape;
+            }
+        }
+    }
+
+    for (auto& element : data["wires"].items()) {
+        json jf = element.value();
+        std::string standardName;
+        if (jf["standardName"].is_string()){
+            standardName = jf["standardName"];
+        }
+        else {
+            standardName = std::to_string(jf["standardName"].get<int>());
+        }
+        jf["standardName"] = standardName;
+        WireS wire(jf);
+        wireDatabase[jf["name"]] = wire;
+    }
+
+    for (auto& element : data["bobbins"].items()) {
+        json jf = element.value();
+        BobbinWrapper bobbin(jf);
+        bobbinDatabase[jf["name"]] = bobbin;
+    }
+
+    for (auto& element : data["insulationMaterials"].items()) {
+        json jf = element.value();
+        InsulationMaterialWrapper insulationMaterial(jf);
+        insulationMaterialDatabase[jf["name"]] = insulationMaterial;
+    }
+
+    for (auto& element : data["wireMaterials"].items()) {
+        json jf = element.value();
+        WireMaterial wireMaterial(jf);
+        wireMaterialDatabase[jf["name"]] = wireMaterial;
+    }
+}
+
 std::vector<std::string> get_material_names() {
     if (coreMaterialDatabase.empty()) {
         load_databases();
