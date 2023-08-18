@@ -689,3 +689,20 @@ SUITE(ReluctanceUngappedCore) {
         CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt200);
     }
 }
+
+
+SUITE(WebReluctance) {
+    TEST(Test_Web_0) {
+        std::string coreGapData = R"({"area":0.000123,"coordinates":[0,0.0005,0],"distanceClosestNormalSurface":0.014098,"distanceClosestParallelSurface":0.0088,"length":0.000005,"sectionDimensions":[0.0125,0.0125],"shape":"round","type":"subtractive"})";
+        std::string modelNameString = "Zhang";
+        std::string modelNameStringUpper = modelNameString;
+        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
+        auto modelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper);
+
+        auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName.value());
+
+        OpenMagnetics::CoreGap coreGap(json::parse(coreGapData));
+
+        auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap);
+    }
+}

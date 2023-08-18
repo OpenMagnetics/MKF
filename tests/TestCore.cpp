@@ -2012,4 +2012,14 @@ SUITE(CoreFunctionalDescription) {
         auto function_description = core.get_functional_description();
         CHECK_EQUAL(function_description.get_gapping().size(), 2u);
     }
+
+    TEST(Web_8) {
+        // Check for segmentation fault
+        auto coreJson = json::parse(R"({"functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": "U 80/150/30", "gapping": [{"length": 0.003, "type": "additive", "coordinates": [0, 0, 0 ] }, {"length": 0.003, "type": "additive", "coordinates": [0.0595, 0, 0 ] } ], "numberStacks": 1 }, "name": "My Core", "geometricalDescription": null, "processedDescription": null })");
+
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto function_description = core.get_functional_description();
+        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
+    }
 }

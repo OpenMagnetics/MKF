@@ -26,7 +26,7 @@ class ResistivityModel {
   protected:
   public:
     ResistivityModel() = default;
-    ~ResistivityModel() = default;
+    virtual ~ResistivityModel() = default;
     virtual double get_resistivity(ResistivityMaterial materialData, double temperature) = 0;
     static std::shared_ptr<ResistivityModel> factory(ResistivityModels modelName);
 };

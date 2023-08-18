@@ -60,6 +60,7 @@ OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string n
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
 
 void load_databases(bool withAliases=true);
+void load_databases(json data, bool withAliases=true);
 
 std::vector<std::string> get_material_names();
 std::vector<std::string> get_shape_names();
