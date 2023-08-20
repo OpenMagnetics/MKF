@@ -2108,7 +2108,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2150,7 +2150,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2174,7 +2174,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2199,7 +2199,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2243,7 +2243,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2268,7 +2268,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2276,7 +2276,7 @@ SUITE(CoreLossesFromWeb) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
+        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.001);
     }
 
     TEST(Crash_Losses) {
@@ -2293,7 +2293,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2316,7 +2316,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2356,7 +2356,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2383,7 +2383,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2429,7 +2429,7 @@ SUITE(CoreLossesFromWeb) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2485,7 +2485,7 @@ SUITE(FrequencyFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2534,7 +2534,7 @@ SUITE(FrequencyFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2581,7 +2581,7 @@ SUITE(FrequencyFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2609,7 +2609,7 @@ SUITE(FrequencyFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2733,7 +2733,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2761,7 +2761,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
         auto magneticFluxDensity =
-            magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();

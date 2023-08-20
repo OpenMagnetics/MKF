@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <complex>
 #include <filesystem>
@@ -100,13 +101,11 @@ double InputsWrapper::try_get_duty_cycle(Waveform waveform, double frequency) {
         }
     }
 
-    auto sampledWaveform = InputsWrapper::get_sampled_waveform(waveform, frequency);
+    auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
     std::vector<double> data = sampledWaveform.get_data();
     std::vector<double> diff_data;
     std::vector<double> diff_diff_data;
 
-    data.push_back(data[0]);
-    data.push_back(data[1]);
     for (size_t i = 0; i < data.size() - 1; ++i) {
         diff_data.push_back(roundFloat(data[i + 1] - data[i], 9));
     }
@@ -115,9 +114,16 @@ double InputsWrapper::try_get_duty_cycle(Waveform waveform, double frequency) {
     }
 
     auto constants = Constants();
-    auto maximum = std::max_element(diff_diff_data.rbegin(), diff_diff_data.rend()).base();
-    auto maximum_index = std::distance(diff_diff_data.begin(), std::prev(maximum));
-    auto dutyCycle = roundFloat((maximum_index + 1) / constants.number_points_samples_waveforms, 2);
+    double maximum = *max_element(diff_diff_data.begin(), diff_diff_data.end());
+    size_t maximum_index = 0;
+    for (size_t i = 0; i < diff_diff_data.size(); ++i)
+    {
+        if (diff_diff_data[i] == maximum) {
+            maximum_index = i;
+            break;
+        }
+    }
+    auto dutyCycle = roundFloat((maximum_index + 1.0) / constants.number_points_samples_waveforms, 2);
     return dutyCycle;
 }
 std::vector<double> linear_spaced_array(double startingValue, double endingValue, std::size_t numberPoints) {
@@ -219,7 +225,7 @@ bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
 
 }
 
-Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency) {
+Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double frequency) {
     auto constants = Constants();
     std::vector<double> time;
     auto data = waveform.get_data();
@@ -252,7 +258,6 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     }
 
     if (sampledData.size() != constants.number_points_samples_waveforms) {
-        std::cout << "sampledData.size(): " << sampledData.size() << std::endl;
         throw std::invalid_argument("Wrong number of sampled points");
     }
 
@@ -262,7 +267,7 @@ Waveform InputsWrapper::get_sampled_waveform(Waveform waveform, double frequency
     return sampledWaveform;
 }
 
-SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& excitation,
+SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
     Waveform sourceWaveform = excitation.get_current().value().get_waveform().value();
@@ -294,17 +299,31 @@ SignalDescriptor InputsWrapper::get_induced_voltage(OperatingPointExcitation& ex
 
     derivativeTime = std::vector<double>(time.begin() + 1, time.end());
 
-    for (size_t i = 0; i < derivative.size(); ++i) {
-        voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+    if (isWaveformSampled) {
+        for (size_t i = 0; i < derivative.size(); ++i) {
+            voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+        }
+        voltageWaveform.set_time(originalTime);
+    }
+    else {
+        std::vector<double> finalTime;
+        for (size_t i = 0; i < derivative.size() - 1; ++i) {
+            voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+            voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+            finalTime.push_back(originalTime[i]);
+            finalTime.push_back(originalTime[i + 1]);
+        }
+        finalTime.push_back(originalTime[derivative.size() - 1]);
+        voltageData.push_back(magnetizingInductance * derivative[derivative.size() - 1] / derivativeTime[derivative.size() - 1]);
+        voltageWaveform.set_time(finalTime);
     }
 
     voltageWaveform.set_data(voltageData);
-    voltageWaveform.set_time(originalTime);
     voltageSignalDescriptor.set_waveform(voltageWaveform);
-    auto sampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, excitation.get_frequency());
-    voltageSignalDescriptor.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
+    auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
+    voltageSignalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
     voltageSignalDescriptor.set_processed(
-        get_processed_data(voltageSignalDescriptor, sampledWaveform, true, true));
+        calculate_processed_data(voltageSignalDescriptor, sampledWaveform, true, true));
 
     resultWaveform.set_data(derivative);
     return voltageSignalDescriptor;
@@ -323,13 +342,13 @@ SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signal
 
     waveform.set_data(modified_data);
     signalDescriptor.set_waveform(waveform);
-    auto sampledWaveform = InputsWrapper::get_sampled_waveform(waveform, frequency);
-    signalDescriptor.set_harmonics(get_harmonics_data(sampledWaveform, frequency));
-    signalDescriptor.set_processed(get_processed_data(signalDescriptor, sampledWaveform, true, true));
+    auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
+    signalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, frequency));
+    signalDescriptor.set_processed(calculate_processed_data(signalDescriptor, sampledWaveform, true, true));
     return signalDescriptor;
 }
 
-Waveform get_magnetizing_current_waveform(Waveform sourceWaveform,
+Waveform calculate_magnetizing_current_waveform(Waveform sourceWaveform,
                                           double frequency,
                                           double magnetizingInductance,
                                           double dcCurrent = 0) {
@@ -407,9 +426,9 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
             }
             else {
                 auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
-                auto sampledWaveform = get_sampled_waveform(voltageWaveform, excitation.get_frequency());
+                auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
                 excitation.set_current(
-                    get_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
+                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
             }
             processed_excitations_per_winding.push_back(excitation);
         }
@@ -449,126 +468,16 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
     return result;
 }
 
-Processed InputsWrapper::get_processed_data(SignalDescriptor excitation,
+Processed InputsWrapper::calculate_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
                                             bool force = false,
                                             bool includeAdvancedData = true) {
 
     auto harmonics = excitation.get_harmonics().value();
-    // auto waveform = excitation.get_waveform().value();
-    return InputsWrapper::get_processed_data(harmonics, sampledWaveform, includeAdvancedData);
-    // auto constants = Constants();
-    // Processed processed;
-    // std::vector<double> dataToProcess;
-    // auto sampledDataToProcess = sampledWaveform.get_data();
-
-    // if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.number_points_samples_waveforms) {
-    //     sampledDataToProcess = get_sampled_waveform(sampledWaveform, 0).get_data();
-    // }
-
-    // if (!excitation.get_processed() || force) {
-    //     auto waveform = excitation.get_waveform().value();
-    //     dataToProcess = waveform.get_data();
-
-    //     for (size_t i = 0; i < dataToProcess.size(); ++i) {
-    //         if (std::isnan(dataToProcess[i])) {
-    //             throw std::invalid_argument("Waveform data contains NaN");
-    //         }
-    //     }
-
-    //     std::string labelString;
-    //     if (waveform.get_ancillary_label()) {
-    //         labelString = waveform.get_ancillary_label().value();
-    //     }
-    //     else {
-    //         labelString = "custom";
-    //     }
-    //     std::transform(labelString.begin(), labelString.end(), labelString.begin(),
-    //                    [](unsigned char c) { return std::toupper(c); });
-    //     std::transform(labelString.begin(), labelString.end(), labelString.begin(),
-    //                    [](unsigned char c) { return (c=='-' || c==' ')? '_' : c; });
-    //     std::optional<WaveformLabel> label;
-    //     try {
-    //         label = magic_enum::enum_cast<WaveformLabel>(labelString);
-    //         processed.set_label(label.value());
-
-    //         processed.set_offset(std::accumulate(std::begin(sampledDataToProcess), std::end(sampledDataToProcess), 0.0) /
-    //                              sampledDataToProcess.size());
-    //         processed.set_peak_to_peak(*max_element(dataToProcess.begin(), dataToProcess.end()) -
-    //                                    *min_element(dataToProcess.begin(), dataToProcess.end()));
-    //         processed.set_peak(*max_element(dataToProcess.begin(), dataToProcess.end()));
-    //     }
-    //     catch (...) {
-    //         throw std::invalid_argument("Unknown excitation label: " + labelString);
-    //     }
-    // }
-    // else {
-    //     processed = excitation.get_processed().value();
-    // }
-
-    // if (includeAdvancedData) {
-    //     if (!processed.get_effective_frequency() || force) {
-    //         double effectiveFrequency = 0;
-    //         std::vector<double> dividend;
-    //         std::vector<double> divisor;
-
-    //         for (size_t i = 0; i < harmonics.get_amplitudes().size(); ++i) {
-    //             double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-    //             double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-    //             dividend.push_back(dataSquared * timeSquared);
-    //             divisor.push_back(dataSquared);
-    //         }
-    //         double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-    //         if (sumDivisor > 0)
-    //             effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
-
-    //         processed.set_effective_frequency(effectiveFrequency);
-    //     }
-    //     if (!processed.get_ac_effective_frequency() || force) {
-    //         double effectiveFrequency = 0;
-    //         std::vector<double> dividend;
-    //         std::vector<double> divisor;
-
-    //         for (size_t i = 1; i < harmonics.get_amplitudes().size(); ++i) {
-    //             double dataSquared = pow(harmonics.get_amplitudes()[i], 2);
-    //             double timeSquared = pow(harmonics.get_frequencies()[i], 2);
-    //             dividend.push_back(dataSquared * timeSquared);
-    //             divisor.push_back(dataSquared);
-    //         }
-    //         double sumDivisor = std::reduce(divisor.begin(), divisor.end());
-    //         if (sumDivisor > 0)
-    //             effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
-
-    //         processed.set_ac_effective_frequency(effectiveFrequency);
-    //     }
-
-    //     if (!processed.get_rms() || force) {
-    //         double rms = 0.0;
-    //         for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
-    //             rms += sampledDataToProcess[i] * sampledDataToProcess[i];
-    //         }
-    //         rms /= sampledDataToProcess.size();
-    //         rms = sqrt(rms);
-    //         processed.set_rms(rms);
-    //     }
-    //     if (!processed.get_thd() || force) {
-    //         std::vector<double> dividend;
-    //         double divisor = harmonics.get_amplitudes()[1];
-    //         double thd = 0;
-    //         for (size_t i = 2; i < harmonics.get_amplitudes().size(); ++i) {
-    //             dividend.push_back(pow(harmonics.get_amplitudes()[i], 2));
-    //         }
-
-    //         if (divisor > 0)
-    //             thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
-    //         processed.set_thd(thd);
-    //     }
-    // }
-
-    // return processed;
+    return InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData);
 }
 
-Processed InputsWrapper::get_processed_data(Harmonics harmonics,
+Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
                                             Waveform waveform,
                                             bool includeAdvancedData = true) {
     auto constants = Constants();
@@ -578,7 +487,7 @@ Processed InputsWrapper::get_processed_data(Harmonics harmonics,
 
     if (waveform.get_time() && waveform.get_data().size() < constants.number_points_samples_waveforms) {
         auto frequency = harmonics.get_frequencies()[1];
-        sampledDataToProcess = get_sampled_waveform(waveform, frequency).get_data();
+        sampledDataToProcess = calculate_sampled_waveform(waveform, frequency).get_data();
     }
 
     for (size_t i = 0; i < sampledDataToProcess.size(); ++i) {
@@ -654,7 +563,11 @@ Processed InputsWrapper::get_processed_data(Harmonics harmonics,
 
             processed.set_ac_effective_frequency(effectiveFrequency);
         }
-
+        {
+            auto frequency = harmonics.get_frequencies()[1];
+            double dutyCycle = try_get_duty_cycle(waveform, frequency);
+            processed.set_duty_cycle(dutyCycle);
+        }
         {
             double rms = 0.0;
             for (int i = 0; i < int(sampledDataToProcess.size()); ++i) {
@@ -681,7 +594,7 @@ Processed InputsWrapper::get_processed_data(Harmonics harmonics,
     return processed;
 }
 
-Harmonics InputsWrapper::get_harmonics_data(Waveform waveform, double frequency) {
+Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double frequency) {
     auto dataToProcess = waveform.get_data();
     Harmonics harmonics;
 
@@ -707,56 +620,72 @@ Harmonics InputsWrapper::get_harmonics_data(Waveform waveform, double frequency)
     return harmonics;
 }
 
-SignalDescriptor InputsWrapper::get_magnetizing_current(OperatingPointExcitation& excitation,
+Waveform compress_waveform(Waveform waveform) {
+    Waveform compressedWaveform;
+    auto data = waveform.get_data();
+    data.push_back(data[0]);
+    auto time = waveform.get_time().value();
+    time.push_back(time[time.size() - 1] + (time[time.size() - 1] - time[time.size() - 2]));
+    std::vector<double> compressedData;
+    std::vector<double> compressedTime;
+    double previousSlope = DBL_MAX;
+    for (size_t i = 0; i < waveform.get_data().size() - 1; ++i){
+        auto slope = (data[i + 1] - data[i]) / (time[i + 1] - time[i]);
+        if (fabs(slope - previousSlope) / previousSlope > 0.01) {
+            compressedData.push_back(data[i]);
+            compressedTime.push_back(time[i]);
+        }
+        previousSlope = slope;
+    }
+    compressedData.push_back(data.back());
+    compressedTime.push_back(time.back());
+    waveform.set_data(compressedData);
+    waveform.set_time(compressedTime);
+    return waveform;
+}
+
+SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform sampledWaveform,
-                                                                double magnetizingInductance) {
+                                                                double magnetizingInductance,
+                                                                bool compress) {
     double dcCurrent = 0;
     if (excitation.get_current()) {
         if (!excitation.get_current().value().get_processed()) {
             auto currentExcitation = excitation.get_current().value();
             auto currentExcitationWaveform = currentExcitation.get_waveform().value();
-            auto sampledCurrentWaveform = get_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
-            currentExcitation.set_harmonics(get_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-            currentExcitation.set_processed(get_processed_data(currentExcitation, sampledCurrentWaveform));
+            auto sampledCurrentWaveform = calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
+            currentExcitation.set_harmonics(calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform));
             excitation.set_current(currentExcitation);
         }
         dcCurrent = excitation.get_current().value().get_processed().value().get_offset();
     }
 
     auto sampledMagnetizingCurrentWaveform =
-        get_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
+        calculate_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
     SignalDescriptor magnetizing_current_excitation;
 
-    magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
+    if (compress){
+        magnetizing_current_excitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
+    }
+    else {
+        magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
+    }
     magnetizing_current_excitation.set_harmonics(
-        get_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+        calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
     magnetizing_current_excitation.set_processed(
-        get_processed_data(magnetizing_current_excitation, sampledMagnetizingCurrentWaveform));
+        calculate_processed_data(magnetizing_current_excitation, sampledMagnetizingCurrentWaveform));
     return magnetizing_current_excitation;
 }
 
-SignalDescriptor InputsWrapper::get_magnetizing_current(OperatingPointExcitation& excitation,
-                                                                double magnetizingInductance) {
-    double dcCurrent = 0;
-    if (excitation.get_current()) {
-        dcCurrent = excitation.get_current().value().get_processed().value().get_offset();
-    }
-
+SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                                double magnetizingInductance,
+                                                                bool compress) {
     auto voltage_excitation = excitation.get_voltage().value();
     voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
     auto waveform = voltage_excitation.get_waveform().value();
-    auto sampledWaveform = get_sampled_waveform(waveform, excitation.get_frequency());
-
-    auto sampledMagnetizingCurrentWaveform =
-        get_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
-    SignalDescriptor magnetizing_current_excitation;
-
-    magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
-    magnetizing_current_excitation.set_harmonics(
-        get_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
-    magnetizing_current_excitation.set_processed(
-        get_processed_data(magnetizing_current_excitation, sampledMagnetizingCurrentWaveform));
-    return magnetizing_current_excitation;
+    auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+    return calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, compress);
 }
 
 OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance) {
@@ -767,9 +696,9 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             auto current_excitation = excitation.get_current().value();
             current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
             auto waveform = current_excitation.get_waveform().value();
-            auto sampledWaveform = get_sampled_waveform(waveform, excitation.get_frequency());
-            current_excitation.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            current_excitation.set_processed(get_processed_data(current_excitation, sampledWaveform));
+            auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            current_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform));
             excitation.set_current(current_excitation);
         }
         // Here we processed this excitation voltage
@@ -777,14 +706,14 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             auto voltage_excitation = excitation.get_voltage().value();
             voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
             auto waveform = voltage_excitation.get_waveform().value();
-            auto sampledWaveform = get_sampled_waveform(waveform, excitation.get_frequency());
-            voltage_excitation.set_harmonics(get_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            voltage_excitation.set_processed(get_processed_data(voltage_excitation, sampledWaveform));
+            auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            voltage_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            voltage_excitation.set_processed(calculate_processed_data(voltage_excitation, sampledWaveform));
             excitation.set_voltage(voltage_excitation);
 
             if (!excitation.get_magnetizing_current()) {
                 excitation.set_magnetizing_current(
-                    get_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
+                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
             }
         }
         processed_excitations_per_winding.push_back(excitation);
@@ -851,7 +780,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
 
     std::vector<OperatingPointExcitation> excitationsWithDcCurrent;
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-        auto magnetizingCurrentSignalDescriptor = get_magnetizing_current(excitation, magnetizingInductance);
+        auto magnetizingCurrentSignalDescriptor = calculate_magnetizing_current(excitation, magnetizingInductance);
         excitation.set_current(
             InputsWrapper::add_offset_to_excitation(magnetizingCurrentSignalDescriptor, dcCurrent, frequency));
         excitation.set_magnetizing_current(
@@ -868,11 +797,11 @@ OperatingPoint InputsWrapper::get_operating_point(size_t index) {
     return get_mutable_operating_points()[index];
 }
 
-OperatingPointExcitation InputsWrapper::get_winding_excitation(size_t operatingPointIndex, size_t windingIndex) {
+OperatingPointExcitation InputsWrapper::get_winding_excitation(size_t operatingPointIndex=0, size_t windingIndex=0) {
     return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 }
 
-OperatingPointExcitation InputsWrapper::get_primary_excitation(size_t operatingPointIndex) {
+OperatingPointExcitation InputsWrapper::get_primary_excitation(size_t operatingPointIndex=0) {
     return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0];
 }
 
@@ -890,10 +819,10 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
         auto current = operatingPoint->get_excitations_per_winding()[0].get_current().value();
         auto currentWaveform = current.get_waveform().value();
         if (!is_size_power_of_2(currentWaveform.get_data())) {
-            auto currentSampledWaveform = InputsWrapper::get_sampled_waveform(currentWaveform, frequency);
+            auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
             current.set_waveform(currentSampledWaveform);
-            current.set_harmonics(get_harmonics_data(currentSampledWaveform, frequency));
-            current.set_processed(get_processed_data(current, currentSampledWaveform, true));
+            current.set_harmonics(calculate_harmonics_data(currentSampledWaveform, frequency));
+            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true));
             operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
 
 
@@ -906,21 +835,21 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
         auto voltage = operatingPoint->get_excitations_per_winding()[0].get_voltage().value();
         auto voltageWaveform = voltage.get_waveform().value();
         if (!is_size_power_of_2(voltageWaveform.get_data())) {
-            auto voltageSampledWaveform = InputsWrapper::get_sampled_waveform(voltageWaveform, frequency);
+            auto voltageSampledWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
             voltage.set_waveform(voltageSampledWaveform);
             operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(voltage);
         }
     }
 }
 
-double InputsWrapper::get_waveform_coefficient(OperatingPoint* operatingPoint) {
+double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
     auto constants = Constants();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
     double frequency = excitation.get_frequency();
     Waveform sampledWaveform = excitation.get_voltage().value().get_waveform().value();
 
     if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.number_points_samples_waveforms) {
-        sampledWaveform = get_sampled_waveform(sampledWaveform, frequency);
+        sampledWaveform = calculate_sampled_waveform(sampledWaveform, frequency);
     }
 
     std::vector<double> source = sampledWaveform.get_data();
@@ -940,6 +869,30 @@ double InputsWrapper::get_waveform_coefficient(OperatingPoint* operatingPoint) {
 
     double waveformCoefficient = 2 * voltageRms / (frequency * integral);
     return waveformCoefficient;
+}
+
+double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation excitation) {
+    double frequency = excitation.get_frequency();
+    Waveform voltageSampledWaveform = excitation.get_voltage().value().get_waveform().value();
+    Waveform currentSampledWaveform = excitation.get_current().value().get_waveform().value();
+
+    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != constants.number_points_samples_waveforms) {
+        voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency);
+    }
+
+    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != constants.number_points_samples_waveforms) {
+        currentSampledWaveform = calculate_sampled_waveform(currentSampledWaveform, frequency);
+    }
+
+    std::vector<double> powerPoints;
+
+    for (size_t i = 0; i < constants.number_points_samples_waveforms; i++) {
+        powerPoints.push_back(fabs(voltageSampledWaveform.get_data()[i] * currentSampledWaveform.get_data()[i]));
+    }
+
+    double instantaneousPower = std::accumulate(std::begin(powerPoints), std::end(powerPoints), 0.0) /
+                             powerPoints.size();
+    return instantaneousPower;
 }
 
 } // namespace OpenMagnetics

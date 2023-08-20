@@ -599,7 +599,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         return (magneticFieldStrength + coerciveForce) / (a + b * fabs(magneticFieldStrength + coerciveForce));
     };
 
-    auto get_magnetic_flux_density = [&](double magneticFieldStrength, bool loop_is_upper = true) {
+    auto calculate_magnetic_flux_density = [&](double magneticFieldStrength, bool loop_is_upper = true) {
         double magneticFluxDensity;
         if (loop_is_upper) {
             if (-saturationMagneticFieldStrength <= magneticFieldStrength && magneticFieldStrength < -coerciveForce) {
@@ -621,11 +621,11 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         return magneticFluxDensity;
     };
 
-    auto get_magnetic_flux_density_waveform = [&](std::vector<double> magneticFieldStrength_waveform,
+    auto calculate_magnetic_flux_density_waveform = [&](std::vector<double> magneticFieldStrength_waveform,
                                                   bool loop_is_upper = true) {
         std::vector<double> magneticFluxDensityWaveform;
         for (auto& magneticFieldStrength : magneticFieldStrength_waveform) {
-            double magneticFluxDensity = get_magnetic_flux_density(magneticFieldStrength, loop_is_upper);
+            double magneticFluxDensity = calculate_magnetic_flux_density(magneticFieldStrength, loop_is_upper);
             magneticFluxDensityWaveform.push_back(magneticFluxDensity);
         }
 
@@ -633,9 +633,9 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     };
 
     std::vector<double> upperMagneticFluxDensityWaveform =
-        get_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
+        calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, true);
     std::vector<double> lowerMagneticFluxDensityWaveform =
-        get_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
+        calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
     std::vector<double> difference;
 
     _hysteresisMajorH = magneticFieldStrengthPoints;

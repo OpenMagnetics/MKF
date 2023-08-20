@@ -23,6 +23,9 @@ namespace OpenMagnetics {
 
 std::vector<std::pair<MasWrapper, double>> normalize_scoring(std::vector<std::pair<MasWrapper, std::pair<double, double>>> masMagneticsWithScoring, double weight, bool invertScoring = true) {
     std::vector<std::pair<MasWrapper, double>> normalizedAndOrderedmasMagneticsWithScoring;
+    if (masMagneticsWithScoring.size() == 0) {
+        return normalizedAndOrderedmasMagneticsWithScoring;
+    }
     double maxScoring = (*std::max_element(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](const std::pair<MasWrapper, std::pair<double, double>>& b1, const std::pair<MasWrapper, std::pair<double, double>>& b2) {
         return b1.second.second < b2.second.second;
     })).second.second;
@@ -59,15 +62,20 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
-    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value().get_data();
-    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value().get_data();
+    auto voltageWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value();
+    auto currentWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
 
     std::map<std::string, double> materialScaledMagneticFluxDensities;
     std::map<std::string, double> bobbinFillingFactors;
 
-    if (voltageWaveformData.size() != currentWaveformData.size()) {
-        throw std::runtime_error("voltage and current waveform should have the same number of points");
+    if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
+        voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
+        currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
     }
+
+    std::vector<double> voltageWaveformData = voltageWaveform.get_data();
+    std::vector<double> currentWaveformData = currentWaveform.get_data();
 
     double powerMean = 0;
     for (size_t i = 0; i < voltageWaveformData.size(); ++i)
@@ -76,7 +84,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     }
     powerMean /= voltageWaveformData.size();
 
-    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
     double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
@@ -256,8 +263,17 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, std::pair<double, double>>> filteredMagneticsWithBothScoring;
 
-    std::vector<double> voltageWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value().get_data();
-    std::vector<double> currentWaveformData = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value().get_data();
+    auto voltageWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_voltage().value().get_waveform().value();
+    auto currentWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current().value().get_waveform().value();
+    double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_frequency();
+
+    if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
+        voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
+        currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
+    }
+
+    std::vector<double> voltageWaveformData = voltageWaveform.get_data();
+    std::vector<double> currentWaveformData = currentWaveform.get_data();
 
     double powerMean = 0;
     for (size_t i = 0; i < voltageWaveformData.size(); ++i)
@@ -309,7 +325,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             currentTotalLosses = newTotalLosses;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             winding.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-            auto aux = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
+            auto aux = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
             auto magnetizingInductance = aux.first;
             auto magneticFluxDensity = aux.second;
 
@@ -399,7 +415,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
 
         double coreLosses;
         if (!mas.get_outputs()[0].get_core_losses()) {
-            auto magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+            auto magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
             excitation.set_magnetic_flux_density(magneticFluxDensity);
             auto coreLossesMethods = core.get_available_core_losses_methods();
             if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
@@ -578,7 +594,7 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
     MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i){
         CoreWrapper core = CoreWrapper((*masMagneticsWithScoring)[i].first.get_magnetic().get_core());
-        double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
         (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(numberTurns);
     }
 }
