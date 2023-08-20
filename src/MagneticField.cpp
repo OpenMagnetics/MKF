@@ -11,7 +11,7 @@
 
 namespace OpenMagnetics {
 
-SignalDescriptor MagneticField::get_magnetic_flux(SignalDescriptor magnetizingCurrent,
+SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                           double reluctance,
                                                           double numberTurns,
                                                           double frequency) {
@@ -27,7 +27,7 @@ SignalDescriptor MagneticField::get_magnetic_flux(SignalDescriptor magnetizingCu
         }
     }
     else {
-         magnetizingCurrentWaveform = InputsWrapper::get_sampled_waveform(magnetizingCurrentWaveform, frequency);
+         magnetizingCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrentWaveform, frequency);
     }
 
     for (auto& datum : magnetizingCurrentWaveform.get_data()) {
@@ -40,12 +40,12 @@ SignalDescriptor MagneticField::get_magnetic_flux(SignalDescriptor magnetizingCu
 
     magneticFluxWaveform.set_data(magneticFluxData);
     magneticFlux.set_waveform(magneticFluxWaveform);
-    // magneticFlux.set_harmonics(InputsWrapper::get_harmonics_data(magneticFluxWaveform, frequency));
-    // magneticFlux.set_processed(InputsWrapper::get_processed_data(magneticFlux, magneticFluxWaveform, true, false));
+    // magneticFlux.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFluxWaveform, frequency));
+    // magneticFlux.set_processed(InputsWrapper::calculate_processed_data(magneticFlux, magneticFluxWaveform, true, false));
 
     return magneticFlux;
 }
-SignalDescriptor MagneticField::get_magnetic_flux_density(SignalDescriptor magneticFlux,
+SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                                   double area,
                                                                   double frequency) {
     SignalDescriptor magneticFluxDensity;
@@ -63,14 +63,14 @@ SignalDescriptor MagneticField::get_magnetic_flux_density(SignalDescriptor magne
 
     magneticFluxDensityWaveform.set_data(magneticFluxDensityData);
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
-    magneticFluxDensity.set_harmonics(InputsWrapper::get_harmonics_data(magneticFluxDensityWaveform, frequency));
+    magneticFluxDensity.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFluxDensityWaveform, frequency));
     magneticFluxDensity.set_processed(
-        InputsWrapper::get_processed_data(magneticFluxDensity, magneticFluxDensityWaveform, true, false));
+        InputsWrapper::calculate_processed_data(magneticFluxDensity, magneticFluxDensityWaveform, true, false));
 
     return magneticFluxDensity;
 }
 
-SignalDescriptor MagneticField::get_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
+SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
                                                                     double initialPermeability,
                                                                     double frequency) {
     SignalDescriptor magneticFieldStrength;
@@ -89,9 +89,9 @@ SignalDescriptor MagneticField::get_magnetic_field_strength(SignalDescriptor mag
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
-    magneticFieldStrength.set_harmonics(InputsWrapper::get_harmonics_data(magneticFieldStrengthWaveform, frequency));
+    magneticFieldStrength.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFieldStrengthWaveform, frequency));
     magneticFieldStrength.set_processed(
-        InputsWrapper::get_processed_data(magneticFieldStrength, magneticFieldStrengthWaveform, true, false));
+        InputsWrapper::calculate_processed_data(magneticFieldStrength, magneticFieldStrengthWaveform, true, false));
 
     return magneticFieldStrength;
 }

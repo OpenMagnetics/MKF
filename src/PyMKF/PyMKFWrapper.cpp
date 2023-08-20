@@ -78,7 +78,7 @@ json get_gap_reluctance_model_information(){
     return dict;
 }
 
-double get_inductance_from_number_turns_and_gapping(json coreData,
+double calculate_inductance_from_number_turns_and_gapping(json coreData,
                                                     json coilData,
                                                     json operatingPointData,
                                                     json modelsData){
@@ -89,13 +89,13 @@ double get_inductance_from_number_turns_and_gapping(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double magnetizingInductance = magnetizing_inductance.get_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
+    double magnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
 
     return magnetizingInductance;
 }
 
 
-double get_number_turns_from_gapping_and_inductance(json coreData,
+double calculate_number_turns_from_gapping_and_inductance(json coreData,
                                                     json inputsData,    
                                                     json modelsData){
     OpenMagnetics::CoreWrapper core(coreData);
@@ -104,12 +104,12 @@ double get_number_turns_from_gapping_and_inductance(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double numberTurns = magnetizing_inductance.get_number_turns_from_gapping_and_inductance(core, &inputs);
+    double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
 
     return numberTurns;
 }
 
-py::list get_gapping_from_number_turns_and_inductance(json coreData,
+py::list calculate_gapping_from_number_turns_and_inductance(json coreData,
                                                       json coilData,
                                                       json inputsData,
                                                       std::string gappingTypeString,
@@ -123,7 +123,7 @@ py::list get_gapping_from_number_turns_and_inductance(json coreData,
     OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>(gappingTypeString).value();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.get_gapping_from_number_turns_and_inductance(core,
+    std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core,
                                                                                                                       coil,
                                                                                                                       &inputs,
                                                                                                                       gappingType, 
@@ -195,7 +195,7 @@ json get_core_losses(json coreData,
         excitation = operatingPoint.get_excitations_per_winding()[0];
         operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
-        magneticFluxDensity = magnetizing_inductance.get_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+        magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
         excitation.set_magnetic_flux_density(magneticFluxDensity);
 
         result = coreLossesModel->get_core_losses(core, excitation, temperature);
@@ -255,9 +255,9 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");
-    m.def("get_inductance_from_number_turns_and_gapping", &get_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");
-    m.def("get_number_turns_from_gapping_and_inductance", &get_number_turns_from_gapping_and_inductance, "Returns the number of turns needed to achieve a given inductance with a given gapping");
-    m.def("get_gapping_from_number_turns_and_inductance", &get_gapping_from_number_turns_and_inductance, "Returns the gapping needed to achieve a given inductance with a given number of turns");
+    m.def("calculate_inductance_from_number_turns_and_gapping", &calculate_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");
+    m.def("calculate_number_turns_from_gapping_and_inductance", &calculate_number_turns_from_gapping_and_inductance, "Returns the number of turns needed to achieve a given inductance with a given gapping");
+    m.def("calculate_gapping_from_number_turns_and_inductance", &calculate_gapping_from_number_turns_and_inductance, "Returns the gapping needed to achieve a given inductance with a given number of turns");
     m.def("get_steinmetz_coefficients", &get_steinmetz_coefficients, "");
     m.def("get_core_losses", &get_core_losses, "Returns the core losses according to given model");
     m.def("get_core_losses_model_information", &get_core_losses_model_information, "Returns the information and average error for core losses models");

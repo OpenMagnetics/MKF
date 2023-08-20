@@ -295,7 +295,7 @@ import PyMKF
 #                       'name': None}]}
 # gappingType = 'GRINDED'
 
-# gapping = PyMKF.get_gapping_from_number_turns_and_inductance(core,
+# gapping = PyMKF.calculate_gapping_from_number_turns_and_inductance(core,
 #                                                              winding,
 #                                                              inputs,
 #                                                                 gappingType,
@@ -713,7 +713,7 @@ core_losses_result = PyMKF.get_core_losses(core,
 # models = {'gapReluctance': 'ZHANG'}
 
 
-# inductance = PyMKF.get_inductance_from_number_turns_and_gapping(core,
+# inductance = PyMKF.calculate_inductance_from_number_turns_and_gapping(core,
 #                                                                 winding,
 #                                                                 operatingPoint,
 #                                                                 models)

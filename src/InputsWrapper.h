@@ -33,24 +33,26 @@ class InputsWrapper : public Inputs {
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance);
 
     static bool is_waveform_sampled(Waveform waveform);
-    static Waveform get_sampled_waveform(Waveform waveform, double frequency);
-    static Processed get_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
-    static Processed get_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
-    static Harmonics get_harmonics_data(Waveform waveform, double frequency);
-    SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
+    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency);
+    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
+    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
+    static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
+    static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
     OperatingPoint get_operating_point(size_t index);
     OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex, size_t windingIndex);
     OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex);
     static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
 
-    static SignalDescriptor get_induced_voltage(OperatingPointExcitation& excitation,
+    static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                         double magnetizingInductance);
-    static SignalDescriptor get_magnetizing_current(OperatingPointExcitation& excitation,
-                                                            double magnetizingInductance);
-    static SignalDescriptor get_magnetizing_current(OperatingPointExcitation& excitation,
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                            double magnetizingInductance,
+                                                            bool compress = true);
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             Waveform sampledWaveform,
-                                                            double magnetizingInductance);
+                                                            double magnetizingInductance,
+                                                            bool compress = true);
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);
@@ -66,8 +68,9 @@ class InputsWrapper : public Inputs {
                                                       std::vector<double> turnsRatios = {});
 
     static double try_get_duty_cycle(Waveform waveform, double frequency);
+    static double calculate_instantaneous_power(OperatingPointExcitation excitation);
 
-    static double get_waveform_coefficient(OperatingPoint* operatingPoint);
+    static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {
         get_mutable_operating_points()[index] = value;
