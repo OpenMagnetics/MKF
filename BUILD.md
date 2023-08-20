@@ -18,9 +18,6 @@ sudo apt install -y gcc-12 g++-12
 sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 10
 
-sudo apt-get install libboost-all-dev
-sudo apt install libeigen3-dev
-
 
 if node installation fails:
 ln -s /usr/bin/python3 /usr/include/python3
