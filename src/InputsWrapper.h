@@ -33,7 +33,7 @@ class InputsWrapper : public Inputs {
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance);
 
     static bool is_waveform_sampled(Waveform waveform);
-    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency);
+    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency = 0);
     static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
@@ -67,11 +67,21 @@ class InputsWrapper : public Inputs {
                                                       double dcCurrent,
                                                       std::vector<double> turnsRatios = {});
 
-    static double try_get_duty_cycle(Waveform waveform, double frequency);
+    static WaveformLabel try_guess_waveform_label(Waveform waveform);
+    static Waveform create_waveform(Processed processed, double frequency);
+    static Processed calculate_basic_processed_data(Waveform waveform);
+    static Waveform compress_waveform(Waveform waveform);
+
+
+    static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label = WaveformLabel::CUSTOM);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
+    static OperatingPoint scaleTimeToFrequency(OperatingPoint operatingPoint, double newFrequency);
+    static OperatingPointExcitation scaleTimeToFrequency(OperatingPointExcitation excitation, double newFrequency);
+    static Waveform scaleTimeToFrequency(Waveform waveform, double newFrequency);
+    
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {
         get_mutable_operating_points()[index] = value;
     }

@@ -42,6 +42,7 @@ std::pair<double, SignalDescriptor> MagnetizingInductance::calculate_inductance_
     CoilWrapper winding,
     OperatingPoint* operatingPoint) {
 
+
     InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
 
     std::pair<double, SignalDescriptor> result;
@@ -346,7 +347,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     }
 
     double gapLength = constants.residualGap;
-    double gapLengthModification = constants.initial_gap_length_for_searching;
+    double gapLengthModification = constants.initialGapLengthForSearching;
     bool increasingGap = true;
     double fringingFactorOneGap = 0;
 
@@ -372,7 +373,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
                     fringingFactorOneGap =
                         reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0])["fringing_factor"];
-                    if (fringingFactorOneGap < constants.minimum_distributed_fringing_factor &&
+                    if (fringingFactorOneGap < constants.minimumDistributedFringingFactor &&
                         numberDistributedGaps > 1) {
                         gapLength *= numberDistributedGaps;
                         numberDistributedGaps -= 2;
@@ -386,7 +387,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
                     fringingFactorOneGap =
                         reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0])["fringing_factor"];
-                    if (fringingFactorOneGap > constants.maximum_distributed_fringing_factor) {
+                    if (fringingFactorOneGap > constants.maximumDistributedFringingFactor) {
                         gapLength *= numberDistributedGaps;
                         numberDistributedGaps += 2;
                         gapLength /= numberDistributedGaps;

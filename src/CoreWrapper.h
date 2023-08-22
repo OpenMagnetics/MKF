@@ -159,8 +159,8 @@ class CoreWrapper : public MagneticCore {
     double get_width() { return get_processed_description().value().get_width(); }
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
-    double get_magnetic_flux_density_saturation(bool proportion = true);
-    double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);
+    double get_magneticFluxDensitySaturation(bool proportion = true);
+    double get_magneticFluxDensitySaturation(double temperature, bool proportion = true);
     double get_magnetic_field_strength_saturation(double temperature);
     CoreShapeFamily get_shape_family();
     std::string get_shape_name();

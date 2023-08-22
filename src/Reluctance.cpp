@@ -19,7 +19,7 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     auto gap_shape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
-    auto reluctance_internal = gapLength / (constants.vacuum_permeability * gapArea);
+    auto reluctance_internal = gapLength / (constants.vacuumPermeability * gapArea);
     double reluctance_fringing = 0;
     double fringingFactor = 1;
     auto gapSectionWidth = gapSectionDimensions[0];
@@ -33,14 +33,14 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     }
 
     if (gapLength > 0) {
-        reluctance_fringing = std::numbers::pi / (constants.vacuum_permeability * perimeter *
+        reluctance_fringing = std::numbers::pi / (constants.vacuumPermeability * perimeter *
                                                   log((2 * distanceClosestNormalSurface + gapLength) / gapLength));
     }
 
     double reluctance = 1. / (1. / reluctance_internal + 1. / reluctance_fringing);
 
     if (gapLength > 0) {
-        fringingFactor = gapLength / (constants.vacuum_permeability * gapArea * reluctance);
+        fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -69,18 +69,18 @@ std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(Co
 
     if (gap_shape == ColumnShape::ROUND) {
         double gamma_r = get_reluctance_type_1(gapLength / 2, gapSectionWidth / 2, distanceClosestNormalSurface) /
-                         (gapLength / constants.vacuum_permeability / (gapSectionWidth / 2));
+                         (gapLength / constants.vacuumPermeability / (gapSectionWidth / 2));
         reluctance = pow(gamma_r, 2) * gapLength /
-                     (constants.vacuum_permeability * std::numbers::pi * pow(gapSectionWidth / 2, 2));
+                     (constants.vacuumPermeability * std::numbers::pi * pow(gapSectionWidth / 2, 2));
         fringingFactor = 1 / gamma_r;
     }
     else {
         double gamma_x = get_reluctance_type_1(gapLength / 2, gapSectionWidth, distanceClosestNormalSurface) /
-                         (gapLength / constants.vacuum_permeability / gapSectionWidth);
+                         (gapLength / constants.vacuumPermeability / gapSectionWidth);
         double gamma_y = get_reluctance_type_1(gapLength / 2, gapSectionDepth, distanceClosestNormalSurface) /
-                         (gapLength / constants.vacuum_permeability / gapSectionDepth);
+                         (gapLength / constants.vacuumPermeability / gapSectionDepth);
         double gamma = gamma_x * gamma_y;
-        reluctance = gamma * gapLength / (constants.vacuum_permeability * gapSectionDepth * gapSectionWidth);
+        reluctance = gamma * gapLength / (constants.vacuumPermeability * gapSectionDepth * gapSectionWidth);
         fringingFactor = 1 / gamma;
     }
 
@@ -119,7 +119,7 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
         }
     }
 
-    reluctance = gapLength / (constants.vacuum_permeability * gapArea * fringingFactor);
+    reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -155,7 +155,7 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
         }
     }
 
-    reluctance = gapLength / (constants.vacuum_permeability * gapArea * fringingFactor);
+    reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -184,7 +184,7 @@ std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreG
         fringingFactor = 1 + gapLength / sqrt(gapArea) * log(2 * 2 * distanceClosestNormalSurface / gapLength);
     }
 
-    reluctance = gapLength / (constants.vacuum_permeability * gapArea * fringingFactor);
+    reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -227,7 +227,7 @@ std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreG
         fringingFactor = alpha(rx, l1, lg) * pow(gapCoordinates[1] / l1, 2) + gamma;
     }
 
-    reluctance = gapLength / (constants.vacuum_permeability * gapArea * fringingFactor);
+    reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -250,7 +250,7 @@ std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap
     double reluctance;
     double fringingFactor = 1;
 
-    reluctance = gapLength / (constants.vacuum_permeability * gapArea);
+    reluctance = gapLength / (constants.vacuumPermeability * gapArea);
 
     std::map<std::string, double> result;
     result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
@@ -276,13 +276,13 @@ std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(Co
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto gapSectionDepth = gapSectionDimensions[1];
 
-    reluctance = 1. / (constants.vacuum_permeability *
+    reluctance = 1. / (constants.vacuumPermeability *
                        (gapArea / gapLength +
                         2. * gapSectionDepth / std::numbers::pi *
                             (1 + log(std::numbers::pi * distanceClosestNormalSurface / (2 * gapLength)))));
 
     if (gapLength > 0) {
-        fringingFactor = gapLength / (constants.vacuum_permeability * gapArea * reluctance);
+        fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
 
     std::map<std::string, double> result;

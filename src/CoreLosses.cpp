@@ -177,15 +177,15 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
-    std::vector<double> theta_vect(constants.number_points_samples_waveforms);
+    std::vector<double> theta_vect(constants.numberPointsSamplesWaveforms);
     std::generate(theta_vect.begin(), theta_vect.end(), [n = 0, &constants]() mutable {
-        return n++ * 2 * std::numbers::pi / constants.number_points_samples_waveforms;
+        return n++ * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
     });
     double theta_int = 0;
 
     for (auto& theta : theta_vect) {
         theta_int += pow(fabs(cos(theta)), alpha) * pow(2, beta - alpha) * 2 * std::numbers::pi /
-                     constants.number_points_samples_waveforms;
+                     constants.numberPointsSamplesWaveforms;
     }
 
     double ki = k / (pow(2 * std::numbers::pi, alpha - 1) * theta_int);
@@ -227,7 +227,7 @@ std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper c
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         volumetricLossesSum +=
             pow(fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
@@ -281,7 +281,7 @@ std::map<std::string, double> CoreLossesAlbachModel::get_core_losses(CoreWrapper
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         equivalentSinusoidalFrequency +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / magneticFluxDensityPeakToPeak,
@@ -339,7 +339,7 @@ std::map<std::string, double> CoreLossesMSEModel::get_core_losses(CoreWrapper co
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         equivalentSinusoidalFrequency +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 2) *
@@ -364,14 +364,14 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
     auto constants = Constants();
     double alpha = steinmetzDatum.get_alpha();
     double k = steinmetzDatum.get_k();
-    std::vector<double> theta_vect(constants.number_points_samples_waveforms);
+    std::vector<double> theta_vect(constants.numberPointsSamplesWaveforms);
     std::generate(theta_vect.begin(), theta_vect.end(), [n = 0, &constants]() mutable {
-        return n++ * 2 * std::numbers::pi / constants.number_points_samples_waveforms;
+        return n++ * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
     });
     double theta_int = 0;
 
     for (auto& theta : theta_vect) {
-        theta_int += pow(fabs(cos(theta)), alpha) * 2 * std::numbers::pi / constants.number_points_samples_waveforms;
+        theta_int += pow(fabs(cos(theta)), alpha) * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
     }
 
     double ki = k / (pow(2 * std::numbers::pi, alpha - 1) * theta_int);
@@ -413,7 +413,7 @@ std::map<std::string, double> CoreLossesNSEModel::get_core_losses(CoreWrapper co
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         volumetricLossesSum +=
             pow(abs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
@@ -513,7 +513,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
 
     roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
     roshenParameters["remanence"] = core.get_remanence(temperature);
-    roshenParameters["saturationMagneticFluxDensity"] = core.get_magnetic_flux_density_saturation(temperature, false);
+    roshenParameters["saturationMagneticFluxDensity"] = core.get_magneticFluxDensitySaturation(temperature, false);
     roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_field_strength_saturation(temperature);
 
     if (roshenData.get_coefficients()) {
@@ -591,7 +591,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
 
     std::vector<double> magneticFieldStrengthPoints;
     for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength;
-         i += constants.roshen_magnetic_field_strength_step) {
+         i += constants.roshenMagneticFieldStrengthStep) {
         magneticFieldStrengthPoints.push_back(i);
     }
 
@@ -691,7 +691,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     double bhArea = 0;
     for (size_t i = 0; i < minimum_length; i++) {
         bhArea += fabs(cutUpperMagneticFluxDensityWaveform[i] - cutLowerMagneticFluxDensityWaveform[i]) *
-                  constants.roshen_magnetic_field_strength_step;
+                  constants.roshenMagneticFieldStrengthStep;
     }
 
     double hysteresisLossesDensity = bhArea * frequency;
@@ -725,7 +725,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         volumetricLossesIntegration +=
             pow((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 2) *
@@ -759,7 +759,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
         else {
-            timeDifference = 1 / frequency / constants.number_points_samples_waveforms;
+            timeDifference = 1 / frequency / constants.numberPointsSamplesWaveforms;
         }
         volumetricLossesIntegration +=
             pow(fabs(magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference, 3 / 2) *

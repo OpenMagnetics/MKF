@@ -1998,10 +1998,10 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                             minimum_column_depth =
                                 std::min(std::get<double>(dimensions["C"]), column.get_depth()) * numberStacks;
                         }
-                        minimum_column_width *= (1 + constants.spacer_protuding_percentage);
-                        minimum_column_depth *= (1 + constants.spacer_protuding_percentage);
-                        double protuding_width = minimum_column_width * constants.spacer_protuding_percentage;
-                        double protuding_depth = minimum_column_depth * constants.spacer_protuding_percentage;
+                        minimum_column_width *= (1 + constants.spacerProtudingPercentage);
+                        minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
+                        double protuding_width = minimum_column_width * constants.spacerProtudingPercentage;
+                        double protuding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
                         spacer.set_dimensions(std::vector<double>({minimum_column_width, spacerThickness, minimum_column_depth}));
                         spacer.set_rotation(std::vector<double>({0, 0, 0}));
                         if (column.get_coordinates()[0] == 0) {
@@ -2466,7 +2466,7 @@ void CoreWrapper::process_data() {
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
 }
 
-double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
+double CoreWrapper::get_magneticFluxDensitySaturation(double temperature, bool proportion) {
     auto defaults = Defaults();
     auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
@@ -2506,8 +2506,8 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
     else
         return saturationMagneticFluxDensity;
 }
-double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
-    return get_magnetic_flux_density_saturation(25, proportion);
+double CoreWrapper::get_magneticFluxDensitySaturation(bool proportion) {
+    return get_magneticFluxDensitySaturation(25, proportion);
 }
 
 double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
