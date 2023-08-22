@@ -23,7 +23,7 @@ double WindingSkinEffectLossesModel::get_skin_depth(WireMaterialDataOrNameUnion 
     auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
-    double skinDepth = sqrt(resistivity / (std::numbers::pi * frequency * constants.vacuum_permeability * wireMaterial.get_permeability()));
+    double skinDepth = sqrt(resistivity / (std::numbers::pi * frequency * constants.vacuumPermeability * wireMaterial.get_permeability()));
     return skinDepth;
 };
 

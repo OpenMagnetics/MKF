@@ -43,7 +43,7 @@ class ReluctanceModel {
         if (operatingPoint != nullptr) {
             double temperature =
                 operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
-            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
+            _magneticFluxDensitySaturation = core.get_magneticFluxDensitySaturation(temperature, true);
             auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
             initialPermeabilityValue = initialPermeability.get_initial_permeability(
                 coreMaterial, &temperature, nullptr, &frequency);
@@ -51,9 +51,9 @@ class ReluctanceModel {
         else {
             initialPermeabilityValue =
                 initialPermeability.get_initial_permeability(coreMaterial);
-            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
+            _magneticFluxDensitySaturation = core.get_magneticFluxDensitySaturation(true);
         }
-        double absolutePermeability = constants.vacuum_permeability * initialPermeabilityValue;
+        double absolutePermeability = constants.vacuumPermeability * initialPermeabilityValue;
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
         double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
@@ -63,7 +63,7 @@ class ReluctanceModel {
 
     double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability) {
         auto constants = Constants();
-        double absolutePermeability = constants.vacuum_permeability * initialPermeability;
+        double absolutePermeability = constants.vacuumPermeability * initialPermeability;
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
         double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
 
@@ -75,7 +75,7 @@ class ReluctanceModel {
         auto gapLength = gapInfo.get_length();
         auto gapArea = *(gapInfo.get_area());
 
-        double energyStoredInGap = 0.5 / constants.vacuum_permeability * gapLength * gapArea * fringingFactor *
+        double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea * fringingFactor *
                                       pow(_magneticFluxDensitySaturation, 2);
 
         return energyStoredInGap;
@@ -208,7 +208,7 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
 
     double get_basic_reluctance(double l, double w, double h) {
         auto constants = Constants();
-        return 1 / constants.vacuum_permeability /
+        return 1 / constants.vacuumPermeability /
                (w / 2 / l + 2 / std::numbers::pi * (1 + log(std::numbers::pi * h / 4 / l)));
     }
 

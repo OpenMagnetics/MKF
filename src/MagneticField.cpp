@@ -84,7 +84,7 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescript
     }
 
     for (auto& datum : magneticFluxDensityWaveform.get_data()) {
-        magneticFieldStrengthData.push_back(datum / (initialPermeability * constants.vacuum_permeability));
+        magneticFieldStrengthData.push_back(datum / (initialPermeability * constants.vacuumPermeability));
     }
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);

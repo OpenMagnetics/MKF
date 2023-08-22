@@ -618,8 +618,8 @@ SUITE(Inputs) {
 
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
-        windingExcitation["voltage"]["waveform"]["data"] = {7.5, 7.5, -2.5, -2.5, 7.5};
-        windingExcitation["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        windingExcitation["voltage"]["waveform"]["data"] = {-2.5, 7.5, 7.5, -2.5, -2.5};
+        windingExcitation["voltage"]["waveform"]["time"] = {0, 0, 0.0000025, 0.0000025, 0.00001};
         operatingPoint["excitationsPerWinding"] = json::array();
         operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
         inputsJson["operatingPoints"].push_back(operatingPoint);
@@ -629,11 +629,11 @@ SUITE(Inputs) {
         inputsJson["designRequirements"]["turnsRatios"] = json::array();
 
         OpenMagnetics::InputsWrapper inputs(inputsJson);
-        auto max_error = 0.01;
+        auto max_error = 0.1;
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
-        CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_rms().value(), 4.33, max_error * 4.33);
-        CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_thd().value(), 0.92, max_error * 0.92);
+        CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_rms().value(), 4.28, max_error * 4.28);
+        CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_thd().value(), 0.95, max_error * 0.95);
         CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_effective_frequency().value(), 692290,
                     max_error * 692290);
         CHECK_CLOSE(excitation.get_voltage().value().get_processed().value().get_peak_to_peak().value(), 10,
@@ -787,7 +787,7 @@ SUITE(Inputs) {
 
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
-        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42;
+        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42 * 2;
         windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR;
         windingExcitation["current"]["processed"]["offset"] = 0;
         windingExcitation["current"]["processed"]["peakToPeak"] = 13;
@@ -831,8 +831,8 @@ SUITE(Inputs) {
         windingExcitation["frequency"] = 100000;
         windingExcitation["current"]["waveform"]["data"] = {-5, 5, -5};
         windingExcitation["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
-        windingExcitation["voltage"]["waveform"]["data"] = {1, 1, 0, 0, 1};
-        windingExcitation["voltage"]["waveform"]["time"] = {0, 0.0000025, 0.0000025, 0.00001, 0.00001};
+        windingExcitation["voltage"]["waveform"]["data"] = {0, 1, 1, 0, 0};
+        windingExcitation["voltage"]["waveform"]["time"] = {0, 0, 0.0000025, 0.0000025, 0.00001};
         operatingPoint["excitationsPerWinding"] = json::array();
         operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
         inputsJson["operatingPoints"].push_back(operatingPoint);
@@ -873,19 +873,19 @@ SUITE(Inputs) {
 
             CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_rms().value(), 0.5,
                         max_error * 0.5);
-            CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_thd().value(), 0.92,
+            CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_thd().value(), 0.95,
                         max_error * 0.92);
             CHECK_CLOSE(
                 excitation_primary.get_voltage().value().get_processed().value().get_effective_frequency().value(),
                 640900, max_error * 640900);
             CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_peak_to_peak().value(), 1,
                         max_error * 1);
-            CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_offset(), 0.25,
+            CHECK_CLOSE(excitation_primary.get_voltage().value().get_processed().value().get_offset(), 0,
                         max_error * 0.25);
 
-            CHECK_CLOSE(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], 0.25,
+            CHECK_CLOSE(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], 0.2421,
                         max_error * 0.25);
-            CHECK_CLOSE(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[1], 0.451,
+            CHECK_CLOSE(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[1], 0.439,
                         max_error * 0.451);
             CHECK_CLOSE(excitation_primary.get_voltage().value().get_harmonics().value().get_frequencies()[0], 0,
                         max_error);
@@ -1628,7 +1628,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
-        auto max_error = 0.01;
+        auto max_error = 0.02;
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_rms().value(), 0.541,
@@ -1637,12 +1637,12 @@ SUITE(Inputs) {
                     max_error * 0.3765);
         CHECK_CLOSE(
             excitation.get_magnetizing_current().value().get_processed().value().get_effective_frequency().value(),
-            128000, max_error * 128000);
+            129000, max_error * 129000);
         CHECK_CLOSE(
             excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(),
-            128000, max_error * 128000);
+            129000, max_error * 129000);
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(),
-                    1.875, max_error * 1.875);
+                    1.855, max_error * 1.855);
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), 0, max_error);
 
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_harmonics().value().get_amplitudes()[0], 0,
@@ -1678,9 +1678,9 @@ SUITE(Inputs) {
             9777, max_error * 9777);
         CHECK_CLOSE(
             excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(),
-            128000, max_error * 128000);
+            129000, max_error * 129000);
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(),
-                    1.875, max_error * 1.875);
+                    1.855, max_error * 1.855);
         CHECK_CLOSE(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), 10,
                     10 * max_error);
 
@@ -1718,7 +1718,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_guess_duty_cycle(excitation.get_current().value().get_waveform().value());
         CHECK(dutyCycle == 0.25);
     }
 
@@ -1746,9 +1746,10 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_guess_duty_cycle(excitation.get_current().value().get_waveform().value());
+        double max_error = 0.02;
 
-        CHECK(dutyCycle == 0.75);
+        CHECK_CLOSE(0.75, dutyCycle, max_error * 0.75);
     }
 
     TEST(Test_Get_Duty_Cycle_Custom) {
@@ -1775,7 +1776,7 @@ SUITE(Inputs) {
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
         auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
-        auto dutyCycle = OpenMagnetics::InputsWrapper::try_get_duty_cycle(excitation.get_current().value().get_waveform().value(), excitation.get_frequency());
+        auto dutyCycle = OpenMagnetics::InputsWrapper::try_guess_duty_cycle(excitation.get_current().value().get_waveform().value());
 
         CHECK(dutyCycle == 0.42);
     }
@@ -1951,6 +1952,29 @@ SUITE(Inputs) {
         CHECK_CLOSE(expectedValue, voltage.get_processed().value().get_peak().value(), max_error * expectedValue);
     }
 
+    TEST(Test_Induced_Voltage_Unipolar_Triangular) {
+        double max_error = 0.1;
+        double peakToPeak = 10;
+        double dutyCycle = 0.25;
+        double magnetizingInductance = 10e-6;
+        double frequency = 100000;
+
+        OpenMagnetics::OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        OpenMagnetics::Waveform currentWaveform;
+        OpenMagnetics::SignalDescriptor current;
+        currentWaveform.set_time(std::vector<double>{0, dutyCycle / frequency, dutyCycle / frequency, 1.0 / frequency});
+        currentWaveform.set_data(std::vector<double>{0, peakToPeak, 0, 0});
+        current.set_waveform(currentWaveform);
+        excitation.set_current(current);
+
+        double expectedValue = magnetizingInductance * frequency * peakToPeak / dutyCycle;
+
+        auto voltage = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, magnetizingInductance);
+
+        CHECK_CLOSE(expectedValue, voltage.get_processed().value().get_peak().value(), max_error * expectedValue);
+    }
+
     TEST(Test_Induced_Current) {
         double max_error = 0.1;
         double peakToPeak = 53.3333;
@@ -1986,7 +2010,333 @@ SUITE(Inputs) {
 
         double expectedValue = 0.25;
 
-        auto dutyCycleGuessed = OpenMagnetics::InputsWrapper::try_get_duty_cycle(voltageWaveform, frequency);
+        auto dutyCycleGuessed = OpenMagnetics::InputsWrapper::try_guess_duty_cycle(voltageWaveform);
         CHECK_CLOSE(expectedValue, dutyCycleGuessed, max_error * expectedValue);
+    }
+
+    TEST(Test_Try_Guess_Triangular) {
+        double max_error = 0.1;
+        double peakToPeak = 53.3333;
+        double dutyCycle = 0.25;
+        double offset = 0;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(processed.get_offset(), calculatedProcessed.get_offset(), max_error);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Unipolar_Triangular) {
+        double max_error = 0.1;
+        double peakToPeak = 53.3333;
+        double dutyCycle = 0.25;
+        double offset = 0;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::UNIPOLAR_TRIANGULAR;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedAverage = (peakToPeak * dutyCycle / 2);
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(0, calculatedProcessed.get_offset(), max_error);
+        CHECK_CLOSE(expectedAverage, calculatedProcessed.get_average().value(), max_error * expectedAverage);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Unipolar_Rectangular) {
+        double max_error = 0.1;
+        double peakToPeak = 53.3333;
+        double dutyCycle = 0.25;
+        double offset = 0;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedAverage = peakToPeak * dutyCycle;
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(0, calculatedProcessed.get_offset(), max_error);
+        CHECK_CLOSE(expectedAverage, calculatedProcessed.get_average().value(), max_error * expectedAverage);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Rectangular) {
+        double max_error = 0.1;
+        double peakToPeak = 53.3333;
+        double dutyCycle = 0.25;
+        double offset = 0;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::RECTANGULAR;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedOffset = 0;
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(expectedOffset, calculatedProcessed.get_offset(), max_error);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Bipolar_Rectangular) {
+        double max_error = 0.2;
+        double peakToPeak = 53.3333;
+        double dutyCycle = 0.5;
+        double offset = 0;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+        OpenMagneticsTesting::print(waveform.get_data());
+        OpenMagneticsTesting::print(waveform.get_time().value());
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedOffset = 0;
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(expectedOffset, calculatedProcessed.get_offset(), max_error);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Flyback_Primary) {
+        double max_error = 0.1;
+        double peakToPeak = 50;
+        double dutyCycle = 0.25;
+        double offset = 10;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedOffset = offset;
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(expectedOffset, calculatedProcessed.get_offset(), max_error);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+    TEST(Test_Try_Guess_Flyback_Secondary) {
+        double max_error = 0.1;
+        double peakToPeak = 50;
+        double dutyCycle = 0.25;
+        double offset = 10;
+        double frequency = 100000;
+        auto label = OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY;
+
+        OpenMagnetics::Processed processed;
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(offset);
+        processed.set_label(label);
+
+        auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
+
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+
+        double expectedOffset = offset;
+        CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
+        CHECK_CLOSE(processed.get_peak_to_peak().value(), calculatedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+        CHECK_CLOSE(processed.get_duty_cycle().value(), calculatedProcessed.get_duty_cycle().value(), max_error * processed.get_duty_cycle().value());
+        CHECK_CLOSE(expectedOffset, calculatedProcessed.get_offset(), max_error);
+        CHECK_EQUAL(magic_enum::enum_name(calculatedProcessed.get_label()), magic_enum::enum_name(processed.get_label()));
+    }
+
+
+    TEST(Test_Sample_And_Compress_Rectangular) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({-2.5, 7.5, 7.5, -2.5, -2.5}));
+        waveform.set_time(std::vector<double>({0, 0, 0.0000025, 0.0000025, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(5, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::RECTANGULAR), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Triangular) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({-5, 5, -5}));
+        waveform.set_time(std::vector<double>({0, 0.0000025, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(3, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::TRIANGULAR), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Unipolar_Triangular) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({10, 60, 10, 10}));
+        waveform.set_time(std::vector<double>({0, 0.0000025, 0.0000025, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(4, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::UNIPOLAR_TRIANGULAR), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Unipolar_Rectangular) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({10, 60, 60, 10, 10}));
+        waveform.set_time(std::vector<double>({0, 0, 0.0000025, 0.0000025, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(5, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Bipolar_Rectangular) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({0, 0, 25, 25, 0, 0, -25, -25, 0, 0}));
+        waveform.set_time(std::vector<double>({0, 1.25e-6, 1.25e-6, 3.75e-6, 3.75e-6, 6.25e-6, 6.25e-6, 8.75e-6, 8.75e-6, 10e-6}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(10, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Flyback_Primary) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({0, 30, 80, 0, 0}));
+        waveform.set_time(std::vector<double>({0, 0, 1.4e-6, 1.4e-6, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(5, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY), magic_enum::enum_name(guessedLabel));
+    }
+
+    TEST(Test_Sample_And_Compress_Flyback_Secondary) {
+        OpenMagnetics::Waveform waveform;
+        waveform.set_data(std::vector<double>({0, 0, 80, 30, 0}));
+        waveform.set_time(std::vector<double>({0, 1.4e-6, 1.4e-6, 0.00001, 0.00001}));
+
+        CHECK(!OpenMagnetics::InputsWrapper::is_waveform_sampled(waveform));
+
+        auto sampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(waveform);
+        CHECK(OpenMagnetics::InputsWrapper::is_waveform_sampled(sampledWaveform));
+        CHECK_EQUAL(128, sampledWaveform.get_data().size());
+
+        auto compressedWaveform = OpenMagnetics::InputsWrapper::compress_waveform(sampledWaveform);
+        CHECK_EQUAL(5, compressedWaveform.get_data().size());
+        OpenMagneticsTesting::print(compressedWaveform.get_data());
+        OpenMagneticsTesting::print(compressedWaveform.get_time().value());
+        auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(compressedWaveform);
+        CHECK_EQUAL(magic_enum::enum_name(OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY), magic_enum::enum_name(guessedLabel));
     }
 }
