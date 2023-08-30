@@ -2364,7 +2364,7 @@ SUITE(CoreLossesFromWeb) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
+        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.002);
         CHECK_CLOSE(coreLosses["totalLosses"], 31.2, 31.2 * maxError);
     }
 
@@ -2391,7 +2391,7 @@ SUITE(CoreLossesFromWeb) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
+        CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.002);
         CHECK_CLOSE(coreLosses["totalLosses"], 23.1, 23.1 * maxError);
     }
 

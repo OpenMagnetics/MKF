@@ -18,30 +18,22 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     SignalDescriptor magneticFlux;
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
-    auto magnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
+    auto compressedMagnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
 
-    if (InputsWrapper::is_waveform_sampled(magnetizingCurrentWaveform)) {
-        if (magnetizingCurrentWaveform.get_data().size() > 0 && ((magnetizingCurrentWaveform.get_data().size() & (magnetizingCurrentWaveform.get_data().size() - 1)) != 0)) {
-            std::cout << "magnetizingCurrentWaveform.get_data().size():" << magnetizingCurrentWaveform.get_data().size() << std::endl;
-            throw std::invalid_argument("magnetizingCurrentWaveform vector size is not a power of 2");
-        }
-    }
-    else {
-         magnetizingCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrentWaveform, frequency);
+    if (InputsWrapper::is_waveform_sampled(compressedMagnetizingCurrentWaveform)) {
+        compressedMagnetizingCurrentWaveform = InputsWrapper::compress_waveform(compressedMagnetizingCurrentWaveform);
     }
 
-    for (auto& datum : magnetizingCurrentWaveform.get_data()) {
+    for (auto& datum : compressedMagnetizingCurrentWaveform.get_data()) {
         magneticFluxData.push_back(datum * numberTurns / reluctance);
     }
 
-    if (magnetizingCurrentWaveform.get_time()) {
-        magneticFluxWaveform.set_time(magnetizingCurrentWaveform.get_time());
+    if (compressedMagnetizingCurrentWaveform.get_time()) {
+        magneticFluxWaveform.set_time(compressedMagnetizingCurrentWaveform.get_time());
     }
 
     magneticFluxWaveform.set_data(magneticFluxData);
     magneticFlux.set_waveform(magneticFluxWaveform);
-    // magneticFlux.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFluxWaveform, frequency));
-    // magneticFlux.set_processed(InputsWrapper::calculate_processed_data(magneticFlux, magneticFluxWaveform, true, false));
 
     return magneticFlux;
 }
@@ -63,9 +55,8 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor
 
     magneticFluxDensityWaveform.set_data(magneticFluxDensityData);
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
-    magneticFluxDensity.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFluxDensityWaveform, frequency));
     magneticFluxDensity.set_processed(
-        InputsWrapper::calculate_processed_data(magneticFluxDensity, magneticFluxDensityWaveform, true, false));
+        InputsWrapper::calculate_basic_processed_data(magneticFluxDensityWaveform));
 
     return magneticFluxDensity;
 }
@@ -89,9 +80,8 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescript
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
-    magneticFieldStrength.set_harmonics(InputsWrapper::calculate_harmonics_data(magneticFieldStrengthWaveform, frequency));
     magneticFieldStrength.set_processed(
-        InputsWrapper::calculate_processed_data(magneticFieldStrength, magneticFieldStrengthWaveform, true, false));
+        InputsWrapper::calculate_basic_processed_data(magneticFieldStrengthWaveform));
 
     return magneticFieldStrength;
 }

@@ -38,6 +38,8 @@ class InputsWrapper : public Inputs {
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
+    static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
+
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
     OperatingPoint get_operating_point(size_t index);
     OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex, size_t windingIndex);
@@ -72,6 +74,8 @@ class InputsWrapper : public Inputs {
     static Processed calculate_basic_processed_data(Waveform waveform);
     static Waveform compress_waveform(Waveform waveform);
 
+    static Waveform calculate_derivative_waveform(Waveform waveform);
+    static Waveform calculate_integral_waveform(Waveform waveform);
 
     static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label = WaveformLabel::CUSTOM);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);
