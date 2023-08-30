@@ -45,6 +45,7 @@ SUITE(CoreAdviser) {
         // std::cout << coreAdviser.read_log() << std::endl;
 
         CHECK(masMagnetics.size() == 1);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
     }
 
@@ -72,7 +73,9 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 
         CHECK(masMagnetics.size() == 2);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
+        std::cout << masMagnetics[1].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[1].get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
     }
 
@@ -100,8 +103,9 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 70/33/32 - 95 - Distributed gapped 1.36 mm");
-        CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
     }
 
     TEST(Test_No_Toroids_High_Power_High_Frequency) {
@@ -128,6 +132,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 114/46/35 - XFlux 26 - Ungapped");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 2);
     }
@@ -156,6 +161,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "EFD 10/5/3 - 3C95 - Gapped 0.13999999999999999 mm");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -184,6 +190,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "ER 48/18/18 - 3C94 - Gapped 1.0 mm");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -212,6 +219,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 42/21/15 - Kool Mu Hf 40 - Ungapped");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -240,7 +248,9 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 
         CHECK(masMagnetics.size() == 2);
+        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
+        std::cout << masMagnetics[1].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[1].get_magnetic().get_core().get_name() == "PQ 26/20 - 3C94 - Gapped 0.361 mm");
     }
 

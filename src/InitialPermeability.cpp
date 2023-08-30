@@ -63,7 +63,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
                     double permeability_variation_due_to_magnetic_field_dc_bias =
                         0.01 / (magnetic_field_dc_bias_factor.get_a() +
                                 magnetic_field_dc_bias_factor.get_b() *
-                                    pow(roundFloat(*magneticFieldDcBias, 3), magnetic_field_dc_bias_factor.get_c()));
+                                    pow(roundFloat(fabs(*magneticFieldDcBias), 3), magnetic_field_dc_bias_factor.get_c()));
 
                     initial_permeability_value *= permeability_variation_due_to_magnetic_field_dc_bias;
                 }

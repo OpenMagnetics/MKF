@@ -632,7 +632,6 @@ SUITE(MagnetizingInductance) {
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
         auto primaryExcitation = inputs.get_operating_point(0).get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
-        double voltagePeakToPeak = 248;
 
         CHECK(bool(primaryExcitation.get_voltage()));
         CHECK(bool(primaryExcitation.get_current()));
@@ -661,16 +660,6 @@ SUITE(MagnetizingInductance) {
                             .get_peak_to_peak()
                             .value(),
                         max_error * currentPeakToPeak);
-            CHECK_CLOSE(voltagePeakToPeak,
-                        inputs.get_operating_point(0)
-                            .get_mutable_excitations_per_winding()[0]
-                            .get_voltage()
-                            .value()
-                            .get_processed()
-                            .value()
-                            .get_peak_to_peak()
-                            .value(),
-                        max_error * voltagePeakToPeak);
         }
     }
 

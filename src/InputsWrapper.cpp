@@ -19,6 +19,7 @@
 #include <string>
 #include <valarray>
 #include <vector>
+#include <list>
 
 using json = nlohmann::json;
 
@@ -65,6 +66,35 @@ void fft(std::vector<std::complex<double>>& x) {
             x[b] = t;
         }
     }
+}
+
+double calculate_waveform_average(Waveform waveform) {
+    double integration = 0;
+    double period = waveform.get_time().value().back() - waveform.get_time().value().front();
+    for (size_t i = 0; i < waveform.get_data().size() - 1; ++i)
+    {
+        double area = (waveform.get_data()[i + 1] + waveform.get_data()[i]) / 2 * (waveform.get_time().value()[i + 1] - waveform.get_time().value()[i]);
+        integration += area;
+    }
+    return integration / period;
+}
+
+Waveform multiply_waveform(Waveform waveform, double scalarValue){
+    Waveform scaledWaveform = waveform;
+    scaledWaveform.get_mutable_data().clear();
+    for (auto& datum : waveform.get_data()) {
+        scaledWaveform.get_mutable_data().push_back(datum * scalarValue);
+    }
+    return scaledWaveform;
+}
+
+Waveform sum_waveform(Waveform waveform, double scalarValue){
+    Waveform scaledWaveform = waveform;
+    scaledWaveform.get_mutable_data().clear();
+    for (auto& datum : waveform.get_data()) {
+        scaledWaveform.get_mutable_data().push_back(datum + scalarValue);
+    }
+    return scaledWaveform;
 }
 
 double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
@@ -238,8 +268,8 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
         case WaveformLabel::SINUSOIDAL: {
             auto constants = Constants();
             for (size_t i = 0; i < constants.numberPointsSamplesWaveforms; ++i) {
-                double angle = i * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
-                time.push_back(angle * period);
+                double angle = i * 2 * std::numbers::pi / (constants.numberPointsSamplesWaveforms - 1);
+                time.push_back(i * period / (constants.numberPointsSamplesWaveforms - 1));
                 data.push_back((sin(angle) * peakToPeak / 2) + offset);
             }
             break;
@@ -249,12 +279,7 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
     }
 
     waveform.set_data(data);
-    if (processed.get_label() == OpenMagnetics::WaveformLabel::SINUSOIDAL) {
-        waveform.set_time(std::nullopt);
-    }
-    else {
-        waveform.set_time(time);
-    }
+    waveform.set_time(time);
 
     return waveform;
 }
@@ -278,6 +303,7 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
     auto constants = Constants();
     std::vector<double> time;
     auto data = waveform.get_data();
+
     if (!waveform.get_time()) { // This means the waveform is equidistant
         time = linear_spaced_array(0, 1. / frequency, data.size());
     }
@@ -290,7 +316,7 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
         }
         else {
             if (fabs((1.0 / period) - frequency) / frequency > 0.01)
-                throw std::invalid_argument("Frequency: " + std::to_string(frequency) + " is not matching waveform time info with calcualted frequency of: " + std::to_string(1.0 / period));
+                throw std::invalid_argument("Frequency: " + std::to_string(frequency) + " is not matching waveform time info with calculated frequency of: " + std::to_string(1.0 / period));
         }
     }
 
@@ -313,6 +339,9 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
                 found = true;
                 break;
             }
+        }
+        if (!found) {
+
         }
     }
 
@@ -394,6 +423,102 @@ SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitati
     return voltageSignalDescriptor;
 }
 
+Waveform InputsWrapper::calculate_derivative_waveform(Waveform waveform) {
+    std::vector<double> sourceData = waveform.get_data();
+    std::vector<double> sourceTime = waveform.get_time().value();
+
+    std::vector<double> tempData = sourceData;
+    std::vector<double> tempTime = sourceTime;
+
+
+    std::vector<double> derivative;
+    std::vector<double> derivativeTime;
+    std::vector<double> data;
+    Waveform derivativeWaveform;
+    SignalDescriptor voltageSignalDescriptor;
+    auto originalTime = tempTime;
+
+    if (is_waveform_sampled(waveform)) {
+        tempData.push_back(tempData[0]);
+        double difference = tempTime[tempTime.size() - 1] - tempTime[tempTime.size() - 2];
+        tempTime.push_back(tempTime[tempTime.size() - 1] + difference);
+    }
+    else {
+        tempData.push_back(tempData[1]);
+        tempTime.push_back(tempTime[tempTime.size() - 1] + tempTime[1]);
+    }
+
+    std::adjacent_difference(tempData.begin(), tempData.end(), tempData.begin());
+    derivative = std::vector<double>(tempData.begin() + 1, tempData.end());
+
+    std::adjacent_difference(tempTime.begin(), tempTime.end(), tempTime.begin());
+    derivativeTime = std::vector<double>(tempTime.begin() + 1, tempTime.end());
+
+    if (is_waveform_sampled(waveform)) {
+        for (size_t i = 0; i < derivative.size(); ++i) {
+            data.push_back(derivative[i] / derivativeTime[i]);
+        }
+        derivativeWaveform.set_time(originalTime);
+    }
+    else {
+        std::vector<double> finalTime;
+        for (size_t i = 0; i < derivative.size() - 1; ++i) {
+            if (derivativeTime[i] == 0) {
+                continue;
+            }
+            data.push_back(derivative[i] / derivativeTime[i]);
+            data.push_back(derivative[i] / derivativeTime[i]);
+            finalTime.push_back(originalTime[i]);
+            finalTime.push_back(originalTime[i + 1]);
+        }
+        if (derivativeTime[derivative.size() - 1] != 0) {
+            finalTime.insert(finalTime.begin(), finalTime[0]);
+            data.insert(data.begin(), data[data.size() - 1]);
+        }
+        derivativeWaveform.set_time(finalTime);
+    }
+
+    derivativeWaveform.set_data(data);
+    return derivativeWaveform;
+}
+
+
+Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform) {
+    std::vector<double> data = waveform.get_data();
+    std::vector<double> time = waveform.get_time().value();
+    std::vector<double> integration;
+    Waveform resultWaveform(waveform);
+
+    double integral = 0;
+    integration.push_back(integral);
+    for (size_t i = 0; i < time.size() - 1; ++i) {
+        double timePerPoint = time[i + 1] - time[i];
+        integral += data[i] * timePerPoint;
+        integration.push_back(integral);
+    }
+    resultWaveform.set_data(integration);
+
+    double integrationAverage = calculate_waveform_average(resultWaveform);
+    resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
+
+    std::vector<double> distinctData;
+    std::vector<double> distinctTime;
+    for (size_t i = 0; i < resultWaveform.get_data().size(); ++i){
+        if (distinctData.size() != 0) {
+            if (resultWaveform.get_data()[i] == distinctData.back() && resultWaveform.get_time().value()[i] == distinctTime.back())
+                continue;
+        }
+
+        distinctData.push_back(resultWaveform.get_data()[i]);
+        distinctTime.push_back(resultWaveform.get_time().value()[i]);
+    }
+
+    resultWaveform.set_data(distinctData);
+    resultWaveform.set_time(distinctTime);
+
+    return resultWaveform;
+}
+
 SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                                  double offset,
                                                                  double frequency) {
@@ -413,34 +538,6 @@ SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signal
     return signalDescriptor;
 }
 
-Waveform calculate_magnetizing_current_waveform(Waveform sourceWaveform,
-                                          double frequency,
-                                          double magnetizingInductance,
-                                          double dcCurrent = 0) {
-    std::vector<double> source = sourceWaveform.get_data();
-    std::vector<double> integration;
-    Waveform resultWaveform(sourceWaveform);
-
-    double integral = 0;
-    integration.push_back(integral);
-    double timePerPoint = 1 / frequency / source.size();
-    for (auto& point : source) {
-        integral += point / magnetizingInductance * timePerPoint;
-        integration.push_back(integral);
-    }
-
-    integration = std::vector<double>(integration.begin(), integration.end() - 1);
-
-    double integrationAverage =
-        std::accumulate(std::begin(integration), std::end(integration), 0.0) / integration.size();
-    for (size_t i = 0; i < integration.size(); ++i) {
-        integration[i] = integration[i] - integrationAverage + dcCurrent;
-    }
-
-    resultWaveform.set_data(integration);
-    return resultWaveform;
-}
-
 SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor primarySignalDescriptor,
                                                          double ratio) {
     SignalDescriptor reflected_waveform;
@@ -455,6 +552,75 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor primarySignalD
     reflected_waveform.set_waveform(waveform);
 
     return reflected_waveform;
+}
+
+SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
+                                                 double ratio,
+                                                 WaveformLabel label) {
+    
+    if (label == WaveformLabel::CUSTOM) {
+        return reflect_waveform(signal, ratio);
+    }
+    Processed processed;
+    if (!signal.get_processed()) {
+        auto waveform = signal.get_waveform().value();
+        if (is_waveform_sampled(waveform)) {
+            waveform = compress_waveform(waveform);
+        }
+        processed = calculate_basic_processed_data(waveform);
+    }
+    else {
+        processed = signal.get_processed().value();
+    }
+    Waveform newWaveform;
+
+    double period = signal.get_waveform().value().get_time().value().back() - signal.get_waveform().value().get_time().value().front();
+    double frequency = 1.0 / period;
+    double peakToPeak = processed.get_peak_to_peak().value() * ratio;
+    double offset = processed.get_offset() * ratio;
+    double dutyCycle = processed.get_duty_cycle().value();
+
+    switch(label) {
+        case WaveformLabel::FLYBACK_PRIMARY:
+            processed.set_label(WaveformLabel::FLYBACK_SECONDARY);
+            processed.set_offset(offset);
+            processed.set_peak_to_peak(peakToPeak);
+            newWaveform = create_waveform(processed, frequency);
+            break;
+        case WaveformLabel::FLYBACK_SECONDARY:
+            processed.set_label(WaveformLabel::FLYBACK_PRIMARY);
+            processed.set_offset(offset);
+            processed.set_peak_to_peak(peakToPeak);
+            newWaveform = create_waveform(processed, frequency);
+            break;
+        case WaveformLabel::UNIPOLAR_TRIANGULAR: {
+            double max = peakToPeak * dutyCycle / (1 - dutyCycle) + offset;
+            double min = offset;
+            double dc = dutyCycle * period;
+            std::vector<double> data = {min, min, max, min};
+            std::vector<double> time = {0, dc, dc, period};
+            newWaveform.set_data(data);
+            newWaveform.set_time(time);
+            break;
+        }
+        case WaveformLabel::UNIPOLAR_RECTANGULAR: {
+            double max = peakToPeak * dutyCycle / (1 - dutyCycle) + offset;
+            double min = offset;
+            double dc = dutyCycle * period;
+            std::vector<double> data = {-min, -min, -max, -max, -min};
+            std::vector<double> time = {0, dc, dc, period, period};
+            newWaveform.set_data(data);
+            newWaveform.set_time(time);
+            break;
+        }
+        default:
+            return reflect_waveform(signal, ratio);
+            break;
+    }
+
+    SignalDescriptor newSignal;
+    newSignal.set_waveform(newWaveform);
+    return newSignal;
 }
 
 std::pair<bool, std::string> InputsWrapper::check_integrity() {
@@ -563,6 +729,7 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
         case WaveformLabel::FLYBACK_SECONDARY:
             return waveform.get_data()[3];
     }
+    return 0;
 }
 
 Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
@@ -585,7 +752,6 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
         compressedWaveform = compress_waveform(waveform);
     }
 
-
     WaveformLabel label;
     label = try_guess_waveform_label(compressedWaveform);
     try {
@@ -596,14 +762,8 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
                              sampledWaveform.get_data().size());
         }
         else {
-            double integration = 0;
-            double period = compressedWaveform.get_time().value().back() - compressedWaveform.get_time().value().front();
-            for (size_t i = 0; i < compressedWaveform.get_data().size() - 1; ++i)
-            {
-                double area = (compressedWaveform.get_data()[i + 1] + compressedWaveform.get_data()[i]) / 2 * (compressedWaveform.get_time().value()[i + 1] - compressedWaveform.get_time().value()[i]);
-                integration += area;
-            }
-            processed.set_average(integration / period);
+            auto average = calculate_waveform_average(compressedWaveform);
+            processed.set_average(average);
         }
 
         double offset = calculate_offset(compressedWaveform, label);
@@ -711,7 +871,6 @@ Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double freq
     std::vector<std::complex<double>> data;
     for (std::size_t i = 0; i < waveform.get_data().size(); ++i) {
         data.emplace_back(waveform.get_data()[i]);
-        // std::cout << waveform.get_data()[i] << std::endl;
     }
 
     if (data.size() > 0 && ((data.size() & (data.size() - 1)) != 0)) {
@@ -719,7 +878,6 @@ Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double freq
         throw std::invalid_argument("Data vector size is not a power of 2");
     }
     fft(data);
-    // std::cout << data[0] << std::endl;
 
     harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
     for (size_t i = 1; i < data.size() / 2; ++i) {
@@ -773,9 +931,11 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         dcCurrent = excitation.get_current().value().get_processed().value().get_offset();
     }
 
-    auto sampledMagnetizingCurrentWaveform =
-        calculate_magnetizing_current_waveform(sampledWaveform, excitation.get_frequency(), magnetizingInductance, dcCurrent);
+    auto sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
     SignalDescriptor magnetizing_current_excitation;
+
+    sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
+    sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
 
     if (compress){
         magnetizing_current_excitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
@@ -793,6 +953,9 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 double magnetizingInductance,
                                                                 bool compress) {
+    if (!excitation.get_voltage()) {
+        throw std::invalid_argument("Missing voltage signal");
+    }
     auto voltage_excitation = excitation.get_voltage().value();
     voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
     auto waveform = voltage_excitation.get_waveform().value();
@@ -1079,6 +1242,7 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     else {
         auto constants = Constants();
         double error = 0;
+        double area = 0;
         double maximum = *max_element(waveform.get_data().begin(), waveform.get_data().end());
         double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
 
@@ -1088,10 +1252,12 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
         for (size_t i = 0; i < waveform.get_data().size(); ++i) {
             double angle = i * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
             double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
-            error += fabs(calculated_data - waveform.get_data()[i]) / waveform.get_data()[i];
+            area += fabs(waveform.get_data()[i]);
+            error += fabs(calculated_data - waveform.get_data()[i]);
         }
         error /= waveform.get_data().size();
-        if (error < 0.01) {
+        error /= area;
+        if (error < 0.05) {
             return WaveformLabel::SINUSOIDAL;
         }
         else {
@@ -1100,7 +1266,6 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-
 OperatingPoint InputsWrapper::scaleTimeToFrequency(OperatingPoint operatingPoint, double newFrequency){
     OperatingPoint scaledOperatingPoint;
     for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
@@ -1108,6 +1273,7 @@ OperatingPoint InputsWrapper::scaleTimeToFrequency(OperatingPoint operatingPoint
     }
     return scaledOperatingPoint;
 }
+
 OperatingPointExcitation InputsWrapper::scaleTimeToFrequency(OperatingPointExcitation excitation, double newFrequency){
     OperatingPointExcitation scaledExcitation(excitation);
     if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
