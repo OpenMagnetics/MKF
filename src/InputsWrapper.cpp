@@ -115,6 +115,9 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
             case WaveformLabel::BIPOLAR_RECTANGULAR: {
                 return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time().value()[9] - waveform.get_time().value()[0]) * 2;
             }
+            case WaveformLabel::BIPOLAR_TRIANGULAR: {
+                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time().value()[5] - waveform.get_time().value()[0]) * 2;
+            }
             case WaveformLabel::FLYBACK_PRIMARY:{
                 return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
             }
@@ -245,6 +248,19 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
                     0.75 * period - dc / 2,
                     0.75 * period - dc / 2,
                     0.75 * period + dc / 2,
+                    0.75 * period + dc / 2,
+                    period};
+            break;
+        }
+        case WaveformLabel::BIPOLAR_TRIANGULAR: {
+            double max = +peakToPeak / 2;
+            double min = -peakToPeak / 2;
+            double dc = dutyCycle / 2 * period;
+            data = {min, min, max, max, min, min};
+            time = {0,
+                    0.25 * period - dc / 2,
+                    0.25 * period + dc / 2,
+                    0.75 * period - dc / 2,
                     0.75 * period + dc / 2,
                     period};
             break;
@@ -717,8 +733,10 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
         case WaveformLabel::RECTANGULAR:
             return 0;
         case WaveformLabel::UNIPOLAR_RECTANGULAR:
-            return *min_element(waveform.get_data().begin(), waveform.get_data().end());;
+            return *min_element(waveform.get_data().begin(), waveform.get_data().end());
         case WaveformLabel::BIPOLAR_RECTANGULAR:
+            return 0;
+        case WaveformLabel::BIPOLAR_TRIANGULAR:
             return 0;
         case WaveformLabel::SINUSOIDAL:
             return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) + *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
@@ -1222,6 +1240,14 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
         compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
             return WaveformLabel::BIPOLAR_RECTANGULAR;
+    }
+    else if (compressedWaveform.get_data().size() == 6 &&
+        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+        is_closed_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+        compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
+        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
+            return WaveformLabel::BIPOLAR_TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
