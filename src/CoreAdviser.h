@@ -12,11 +12,6 @@
 namespace OpenMagnetics {
 
 class CoreAdviser {
-    private:
-        std::map<std::string, std::string> _models;
-        bool _includeToroids;
-        std::string _log;
-    protected:
     public: 
         enum class CoreAdviserFilters : int {AREA_PRODUCT, 
             ENERGY_STORED, 
@@ -25,6 +20,17 @@ class CoreAdviser {
             CORE_TEMPERATURE, 
             DIMENSIONS
         };
+    private:
+        std::map<std::string, std::string> _models;
+        bool _includeToroids;
+        std::string _log;
+        std::map<CoreAdviserFilters, double> _weights;
+
+        void log(std::string entry) {
+            _log += entry + "\n";
+        }
+    public:
+        std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         CoreAdviser(std::map<std::string, std::string> models, bool includeToroids=true) {
             auto defaults = OpenMagnetics::Defaults();
             _includeToroids = includeToroids;
@@ -40,12 +46,33 @@ class CoreAdviser {
             _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
         }
-
-        void log(std::string entry) {
-            _log += entry + "\n";
-        }
         std::string read_log() {
             return _log;
+        }
+        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false) {
+            std::map<std::string, std::map<CoreAdviserFilters, double>> invertedScorings;
+            for (auto const& [filter, aux] : _scorings) {
+                double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
+                                             [](const std::pair<std::string, double> &p1,
+                                                const std::pair<std::string, double> &p2)
+                                             {
+                                                 return p1.second < p2.second;
+                                             })).second; 
+                double minimumScoring = (*std::min_element(aux.begin(), aux.end(),
+                                             [](const std::pair<std::string, double> &p1,
+                                                const std::pair<std::string, double> &p2)
+                                             {
+                                                 return p1.second < p2.second;
+                                             })).second; 
+
+                for (auto const& [name, scoring] : aux) {
+                    if (weighted)
+                        invertedScorings[name][filter] = _weights[filter] * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
+                    else
+                        invertedScorings[name][filter] = (scoring - minimumScoring) / (maximumScoring - minimumScoring);
+                }
+            }
+            return invertedScorings;
         }
 
         std::vector<MasWrapper> get_advised_core(InputsWrapper inputs, size_t maximumNumberResults=1);
@@ -53,8 +80,21 @@ class CoreAdviser {
         std::vector<MasWrapper> apply_filters(std::vector<std::pair<MasWrapper, double>> masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
     
     class MagneticCoreFilter {
+        std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
+
         public:
-            MagneticCoreFilter() {
+
+            void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
+                // if (!(*_scorings).contains(name)) {
+                    // (*_scorings)[name] = std::map<CoreAdviserFilters, double>{filter,;
+                // }
+                // std::cout << scoring << std::endl;
+                (*_scorings)[filter][name] = scoring;
+                // std::cout << (*_scorings)[name][filter] << std::endl;
+
+            }
+            MagneticCoreFilter(std::map<CoreAdviserFilters, std::map<std::string, double>>* scorings){
+                _scorings = scorings;
             }
             std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<MasWrapper> unfilteredMasMagnetics, InputsWrapper inputs, double weight=1);
     };

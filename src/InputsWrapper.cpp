@@ -113,10 +113,10 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
                 return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
             }
             case WaveformLabel::BIPOLAR_RECTANGULAR: {
-                return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time().value()[9] - waveform.get_time().value()[0]) * 2;
+                return (waveform.get_time().value()[3] - waveform.get_time().value()[2]) / (waveform.get_time().value()[9] - waveform.get_time().value()[0]);
             }
             case WaveformLabel::BIPOLAR_TRIANGULAR: {
-                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time().value()[5] - waveform.get_time().value()[0]) * 2;
+                return (waveform.get_time().value()[2] - waveform.get_time().value()[1]) / (waveform.get_time().value()[5] - waveform.get_time().value()[0]);
             }
             case WaveformLabel::FLYBACK_PRIMARY:{
                 return (waveform.get_time().value()[2] - waveform.get_time().value()[0]) / (waveform.get_time().value()[4] - waveform.get_time().value()[0]);
@@ -230,7 +230,7 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
         case WaveformLabel::UNIPOLAR_RECTANGULAR: {
             double max = peakToPeak + offset;
             double min = offset;
-            double dc = dutyCycle * period;
+            double dc = std::min(0.5, dutyCycle) * period;
             data = {min, max, max, min, min};
             time = {0, 0, dc, dc, period};
             break;
@@ -238,7 +238,7 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
         case WaveformLabel::BIPOLAR_RECTANGULAR: {
             double max = +peakToPeak / 2;
             double min = -peakToPeak / 2;
-            double dc = dutyCycle / 2 * period;
+            double dc = dutyCycle * period;
             data = {0, 0, max, max, 0, 0, min, min, 0, 0};
             time = {0,
                     0.25 * period - dc / 2,
@@ -255,7 +255,7 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
         case WaveformLabel::BIPOLAR_TRIANGULAR: {
             double max = +peakToPeak / 2;
             double min = -peakToPeak / 2;
-            double dc = dutyCycle / 2 * period;
+            double dc = std::min(0.5, dutyCycle) * period;
             data = {min, min, max, max, min, min};
             time = {0,
                     0.25 * period - dc / 2,
@@ -772,6 +772,7 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
 
     WaveformLabel label;
     label = try_guess_waveform_label(compressedWaveform);
+
     try {
         processed.set_label(label);
 
@@ -1228,6 +1229,15 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::RECTANGULAR;
     }
+    else if (compressedWaveform.get_data().size() == 5 &&
+        is_closed_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
+        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+            return WaveformLabel::RECTANGULAR;
+    }
     else if (compressedWaveform.get_data().size() == 10 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
         is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
@@ -1292,50 +1302,50 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-OperatingPoint InputsWrapper::scaleTimeToFrequency(OperatingPoint operatingPoint, double newFrequency){
+OperatingPoint InputsWrapper::scale_time_to_frequency(OperatingPoint operatingPoint, double newFrequency){
     OperatingPoint scaledOperatingPoint;
     for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-        scaledOperatingPoint.get_mutable_excitations_per_winding().push_back(scaleTimeToFrequency(excitation, newFrequency));
+        scaledOperatingPoint.get_mutable_excitations_per_winding().push_back(scale_time_to_frequency(excitation, newFrequency));
     }
     return scaledOperatingPoint;
 }
 
-OperatingPointExcitation InputsWrapper::scaleTimeToFrequency(OperatingPointExcitation excitation, double newFrequency){
+OperatingPointExcitation InputsWrapper::scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency){
     OperatingPointExcitation scaledExcitation(excitation);
     if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
         auto current = excitation.get_current().value();
-        current.set_waveform(scaleTimeToFrequency(current.get_waveform().value(), newFrequency));
+        current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));
         scaledExcitation.set_current(current);
     }
     if (excitation.get_voltage() && excitation.get_voltage().value().get_waveform()) {
         auto voltage = excitation.get_voltage().value();
-        voltage.set_waveform(scaleTimeToFrequency(voltage.get_waveform().value(), newFrequency));
+        voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
         scaledExcitation.set_voltage(voltage);
     }
     if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current().value().get_waveform()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
-        magnetizingCurrent.set_waveform(scaleTimeToFrequency(magnetizingCurrent.get_waveform().value(), newFrequency));
+        magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetizing_current(magnetizingCurrent);
     }
     if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density().value().get_waveform()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-        magneticFluxDensity.set_waveform(scaleTimeToFrequency(magneticFluxDensity.get_waveform().value(), newFrequency));
+        magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetic_flux_density(magneticFluxDensity);
     }
     if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength().value().get_waveform()) {
         auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
-        magneticFieldStrength.set_waveform(scaleTimeToFrequency(magneticFieldStrength.get_waveform().value(), newFrequency));
+        magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetic_field_strength(magneticFieldStrength);
     }
     return scaledExcitation;
 
 }
-Waveform InputsWrapper::scaleTimeToFrequency(Waveform waveform, double newFrequency){
+Waveform InputsWrapper::scale_time_to_frequency(Waveform waveform, double newFrequency){
     std::vector<double> scaledTime;
     std::vector<double> time = waveform.get_time().value();
     double oldFrequency = 1.0 / (time.back() - time.front());
     for (auto& timePoint : time) {
-        scaledTime.push_back(timePoint / oldFrequency * newFrequency);
+        scaledTime.push_back(timePoint * oldFrequency / newFrequency);
     }
     waveform.set_time(scaledTime);
     return waveform;

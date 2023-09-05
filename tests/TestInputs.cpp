@@ -787,7 +787,7 @@ SUITE(Inputs) {
 
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
-        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42 * 2;
+        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42;
         windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR;
         windingExcitation["current"]["processed"]["offset"] = 0;
         windingExcitation["current"]["processed"]["peakToPeak"] = 13;
@@ -830,7 +830,7 @@ SUITE(Inputs) {
 
         json windingExcitation = json();
         windingExcitation["frequency"] = 100000;
-        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42 * 2;
+        windingExcitation["current"]["processed"]["dutyCycle"] = 0.42;
         windingExcitation["current"]["processed"]["label"] = OpenMagnetics::WaveformLabel::BIPOLAR_TRIANGULAR;
         windingExcitation["current"]["processed"]["offset"] = 0;
         windingExcitation["current"]["processed"]["peakToPeak"] = 13;

@@ -799,4 +799,29 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, magnetizingInductance2Stacks, max_error * expectedValue);
     }
 
+    TEST(Test_Magnetizing_Inductance_RM14_20) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 29;
+        double frequency = 100000;
+        std::string coreShape = "RM 14/20";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+
+        OpenMagnetics::CoreWrapper core = json::parse(R"({"name": "My Core", "functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": {"aliases": ["RM 14LP", "RM 14/ILP", "RM 14/LP"], "dimensions": {"A": {"minimum": 0.0408, "maximum": 0.0422 }, "B": {"minimum": 0.010150000000000001, "maximum": 0.01025 }, "C": {"minimum": 0.018400000000000003, "maximum": 0.019000000000000003 }, "D": {"minimum": 0.00555, "maximum": 0.00585 }, "E": {"minimum": 0.029, "maximum": 0.0302 }, "F": {"minimum": 0.014400000000000001, "maximum": 0.015000000000000001 }, "G": {"minimum": 0.017 }, "H": {"minimum": 0.0054, "maximum": 0.005600000000000001 }, "J": {"minimum": 0.0335, "maximum": 0.0347 }, "R": {"maximum": 0.00030000000000000003 } }, "family": "rm", "familySubtype": "3", "name": "RM 14/20", "type": "standard", "magneticCircuit": "open"}, "gapping": [{"type": "subtractive", "length": 0.001 }, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"} ], "numberStacks": 1 }, "geometricalDescription": null, "processedDescription": null })");
+        OpenMagnetics::CoilWrapper winding; 
+        OpenMagnetics::InputsWrapper inputs; 
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
+            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        double expectedValue = 6.6e-3;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        double magnetizingInductance =
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+    }
+
 }
