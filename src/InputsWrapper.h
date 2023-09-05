@@ -82,9 +82,9 @@ class InputsWrapper : public Inputs {
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    static OperatingPoint scaleTimeToFrequency(OperatingPoint operatingPoint, double newFrequency);
-    static OperatingPointExcitation scaleTimeToFrequency(OperatingPointExcitation excitation, double newFrequency);
-    static Waveform scaleTimeToFrequency(Waveform waveform, double newFrequency);
+    static OperatingPoint scale_time_to_frequency(OperatingPoint operatingPoint, double newFrequency);
+    static OperatingPointExcitation scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency);
+    static Waveform scale_time_to_frequency(Waveform waveform, double newFrequency);
     
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {
         get_mutable_operating_points()[index] = value;

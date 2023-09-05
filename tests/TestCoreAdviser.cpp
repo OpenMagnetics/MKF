@@ -42,10 +42,8 @@ SUITE(CoreAdviser) {
         OpenMagnetics::CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
-        // std::cout << coreAdviser.read_log() << std::endl;
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
     }
 
@@ -73,9 +71,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 
         CHECK(masMagnetics.size() == 2);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
-        std::cout << masMagnetics[1].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[1].get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
     }
 
@@ -103,7 +99,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
     }
@@ -132,7 +127,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 114/46/35 - XFlux 26 - Ungapped");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 2);
     }
@@ -161,7 +155,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "EFD 10/5/3 - 3C95 - Gapped 0.13999999999999999 mm");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -190,7 +183,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "ER 48/18/18 - 3C94 - Gapped 1.0 mm");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -219,7 +211,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 42/21/15 - Kool Mu Hf 40 - Ungapped");
         CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
@@ -248,10 +239,84 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
 
         CHECK(masMagnetics.size() == 2);
-        std::cout << masMagnetics[0].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
-        std::cout << masMagnetics[1].get_magnetic().get_core().get_name().value() << std::endl;
         CHECK(masMagnetics[1].get_magnetic().get_core().get_name() == "PQ 26/20 - 3C94 - Gapped 0.361 mm");
     }
 
+    TEST(Test_No_Toroids_Two_Points_High_Power_Low_Power) {
+        OpenMagnetics::InputsWrapper inputs;
+        std::vector<double> turnsRatios = {};
+        {
+            double voltagePeakToPeak = 6000;
+            double dcCurrent = 0;
+            double ambientTemperature = 25;
+            double frequency = 100000;
+            double desiredMagnetizingInductance = 10e-5;
+
+            prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+        }
+        auto highPowerOperatingPoint = inputs.get_operating_point(0);
+
+
+        {
+            double voltagePeakToPeak = 60;
+            double dcCurrent = 0;
+            double ambientTemperature = 25;
+            double frequency = 100000;
+            double desiredMagnetizingInductance = 10e-5;
+            prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+        }
+        inputs.get_mutable_operating_points().push_back(highPowerOperatingPoint);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_LOSSES] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreAdviser coreAdviser(false);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+
+        CHECK(masMagnetics.size() == 1);
+
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 114/46/35 - Kool Mu MAX 60 - Ungapped");
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
+    }
+
+    TEST(Test_Two_Points_Equal) {
+        OpenMagnetics::InputsWrapper inputs;
+        std::vector<double> turnsRatios = {};
+        {
+            double voltagePeakToPeak = 6000;
+            double dcCurrent = 0;
+            double ambientTemperature = 25;
+            double frequency = 100000;
+            double desiredMagnetizingInductance = 10e-5;
+
+            prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+        }
+        auto operatingPoint = inputs.get_operating_point(0);
+        inputs.get_mutable_operating_points().push_back(operatingPoint);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_LOSSES] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+        OpenMagnetics::CoreAdviser coreAdviser(false);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 1);
+
+        CHECK(masMagnetics.size() == 1);
+
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
+        CHECK(masMagnetics[0].get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
+        auto scorings = coreAdviser.get_scorings();
+
+    }
 }

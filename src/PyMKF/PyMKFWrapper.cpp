@@ -159,7 +159,7 @@ json get_core_losses(json coreData,
     OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
     if (!excitation.get_current()) {
-        auto magnetizingCurrent = OpenMagnetics::InputsWrapper::get_magnetizing_current(excitation, magnetizingInductance);
+        auto magnetizingCurrent = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance);
         excitation.set_current(magnetizingCurrent);
         operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
     }

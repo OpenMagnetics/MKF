@@ -78,7 +78,10 @@ double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, Operat
 
 DimensionWithTolerance MagneticEnergy::required_magnetic_energy(InputsWrapper inputs){
     DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
-    auto magnetizingCurrentPeak = InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_magnetizing_current().value().get_processed().value().get_peak().value();
+    double magnetizingCurrentPeak = 0;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current().value().get_processed().value().get_peak().value());
+    }
     DimensionWithTolerance magneticEnergyRequirement;
     auto get_energy = [magnetizingCurrentPeak](double magnetizingInductance)
     {
