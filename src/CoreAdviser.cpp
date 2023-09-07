@@ -562,6 +562,16 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, size
     return get_advised_core(inputs, weights, maximumNumberResults);
 }
 
+
+std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std::vector<CoreWrapper> cores, size_t maximumNumberResults) {
+    std::map<CoreAdviserFilters, double> weights;
+    magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
+        CoreAdviserFilters filter = val;
+        weights[filter] = 1.0;
+    });
+    return get_advised_core(inputs, weights, cores, maximumNumberResults);
+}
+
 std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     std::string file_path = __FILE__;
     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
