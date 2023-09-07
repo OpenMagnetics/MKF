@@ -563,8 +563,6 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, size
 }
 
 std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
-    _weights = weights;
-    auto defaults = Defaults();
     std::string file_path = __FILE__;
     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
     std::ifstream ndjsonFile(inventory_path);
@@ -577,6 +575,13 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
             cores.push_back(core);
         }
     }
+    return get_advised_core(inputs, weights, cores, maximumNumberResults);
+}
+
+std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, std::vector<CoreWrapper> cores, size_t maximumNumberResults){
+    _weights = weights;
+    auto defaults = Defaults();
+
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     std::vector<std::pair<MasWrapper, double>> masMagneticsWithStacks;
     std::vector<std::pair<MasWrapper, double>> masMagneticsWithoutStacks;
@@ -591,6 +596,9 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
     }
     magnetic.set_coil(std::move(coil));
     for (auto& core : cores){
+        if (!_includeToroids && core.get_type() == CoreType::TOROIDAL) {
+            continue;
+        }
         // if (core.get_distributors_info().value().size() == 0) {
         //     continue;
         // }
@@ -638,7 +646,7 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
         masMagnetics = masMagneticsWithStacks;
     }
     else {
-        log("We start the search with " + std::to_string(masMagneticsWithStacks.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.");
+        log("We start the search with " + std::to_string(masMagneticsWithoutStacks.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.");
         log("We don't include stacks of cores in our search.");
         masMagnetics = masMagneticsWithoutStacks;
     }

@@ -19,6 +19,21 @@ SUITE(CoreAdviser) {
             peakToPeak, dutyCycle, dcCurrent, turnsRatios);
     }
 
+    std::vector<OpenMagnetics::CoreWrapper> load_test_data() {
+        std::string file_path = __FILE__;
+        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_cores.ndjson");
+        std::ifstream ndjsonFile(inventory_path);
+        std::string jsonLine;
+        std::vector<OpenMagnetics::CoreWrapper> cores;
+        while (std::getline(ndjsonFile, jsonLine)) {
+            json jf = json::parse(jsonLine);
+            OpenMagnetics::CoreWrapper core(jf, false, true, false);
+            cores.push_back(core);
+        }
+
+        return cores;
+    }
+
     TEST(Test_All_Cores) {
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -40,7 +55,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser;
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
 
         CHECK(masMagnetics.size() == 1);
@@ -68,7 +84,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores, 2);
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mu Hf 40 - Ungapped");
@@ -96,7 +113,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
@@ -124,7 +142,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 114/46/35 - XFlux 26 - Ungapped");
@@ -152,7 +171,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "EFD 10/5/3 - 3C95 - Gapped 0.13999999999999999 mm");
@@ -180,7 +200,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "ER 48/18/18 - 3C94 - Gapped 1.0 mm");
@@ -208,7 +229,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "E 42/21/15 - Kool Mu Hf 40 - Ungapped");
@@ -236,7 +258,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores, 2);
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
@@ -278,7 +301,8 @@ SUITE(CoreAdviser) {
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores);
 
         CHECK(masMagnetics.size() == 1);
 
@@ -310,7 +334,8 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
 
         OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 1);
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, cores, 1);
 
         CHECK(masMagnetics.size() == 1);
 
