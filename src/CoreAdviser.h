@@ -77,6 +77,7 @@ class CoreAdviser {
 
         std::vector<MasWrapper> get_advised_core(InputsWrapper inputs, size_t maximumNumberResults=1);
         std::vector<MasWrapper> get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults=1);
+        std::vector<MasWrapper> get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, std::vector<CoreWrapper> cores, size_t maximumNumberResults=1);
         std::vector<MasWrapper> apply_filters(std::vector<std::pair<MasWrapper, double>> masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
     
     class MagneticCoreFilter {

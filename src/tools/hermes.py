@@ -12,6 +12,7 @@ import pandas
 import copy
 import ndjson
 import PyMKF
+import urllib
 from datetime import date
 from difflib import SequenceMatcher
 
@@ -218,12 +219,14 @@ class Stocker():
                         "frequency": 100000,
                         "current": {
                             "waveform": {
-                                "data": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2, 0.1]
+                                "data": [-5, 5, -5],
+                                "time": [0, 0.0000025, 0.00001],
                             }
                         },
                         "voltage": {
                             "waveform": {
-                                "data": [-10, 10, 10, 10, 10, 10, -10, -10, -10, -10]
+                                "data": [-2.5, 7.5, 7.5, -2.5, -2.5],
+                                "time": [0, 0, 0.0000025, 0.0000025, 0.00001],
                             }
                         }
                     }
@@ -263,10 +266,17 @@ class Stocker():
                         }
                     )
 
-            inductance = PyMKF.calculate_inductance_from_number_turns_and_gapping(core_data, 
-                                                                            winding_data,
-                                                                            operating_point,
-                                                                            models)
+            try:
+                inductance = PyMKF.calculate_inductance_from_number_turns_and_gapping(core_data, 
+                                                                                winding_data,
+                                                                                operating_point,
+                                                                                models)
+            except ValueError:
+                print(core_data)
+                print(winding_data)
+                print(operating_point)
+                print(models)
+                assert 0
             gap_length += 0.000001
             for index in range(len(core_data['functionalDescription']['gapping'])):
                 core_data['functionalDescription']['gapping'][index]['length'] = round(core_data['functionalDescription']['gapping'][index]['length'], 5)
@@ -363,7 +373,8 @@ class DigikeyStocker(Stocker):
                                       "Toshiba Semiconductor and Storage",
                                       "United Chemi-Con",
                                       "Würth Elektronik",
-                                      "Laird-Signal Integrity Products"]
+                                      "Laird-Signal Integrity Products",
+                                      "Chemi-Con"]
 
     def get_refresh_token(self):
         # go to the browser and paste:
@@ -371,7 +382,7 @@ class DigikeyStocker(Stocker):
         # https://api.digikey.com/v1/oauth2/authorize?response_type=code&client_id=cN8i6L6KnNGJB2h3zsQgC7KvWf8AccsC&redirect_uri=https://localhost:8139/digikey_callback
         # get auth code from the redirected URL and paste it here:
 
-        auth_code = 'BxAnaFf0'
+        auth_code = 'BcuAh7lC'
 
         token_response = requests.post('https://api.digikey.com/v1/oauth2/token', data={
             'client_id': self.client_id,
@@ -381,8 +392,8 @@ class DigikeyStocker(Stocker):
             'grant_type': 'authorization_code'
         })
 
+        print(token_response.json())
         refresh_token = token_response.json()['refresh_token']
-        print(token_response)
 
         with open(self.credentials_path, 'w') as outfile:
             json.dump({"refresh_token": refresh_token}, outfile)
@@ -401,6 +412,7 @@ class DigikeyStocker(Stocker):
             'grant_type': 'refresh_token'
         })
 
+        print(token_response.json())
         access_token = token_response.json()['access_token']
         refresh_token = token_response.json()['refresh_token']
 
@@ -493,7 +505,8 @@ class DigikeyStocker(Stocker):
                 pprint.pprint(product['DetailedDescription'])
                 pprint.pprint(product['Manufacturer']['Value'])
                 pprint.pprint(product['Series']['Value'])
-                assert 0, f"Unknown manufacturer: {product['Manufacturer']['Value']}"
+                continue
+                # assert 0, f"Unknown manufacturer: {product['Manufacturer']['Value']}"
 
         print("response.json()['ProductsCount']")
         print(response.json()['ProductsCount'])
@@ -658,7 +671,7 @@ class DigikeyStocker(Stocker):
 
     def process_fair_rite_product(self, product):  # sourcery skip: class-extract-method, extract-method, low-code-quality, move-assign
         exceptions = []
-        not_included_families = ['ROD', 'Planar E/I', 'PS', 'Multi-Hole (2)', 'Multi-Hole', 'I', 'Tube']
+        not_included_families = ['Rod', 'ROD', 'Planar E/I', 'PS', 'Multi-Hole (2)', 'Multi-Hole', 'I', 'Tube']
         typos = []
         shape_type = "two-piece set"
         family = None
@@ -754,7 +767,7 @@ class DigikeyStocker(Stocker):
                  {"typo": "EIR 22/5.5/15", "corrected_shape": "ER 22/5.5/15", "corrected_family": "ER"}]
         corrections = ["P 47/28"]
         corrections_family = ["P"]
-        not_included_materials = ["H5C2", "PC44"]
+        not_included_materials = ["H5C2", "PC44", "PC40"]
 
         shape_type = "two-piece set"
         material = None
@@ -826,8 +839,14 @@ class DigikeyStocker(Stocker):
                     number_gaps = 3 if parameter['Value'] == 'Distributed Gapped' else 1
                     if family in ["TC", "TX", "T"]:
                         return
+
+                    al_value = None
+                    for parameter in product['Parameters']:
+                        if parameter['Parameter'] == 'Inductance Factor (Al)':
+                            al_value = float(parameter['Value'].split(" nH")[0].strip()) * 1e-9
                     if al_value is None:
-                        return
+                        pprint.pprint(product)
+                        assert 0
 
                     gapping = self.get_gapping(core_data, core_manufacturer, al_value, number_gaps)
                 if parameter['Parameter'] == 'Part Status' and parameter['Value'] != 'Active':
@@ -858,7 +877,7 @@ class DigikeyStocker(Stocker):
         # sourcery skip: extract-method, low-code-quality, move-assign
         not_included_families = ["I", "PLT", "ROD"]
         typos = [{"typo": "ER 35W/21/11", "corrected_shape": "ER 35/21/11", "corrected_family": "ER"}]
-        not_included_materials = ["3D", "3E", "3C11", "4C"]
+        not_included_materials = ["3D", "3E", "3C11", "4C", "3C81", "3H1"]
 
         family = None
         gap_length = None
@@ -878,7 +897,9 @@ class DigikeyStocker(Stocker):
                     for not_included_material in not_included_materials:
                         if not_included_material in product['ManufacturerPartNumber']:
                             return None
-                    assert 0, f"Unknown material in {product['ManufacturerPartNumber']}"
+
+                    return None
+                    # assert 0, f"Unknown material in {product['ManufacturerPartNumber']}"
 
                 if shape is None:
                     print(product['ManufacturerPartNumber'])
@@ -972,7 +993,11 @@ class DigikeyStocker(Stocker):
             return
 
         if self.get_parameter(product['Parameters'], 'Core Type') == 'Toroid':
-            external_diameter = self.get_parameter(product['Parameters'], 'Diameter').split('(')[1].split('mm)')[0]
+            try:
+                diameter = self.get_parameter(product['Parameters'], 'Diameter')
+                external_diameter = diameter.split('(')[1].split('mm)')[0]
+            except IndexError:
+                return
             height = self.get_parameter(product['Parameters'], 'Height').split('(')[1].split('mm)')[0]
             family = 'T'
             pprint.pprint("external_diameter")
@@ -991,8 +1016,9 @@ class DigikeyStocker(Stocker):
                 width = self.get_parameter(product['Parameters'], 'Width').split('(')[1].split('mm)')[0]
                 temptative_shape = f"{family} {self.adaptive_round(float(length))}/{self.adaptive_round(float(height))}/{self.adaptive_round(float(width))}"
             except IndexError:
-                pprint.pprint(product)
-                assert 0
+                # pprint.pprint(product)
+                # assert 0
+                return
         shape = self.find_shape_closest_dimensions(family, temptative_shape, limit=0.1)
         pprint.pprint(family)
         pprint.pprint(material)
@@ -1080,6 +1106,7 @@ class MouserStocker(Stocker):
                                         "Wurth Elektronik",
                                         "United Chemi-Con",
                                         "Vacuumschmelze",
+                                        "Chemi-Con",
                                      ]
 
     def try_get_family(self, text):
@@ -1160,7 +1187,10 @@ class MouserStocker(Stocker):
 
         if shape is None:
             response = requests.get(url, headers=headers)
-            extra_data = pandas.read_html(response.text)[8]
+            try:
+                extra_data = pandas.read_html(response.text)[8]
+            except ValueError:
+                return
             for datum_index, datum in extra_data.iterrows():
                 if datum['Atributo del producto'] == 'Longitud exterior:':
                     length = float(datum['Valor del atributo'].split(' mm')[0])
@@ -1284,7 +1314,7 @@ class MouserStocker(Stocker):
                     gapping = self.get_gapping(core_data, "TDK", al_value, number_gaps)
                 else:
                     gapping = []
-            except ValueError:
+            except (ValueError, IndexError):
                 gapping = []
 
             return family, shape, material, gapping
@@ -1411,8 +1441,9 @@ class MouserStocker(Stocker):
             elif product['Manufacturer'] in self.ignored_manufacturers:
                 print(product['Manufacturer'])
             else:
-                pprint.pprint(product)
-                assert 0, f"Unknown manufacturer: {product['Manufacturer']}"
+                continue
+                # pprint.pprint(product)
+                # assert 0, f"Unknown manufacturer: {product['Manufacturer']}"
 
 
         return {
@@ -1464,7 +1495,13 @@ class GatewayStocker(Stocker):
     def read_products(self, offset: int = 0):  # sourcery skip: extract-method
         excluded_words = ['ADJUSTER', 'BOBBIN', 'CLIP']
 
-        data = pandas.read_excel(f"https://gatewaycando.com/NewStockList/Gateway%20Stock%20File.xlsx")
+        try:
+            data = pandas.read_excel(f"https://gatewaycando.com/NewStockList/Gateway%20Stock%20File.xlsx")
+        except urllib.error.HTTPError:
+            return {
+                'current_offset' : 0,
+                'total': 0
+            }
 
         number = 0
         for index, datum in data.iterrows():
