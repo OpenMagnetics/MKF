@@ -32,36 +32,28 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(json models) {
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels modelName) {
     if (modelName == CoreLossesModels::STEINMETZ) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesSteinmetzModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesSteinmetzModel>();
     }
     else if (modelName == CoreLossesModels::IGSE) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesIGSEModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesIGSEModel>();
     }
     else if (modelName == CoreLossesModels::MSE) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesMSEModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesMSEModel>();
     }
     else if (modelName == CoreLossesModels::NSE) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesNSEModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesNSEModel>();
     }
     else if (modelName == CoreLossesModels::ALBACH) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesAlbachModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesAlbachModel>();
     }
     else if (modelName == CoreLossesModels::BARG) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesBargModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesBargModel>();
     }
     else if (modelName == CoreLossesModels::ROSHEN) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesRoshenModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesRoshenModel>();
     }
     else if (modelName == CoreLossesModels::PROPRIETARY) {
-        std::shared_ptr<CoreLossesModel> coreLossesModel(new CoreLossesProprietaryModel);
-        return coreLossesModel;
+        return std::make_shared<CoreLossesProprietaryModel>();
     }
 
     else

@@ -1650,147 +1650,147 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
 
     // std::cout << "core Piece  E" << std::endl;
     // std::cout << coreShapeName << std::endl;
-        std::shared_ptr<CorePiece> piece(new CorePieceE);
+        auto piece = std::make_shared<CorePieceE>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EC) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEc);
+        auto piece = std::make_shared<CorePieceEc>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EFD) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEfd);
+        auto piece = std::make_shared<CorePieceEfd>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EL) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEl);
+        auto piece = std::make_shared<CorePieceEl>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EP) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEp);
+        auto piece = std::make_shared<CorePieceEp>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EPX) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEpx);
+        auto piece = std::make_shared<CorePieceEpx>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::LP) {
-        std::shared_ptr<CorePiece> piece(new CorePieceLp);
+        auto piece = std::make_shared<CorePieceLp>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EQ) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEq);
+        auto piece = std::make_shared<CorePieceEq>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ER) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEr);
+        auto piece = std::make_shared<CorePieceEr>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ETD) {
-        std::shared_ptr<CorePiece> piece(new CorePieceEtd);
+        auto piece = std::make_shared<CorePieceEtd>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::P) {
-        std::shared_ptr<CorePiece> piece(new CorePieceP);
+        auto piece = std::make_shared<CorePieceP>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_E) {
-        std::shared_ptr<CorePiece> piece(new CorePiecePlanarE);
+        auto piece = std::make_shared<CorePiecePlanarE>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_EL) {
-        std::shared_ptr<CorePiece> piece(new CorePiecePlanarEl);
+        auto piece = std::make_shared<CorePiecePlanarEl>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_ER) {
-        std::shared_ptr<CorePiece> piece(new CorePiecePlanarEr);
+        auto piece = std::make_shared<CorePiecePlanarEr>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PM) {
-        std::shared_ptr<CorePiece> piece(new CorePiecePm);
+        auto piece = std::make_shared<CorePiecePm>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PQ) {
-        std::shared_ptr<CorePiece> piece(new CorePiecePq);
+        auto piece = std::make_shared<CorePiecePq>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::RM) {
-        std::shared_ptr<CorePiece> piece(new CorePieceRm);
+        auto piece = std::make_shared<CorePieceRm>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::U) {
-        std::shared_ptr<CorePiece> piece(new CorePieceU);
+        auto piece = std::make_shared<CorePieceU>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UR) {
-        std::shared_ptr<CorePiece> piece(new CorePieceUr);
+        auto piece = std::make_shared<CorePieceUr>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UT) {
-        std::shared_ptr<CorePiece> piece(new CorePieceUt);
+        auto piece = std::make_shared<CorePieceUt>();
         piece->set_shape(shape);
         if (process)
             piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::T) {
-        std::shared_ptr<CorePiece> piece(new CorePieceT);
+        auto piece = std::make_shared<CorePieceT>();
         piece->set_shape(shape);
         if (process)
             piece->process();

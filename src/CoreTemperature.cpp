@@ -19,24 +19,19 @@
 namespace OpenMagnetics {
 std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel::factory(CoreTemperatureModels modelName) {
     if (modelName == CoreTemperatureModels::KAZIMIERCZUK) {
-        std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel(new CoreTemperatureKazimierczukModel);
-        return CoreTemperatureModel;
+        return std::make_shared<CoreTemperatureKazimierczukModel>();
     }
     else if (modelName == CoreTemperatureModels::MANIKTALA) {
-        std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel(new CoreTemperatureManiktalaModel);
-        return CoreTemperatureModel;
+        return std::make_shared<CoreTemperatureManiktalaModel>();
     }
     else if (modelName == CoreTemperatureModels::TDK) {
-        std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel(new CoreTemperatureTdkModel);
-        return CoreTemperatureModel;
+        return std::make_shared<CoreTemperatureTdkModel>();
     }
     else if (modelName == CoreTemperatureModels::DIXON) {
-        std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel(new CoreTemperatureDixonModel);
-        return CoreTemperatureModel;
+        return std::make_shared<CoreTemperatureDixonModel>();
     }
     else if (modelName == CoreTemperatureModels::AMIDON) {
-        std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel(new CoreTemperatureAmidonModel);
-        return CoreTemperatureModel;
+        return std::make_shared<CoreTemperatureAmidonModel>();
     }
 
     else

@@ -301,36 +301,28 @@ std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(Co
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName) {
     if (modelName == ReluctanceModels::ZHANG) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceZhangModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceZhangModel>();
     }
     else if (modelName == ReluctanceModels::PARTRIDGE) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctancePartridgeModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctancePartridgeModel>();
     }
     else if (modelName == ReluctanceModels::EFFECTIVE_AREA) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceEffectiveAreaModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceEffectiveAreaModel>();
     }
     else if (modelName == ReluctanceModels::EFFECTIVE_LENGTH) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceEffectiveLengthModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceEffectiveLengthModel>();
     }
     else if (modelName == ReluctanceModels::MUEHLETHALER) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceMuehlethalerModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceMuehlethalerModel>();
     }
     else if (modelName == ReluctanceModels::STENGLEIN) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceStengleinModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceStengleinModel>();
     }
     else if (modelName == ReluctanceModels::BALAKRISHNAN) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceBalakrishnanModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceBalakrishnanModel>();
     }
     else if (modelName == ReluctanceModels::CLASSIC) {
-        std::shared_ptr<ReluctanceModel> reluctanceModel(new ReluctanceClassicModel);
-        return reluctanceModel;
+        return std::make_shared<ReluctanceClassicModel>();
     }
 
     else

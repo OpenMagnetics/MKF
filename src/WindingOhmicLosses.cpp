@@ -1,4 +1,5 @@
 #include "WindingOhmicLosses.h"
+#include "Resistivity.h"
 #include "Constants.h"
 
 #include <cmath>
@@ -32,7 +33,8 @@ double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double
     else {
         wireMaterial = std::get<WireMaterial>(wireMaterialDataOrString);
     }
-    auto resistivity = (*_resistivityModel).get_resistivity(wireMaterial, temperature);
+    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
     if (wire.get_type() == "round" || wire.get_type() == "litz") {
         wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);

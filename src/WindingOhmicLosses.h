@@ -1,6 +1,5 @@
 #pragma once
 #include "MAS.hpp"
-#include "Resistivity.h"
 #include "CoilWrapper.h"
 #include "WireWrapper.h"
 #include "Utils.h"
@@ -19,11 +18,9 @@ namespace OpenMagnetics {
 
 class WindingOhmicLosses {
     private:
-        std::shared_ptr<ResistivityModel> _resistivityModel;
     protected:
     public:
         WindingOhmicLosses() {
-            _resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
         }
         double get_dc_resistance(Turn turn, WireWrapper wire, double temperature);
         double get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature);
