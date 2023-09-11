@@ -151,8 +151,7 @@ class Stocker():
         core_name = self.get_core_name(shape, material, gapping)
 
         if core_name not in self.core_data:
-            print(f"Adding {core_name}")
-            self.core_data[core_name] = {
+            core = {
                 "name": core_name,
                 "manufacturerInfo": {
                     "name": core_manufacturer, 
@@ -169,6 +168,18 @@ class Stocker():
                     "numberStacks": 1
                 }
             }
+            if isinstance(shape, str):
+                shape = PyMKF.get_core_data(core, False)['functionalDescription']['shape']
+                for dimension_key, dimension in shape['dimensions'].items():
+                    new_dimension = {}
+                    for key, value in dimension.items():
+                        if value != None:
+                            new_dimension[key] = value
+                    shape['dimensions'][dimension_key] = new_dimension
+                core['functionalDescription']['shape'] = shape
+
+            print(f"Adding {core_name}")
+            self.core_data[core_name] = core
             if coating is not None:
                 self.core_data[core_name]['functionalDescription']['coating'] = coating
         elif unique:
@@ -1496,7 +1507,7 @@ class GatewayStocker(Stocker):
         excluded_words = ['ADJUSTER', 'BOBBIN', 'CLIP']
 
         try:
-            data = pandas.read_excel(f"https://gatewaycando.com/NewStockList/Gateway%20Stock%20File.xlsx")
+            data = pandas.read_excel(f"https://www.shop.gatewaycando.com/gateway_files/stock/gateway_stock_list.xls")
         except urllib.error.HTTPError:
             return {
                 'current_offset' : 0,
@@ -2400,21 +2411,21 @@ class MagneticsInventory(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    ferroxcube_inventory = FerroxcubeInventory()
-    ferroxcube_inventory.remove_current_inventory()
-    ferroxcube_inventory.get_cores_inventory()
+    # ferroxcube_inventory = FerroxcubeInventory()
+    # ferroxcube_inventory.remove_current_inventory()
+    # ferroxcube_inventory.get_cores_inventory()
 
-    tdk_inventory = TdkInventory()
-    tdk_inventory.get_cores_inventory()
+    # tdk_inventory = TdkInventory()
+    # tdk_inventory.get_cores_inventory()
 
-    magnetics_inventory = MagneticsInventory()
-    magnetics_inventory.get_cores_inventory()
+    # magnetics_inventory = MagneticsInventory()
+    # magnetics_inventory.get_cores_inventory()
 
-    digikeyStocker = DigikeyStocker()
-    digikeyStocker.get_cores_stock()
+    # digikeyStocker = DigikeyStocker()
+    # digikeyStocker.get_cores_stock()
 
-    mouserStocker = MouserStocker()
-    mouserStocker.get_cores_stock()
+    # mouserStocker = MouserStocker()
+    # mouserStocker.get_cores_stock()
 
     gatewayStocker = GatewayStocker()
     gatewayStocker.get_cores_stock()

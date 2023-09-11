@@ -27,28 +27,18 @@ double maxWindingWindowHeight;
 
 namespace OpenMagnetics {
 
-std::map<std::string, Dimension> flatten_dimensions(Bobbin bobbin) {
-    std::map<std::string, Dimension> dimensions = bobbin.get_functional_description().value().get_dimensions();
-    std::map<std::string, Dimension> flattenedDimensions;
-    for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values(dimension.second);
-        flattenedDimensions[dimension.first] = value;
-    }
-    return flattenedDimensions;
-}
-
 class BobbinEDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness(std::get<double>(dimensions["s1"]));
-            processedDescription.set_wall_thickness(std::get<double>(dimensions["s2"]));
+            processedDescription.set_column_thickness(dimensions["s1"]);
+            processedDescription.set_wall_thickness(dimensions["s2"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["f"]) / 2 + std::get<double>(dimensions["s1"]), 0});
+            std::vector<double> coordinates({dimensions["f"] / 2 + dimensions["s1"], 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["l2"]) - 2 * std::get<double>(dimensions["s2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["e"]) - std::get<double>(dimensions["f"]) - 2 * std::get<double>(dimensions["s1"])) / 2);
+            windingWindowElement.set_height(dimensions["l2"] - 2 * dimensions["s2"]);
+            windingWindowElement.set_width((dimensions["e"] - dimensions["f"] - 2 * dimensions["s1"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -59,15 +49,15 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
 class BobbinRmDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["D2"]) - std::get<double>(dimensions["D3"])) / 2);
-            processedDescription.set_wall_thickness(std::get<double>(dimensions["H5"]));
+            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
+            processedDescription.set_wall_thickness(dimensions["H5"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["D2"]) / 2, 0});
+            std::vector<double> coordinates({dimensions["D2"] / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["H2"]) - std::get<double>(dimensions["H4"]) - std::get<double>(dimensions["H5"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["D1"]) - std::get<double>(dimensions["D2"])) / 2);
+            windingWindowElement.set_height(dimensions["H2"] - dimensions["H4"] - dimensions["H5"]);
+            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -78,15 +68,15 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
 class BobbinEpDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["d2"]) - std::get<double>(dimensions["d3"])) / 2);
-            processedDescription.set_wall_thickness(std::get<double>(dimensions["s"]));
+            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
+            processedDescription.set_wall_thickness(dimensions["s"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["d2"]) / 2, 0});
+            std::vector<double> coordinates({dimensions["d2"] / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["h"]) - 2 * std::get<double>(dimensions["s"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["d1"]) - std::get<double>(dimensions["d2"])) / 2);
+            windingWindowElement.set_height(dimensions["h"] - 2 * dimensions["s"]);
+            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
 
@@ -98,15 +88,15 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
 class BobbinEtdDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["d2"]) - std::get<double>(dimensions["d3"])) / 2);
-            processedDescription.set_wall_thickness((std::get<double>(dimensions["h1"]) - std::get<double>(dimensions["h2"])) / 2);
+            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
+            processedDescription.set_wall_thickness((dimensions["h1"] - dimensions["h2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["d2"]), 0});
+            std::vector<double> coordinates({dimensions["d2"], 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["h2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["d1"]) - std::get<double>(dimensions["d2"])) / 2);
+            windingWindowElement.set_height(dimensions["h2"]);
+            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
 
@@ -118,15 +108,15 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
 class BobbinPmDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["d2"]) - std::get<double>(dimensions["d3"])) / 2);
-            processedDescription.set_wall_thickness(std::get<double>(dimensions["s1"]));
+            processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
+            processedDescription.set_wall_thickness(dimensions["s1"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["d2"]) / 2, 0});
+            std::vector<double> coordinates({dimensions["d2"] / 2, 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["h"]) - std::get<double>(dimensions["s1"]) - std::get<double>(dimensions["s2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["d1"]) - std::get<double>(dimensions["d2"])) / 2);
+            windingWindowElement.set_height(dimensions["h"] - dimensions["s1"] - dimensions["s2"]);
+            windingWindowElement.set_width((dimensions["d1"] - dimensions["d2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -137,15 +127,15 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
 class BobbinPqDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["D2"]) - std::get<double>(dimensions["D3"])) / 2);
-            processedDescription.set_wall_thickness((std::get<double>(dimensions["H1"]) - std::get<double>(dimensions["H2"])) / 2);
+            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
+            processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["D2"]), 0});
+            std::vector<double> coordinates({dimensions["D2"], 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["H2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["D1"]) - std::get<double>(dimensions["D2"])) / 2);
+            windingWindowElement.set_height(dimensions["H2"]);
+            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -156,15 +146,15 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
 class BobbinEcDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness((std::get<double>(dimensions["D2"]) - std::get<double>(dimensions["D3"])) / 2);
-            processedDescription.set_wall_thickness((std::get<double>(dimensions["H1"]) - std::get<double>(dimensions["H2"])) / 2);
+            processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
+            processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["D2"]), 0});
+            std::vector<double> coordinates({dimensions["D2"], 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["H2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["D1"]) - std::get<double>(dimensions["D2"])) / 2);
+            windingWindowElement.set_height(dimensions["H2"]);
+            windingWindowElement.set_width((dimensions["D1"] - dimensions["D2"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
@@ -175,15 +165,15 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
 class BobbinEfdDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin);
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
-            processedDescription.set_column_thickness(std::get<double>(dimensions["S1"]));
-            processedDescription.set_wall_thickness(std::get<double>(dimensions["S2"]));
+            processedDescription.set_column_thickness(dimensions["S1"]);
+            processedDescription.set_wall_thickness(dimensions["S2"]);
             WindingWindowElement windingWindowElement;
-            std::vector<double> coordinates({std::get<double>(dimensions["f1"]) / 2 + std::get<double>(dimensions["S1"]), 0});
+            std::vector<double> coordinates({dimensions["f1"] / 2 + dimensions["S1"], 0});
             windingWindowElement.set_coordinates(coordinates);
-            windingWindowElement.set_height(std::get<double>(dimensions["d"]) - 2 * std::get<double>(dimensions["S2"]));
-            windingWindowElement.set_width((std::get<double>(dimensions["e"]) - std::get<double>(dimensions["f1"]) - 2 * std::get<double>(dimensions["S1"])) / 2);
+            windingWindowElement.set_height(dimensions["d"] - 2 * dimensions["S2"]);
+            windingWindowElement.set_width((dimensions["e"] - dimensions["f1"] - 2 * dimensions["S1"]) / 2);
             windingWindowElement.set_area(windingWindowElement.get_height().value() * windingWindowElement.get_width().value());
             processedDescription.get_mutable_winding_windows().push_back(windingWindowElement);
             processedDescription.set_coordinates(std::vector<double>({0, 0, 0}));

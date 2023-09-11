@@ -114,6 +114,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
         auto core = CoreWrapper(magnetic.get_core());
         double bobbinFillingFactor;
+        if (core.get_winding_windows().size() == 0)
+            continue;
         auto windingWindow = core.get_winding_windows()[0];
         auto windingColumn = core.get_columns()[0];
         if (!bobbinFillingFactors.contains(core.get_shape_name())) {
@@ -158,7 +160,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
 
             double areaProductRequired = areaProductRequiredPreCalculations[operatingPointIndex] / (windingWindowUtilizationFactor * magneticFluxDensityPeakAtFrequencyOfReferenceLosses);
             if (std::isnan(magneticFluxDensityPeakAtFrequencyOfReferenceLosses) || magneticFluxDensityPeakAtFrequencyOfReferenceLosses == 0) {
-                std::cout << core.get_material_name()  << std::endl;
                 throw std::runtime_error("magneticFluxDensityPeakAtFrequencyOfReferenceLosses cannot be 0 or NaN");
                 break;
             }
@@ -203,6 +204,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
             totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, magneticEnergy.get_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), &operatingPoint));
             if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
                 magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
+                magnetizingInductanceOutput.set_method_used(models["gapReluctance"]);
+                magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
                 mas.get_mutable_outputs()[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
             }
             else {
@@ -376,14 +379,18 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                     newTotalLosses = coreLosses;
                     break;
                 }
-
                 if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
                     ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
                     newTotalLosses = coreLosses + ohmicLosses;
+
                 }
                 else {
                     newTotalLosses = coreLosses;
                     break;
+                }
+
+                if (newTotalLosses == DBL_MAX) {
+                    throw std::runtime_error("Too large losses");
                 }
 
                 iteration--;
@@ -394,6 +401,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             }
             while(newTotalLosses < currentTotalLosses * defaults.coreAdviserThresholdValidity);
 
+
             magnetic.set_coil(winding);
 
             currentTotalLosses = newTotalLosses;
@@ -401,6 +409,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             coreLossesPerOperatingPoint.push_back(coreLosses);
             ohmicLossesPerOperatingPoint.push_back(ohmicLosses);
         }
+
 
         double meanTotalLosses = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
@@ -416,10 +425,23 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 OhmicLosses ohmicLossesObj;
 
                 CoreLossesOutput coreLossesOutput;
+                coreLossesOutput.set_method_used(models["coreLosses"]);
+                coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
                 coreLossesOutput.set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
                 ohmicLossesObj.set_losses(ohmicLossesPerOperatingPoint[operatingPointIndex]);
+                ohmicLossesObj.set_method_used("Ohm");
+                ohmicLossesObj.set_origin(ResultOrigin::SIMULATION);
                 windingLossesPerElement.set_ohmic_losses(ohmicLossesObj);
-                windingLossesOutput.set_winding_losses_per_winding(std::vector<WindingLossesPerElement>{windingLossesPerElement});
+                windingLossesOutput.set_method_used("Ohm");
+                windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+                auto windingLossesPerWinding = std::vector<WindingLossesPerElement>{windingLossesPerElement};
+                double windingLosses = 0;
+                for (auto& loss : windingLossesPerWinding) {
+                    windingLosses += loss.get_ohmic_losses().value().get_losses();
+                }
+
+                windingLossesOutput.set_winding_losses(windingLosses);
+                windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
                 mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesOutput);
                 mas.get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesOutput);
             }
@@ -471,6 +493,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
                 }
                 CoreLossesOutput coreLossesOutput;
                 coreLossesOutput.set_core_losses(coreLosses);
+                coreLossesOutput.set_method_used(models["coreLosses"]);
+                coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
                 mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesOutput);
             }
             else {
@@ -633,8 +657,6 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
         }
     }
 
-    std::cout << "masMagneticsWithStacks.size(): " << masMagneticsWithStacks.size() << std::endl;
-    std::cout << "masMagneticsWithoutStacks.size(): " << masMagneticsWithoutStacks.size() << std::endl;
  
     CoreAdviserFilters firstFilter = CoreAdviserFilters::AREA_PRODUCT;
     double maxWeight = 0;
@@ -674,7 +696,12 @@ std::vector<MasWrapper> CoreAdviser::get_advised_core(InputsWrapper inputs, std:
 void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsWithScoring, InputsWrapper inputs) {
     MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i){
+
         CoreWrapper core = CoreWrapper((*masMagneticsWithScoring)[i].first.get_magnetic().get_core());
+        if (!core.get_processed_description()) {
+            core.process_data();
+            core.process_gap();
+        }
         double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
         (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(numberTurns);
     }
@@ -724,6 +751,7 @@ std::vector<MasWrapper> CoreAdviser::apply_filters(std::vector<std::pair<MasWrap
             masMagneticsWithScoring = filterDimensions.filter_magnetics(masMagnetics, weights[CoreAdviserFilters::DIMENSIONS]);
             break;
     }
+
     std::string firstFilterString = std::string{magic_enum::enum_name(firstFilter)};
     log("There are " + std::to_string(masMagneticsWithScoring.size()) + " magnetics after the first filter, which was " + firstFilterString + ".");
 
