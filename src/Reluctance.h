@@ -170,9 +170,18 @@ class ReluctanceModel {
         if (gapping.size() == 0) {
             return 0;
         }
+
+        // We recompute all gaps in case some is missing coordinates
+        for (const auto& gap : gapping) {
+            if (!gap.get_coordinates()) {
+                core.process_gap();
+                gapping = core.get_functional_description().get_gapping();
+                break;
+            }
+        }
         for (const auto& gap : gapping) {
             auto gapReluctance = get_gap_reluctance(gap);
-            auto gapColumn = core.find_closest_column_by_coordinates(*gap.get_coordinates());
+            auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
             if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
                 calculatedLateralReluctance += 1 / gapReluctance["reluctance"];
             }

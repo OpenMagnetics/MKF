@@ -44,70 +44,94 @@ CoreShape flatten_dimensions(CoreShape shape) {
     return flattenedShape;
 }
 
+std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions) {
+    std::map<std::string, double> flattenedDimensions;
+    for (auto& dimension : dimensions) {
+        double value = resolve_dimensional_values(dimension.second);
+        flattenedDimensions[dimension.first] = value;
+    }
+    return flattenedDimensions;
+}
+
+void CorePiece::process() {
+    
+    process_winding_window();
+    process_columns();
+    process_extra_data();
+
+    auto [c1, c2, minimumArea] = get_shape_constants();
+    EffectiveParameters pieceEffectiveParameters;
+    pieceEffectiveParameters.set_effective_length(pow(c1, 2) / c2);
+    pieceEffectiveParameters.set_effective_area(c1 / c2);
+    pieceEffectiveParameters.set_effective_volume(pow(c1, 3) / pow(c2, 2));
+    pieceEffectiveParameters.set_minimum_area(minimumArea);
+    set_partial_effective_parameters(pieceEffectiveParameters);
+}
+
 class CorePieceE : public CorePiece {
   public:
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 +
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(dimensions["E"] / 2 +
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 -
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(-dimensions["E"] / 2 -
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
-        double q = std::get<double>(dimensions["C"]);
-        double s = std::get<double>(dimensions["F"]) / 2;
-        double p = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2;
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
+        double s = dimensions["F"] / 2;
+        double p = (dimensions["A"] - dimensions["E"]) / 2;
 
-        lengths.push_back(std::get<double>(dimensions["D"]));
-        lengths.push_back((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
-        lengths.push_back(std::get<double>(dimensions["D"]));
+        lengths.push_back(dimensions["D"]);
+        lengths.push_back((dimensions["E"] - dimensions["F"]) / 2);
+        lengths.push_back(dimensions["D"]);
         lengths.push_back(std::numbers::pi / 8 * (p + h));
         lengths.push_back(std::numbers::pi / 8 * (s + h));
 
@@ -131,72 +155,72 @@ class CorePieceE : public CorePiece {
 class CorePieceEtd : public CorePieceE {
   public:
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         double tetha;
         double aperture;
-        if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
-            tetha = asin(std::get<double>(dimensions["C"]) / std::get<double>(dimensions["E"]));
-            aperture = std::get<double>(dimensions["E"]) / 2 * cos(tetha);
+        if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
+            tetha = asin(dimensions["C"] / dimensions["E"]);
+            aperture = dimensions["E"] / 2 * cos(tetha);
         }
         else {
-            if (std::get<double>(dimensions["G"]) > 0) {
-                aperture = std::get<double>(dimensions["G"]) / 2;
-                tetha = acos(aperture / (std::get<double>(dimensions["E"]) / 2));
+            if (dimensions["G"] > 0) {
+                aperture = dimensions["G"] / 2;
+                tetha = acos(aperture / (dimensions["E"] / 2));
             }
             else {
-                tetha = asin(std::get<double>(dimensions["C"]) / std::get<double>(dimensions["E"]));
-                aperture = std::get<double>(dimensions["E"]) / 2 * cos(tetha);
+                tetha = asin(dimensions["C"] / dimensions["E"]);
+                aperture = dimensions["E"] / 2 * cos(tetha);
             }
         }
-        double segmentArea = pow(std::get<double>(dimensions["E"]) / 2, 2) / 2 * (2 * tetha - sin(2 * tetha));
+        double segmentArea = pow(dimensions["E"] / 2, 2) / 2 * (2 * tetha - sin(2 * tetha));
         double area =
-            std::get<double>(dimensions["C"]) * (std::get<double>(dimensions["A"]) / 2 - aperture) - segmentArea;
+            dimensions["C"] * (dimensions["A"] / 2 - aperture) - segmentArea;
         return area;
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
+        lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
-        double q = std::get<double>(dimensions["C"]);
-        double s = std::get<double>(dimensions["F"]) / 2;
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
+        double s = dimensions["F"] / 2;
         double s1 = 0.5959 * s;
-        double p = get_lateral_leg_area() / std::get<double>(dimensions["C"]);
+        double p = get_lateral_leg_area() / dimensions["C"];
 
-        lengths.push_back(std::get<double>(dimensions["D"]));
-        lengths.push_back((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
-        lengths.push_back(std::get<double>(dimensions["D"]));
+        lengths.push_back(dimensions["D"]);
+        lengths.push_back((dimensions["E"] - dimensions["F"]) / 2);
+        lengths.push_back(dimensions["D"]);
         lengths.push_back(std::numbers::pi / 8 * (p + h));
         lengths.push_back(std::numbers::pi / 8 * (2 * s1 + h));
 
@@ -220,64 +244,64 @@ class CorePieceEtd : public CorePieceE {
 class CorePieceEl : public CorePieceE {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::OBLONG);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F2"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
-                          (std::get<double>(dimensions["F2"]) - std::get<double>(dimensions["F"])) *
-                              std::get<double>(dimensions["F"]));
+                          (dimensions["F2"] - dimensions["F"]) *
+                              dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 +
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(dimensions["E"] / 2 +
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 -
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(-dimensions["E"] / 2 -
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double a = std::get<double>(dimensions["A"]);
-        double b = std::get<double>(dimensions["B"]);
-        double c = std::get<double>(dimensions["C"]);
-        double d = std::get<double>(dimensions["D"]);
-        double e = std::get<double>(dimensions["E"]);
-        double f = std::get<double>(dimensions["F"]);
-        double f2 = std::get<double>(dimensions["F2"]);
+        double a = dimensions["A"];
+        double b = dimensions["B"];
+        double c = dimensions["C"];
+        double d = dimensions["D"];
+        double e = dimensions["E"];
+        double f = dimensions["F"];
+        double f2 = dimensions["F2"];
         double r = 0;
-        if ((dimensions.find("R") != dimensions.end()) && (std::get<double>(dimensions["R"]) != 0)) {
-            r = std::get<double>(dimensions["R"]);
+        if ((dimensions.find("R") != dimensions.end()) && (dimensions["R"] != 0)) {
+            r = dimensions["R"];
         }
 
         double a21 = (b - d) * c;
@@ -310,58 +334,58 @@ class CorePieceEl : public CorePieceE {
 class CorePieceEfd : public CorePieceEl {
   public:
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F2"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 +
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(dimensions["E"] / 2 +
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 -
-                          (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 4),
+            roundFloat<6>(-dimensions["E"] / 2 -
+                          (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]) + std::max(0., std::get<double>(dimensions["K"])));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"] + std::max(0., dimensions["K"]));
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double a = std::get<double>(dimensions["A"]);
-        double b = std::get<double>(dimensions["B"]);
-        double c = std::get<double>(dimensions["C"]);
-        double d = std::get<double>(dimensions["D"]);
-        double e = std::get<double>(dimensions["E"]);
-        double f = std::get<double>(dimensions["F"]);
-        double f2 = std::get<double>(dimensions["F2"]);
-        double k = std::get<double>(dimensions["K"]);
-        double q = std::get<double>(dimensions["q"]);
+        double a = dimensions["A"];
+        double b = dimensions["B"];
+        double c = dimensions["C"];
+        double d = dimensions["D"];
+        double e = dimensions["E"];
+        double f = dimensions["F"];
+        double f2 = dimensions["F2"];
+        double k = dimensions["K"];
+        double q = dimensions["q"];
 
         lengths.push_back(d);
         lengths.push_back((e - f) / 2);
@@ -397,12 +421,12 @@ class CorePiecePlanarEl : public CorePieceEl {};
 class CorePieceEc : public CorePieceEtd {
   public:
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
-        double tetha = asin(std::get<double>(dimensions["C"]) / std::get<double>(dimensions["E"]));
-        double aperture = std::get<double>(dimensions["E"]) / 2 * cos(tetha);
-        double segmentArea = pow(std::get<double>(dimensions["E"]) / 2, 2) / 2 * (2 * tetha - sin(2 * tetha));
-        double clipHoleArea = std::numbers::pi * pow(std::get<double>(dimensions["s"]), 2) / 2;
-        double area = std::get<double>(dimensions["C"]) * (std::get<double>(dimensions["A"]) / 2 - aperture) -
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        double tetha = asin(dimensions["C"] / dimensions["E"]);
+        double aperture = dimensions["E"] / 2 * cos(tetha);
+        double segmentArea = pow(dimensions["E"] / 2, 2) / 2 * (2 * tetha - sin(2 * tetha));
+        double clipHoleArea = std::numbers::pi * pow(dimensions["s"], 2) / 2;
+        double area = dimensions["C"] * (dimensions["A"] / 2 - aperture) -
                       segmentArea - clipHoleArea;
         return area;
     }
@@ -413,75 +437,75 @@ class CorePieceEq : public CorePieceEtd {};
 class CorePieceEp : public CorePieceE {
   public:
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
 
         double baseArea;
         double windingArea;
         double apertureArea;
         double k;
-        if ((dimensions.find("K") == dimensions.end()) || (std::get<double>(dimensions["K"]) == 0)) {
-            k = std::get<double>(dimensions["F"]) / 2;
+        if ((dimensions.find("K") == dimensions.end()) || (dimensions["K"] == 0)) {
+            k = dimensions["F"] / 2;
         }
         else {
-            k = std::get<double>(dimensions["K"]);
+            k = dimensions["K"];
         }
-        if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
-            baseArea = std::get<double>(dimensions["A"]) * std::get<double>(dimensions["C"]);
-            windingArea = k * std::get<double>(dimensions["E"]) +
-                          1 / 2 * std::numbers::pi * pow(std::get<double>(dimensions["E"]) / 2, 2);
+        if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
+            baseArea = dimensions["A"] * dimensions["C"];
+            windingArea = k * dimensions["E"] +
+                          1 / 2 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
             apertureArea = 0;
         }
         else {
-            double aperture = std::get<double>(dimensions["G"]) / 2;
-            double tetha = asin(aperture / (std::get<double>(dimensions["E"]) / 2));
-            double segmentArea = (pow(std::get<double>(dimensions["E"]) / 2, 2) / 2 * (2 * tetha - sin(2 * tetha))) / 2;
+            double aperture = dimensions["G"] / 2;
+            double tetha = asin(aperture / (dimensions["E"] / 2));
+            double segmentArea = (pow(dimensions["E"] / 2, 2) / 2 * (2 * tetha - sin(2 * tetha))) / 2;
             double apertureMaximumDepth =
-                std::get<double>(dimensions["C"]) - k - std::get<double>(dimensions["E"]) / 2 * cos(tetha);
+                dimensions["C"] - k - dimensions["E"] / 2 * cos(tetha);
             apertureArea = aperture * apertureMaximumDepth - segmentArea;
-            baseArea = std::get<double>(dimensions["A"]) / 2 * std::get<double>(dimensions["C"]);
-            windingArea = k * std::get<double>(dimensions["E"]) / 2 +
-                          1 / 4 * std::numbers::pi * pow(std::get<double>(dimensions["E"]) / 2, 2);
+            baseArea = dimensions["A"] / 2 * dimensions["C"];
+            windingArea = k * dimensions["E"] / 2 +
+                          1 / 4 * std::numbers::pi * pow(dimensions["E"] / 2, 2);
         }
         double area = baseArea - windingArea - apertureArea;
         return area;
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
-            lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 ) -
-                              std::get<double>(dimensions["K"]));
+        if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
+            lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 ) -
+                              dimensions["K"]);
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
+            lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
             lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-            lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
-            lateralColumn.set_coordinates({0, 0, roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_depth() / 2)});
+            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+            lateralColumn.set_coordinates({0, 0, roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2)});
             windingWindows.push_back(lateralColumn);
         }
         else {
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+            lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
             lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-            lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
             lateralColumn.set_coordinates({
-                roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0,
+                roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
             lateralColumn.set_coordinates({
-                roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0,
+                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
         }
@@ -489,28 +513,28 @@ class CorePieceEp : public CorePieceE {
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths_areas;
         std::vector<double> lengths_areas_2;
         std::vector<double> areas;
 
-        double h1 = 2 * std::get<double>(dimensions["B"]);
-        double h2 = 2 * std::get<double>(dimensions["D"]);
-        double d1 = std::get<double>(dimensions["E"]);
-        double d2 = std::get<double>(dimensions["F"]);
-        double a = std::get<double>(dimensions["A"]);
-        double b = std::get<double>(dimensions["C"]);
+        double h1 = 2 * dimensions["B"];
+        double h2 = 2 * dimensions["D"];
+        double d1 = dimensions["E"];
+        double d2 = dimensions["F"];
+        double a = dimensions["A"];
+        double b = dimensions["C"];
         double k;
-        if ((dimensions.find("K") == dimensions.end()) || (std::get<double>(dimensions["K"]) == 0)) {
-            k = std::get<double>(dimensions["F"]) / 2;
+        if ((dimensions.find("K") == dimensions.end()) || (dimensions["K"] == 0)) {
+            k = dimensions["F"] / 2;
         }
         else {
-            k = std::get<double>(dimensions["K"]);
+            k = dimensions["K"];
         }
         double pi = std::numbers::pi;
         double a1 = a * b - pi * pow(d1, 2) / 8 - d1 * k;
         double a3 = pi * pow(d2 / 2, 2) + (k - d2 / 2) * d2;
-        double alpha = atan(std::get<double>(dimensions["E"]) / 2 / k);
+        double alpha = atan(dimensions["E"] / 2 / k);
         double gamma = sqrt(((pi - alpha) * pow(d1, 2) + 2 * a1) / (4 * (pi - alpha)));
         double l4 = pi / 2 * (gamma - d1 / 2 + (h1 - h2) / 4);
         double a4 = 1. / 2 * (a * b - pi / 8 * pow(d1, 2) - d1 * d2 / 2 + (pi - alpha) * d1 * (h1 / 2 - h2 / 2));
@@ -548,29 +572,29 @@ class CorePieceEp : public CorePieceE {
 class CorePieceLp : public CorePieceEp {
   public:
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -579,46 +603,46 @@ class CorePieceLp : public CorePieceEp {
 class CorePieceEpx : public CorePieceEp {
   public:
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::OBLONG);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])) / 2 + roundFloat<6>(std::get<double>(dimensions["K"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]) / 2 + roundFloat<6>(dimensions["K"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
-                          (std::get<double>(dimensions["K"]) - std::get<double>(dimensions["F"]) / 2) *
-                              std::get<double>(dimensions["F"]));
+                          (dimensions["K"] - dimensions["F"] / 2) *
+                              dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        if ((dimensions.find("G") == dimensions.end()) || (std::get<double>(dimensions["G"]) == 0)) {
-            lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"]) - std::get<double>(dimensions["E"]) / 2 )-
-                              std::get<double>(dimensions["K"]));
+        if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
+            lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 )-
+                              dimensions["K"]);
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
+            lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
             lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-            lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
             lateralColumn.set_coordinates({
                 0, 0,
-                roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_depth() / 2 -
-                              (std::get<double>(dimensions["K"]) - std::get<double>(dimensions["F"]) / 2) / 2)});
+                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2 -
+                              (dimensions["K"] - dimensions["F"] / 2) / 2)});
             windingWindows.push_back(lateralColumn);
         }
         else {
             lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+            lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
             lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-            lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
             lateralColumn.set_coordinates({
-                roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0,
+                roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
             lateralColumn.set_coordinates({
-                roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0,
+                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
         }
@@ -629,29 +653,29 @@ class CorePieceEpx : public CorePieceEp {
 class CorePieceRm : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["E"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["E"]);
     }
 
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
 
-        double d2 = std::get<double>(dimensions["E"]);
-        double a = std::get<double>(dimensions["J"]);
-        double e = std::get<double>(dimensions["G"]);
-        double p = sqrt(2) * std::get<double>(dimensions["J"]) - std::get<double>(dimensions["A"]);
+        double d2 = dimensions["E"];
+        double a = dimensions["J"];
+        double e = dimensions["G"];
+        double p = sqrt(2) * dimensions["J"] - dimensions["A"];
         double pi = std::numbers::pi;
         double alpha = pi / 2;
         double beta = alpha - asin(e / d2);
@@ -662,54 +686,54 @@ class CorePieceRm : public CorePiece {
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
         std::vector<double> lengths_areas;
         std::vector<double> lengths_areas_2;
         std::vector<double> areas;
 
-        double d2 = std::get<double>(dimensions["E"]);
-        double d3 = std::get<double>(dimensions["F"]);
-        double d4 = std::get<double>(dimensions["H"]);
-        double a = std::get<double>(dimensions["J"]);
-        double c = std::get<double>(dimensions["C"]);
-        double e = std::get<double>(dimensions["G"]);
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
-        double p = sqrt(2) * std::get<double>(dimensions["J"]) - std::get<double>(dimensions["A"]);
+        double d2 = dimensions["E"];
+        double d3 = dimensions["F"];
+        double d4 = dimensions["H"];
+        double a = dimensions["J"];
+        double c = dimensions["C"];
+        double e = dimensions["G"];
+        double h = dimensions["B"] - dimensions["D"];
+        double p = sqrt(2) * dimensions["J"] - dimensions["A"];
         double b = 0;
         double pi = std::numbers::pi;
         double alpha = pi / 2;
         double gamma = pi / 2;
         double beta = alpha - asin(e / d2);
-        double lmin = (std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2;
+        double lmin = (dimensions["E"] - dimensions["F"]) / 2;
         double lmax;
         double a7;
         double a8 = alpha / 8 * (pow(d2, 2) - pow(d3, 2));
@@ -744,10 +768,10 @@ class CorePieceRm : public CorePiece {
         double f = (lmin + lmax) / (2 * lmin);
         double D = a7 / a8;
 
-        double l1 = 2 * std::get<double>(dimensions["D"]);
+        double l1 = 2 * dimensions["D"];
         double a1 = 1. / 2 * pow(a, 2) * (1 + tan(beta - pi / 4)) - beta / 2 * pow(d2, 2) - 1. / 2 * pow(p, 2);
 
-        double l3 = 2 * std::get<double>(dimensions["D"]);
+        double l3 = 2 * dimensions["D"];
         double a3 = pi / 4 * (pow(d3, 2) - pow(d4, 2));
 
         double l4 = pi / 4 * (h + a / 2 - d2 / 2);
@@ -786,29 +810,29 @@ class CorePieceRm : public CorePiece {
 class CorePiecePq : public CorePiece {
   public:
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
 
-        double A = std::get<double>(dimensions["A"]);
-        double C = std::get<double>(dimensions["C"]);
-        double E = std::get<double>(dimensions["E"]);
-        double G = std::get<double>(dimensions["G"]);
+        double A = dimensions["A"];
+        double C = dimensions["C"];
+        double E = dimensions["E"];
+        double G = dimensions["G"];
 
         double beta = acos(G / E);
         double I = E * sin(beta);
@@ -819,56 +843,56 @@ class CorePiecePq : public CorePiece {
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        lateralColumn.set_depth(std::get<double>(dimensions["C"]));
+        lateralColumn.set_depth(dimensions["C"]);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_minimum_width(roundFloat<6>(std::get<double>(dimensions["A"]) / 2 - std::get<double>(dimensions["E"]) / 2));
+        lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
         lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths_areas;
         std::vector<double> lengths_areas_2;
         std::vector<double> areas;
 
-        double A = std::get<double>(dimensions["A"]);
-        double B = std::get<double>(dimensions["B"]);
-        double C = std::get<double>(dimensions["C"]);
-        double D = std::get<double>(dimensions["D"]);
-        double E = std::get<double>(dimensions["E"]);
-        double F = std::get<double>(dimensions["F"]);
-        double G = std::get<double>(dimensions["G"]);
+        double A = dimensions["A"];
+        double B = dimensions["B"];
+        double C = dimensions["C"];
+        double D = dimensions["D"];
+        double E = dimensions["E"];
+        double F = dimensions["F"];
+        double G = dimensions["G"];
         double J;
         double L;
-        if ((dimensions.find("J") == dimensions.end()) || (std::get<double>(dimensions["J"]) == 0)) {
-            J = std::get<double>(dimensions["F"]) / 2; // Totally made up base on drawings
+        if ((dimensions.find("J") == dimensions.end()) || (dimensions["J"] == 0)) {
+            J = dimensions["F"] / 2; // Totally made up base on drawings
             L = F + (C - F) / 3; // Totally made up base on drawings
         }
         else {
-            J = std::get<double>(dimensions["J"]);
-            L = std::get<double>(dimensions["L"]);
+            J = dimensions["J"];
+            L = dimensions["L"];
         }
 
         double pi = std::numbers::pi;
@@ -879,7 +903,7 @@ class CorePiecePq : public CorePiece {
         double a8 = pi / 16 * (pow(E, 2) - pow(F, 2));
         double a9 = 2 * alpha * F * (B - D);
         double a10 = 2 * beta * E * (B - D);
-        double lmin = (std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2;
+        double lmin = (dimensions["E"] - dimensions["F"]) / 2;
         double lmax = sqrt(pow(E, 2) + pow(F, 2) - 2 * E * F * cos(alpha - beta)) / 2;
         double f = (lmin + lmax) / (2 * lmin);
         double K = a7 / a8;
@@ -929,30 +953,30 @@ class CorePiecePq : public CorePiece {
 class CorePiecePm : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["E"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["E"]);
     }
 
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
 
-        double d1 = std::get<double>(dimensions["A"]);
-        double d2 = std::get<double>(dimensions["E"]);
-        double f = std::get<double>(dimensions["G"]);
-        double b = std::get<double>(dimensions["b"]);
-        double t = std::get<double>(dimensions["t"]);
+        double d1 = dimensions["A"];
+        double d2 = dimensions["E"];
+        double f = dimensions["G"];
+        double b = dimensions["b"];
+        double t = dimensions["t"];
         double pi = std::numbers::pi;
 
         double alpha = pi / 2;
@@ -964,35 +988,35 @@ class CorePiecePm : public CorePiece {
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
 
         std::vector<double> lengths_areas;
@@ -1009,20 +1033,20 @@ class CorePiecePm : public CorePiece {
             }
         }
 
-        double d1 = std::get<double>(dimensions["A"]);
-        double h1 = 2 * std::get<double>(dimensions["B"]);
-        double h2 = 2 * std::get<double>(dimensions["D"]);
-        double d2 = std::get<double>(dimensions["E"]);
-        double d3 = std::get<double>(dimensions["F"]);
-        double f = std::get<double>(dimensions["G"]);
-        double d4 = std::get<double>(dimensions["H"]);
-        double gamma = std::get<double>(dimensions["alpha"]) / 180 * pi;
-        double b = std::get<double>(dimensions["b"]);
-        double t = std::get<double>(dimensions["t"]);
+        double d1 = dimensions["A"];
+        double h1 = 2 * dimensions["B"];
+        double h2 = 2 * dimensions["D"];
+        double d2 = dimensions["E"];
+        double d3 = dimensions["F"];
+        double f = dimensions["G"];
+        double d4 = dimensions["H"];
+        double gamma = dimensions["alpha"] / 180 * pi;
+        double b = dimensions["b"];
+        double t = dimensions["t"];
 
         double alpha = pi / 2;
         double beta = alpha - asin(f / d2);
-        double lmin = (std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2;
+        double lmin = (dimensions["E"] - dimensions["F"]) / 2;
         double lmax = sqrt(1. / 4 * (pow(d2, 2) + pow(d3, 2)) - 1. / 2 * d2 * d3 * cos(alpha - beta));
         double g = (lmin + lmax) / (2 * lmin);
         double a7 = beta / 8 * pow(d2, 2) + 1. / 8 * pow(f, 2) * tan(beta) -
@@ -1072,29 +1096,29 @@ class CorePiecePm : public CorePiece {
 class CorePieceP : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width((std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"])) / 2);
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width((dimensions["E"] - dimensions["F"]) / 2);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({std::get<double>(dimensions["F"]) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["A"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["A"]);
     }
 
     double get_lateral_leg_area() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
         double pi = std::numbers::pi;
-        double d1 = std::get<double>(dimensions["A"]);
-        double d2 = std::get<double>(dimensions["E"]);
-        double b = std::get<double>(dimensions["G"]);
+        double d1 = dimensions["A"];
+        double d2 = dimensions["E"];
+        double b = dimensions["G"];
         double tetha = asin(2 * b / (d1 + d2));
         double n;
         if (familySubtype == "1" || familySubtype == "2") {
@@ -1110,48 +1134,48 @@ class CorePieceP : public CorePiece {
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(std::get<double>(dimensions["E"]) / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-std::get<double>(dimensions["E"]) / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
         std::vector<double> lengths_areas;
         std::vector<double> lengths_areas_2;
         std::vector<double> areas;
         double pi = std::numbers::pi;
 
-        double r4 = std::get<double>(dimensions["A"]) / 2;
-        double r3 = std::get<double>(dimensions["E"]) / 2;
-        double r2 = std::get<double>(dimensions["F"]) / 2;
-        double r1 = std::get<double>(dimensions["H"]) / 2;
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
-        double h2 = 2 * std::get<double>(dimensions["D"]);
-        double b = std::get<double>(dimensions["G"]);
+        double r4 = dimensions["A"] / 2;
+        double r3 = dimensions["E"] / 2;
+        double r2 = dimensions["F"] / 2;
+        double r1 = dimensions["H"] / 2;
+        double h = dimensions["B"] - dimensions["D"];
+        double h2 = 2 * dimensions["D"];
+        double b = dimensions["G"];
 
         double s1 = r2 - sqrt((pow(r1, 2) + pow(r2, 2)) / 2);
         double s2 = sqrt((pow(r3, 2) + pow(r4, 2)) / 2) - r3;
@@ -1209,89 +1233,89 @@ class CorePieceP : public CorePiece {
 class CorePieceU : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) -
-                                     std::get<double>(dimensions["H"]);
+        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+                windingWindowWidth = dimensions["A"] - dimensions["C"] -
+                                     dimensions["H"];
             }
             else {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) -
-                                     std::get<double>(dimensions["H"]);
+                windingWindowWidth = dimensions["A"] - dimensions["F"] -
+                                     dimensions["H"];
             }
         }
         else {
-            windingWindowWidth = std::get<double>(dimensions["E"]);
+            windingWindowWidth = dimensions["E"];
         }
 
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
+        windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width(windingWindowWidth);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-            mainColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
+            mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
+            mainColumn.set_width(roundFloat<6>(dimensions["H"]));
         }
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>((std::get<double>(dimensions["A"]) + std::get<double>(dimensions["E"])) / 2), 0, 0});
+            roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
-        double q = std::get<double>(dimensions["C"]);
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
         double s;
         double p;
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-            s = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2;
-            p = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2;
+        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
+            s = (dimensions["A"] - dimensions["E"]) / 2;
+            p = (dimensions["A"] - dimensions["E"]) / 2;
         }
         else {
-            s = std::get<double>(dimensions["H"]);
-            p = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"]) -
-                std::get<double>(dimensions["H"]);
+            s = dimensions["H"];
+            p = dimensions["A"] - dimensions["E"] -
+                dimensions["H"];
         }
 
-        lengths.push_back(2 * std::get<double>(dimensions["D"]));
-        lengths.push_back(2 * std::get<double>(dimensions["E"]));
-        lengths.push_back(2 * std::get<double>(dimensions["D"]));
+        lengths.push_back(2 * dimensions["D"]);
+        lengths.push_back(2 * dimensions["E"]);
+        lengths.push_back(2 * dimensions["D"]);
         lengths.push_back(std::numbers::pi / 4 * (p + h));
         lengths.push_back(std::numbers::pi / 4 * (s + h));
 
@@ -1315,54 +1339,54 @@ class CorePieceU : public CorePiece {
 class CorePieceUr : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) -
-                                     std::get<double>(dimensions["H"]);
+        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+                windingWindowWidth = dimensions["A"] - dimensions["C"] -
+                                     dimensions["H"];
             }
             else {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) -
-                                     std::get<double>(dimensions["H"]);
+                windingWindowWidth = dimensions["A"] - dimensions["F"] -
+                                     dimensions["H"];
             }
         }
         else {
-            windingWindowWidth = std::get<double>(dimensions["E"]);
+            windingWindowWidth = dimensions["E"];
         }
 
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
+        windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width(windingWindowWidth);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - windingWindowWidth) / 2 + windingWindowWidth / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
 
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) -
-                                     std::get<double>(dimensions["H"]);
+        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+                windingWindowWidth = dimensions["A"] - dimensions["C"] -
+                                     dimensions["H"];
             }
             else {
-                windingWindowWidth = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) -
-                                     std::get<double>(dimensions["H"]);
+                windingWindowWidth = dimensions["A"] - dimensions["F"] -
+                                     dimensions["H"];
             }
         }
         else {
-            windingWindowWidth = std::get<double>(dimensions["E"]);
+            windingWindowWidth = dimensions["E"];
         }
 
         std::vector<ColumnElement> windingWindows;
@@ -1371,99 +1395,99 @@ class CorePieceUr : public CorePiece {
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
         if (familySubtype == "1" || familySubtype == "2" || familySubtype == "4") {
-            mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["C"])));
-            mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
+            mainColumn.set_width(roundFloat<6>(dimensions["C"]));
+            mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["F"])));
-            mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["F"])));
+            mainColumn.set_width(roundFloat<6>(dimensions["F"]));
+            mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         }
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         if (familySubtype == "1" || familySubtype == "3") {
             lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-            lateralColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
-            lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
+            lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
+            lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
             lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         }
         else {
             lateralColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
-            lateralColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
-            lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["H"])));
+            lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
+            lateralColumn.set_depth(roundFloat<6>(dimensions["H"]));
             lateralColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         }
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
-        lateralColumn.set_coordinates({roundFloat<6>((std::get<double>(dimensions["A"]) + windingWindowWidth) / 2), 0, 0});
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_coordinates({roundFloat<6>((dimensions["A"] + windingWindowWidth) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         auto familySubtype = *get_shape().get_family_subtype();
         std::vector<double> lengths;
         std::vector<double> areas;
         double pi = std::numbers::pi;
 
-        double h = std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"]);
+        double h = dimensions["B"] - dimensions["D"];
         double a1;
         double a3;
         double l4;
         double l5;
         double e;
 
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
-                e = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["C"]) -
-                    std::get<double>(dimensions["H"]);
+        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+                e = dimensions["A"] - dimensions["C"] -
+                    dimensions["H"];
             }
             else {
-                e = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["F"]) -
-                    std::get<double>(dimensions["H"]);
+                e = dimensions["A"] - dimensions["F"] -
+                    dimensions["H"];
             }
         }
         else {
-            e = std::get<double>(dimensions["E"]);
+            e = dimensions["E"];
         }
 
         if (familySubtype == "1") {
-            a1 = std::get<double>(dimensions["C"]) * std::get<double>(dimensions["H"]);
-            a3 = pi * pow(std::get<double>(dimensions["C"]) / 2, 2);
-            l4 = std::numbers::pi / 4 * (std::get<double>(dimensions["H"]) + h);
-            l5 = std::numbers::pi / 4 * (std::get<double>(dimensions["C"]) + h);
+            a1 = dimensions["C"] * dimensions["H"];
+            a3 = pi * pow(dimensions["C"] / 2, 2);
+            l4 = std::numbers::pi / 4 * (dimensions["H"] + h);
+            l5 = std::numbers::pi / 4 * (dimensions["C"] + h);
         }
         else if (familySubtype == "2") {
-            a1 = pi * pow(std::get<double>(dimensions["C"]) / 2, 2);
-            a3 = pi * pow(std::get<double>(dimensions["C"]) / 2, 2);
-            l4 = std::numbers::pi / 4 * (std::get<double>(dimensions["C"]) + h);
-            l5 = std::numbers::pi / 4 * (std::get<double>(dimensions["C"]) + h);
+            a1 = pi * pow(dimensions["C"] / 2, 2);
+            a3 = pi * pow(dimensions["C"] / 2, 2);
+            l4 = std::numbers::pi / 4 * (dimensions["C"] + h);
+            l5 = std::numbers::pi / 4 * (dimensions["C"] + h);
         }
         else if (familySubtype == "3") {
-            a1 = std::get<double>(dimensions["C"]) * std::get<double>(dimensions["H"]);
-            a3 = pi * pow(std::get<double>(dimensions["F"]) / 2, 2);
-            l4 = std::numbers::pi / 4 * (std::get<double>(dimensions["H"]) + h);
-            l5 = std::numbers::pi / 4 * (std::get<double>(dimensions["F"]) + h);
+            a1 = dimensions["C"] * dimensions["H"];
+            a3 = pi * pow(dimensions["F"] / 2, 2);
+            l4 = std::numbers::pi / 4 * (dimensions["H"] + h);
+            l5 = std::numbers::pi / 4 * (dimensions["F"] + h);
         }
         else if (familySubtype == "4") {
             a1 =
-                pi * pow(std::get<double>(dimensions["F"]) / 2, 2) - pi * pow(std::get<double>(dimensions["G"]) / 2, 2);
+                pi * pow(dimensions["F"] / 2, 2) - pi * pow(dimensions["G"] / 2, 2);
             a3 =
-                pi * pow(std::get<double>(dimensions["F"]) / 2, 2) - pi * pow(std::get<double>(dimensions["G"]) / 2, 2);
-            l4 = std::numbers::pi / 4 * (std::get<double>(dimensions["C"]) + h);
-            l5 = std::numbers::pi / 4 * (std::get<double>(dimensions["C"]) + h);
+                pi * pow(dimensions["F"] / 2, 2) - pi * pow(dimensions["G"] / 2, 2);
+            l4 = std::numbers::pi / 4 * (dimensions["C"] + h);
+            l5 = std::numbers::pi / 4 * (dimensions["C"] + h);
         }
 
-        lengths.push_back(2 * std::get<double>(dimensions["D"]));
+        lengths.push_back(2 * dimensions["D"]);
         lengths.push_back(2 * e);
-        lengths.push_back(2 * std::get<double>(dimensions["D"]));
+        lengths.push_back(2 * dimensions["D"]);
         lengths.push_back(l4);
         lengths.push_back(l5);
 
         areas.push_back(a1);
-        areas.push_back(std::get<double>(dimensions["C"]) * h);
+        areas.push_back(dimensions["C"] * h);
         areas.push_back(a3);
         areas.push_back((areas[0] + areas[1]) / 2);
         areas.push_back((areas[1] + areas[2]) / 2);
@@ -1482,67 +1506,67 @@ class CorePieceUr : public CorePiece {
 class CorePieceUt : public CorePiece {
   public:
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_height(std::get<double>(dimensions["D"]));
-        windingWindow.set_width(std::get<double>(dimensions["E"]));
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width(dimensions["E"]);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["E"]) / 2, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["B"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         mainColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-            mainColumn.set_width(roundFloat<6>((std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"])) / 2));
+        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
+            mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(std::get<double>(dimensions["H"])));
+            mainColumn.set_width(roundFloat<6>(dimensions["H"]));
         }
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        mainColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
         lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
-        lateralColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        lateralColumn.set_height(roundFloat<6>(std::get<double>(dimensions["D"])));
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
         lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>((std::get<double>(dimensions["A"]) + std::get<double>(dimensions["E"])) / 2), 0, 0});
+            roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
 
-        double h = (std::get<double>(dimensions["B"]) - std::get<double>(dimensions["D"])) / 2;
-        double q = std::get<double>(dimensions["C"]);
+        double h = (dimensions["B"] - dimensions["D"]) / 2;
+        double q = dimensions["C"];
         double s;
         double p;
-        s = std::get<double>(dimensions["A"]) - std::get<double>(dimensions["E"]) - std::get<double>(dimensions["F"]);
-        p = std::get<double>(dimensions["F"]);
+        s = dimensions["A"] - dimensions["E"] - dimensions["F"];
+        p = dimensions["F"];
 
-        lengths.push_back(std::get<double>(dimensions["D"]));
-        lengths.push_back(2 * std::get<double>(dimensions["E"]));
-        lengths.push_back(std::get<double>(dimensions["D"]));
+        lengths.push_back(dimensions["D"]);
+        lengths.push_back(2 * dimensions["E"]);
+        lengths.push_back(dimensions["D"]);
         lengths.push_back(std::numbers::pi / 4 * (p + h));
         lengths.push_back(std::numbers::pi / 4 * (s + h));
 
@@ -1566,33 +1590,33 @@ class CorePieceUt : public CorePiece {
 class CorePieceT : public CorePiece {
   public:
     void process_extra_data() {
-        auto dimensions = get_shape().get_dimensions().value();
-        set_width(std::get<double>(dimensions["A"]));
-        set_height(std::get<double>(dimensions["A"]));
-        set_depth(std::get<double>(dimensions["C"]));
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["A"]);
+        set_depth(dimensions["C"]);
     }
 
     void process_winding_window() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
-        windingWindow.set_radial_height(std::get<double>(dimensions["B"]) / 2);
+        windingWindow.set_radial_height(dimensions["B"] / 2);
         windingWindow.set_angle(2 * std::numbers::pi);
-        windingWindow.set_area(std::numbers::pi * pow(std::get<double>(dimensions["B"]) / 2, 2));
-        windingWindow.set_coordinates(std::vector<double>({(std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 4, 0}));
+        windingWindow.set_area(std::numbers::pi * pow(dimensions["B"] / 2, 2));
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["B"]) / 4, 0}));
         set_winding_window(windingWindow);
     }
 
     void process_columns() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        double columnWidth = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 2;
+        double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
         mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
         mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
         mainColumn.set_width(columnWidth);
-        mainColumn.set_depth(roundFloat<6>(std::get<double>(dimensions["C"])));
-        mainColumn.set_height(2 * std::numbers::pi * (std::get<double>(dimensions["B"]) / 2 + columnWidth / 2));
+        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_height(2 * std::numbers::pi * (dimensions["B"] / 2 + columnWidth / 2));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
@@ -1600,14 +1624,14 @@ class CorePieceT : public CorePiece {
     }
 
     std::tuple<double, double, double> get_shape_constants() {
-        auto dimensions = get_shape().get_dimensions().value();
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         std::vector<double> lengths;
         std::vector<double> areas;
-        double columnWidth = (std::get<double>(dimensions["A"]) - std::get<double>(dimensions["B"])) / 2;
+        double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
 
-        lengths.push_back(2 * std::numbers::pi * (std::get<double>(dimensions["B"]) / 2 + columnWidth / 2));
+        lengths.push_back(2 * std::numbers::pi * (dimensions["B"] / 2 + columnWidth / 2));
 
-        areas.push_back(columnWidth * std::get<double>(dimensions["C"]));
+        areas.push_back(columnWidth * dimensions["C"]);
 
         double c1 = 0, c2 = 0;
         for (size_t i = 0; i < lengths.size(); ++i) {
@@ -1620,132 +1644,156 @@ class CorePieceT : public CorePiece {
     }
 };
 
-std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape) {
+std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
+
+    // std::cout << "core Piece  E" << std::endl;
+    // std::cout << coreShapeName << std::endl;
         std::shared_ptr<CorePiece> piece(new CorePieceE);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EC) {
         std::shared_ptr<CorePiece> piece(new CorePieceEc);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EFD) {
         std::shared_ptr<CorePiece> piece(new CorePieceEfd);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EL) {
         std::shared_ptr<CorePiece> piece(new CorePieceEl);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EP) {
         std::shared_ptr<CorePiece> piece(new CorePieceEp);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EPX) {
         std::shared_ptr<CorePiece> piece(new CorePieceEpx);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::LP) {
         std::shared_ptr<CorePiece> piece(new CorePieceLp);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::EQ) {
         std::shared_ptr<CorePiece> piece(new CorePieceEq);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ER) {
         std::shared_ptr<CorePiece> piece(new CorePieceEr);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::ETD) {
         std::shared_ptr<CorePiece> piece(new CorePieceEtd);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::P) {
         std::shared_ptr<CorePiece> piece(new CorePieceP);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_E) {
         std::shared_ptr<CorePiece> piece(new CorePiecePlanarE);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_EL) {
         std::shared_ptr<CorePiece> piece(new CorePiecePlanarEl);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PLANAR_ER) {
         std::shared_ptr<CorePiece> piece(new CorePiecePlanarEr);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PM) {
         std::shared_ptr<CorePiece> piece(new CorePiecePm);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::PQ) {
         std::shared_ptr<CorePiece> piece(new CorePiecePq);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::RM) {
         std::shared_ptr<CorePiece> piece(new CorePieceRm);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::U) {
         std::shared_ptr<CorePiece> piece(new CorePieceU);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UR) {
         std::shared_ptr<CorePiece> piece(new CorePieceUr);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::UT) {
         std::shared_ptr<CorePiece> piece(new CorePieceUt);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else if (family == CoreShapeFamily::T) {
         std::shared_ptr<CorePiece> piece(new CorePieceT);
         piece->set_shape(shape);
-        piece->process();
+        if (process)
+            piece->process();
         return piece;
     }
     else
@@ -1925,50 +1973,49 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
 
             if (spacerThickness > 0) {
                 for (auto& column : corePiece->get_columns()) {
-                    auto shape_data = flatten_dimensions(
-                        std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()));
+                    auto shape_data = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
                     if (column.get_type() == OpenMagnetics::ColumnType::LATERAL) {
                         spacer.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER);
                         spacer.set_material("plastic");
                         // We cannot use directly column.get_width()
-                        auto dimensions = shape_data.get_dimensions().value();
+                        auto dimensions = flatten_dimensions(shape_data.get_dimensions().value());
                         double windingWindowWidth;
                         if (dimensions.find("E") == dimensions.end() ||
-                            (roundFloat<6>(std::get<double>(dimensions["E"])) == 0)) {
+                            (roundFloat<6>(dimensions["E"]) == 0)) {
                             if (dimensions.find("F") == dimensions.end() ||
-                                (roundFloat<6>(std::get<double>(dimensions["F"])) == 0)) {
-                                windingWindowWidth = std::get<double>(dimensions["A"]) -
-                                                     std::get<double>(dimensions["C"]) -
-                                                     std::get<double>(dimensions["H"]);
+                                (roundFloat<6>(dimensions["F"]) == 0)) {
+                                windingWindowWidth = dimensions["A"] -
+                                                     dimensions["C"] -
+                                                     dimensions["H"];
                             }
                             else {
-                                windingWindowWidth = std::get<double>(dimensions["A"]) -
-                                                     std::get<double>(dimensions["F"]) -
-                                                     std::get<double>(dimensions["H"]);
+                                windingWindowWidth = dimensions["A"] -
+                                                     dimensions["F"] -
+                                                     dimensions["H"];
                             }
                         }
                         else {
-                            windingWindowWidth = std::get<double>(dimensions["E"]);
+                            windingWindowWidth = dimensions["E"];
                         }
                         double minimum_column_width;
                         double minimum_column_depth;
                         if ((shape_data.get_family() == CoreShapeFamily::EP ||
                              shape_data.get_family() == CoreShapeFamily::EPX) &&
                             corePiece->get_columns().size() == 2) {
-                            minimum_column_width = std::get<double>(dimensions["A"]);
+                            minimum_column_width = dimensions["A"];
                         }
                         else if (shape_data.get_family() == CoreShapeFamily::U ||
                                  shape_data.get_family() == CoreShapeFamily::UR) {
                             if (dimensions.find("H") == dimensions.end() ||
-                                (roundFloat<6>(std::get<double>(dimensions["H"])) == 0)) {
-                                minimum_column_width = (std::get<double>(dimensions["A"]) - windingWindowWidth) / 2;
+                                (roundFloat<6>(dimensions["H"]) == 0)) {
+                                minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
                             }
                             else {
-                                minimum_column_width = std::get<double>(dimensions["H"]);
+                                minimum_column_width = dimensions["H"];
                             }
                         }
                         else {
-                            minimum_column_width = (std::get<double>(dimensions["A"]) - windingWindowWidth) / 2;
+                            minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
                         }
 
                         if ((shape_data.get_family() == CoreShapeFamily::EP ||
@@ -1978,25 +2025,25 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                         }
                         else if (shape_data.get_family() == CoreShapeFamily::P ||
                                  shape_data.get_family() == CoreShapeFamily::PM) {
-                            minimum_column_depth = std::get<double>(dimensions["F"]);
+                            minimum_column_depth = dimensions["F"];
                         }
                         else if (shape_data.get_family() == CoreShapeFamily::RM) {
                             if (dimensions.find("J") != dimensions.end() &&
-                                (roundFloat<6>(std::get<double>(dimensions["J"])) != 0)) {
+                                (roundFloat<6>(dimensions["J"]) != 0)) {
                                 minimum_column_depth =
-                                    sqrt(2) * std::get<double>(dimensions["J"]) - std::get<double>(dimensions["A"]);
+                                    sqrt(2) * dimensions["J"] - dimensions["A"];
                             }
                             else if (dimensions.find("H") != dimensions.end() &&
-                                     (roundFloat<6>(std::get<double>(dimensions["H"])) != 0)) {
-                                minimum_column_depth = std::get<double>(dimensions["H"]);
+                                     (roundFloat<6>(dimensions["H"]) != 0)) {
+                                minimum_column_depth = dimensions["H"];
                             }
                             else {
-                                minimum_column_depth = std::get<double>(dimensions["F"]);
+                                minimum_column_depth = dimensions["F"];
                             }
                         }
                         else {
                             minimum_column_depth =
-                                std::min(std::get<double>(dimensions["C"]), column.get_depth()) * numberStacks;
+                                std::min(dimensions["C"], column.get_depth()) * numberStacks;
                         }
                         minimum_column_width *= (1 + constants.spacerProtudingPercentage);
                         minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
@@ -2006,7 +2053,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                         spacer.set_rotation(std::vector<double>({0, 0, 0}));
                         if (column.get_coordinates()[0] == 0) {
                             spacer.set_coordinates({0, column.get_coordinates()[1],
-                                                         -std::get<double>(dimensions["C"]) / 2 +
+                                                         -dimensions["C"] / 2 +
                                                              minimum_column_depth / 2 - protuding_depth});
                         }
                         else if (column.get_coordinates()[0] < 0) {
@@ -2017,7 +2064,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                             else {
-                                spacer.set_coordinates(std::vector<double>({-std::get<double>(dimensions["A"]) / 2 +
+                                spacer.set_coordinates(std::vector<double>({-dimensions["A"] / 2 +
                                                                  minimum_column_width / 2 - protuding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
@@ -2030,7 +2077,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
                             else {
-                                spacer.set_coordinates(std::vector<double>({std::get<double>(dimensions["A"]) / 2 -
+                                spacer.set_coordinates(std::vector<double>({dimensions["A"] / 2 -
                                                                  minimum_column_width / 2 + protuding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
                             }
@@ -2620,11 +2667,21 @@ double CoreWrapper::get_coercive_force(double temperature) {
 }
 
 std::vector<ColumnElement> CoreWrapper::get_columns() {
+    if (get_processed_description()) {
     return get_processed_description().value().get_columns();
+    }
+    else {
+        return std::vector<ColumnElement>();
+    }
 }
 
 std::vector<WindingWindowElement> CoreWrapper::get_winding_windows() {
-    return get_processed_description().value().get_winding_windows();
+    if (get_processed_description()) {
+        return get_processed_description().value().get_winding_windows();
+    }
+    else {
+        return std::vector<WindingWindowElement>();
+    }
 }
 
 CoreShapeFamily CoreWrapper::get_shape_family() {

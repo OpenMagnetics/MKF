@@ -91,6 +91,7 @@ class CoreAdviser {
                     // (*_scorings)[name] = std::map<CoreAdviserFilters, double>{filter,;
                 // }
                 // std::cout << scoring << std::endl;
+                
                 (*_scorings)[filter][name] = scoring;
                 // std::cout << (*_scorings)[name][filter] << std::endl;
 

@@ -76,22 +76,9 @@ class CorePiece {
         this->partial_effective_parameters = value;
     }
 
-    static std::shared_ptr<CorePiece> factory(CoreShape shape);
+    static std::shared_ptr<CorePiece> factory(CoreShape shape, bool process=true);
 
-    void process() {
-        set_shape(flatten_dimensions(get_mutable_shape()));
-        process_winding_window();
-        process_columns();
-        process_extra_data();
-
-        auto [c1, c2, minimumArea] = get_shape_constants();
-        json pieceEffectiveParameters;
-        pieceEffectiveParameters["effectiveLength"] = pow(c1, 2) / c2;
-        pieceEffectiveParameters["effectiveArea"] = c1 / c2;
-        pieceEffectiveParameters["effectiveVolume"] = pow(c1, 3) / pow(c2, 2);
-        pieceEffectiveParameters["minimumArea"] = minimumArea;
-        set_partial_effective_parameters(pieceEffectiveParameters);
-    }
+    void process();
 };
 
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
