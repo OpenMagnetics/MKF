@@ -43,12 +43,10 @@ double ResistivityWireMaterialModel::get_resistivity(ResistivityMaterial materia
 
 std::shared_ptr<ResistivityModel> ResistivityModel::factory(ResistivityModels modelName) {
     if (modelName == ResistivityModels::CORE_MATERIAL) {
-        std::shared_ptr<ResistivityModel> ResistivityModel(new ResistivityCoreMaterialModel);
-        return ResistivityModel;
+        return std::make_shared<ResistivityCoreMaterialModel>();
     }
     else if (modelName == ResistivityModels::WIRE_MATERIAL) {
-        std::shared_ptr<ResistivityModel> ResistivityModel(new ResistivityWireMaterialModel);
-        return ResistivityModel;
+        return std::make_shared<ResistivityWireMaterialModel>();
     }
     else
         throw std::runtime_error("Unknown Resistivity model, available options are: {CORE_MATERIAL, WIRE_MATERIAL}");

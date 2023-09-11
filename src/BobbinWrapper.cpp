@@ -185,36 +185,28 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
 
     auto family = bobbin.get_functional_description().value().get_family();
     if (family == BobbinFamily::E) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinEDataProcessor>();
     }
     else if (family == BobbinFamily::RM) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinRmDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinRmDataProcessor>();
     }
     else if (family == BobbinFamily::EP) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEpDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinEpDataProcessor>();
     }
     else if (family == BobbinFamily::ETD) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEtdDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinEtdDataProcessor>();
     }
     else if (family == BobbinFamily::PM) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinPmDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinPmDataProcessor>();
     }
     else if (family == BobbinFamily::PQ) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinPqDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinPqDataProcessor>();
     }
     else if (family == BobbinFamily::EC) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEcDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinEcDataProcessor>();
     }
     else if (family == BobbinFamily::EFD) {
-        std::shared_ptr<BobbinDataProcessor> bobbinDataGenerator(new BobbinEfdDataProcessor);
-        return bobbinDataGenerator;
+        return std::make_shared<BobbinEfdDataProcessor>();
     }
     else
         throw std::runtime_error("Unknown bobbin family, available options are: {E, EC, EFD, EP, ETD, PM, PQ, RM}");
