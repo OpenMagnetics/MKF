@@ -2210,7 +2210,7 @@ void CoreWrapper::scale_to_stacks(int64_t numberStacks) {
     set_processed_description(processedDescription);
 }
 
-void CoreWrapper::distribute_and_process_gap() {
+bool CoreWrapper::distribute_and_process_gap() {
     auto constants = Constants();
     std::vector<CoreGap> newGapping;
     auto gapping = get_functional_description().get_gapping();
@@ -2255,7 +2255,8 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - constants.residualGap / 2);
@@ -2277,7 +2278,8 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
@@ -2296,7 +2298,8 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[i].get_length() / 2);
@@ -2341,7 +2344,8 @@ void CoreWrapper::distribute_and_process_gap() {
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
             if (distanceClosestNormalSurface < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
@@ -2367,7 +2371,8 @@ void CoreWrapper::distribute_and_process_gap() {
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
                 if (returnColumns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
+                    return false;
+                    // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
 
                 }
                 gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2 - constants.residualGap / 2);
@@ -2385,7 +2390,8 @@ void CoreWrapper::distribute_and_process_gap() {
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
                 if (returnColumns[i].get_height() / 2 < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
+                    return false;
+                    // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
 
                 }
                 gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2);
@@ -2398,6 +2404,7 @@ void CoreWrapper::distribute_and_process_gap() {
     }
 
     get_mutable_functional_description().set_gapping(newGapping);
+    return true;
 }
 
 bool CoreWrapper::is_gapping_missaligned() {
@@ -2414,7 +2421,7 @@ bool CoreWrapper::is_gapping_missaligned() {
     return false;
 }
 
-void CoreWrapper::process_gap() {
+bool CoreWrapper::process_gap() {
     std::vector<CoreGap> newGapping;
     auto gapping = get_functional_description().get_gapping();
     auto family = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
@@ -2449,7 +2456,8 @@ void CoreWrapper::process_gap() {
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
             if (roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
@@ -2461,6 +2469,7 @@ void CoreWrapper::process_gap() {
     }
 
     get_mutable_functional_description().set_gapping(newGapping);
+    return true;
 }
 
 CoreMaterial CoreWrapper::get_material() {

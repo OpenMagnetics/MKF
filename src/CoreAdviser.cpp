@@ -745,13 +745,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
         }
 
         core.process_data();
-        try {
-            core.process_gap();
-        }
-        catch(const std::runtime_error& re) {
+        if (!core.process_gap()) {
             continue;
-            // std::cerr << "Error occurred: " << ex.what() << std::endl;
         }
+
         if (includeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
