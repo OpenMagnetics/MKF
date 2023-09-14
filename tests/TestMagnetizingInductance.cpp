@@ -488,8 +488,8 @@ SUITE(MagnetizingInductance) {
         // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
-            0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
-            0.011524999999999999, "length": 0.1, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
+            0.00, 0.0], "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface":
+            0.011524999999999999, "length": 0.0001, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
             "type": "subtractive"}, {"area": 0.000184, "coordinates": [0.026126, 0.0, 0.0],
             "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
             "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
@@ -593,8 +593,8 @@ SUITE(MagnetizingInductance) {
         // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
-            0.05, 0.0], "distanceClosestNormalSurface": -0.077551, "distanceClosestParallelSurface":
-            0.011524999999999999, "length": 0.1, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
+            0.0, 0.0], "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface":
+            0.011524999999999999, "length": 0.0001, "sectionDimensions": [0.02165, 0.02165], "shape": "round",
             "type": "subtractive"}, {"area": 0.000184, "coordinates": [0.026126, 0.0, 0.0],
             "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface": 0.011524999999999999,
             "length": 5e-06, "sectionDimensions": [0.007551, 0.02165], "shape": "irregular", "type":
@@ -814,14 +814,11 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        double expectedValue = 6.6e-3;
-
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
     }
 
 }

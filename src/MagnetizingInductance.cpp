@@ -196,6 +196,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
     while (true) {
+
         totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
         numberTurnsPrimary = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
 
