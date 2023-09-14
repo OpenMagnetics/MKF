@@ -15,6 +15,18 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     double perimeter = 0;
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
+    if (!gapInfo.get_shape()) {
+        throw std::runtime_error("Gap Shape is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
+    if (!gapInfo.get_distance_closest_normal_surface()) {
+        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     auto gap_shape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -28,13 +40,21 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     if (gap_shape == ColumnShape::ROUND) {
         perimeter = std::numbers::pi * gapSectionWidth;
     }
-    else { // TODO: Properly calcualte perimeter for all shapes
+    else { // TODO: Properly calculate perimeter for all shapes
         perimeter = gapSectionWidth * 2 + gapSectionDepth * 2;
     }
 
     if (gapLength > 0) {
         reluctance_fringing = std::numbers::pi / (constants.vacuumPermeability * perimeter *
                                                   log((2 * distanceClosestNormalSurface + gapLength) / gapLength));
+    }
+
+    if (std::isnan(reluctance_internal) || reluctance_internal == 0) {
+        throw std::runtime_error("reluctance_internal cannot be 0 or NaN");
+    }
+
+    if (std::isnan(reluctance_fringing) || reluctance_fringing == 0) {
+        throw std::runtime_error("reluctance_fringing cannot be 0 or NaN");
     }
 
     double reluctance = 1. / (1. / reluctance_internal + 1. / reluctance_fringing);
@@ -59,6 +79,15 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
 std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_shape()) {
+        throw std::runtime_error("Gap Shape is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
+    if (!gapInfo.get_distance_closest_normal_surface()) {
+        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+    }
     auto gap_shape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
@@ -101,6 +130,15 @@ std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(Co
 std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
+    if (!gapInfo.get_shape()) {
+        throw std::runtime_error("Gap Shape is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     auto gap_shape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -138,6 +176,15 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
 std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
+    if (!gapInfo.get_shape()) {
+        throw std::runtime_error("Gap Shape is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     auto gap_shape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -174,6 +221,15 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
 std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
+    if (!gapInfo.get_distance_closest_normal_surface()) {
+        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
@@ -203,6 +259,24 @@ std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreG
 std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
+    if (!gapInfo.get_shape()) {
+        throw std::runtime_error("Gap Shape is not set");
+    }
+    if (!gapInfo.get_section_dimensions()) {
+        throw std::runtime_error("Gap Section Dimensions are not set");
+    }
+    if (!gapInfo.get_distance_closest_normal_surface()) {
+        throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
+    }
+    if (!gapInfo.get_coordinates()) {
+        throw std::runtime_error("Gap Corrdinates are not set");
+    }
+    if (!gapInfo.get_distance_closest_parallel_surface()) {
+        throw std::runtime_error("Gap Distance Closest Parallel Surface is not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     auto gapCoordinates = *(gapInfo.get_coordinates());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
@@ -246,6 +320,9 @@ std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreG
 std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     double reluctance;
     double fringingFactor = 1;
@@ -269,6 +346,9 @@ std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap
 std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
+    if (!gapInfo.get_area()) {
+        throw std::runtime_error("Gap Area is not set");
+    }
     auto gapArea = *(gapInfo.get_area());
     double reluctance;
     double fringingFactor = 1;

@@ -1648,8 +1648,6 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
 
-    // std::cout << "core Piece  E" << std::endl;
-    // std::cout << coreShapeName << std::endl;
         auto piece = std::make_shared<CorePieceE>();
         piece->set_shape(shape);
         if (process)
@@ -2256,6 +2254,10 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_length(constants.residualGap);
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
+            if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+
+            }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - constants.residualGap / 2);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[i].get_area());
@@ -2274,6 +2276,10 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_length(gapping[gapIndex].get_length());
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
+            if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+
+            }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[i].get_area());
@@ -2289,6 +2295,10 @@ void CoreWrapper::distribute_and_process_gap() {
             gap.set_length(gapping[i].get_length());
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
+            if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+
+            }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[i].get_length() / 2);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[i].get_area());
@@ -2330,6 +2340,10 @@ void CoreWrapper::distribute_and_process_gap() {
                                       windingColumn.get_coordinates()[0] + centralColumnGapsHeightOffset,
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
+            if (distanceClosestNormalSurface < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
+
+            }
             gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(windingColumn.get_area());
@@ -2352,6 +2366,10 @@ void CoreWrapper::distribute_and_process_gap() {
                 gap.set_length(constants.residualGap);
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
+                if (returnColumns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
+
+                }
                 gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2 - constants.residualGap / 2);
                 gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
                 gap.set_area(returnColumns[i].get_area());
@@ -2366,6 +2384,10 @@ void CoreWrapper::distribute_and_process_gap() {
                 gap.set_length(residualGaps[i].get_length());
                 gap.set_coordinates(returnColumns[i].get_coordinates());
                 gap.set_shape(returnColumns[i].get_shape());
+                if (returnColumns[i].get_height() / 2 < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
+
+                }
                 gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2);
                 gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
                 gap.set_area(returnColumns[i].get_area());
@@ -2426,9 +2448,11 @@ void CoreWrapper::process_gap() {
             gap.set_length(gapping[i].get_length());
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
-            gap.set_distance_closest_normal_surface(
-                              roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) -
-                              gapping[i].get_length() / 2));
+            if (roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
+
+            }
+            gap.set_distance_closest_normal_surface(roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[columnIndex].get_area());
             gap.set_section_dimensions(std::vector<double>({columns[columnIndex].get_width(), columns[columnIndex].get_depth()}));
