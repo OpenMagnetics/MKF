@@ -135,8 +135,8 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 3C90 - Gapped 3.5500000000000003 mm");
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 3C90 - Gapped 3.0 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
         double bestScoring = masMagnetics[0].second;
         for (size_t i = 0; i < masMagnetics.size(); ++i)
         {
@@ -169,7 +169,7 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 114/46/35 - XFlux 40 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - Kool Mu Hf 26 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
         double bestScoring = masMagnetics[0].second;
         for (size_t i = 0; i < masMagnetics.size(); ++i)
@@ -392,7 +392,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 3C90 - Gapped 3.5500000000000003 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 3C90 - Gapped 2.5 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
         double bestScoring = masMagnetics[0].second;
         for (size_t i = 0; i < masMagnetics.size(); ++i)
