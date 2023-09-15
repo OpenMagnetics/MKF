@@ -31,6 +31,7 @@ class CoreAdviser {
         }
     public:
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
+        std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
         CoreAdviser(std::map<std::string, std::string> models, bool includeToroids=true) {
             auto defaults = OpenMagnetics::Defaults();
             _includeToroids = includeToroids;
@@ -84,24 +85,26 @@ class CoreAdviser {
 
         std::vector<std::pair<MasWrapper, double>> apply_filters(std::vector<std::pair<MasWrapper, double>>* masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
         std::vector<std::pair<MasWrapper, double>> create_mas_dataset(InputsWrapper inputs, std::vector<CoreWrapper>* cores, bool includeStacks);
+        void expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vector<CoreWrapper>* cores, std::vector<std::pair<MasWrapper, double>>* masMagnetics);
     
     class MagneticCoreFilter {
-        std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
-
         public:
+            std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
+            std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
-                // if (!(*_scorings).contains(name)) {
-                    // (*_scorings)[name] = std::map<CoreAdviserFilters, double>{filter,;
-                // }
-                // std::cout << scoring << std::endl;
-                
-                (*_scorings)[filter][name] = scoring;
-                // std::cout << (*_scorings)[name][filter] << std::endl;
-
+                (*_validScorings)[filter][name] = true;
+                if (scoring != -1) {
+                    (*_scorings)[filter][name] = scoring;
+                }
             }
-            MagneticCoreFilter(std::map<CoreAdviserFilters, std::map<std::string, double>>* scorings){
+            void set_scorings(std::map<CoreAdviserFilters, std::map<std::string, double>>* scorings) {
                 _scorings = scorings;
+            }
+            void set_valid_scorings(std::map<CoreAdviserFilters, std::map<std::string, bool>>* validScorings) {
+                _validScorings = validScorings;
+            }
+            MagneticCoreFilter(){
             }
             std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<MasWrapper> unfilteredMasMagnetics, InputsWrapper inputs, double weight=1);
     };
