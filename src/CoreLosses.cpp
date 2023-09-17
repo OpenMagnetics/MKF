@@ -225,7 +225,7 @@ std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper c
             pow(fabs((magneticFluxDensityWaveform[i + 1] - magneticFluxDensityWaveform[i]) / timeDifference), alpha) *
             timeDifference;
     }
-
+ 
     double volumetricLosses = ki * pow(magneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 

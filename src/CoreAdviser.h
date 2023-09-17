@@ -6,6 +6,7 @@
 #include "InputsWrapper.h"
 #include "CoreWrapper.h"
 #include "MasWrapper.h"
+#include <cmath>
 #include <MAS.hpp>
 
 
@@ -26,10 +27,20 @@ class CoreAdviser {
         std::string _log;
         std::map<CoreAdviserFilters, double> _weights;
 
-        void log(std::string entry) {
+        void logEntry(std::string entry) {
             _log += entry + "\n";
         }
+
     public:
+
+        std::map<CoreAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
+                { CoreAdviserFilters::AREA_PRODUCT,          { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::ENERGY_STORED,         { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::WINDING_WINDOW_AREA,   { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::CORE_LOSSES,           { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::CORE_TEMPERATURE,      { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
+            };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
         CoreAdviser(std::map<std::string, std::string> models, bool includeToroids=true) {
@@ -50,31 +61,11 @@ class CoreAdviser {
         std::string read_log() {
             return _log;
         }
-        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false) {
-            std::map<std::string, std::map<CoreAdviserFilters, double>> invertedScorings;
-            for (auto const& [filter, aux] : _scorings) {
-                double maximumScoring = (*std::max_element(aux.begin(), aux.end(),
-                                             [](const std::pair<std::string, double> &p1,
-                                                const std::pair<std::string, double> &p2)
-                                             {
-                                                 return p1.second < p2.second;
-                                             })).second; 
-                double minimumScoring = (*std::min_element(aux.begin(), aux.end(),
-                                             [](const std::pair<std::string, double> &p1,
-                                                const std::pair<std::string, double> &p2)
-                                             {
-                                                 return p1.second < p2.second;
-                                             })).second; 
-
-                for (auto const& [name, scoring] : aux) {
-                    if (weighted)
-                        invertedScorings[name][filter] = _weights[filter] * (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                    else
-                        invertedScorings[name][filter] = (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-                }
-            }
-            return invertedScorings;
+        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(){
+            return get_scorings(false);
         }
+
+        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted);
 
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, std::vector<CoreWrapper>* cores, size_t maximumNumberResults=1);
@@ -91,6 +82,7 @@ class CoreAdviser {
         public:
             std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
+            std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
                 (*_validScorings)[filter][name] = true;
@@ -103,6 +95,9 @@ class CoreAdviser {
             }
             void set_valid_scorings(std::map<CoreAdviserFilters, std::map<std::string, bool>>* validScorings) {
                 _validScorings = validScorings;
+            }
+            void set_filter_configuration(std::map<CoreAdviserFilters, std::map<std::string, bool>>* filterConfiguration) {
+                _filterConfiguration = filterConfiguration;
             }
             MagneticCoreFilter(){
             }
