@@ -29,10 +29,6 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
     auto shapes = _root->add_child<SVG::Group>();
     for (size_t i = 0; i < sections.size(); ++i){
 
-    // json mierda;
-    // to_json(mierda, sections[i]);
-    // std::cout << "Section : "<< i << std::endl;
-    // std::cout << mierda << std::endl;
         std::vector<SVG::Point> sectionPoints = {};
         sectionPoints.push_back(SVG::Point(sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2));
         sectionPoints.push_back(SVG::Point(sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2));
@@ -75,10 +71,6 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
     for (size_t i = 0; i < layers.size(); ++i){
 
 
-    // json mierda;
-    // to_json(mierda, layers[i]);
-    // std::cout << "Layer : "<< i << std::endl;
-    // std::cout << mierda << std::endl;
 
         std::vector<SVG::Point> layerPoints = {};
         layerPoints.push_back(SVG::Point(layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2));
@@ -310,20 +302,7 @@ SVG::SVG* CoilPainter::paint_two_piece_set_core(CoreWrapper core) {
         highestHeightBottomCoreRightColumn = gapsInRightColumn.back().get_coordinates().value()[1] - gapsInRightColumn.back().get_length() / 2;
     }
 
-    // std::cout << "rightColumnWidth" << std::endl;
-    // std::cout << rightColumnWidth << std::endl;
-    // std::cout << "showingCoreWidth" << std::endl;
-    // std::cout << showingCoreWidth << std::endl;
-    // std::cout << "gapsInMainColumn" << std::endl;
-    // std::cout << gapsInMainColumn.size() << std::endl;
-    // std::cout << "gapsInRightColumn" << std::endl;
-    // std::cout << gapsInRightColumn.size() << std::endl;
 
-    // json mierda;
-    // to_json(mierda, rightColumn);
-    // std::cout << mierda << std::endl;
-    // to_json(mierda, mainColumn);
-    // std::cout << mierda << std::endl;
 
     topPiecePoints.push_back(SVG::Point(0, processedDescription.get_height() / 2));
     topPiecePoints.push_back(SVG::Point(showingCoreWidth, processedDescription.get_height() / 2));
