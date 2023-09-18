@@ -84,8 +84,10 @@ class CoreAdviser {
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
 
-            void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
-                (*_validScorings)[filter][name] = true;
+            void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring, bool firstFilter) {
+                if (firstFilter) {
+                    (*_validScorings)[filter][name] = true;
+                }
                 if (scoring != -1) {
                     (*_scorings)[filter][name] = scoring;
                 }
@@ -106,32 +108,32 @@ class CoreAdviser {
     
     class MagneticCoreFilterAreaProduct : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterEnergyStored : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterWindingWindowArea : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterCoreLosses : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterCoreTemperature : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterDimensions : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, double weight=1);
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, double weight=1, bool firstFilter=false);
     };
 
 };
