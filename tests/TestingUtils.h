@@ -19,7 +19,8 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
                                           OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL,
                                           OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
                                           OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}),
+                                          bool useBobbin = true);
 
 OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
                                           std::vector<uint64_t> numberParallels,

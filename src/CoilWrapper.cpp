@@ -575,7 +575,28 @@ void CoilWrapper::wind_by_sections() {
             section.set_type(ElectricalType::CONDUCTION);
             section.set_layers_orientation(_layersOrientation);
             section.set_dimensions(std::vector<double>{interleavedWidth, interleavedHeight});
+            if (section.get_dimensions()[0] < 0) {
+                return;
+                // throw std::runtime_error("Something wrong happened in section dimn 1: " + std::to_string(section.get_dimensions()[0]) +
+                //                          " interleavedWidth: " + std::to_string(interleavedWidth) +
+                //                          " interleavedHeight: " + std::to_string(interleavedHeight)
+                //                          );
+            }
             section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
+
+            if (section.get_coordinates()[0] < -1) {
+                return;
+                // throw std::runtime_error("Something wrong happened in section dimn 1: " + std::to_string(section.get_coordinates()[0]) +
+                //                          " currentSectionCenterWidth: " + std::to_string(currentSectionCenterWidth) +
+                //                          " windingWindows[0].get_coordinates().value()[0]: " + std::to_string(windingWindows[0].get_coordinates().value()[0]) +
+                //                          " windingWindows[0].get_width(): " + std::to_string(bool(windingWindows[0].get_width())) +
+                //                          " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) +
+                //                          " windingWindowWidth: " + std::to_string(windingWindowWidth) +
+                //                          " interleavedWidth: " + std::to_string(interleavedWidth) +
+                //                          " currentSectionCenterHeight: " + std::to_string(currentSectionCenterHeight)
+                //                          );
+            }
+
             section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (interleavedWidth * interleavedHeight));
             section.set_winding_style(windByConsecutiveTurns[windingIndex]);
             sectionsDescription.push_back(section);
@@ -765,6 +786,7 @@ void CoilWrapper::wind_by_layers() {
                 layer.set_turns_alignment(_turnsAlignment);
                 layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
                 layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+
                 layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
@@ -964,10 +986,19 @@ void CoilWrapper::wind_by_turns() {
                         turn.set_layer(layer.get_name());
                         if (bobbinColumnShape == ColumnShape::ROUND) {
                             turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                            if (turn.get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 2: " + std::to_string(turn.get_length()) +
+                                                         " currentTurnCenterWidth: " + std::to_string(currentTurnCenterWidth) +
+                                                         " layer.get_coordinates()[0]: " + std::to_string(layer.get_coordinates()[0]));
+                            }
                         }
                         else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
                             double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
                             turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+
+                            if (turn.get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 2: " + std::to_string(turn.get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
+                            }
                         }
                         else {
                             throw std::runtime_error("only round or rectangular columns supported for bobbins");
@@ -1000,10 +1031,16 @@ void CoilWrapper::wind_by_turns() {
                             turn.set_layer(layer.get_name());
                             if (bobbinColumnShape == ColumnShape::ROUND) {
                                 turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                                    if (turn.get_length() < 0) {
+                                        throw std::runtime_error("Something wrong happened in turn length 3: " + std::to_string(turn.get_length()) + " currentTurnCenterWidth: " + std::to_string(currentTurnCenterWidth));
+                                    }
                             }
                             else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
                                 double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
                                 turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                            if (turn.get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 3: " + std::to_string(turn.get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
+                            }
                             }
                             else {
                                 throw std::runtime_error("only round or rectangular columns supported for bobbins");
@@ -1290,10 +1327,17 @@ void CoilWrapper::delimit_and_compact() {
 
                                 if (bobbinColumnShape == ColumnShape::ROUND) {
                                     turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0]);
+                                    if (turns[turnIndex].get_length() < 0) {
+                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                    }
                                 }
                                 else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
                                     double currentTurnCornerRadius = turns[turnIndex].get_coordinates()[0] - bobbinColumnWidth;
                                     turns[turnIndex].set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+
+                                    if (turns[turnIndex].get_length() < 0) {
+                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
+                                    }
                                 }
                                 else {
                                     throw std::runtime_error("only round or rectangular columns supported for bobbins");

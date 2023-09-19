@@ -16,12 +16,13 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
                                                 OpenMagnetics::WindingOrientation layersOrientation,
                                                 OpenMagnetics::CoilAlignment turnsAlignment,
                                                 OpenMagnetics::CoilAlignment sectionsAlignment,
-                                                std::vector<OpenMagnetics::WireWrapper> wires){
+                                                std::vector<OpenMagnetics::WireWrapper> wires,
+                                                bool useBobbin){
     json coilJson;
     coilJson["functionalDescription"] = json::array();
 
     auto core = get_core(shapeName, json::parse("[]"), 1, "Dummy");
-    auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
+    auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core, !useBobbin);
     json bobbinJson;
     OpenMagnetics::to_json(bobbinJson, bobbin);
 
