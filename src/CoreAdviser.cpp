@@ -87,12 +87,10 @@ void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsW
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
     double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
 
-    double mierda = 0;
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i) {
         auto mas = (*masMagneticsWithScoring)[i].first;
         auto scoring = (*newScoring)[i];
         if (maximumScoring != minimumScoring) {
-                mierda += scoring;
 
             if (filterConfiguration["log"]){
                 if (filterConfiguration["invert"]) {
@@ -518,6 +516,14 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
             auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
             magnetic.get_mutable_coil().set_bobbin(bobbin);
+            auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+
+            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+                throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(bool(windingWindows[0].get_width())) +
+                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
+                                         " shapeName: " + shapeName
+                                         );
+            }
         }
 
         int64_t currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
@@ -579,7 +585,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                     ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
                     newTotalLosses = coreLosses + ohmicLosses;
                     if (ohmicLosses < 0) {
-                        throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_name());
+                        throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_name() + " ohmicLosses: " + std::to_string(ohmicLosses));
                     }
 
                 }

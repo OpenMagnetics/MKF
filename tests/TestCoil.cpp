@@ -872,4 +872,39 @@ SUITE(CoilTurnsDescription) {
         quick_check_turns_description(coil);
     }
 
+    TEST(Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin) {
+        std::vector<uint64_t> numberTurns = {7};
+        std::vector<uint64_t> numberParallels = {1};
+        double wireDiameter = 0.000509;
+        uint64_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_conducting_width(0.0038);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_nominal_value_outer_width(0.004);
+        wire.set_nominal_value_outer_height(0.0008);
+        wire.set_type("rectangular");
+        wires.push_back(wire);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
+
+        auto core = OpenMagneticsTesting::get_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+    quick_check_turns_description(coil);
+    }
+
 }
