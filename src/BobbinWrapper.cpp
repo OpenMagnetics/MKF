@@ -435,21 +435,30 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(MagneticCore core, bool nullDim
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindow.second) / 2;
     }
 
-    windingWindowElement.set_width(bobbinWindingWindow.first);
-    windingWindowElement.set_height(bobbinWindingWindow.second);
-    windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + bobbinWindingWindow.first / 2, 0, 0}));
+    if ((bobbinWindingWindow.first < 0) || (bobbinWindingWindow.first > 1) || (bobbinWindingWindow.second < 0) || (bobbinWindingWindow.second > 1)) {
+        windingWindowElement.set_width(coreWindingWindow.get_width().value());
+        windingWindowElement.set_height(coreWindingWindow.get_height().value());
+        windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2, 0, 0}));
+        coreBobbinProcessedDescription.set_wall_thickness(0);
+        coreBobbinProcessedDescription.set_column_thickness(0);
+    }
+    else {
+        windingWindowElement.set_width(bobbinWindingWindow.first);
+        windingWindowElement.set_height(bobbinWindingWindow.second);
+        windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + bobbinWindingWindow.first / 2, 0, 0}));
+        coreBobbinProcessedDescription.set_wall_thickness(bobbinWallThickness);
+        coreBobbinProcessedDescription.set_column_thickness(bobbinColumnThickness);
+    }
     coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
-    coreBobbinProcessedDescription.set_wall_thickness(bobbinWallThickness);
-    coreBobbinProcessedDescription.set_column_thickness(bobbinColumnThickness);
     coreBobbinProcessedDescription.set_column_shape(ColumnShape::ROUND);
     coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + bobbinColumnThickness);
     coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + bobbinColumnThickness);
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
 
-    if ((bobbinWindingWindow.first < 0) || (bobbinWindingWindow.first > 1)) {
+    if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {
         throw std::runtime_error("Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindow.first));
     }
-    if ((bobbinWindingWindow.second < 0) || (bobbinWindingWindow.second > 1)) {
+    if ((windingWindowElement.get_height().value() < 0) || (windingWindowElement.get_height().value() > 1)) {
         throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindow.second));
     }
     BobbinWrapper bobbin;
