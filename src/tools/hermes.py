@@ -1083,8 +1083,8 @@ class DigikeyStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1100,7 +1100,7 @@ class DigikeyStocker(Stocker):
 
         # pprint.pprint(self.core_data)
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -1466,8 +1466,8 @@ class MouserStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1483,7 +1483,7 @@ class MouserStocker(Stocker):
 
         # pprint.pprint(self.core_data)
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -1514,6 +1514,7 @@ class GatewayStocker(Stocker):
                 'total': 0
             }
 
+
         number = 0
         for index, datum in data.iterrows():
             try:
@@ -1521,7 +1522,7 @@ class GatewayStocker(Stocker):
                 if 'FERROXCUBE' not in datum['Franchise'] and 'MAGNETICS' not in datum['Franchise'] and 'TDK' not in datum['Franchise'] and 'FAIR-RITE' not in datum['Franchise']:
                     continue
                 for word in excluded_words:
-                    if word in datum['Part'].split(' ') or word in datum['Description'].split(' '):
+                    if word in datum['Product'].split(' ') or word in datum['Description'].split(' '):
                         invalid = True
                         break
 
@@ -1538,7 +1539,7 @@ class GatewayStocker(Stocker):
                 length = 0
                 for shape_name in PyMKF.get_available_core_shapes():
                     if (shape_name in datum['Description'] or shape_name.upper().replace(' ', '') in datum['Description'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T') or
-                        shape_name in datum['Part'] or shape_name.upper().replace(' ', '') in datum['Part'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T')):
+                        shape_name in datum['Product'] or shape_name.upper().replace(' ', '') in datum['Product'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T')):
 
                         if len(shape_name) > length:
                             length = len(shape_name)
@@ -1575,23 +1576,26 @@ class GatewayStocker(Stocker):
                     core_manufacturer = 'TDK'
                 if 'FAIR-RITE' in datum['Franchise']:
                     core_manufacturer = 'Fair-Rite'
-                manufacturer_part_number = datum['Part']
-                product_url = datum['www link']
-                distributor_reference = datum['Part']
-                quantity = int(datum['Qty'])
+                manufacturer_part_number = datum['Product']
+                product_url = "https://www.shop.gatewaycando.com/magnetics/cores"
+                distributor_reference = datum['Product']
+                quantity = int(datum['Stock'])
                 cost = None
 
                 if ' gapped ' in datum['Description']:
                     number_gaps = 1
                     try:
-                        al_value = float(datum['Part'].split("-A")[1].split("-")[0]) * 1e-9
+                        al_value = float(datum['Product'].split("-A")[1].split("-")[0]) * 1e-9
                     except IndexError:
                         try:
-                            al_value = float(datum['Part'].split("-G")[1].split("-")[0]) * 1e-9
+                            al_value = float(datum['Product'].split("-G")[1].split("-")[0]) * 1e-9
                         except IndexError:
-                            pprint.pprint(product)
-                            print(datum['Part'])
-                            assert 0
+                            try:
+                                al_value = float(datum['Description'].split(" al ")[1]) * 1e-9
+                            except IndexError:
+                                print(datum['Product'])
+                                print(datum['Description'])
+                                assert 0
                     gapping = self.get_gapping(core_data, core_manufacturer, al_value, number_gaps)
                 else:
                     gapping = []
@@ -1621,8 +1625,8 @@ class GatewayStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1638,15 +1642,15 @@ class GatewayStocker(Stocker):
 
         # pprint.pprint(self.core_data)
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
 
 class FerroxcubeInventory(Stocker):
     def remove_current_inventory(self):
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            os.remove(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson")
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            os.remove(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson")
 
     def read_concentric_products(self, offset: int = 0):
         cookies = {
@@ -1900,8 +1904,8 @@ class FerroxcubeInventory(Stocker):
         remaining = 1
         current_offset = 1
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1923,7 +1927,7 @@ class FerroxcubeInventory(Stocker):
             pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
 
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -2147,8 +2151,8 @@ class TdkInventory(Stocker):
         remaining = 1
         current_offset = 2
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -2162,7 +2166,7 @@ class TdkInventory(Stocker):
             pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
 
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -2388,8 +2392,8 @@ class MagneticsInventory(Stocker):
         remaining = 1
         current_offset = 2
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -2403,7 +2407,7 @@ class MagneticsInventory(Stocker):
             pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
 
         core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/inventory.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
         ndjson.dump(core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -2411,21 +2415,21 @@ class MagneticsInventory(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    # ferroxcube_inventory = FerroxcubeInventory()
-    # ferroxcube_inventory.remove_current_inventory()
-    # ferroxcube_inventory.get_cores_inventory()
+    ferroxcube_inventory = FerroxcubeInventory()
+    ferroxcube_inventory.remove_current_inventory()
+    ferroxcube_inventory.get_cores_inventory()
 
-    # tdk_inventory = TdkInventory()
-    # tdk_inventory.get_cores_inventory()
+    tdk_inventory = TdkInventory()
+    tdk_inventory.get_cores_inventory()
 
-    # magnetics_inventory = MagneticsInventory()
-    # magnetics_inventory.get_cores_inventory()
+    magnetics_inventory = MagneticsInventory()
+    magnetics_inventory.get_cores_inventory()
 
-    # digikeyStocker = DigikeyStocker()
-    # digikeyStocker.get_cores_stock()
+    digikeyStocker = DigikeyStocker()
+    digikeyStocker.get_cores_stock()
 
-    # mouserStocker = MouserStocker()
-    # mouserStocker.get_cores_stock()
+    mouserStocker = MouserStocker()
+    mouserStocker.get_cores_stock()
 
     gatewayStocker = GatewayStocker()
     gatewayStocker.get_cores_stock()
