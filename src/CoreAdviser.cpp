@@ -182,10 +182,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         auto core = CoreWrapper(magnetic.get_core());
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::AREA_PRODUCT)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT].contains(magnetic.get_manufacturer_info().value().get_name())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT][magnetic.get_manufacturer_info().value().get_name()]) {
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT][magnetic.get_manufacturer_info().value().get_reference().value()]) {
 
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT][magnetic.get_manufacturer_info().value().get_name()]);
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -257,7 +257,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         if (areaProductCore >= maximumAreaProductRequired * defaults.coreAdviserThresholdValidity) {
             double scoring = fabs(areaProductCore - maximumAreaProductRequired);
             newScoring.push_back(scoring);
-            add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::AREA_PRODUCT, scoring, firstFilter);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::AREA_PRODUCT, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
@@ -302,9 +302,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::ENERGY_STORED)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED].contains(magnetic.get_manufacturer_info().value().get_name())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED][magnetic.get_manufacturer_info().value().get_name()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED][magnetic.get_manufacturer_info().value().get_name()]);
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -333,7 +333,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
             double scoring = totalStorableMagneticEnergy;
             newScoring.push_back(scoring);
             (*unfilteredMasMagnetics)[masIndex].first = mas;
-            add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::ENERGY_STORED, scoring, firstFilter);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::ENERGY_STORED, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
@@ -393,9 +393,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
         auto core = CoreWrapper(magnetic.get_core());
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA].contains(magnetic.get_manufacturer_info().value().get_name())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_name()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_name()]);
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -430,7 +430,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
 
             double scoring = manufacturabilityRelativeCost;
             newScoring.push_back(scoring);
-            add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA, scoring, firstFilter);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
@@ -501,9 +501,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         auto core = CoreWrapper(magnetic.get_core());
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_LOSSES)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES].contains(magnetic.get_manufacturer_info().value().get_name())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_name()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_name()]);
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -574,7 +574,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 }
 
                 if (coreLosses < 0) {
-                    throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_name());
+                    throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value());
                 }
 
                 if (!winding.get_turns_description()) {
@@ -585,7 +585,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                     ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
                     newTotalLosses = coreLosses + ohmicLosses;
                     if (ohmicLosses < 0) {
-                        throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_name() + " ohmicLosses: " + std::to_string(ohmicLosses));
+                        throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value() + " ohmicLosses: " + std::to_string(ohmicLosses));
                     }
 
                 }
@@ -628,7 +628,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 meanTotalLosses += totalLossesPerOperatingPoint[operatingPointIndex];
             }
             if (meanTotalLosses > DBL_MAX / 2) {
-                throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_name());
+                throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value());
             }
             meanTotalLosses /= inputs.get_operating_points().size();
             double maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
@@ -664,9 +664,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 double scoring = meanTotalLosses;
                 newScoring.push_back(scoring);
                 (*unfilteredMasMagnetics)[masIndex].first = mas;
-                if (magnetic.get_manufacturer_info().value().get_name() == "P 9/5 - N30 - Ungapped") {
+                if (magnetic.get_manufacturer_info().value().get_reference().value() == "P 9/5 - N30 - Ungapped") {
                 }
-                add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::CORE_LOSSES, scoring, firstFilter);
+                add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::CORE_LOSSES, scoring, firstFilter);
             }
             else {
                 listOfIndexesToErase.push_back(masIndex);
@@ -716,9 +716,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
         auto core = CoreWrapper(magnetic.get_core());
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE].contains(magnetic.get_manufacturer_info().value().get_name())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_name()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_name()]);
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -775,7 +775,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
             double scoring = meanTemperature;
             newScoring.push_back(scoring);
             (*unfilteredMasMagnetics)[masIndex].first = mas;
-            add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE, scoring, firstFilter);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
@@ -817,7 +817,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterDimens
 
         double scoring = volume;
         newScoring.push_back(scoring);
-        add_scoring(magnetic.get_manufacturer_info().value().get_name(), CoreAdviser::CoreAdviserFilters::DIMENSIONS, scoring, firstFilter);
+        add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::DIMENSIONS, scoring, firstFilter);
     }
 
     if ((*unfilteredMasMagnetics).size() != newScoring.size()) {
@@ -927,10 +927,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
                 magnetic.set_core(core);
                 MagneticManufacturerInfo magneticmanufacturerinfo;
                 if (i!=0) {
-                    magneticmanufacturerinfo.set_name(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
+                    magneticmanufacturerinfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
                 }
                 else{
-                    magneticmanufacturerinfo.set_name(core.get_name().value() + " " + std::to_string(1 + i) + " stack" );
+                    magneticmanufacturerinfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stack" );
                 }
                 magnetic.set_manufacturer_info(magneticmanufacturerinfo);
                 mas.set_magnetic(magnetic);
@@ -940,7 +940,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
         else {
             magnetic.set_core(core);
             MagneticManufacturerInfo magneticmanufacturerinfo;
-            magneticmanufacturerinfo.set_name(core.get_name().value());
+            magneticmanufacturerinfo.set_reference(core.get_name().value());
             magnetic.set_manufacturer_info(magneticmanufacturerinfo);
             mas.set_magnetic(magnetic);
             masMagnetics.push_back(std::pair<MasWrapper, double>{mas, 0});
@@ -981,10 +981,10 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
                 // core.process_gap();
                 MagneticManufacturerInfo magneticmanufacturerinfo;
                 if (i!=0) {
-                    magneticmanufacturerinfo.set_name(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
+                    magneticmanufacturerinfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stacks" );
                 }
                 else{
-                    magneticmanufacturerinfo.set_name(core.get_name().value() + " " + std::to_string(1 + i) + " stack" );
+                    magneticmanufacturerinfo.set_reference(core.get_name().value() + " " + std::to_string(1 + i) + " stack" );
                 }
                 magnetic.set_manufacturer_info(magneticmanufacturerinfo);
                 magnetic.set_core(core);
