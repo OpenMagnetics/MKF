@@ -513,13 +513,13 @@ SUITE(CoreAdviser) {
         auto log = coreAdviser.read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
-            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_name());
+            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
         }
 
         auto scorings = coreAdviser.get_scorings();
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_name() == "T 5.8/3/3 - N30 - Ungapped");
-        CHECK(scorings[masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_name()][OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] == 1);
+        CHECK(masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value() == "T 5.8/3/3 - N30 - Ungapped");
+        CHECK(scorings[masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value()][OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] == 1);
 
     }
 
@@ -559,7 +559,7 @@ SUITE(CoreAdviser) {
         auto log = coreAdviser.read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
-            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_name());
+            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
         }
 
         auto scorings = coreAdviser.get_scorings();
@@ -602,12 +602,12 @@ SUITE(CoreAdviser) {
         auto log = coreAdviser.read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
-            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_name());
+            listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
         }
 
         auto scorings = coreAdviser.get_scorings();
 
-        CHECK(scorings[masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_name()][OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_LOSSES] == 1);
+        CHECK(scorings[masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value()][OpenMagnetics::CoreAdviser::CoreAdviserFilters::CORE_LOSSES] == 1);
 
     }
 }

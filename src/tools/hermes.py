@@ -147,7 +147,7 @@ class Stocker():
 
         return smallest_distance_shape
 
-    def add_core(self, family, shape, material, core_type, core_manufacturer, status, manufacturer_part_number, product_url, distributor_reference, quantity, cost, gapping=[], coating=None, datasheet=None, unique=False):
+    def add_core(self, family, shape, material, core_type, core_manufacturer, status, manufacturer_part_number, product_url, distributor_reference, quantity, cost, gapping=[], coating=None, datasheet=None, unique=False, distributor_name=None):
         core_name = self.get_core_name(shape, material, gapping)
 
         if core_name not in self.core_data:
@@ -190,9 +190,9 @@ class Stocker():
                 self.core_data[core_name]['distributorsInfo'] = ast.literal_eval(self.core_data[core_name]['distributorsInfo'])
 
             distributor_info = {
-                "name": "Digi-Key",
+                "name": distributor_name,
                 "link": product_url,
-                "country": "USA",
+                "country": "UK" if distributor_name == "Gateway" else "USA",
                 "distributedArea": "International",
                 "reference": distributor_reference,
                 "quantity": quantity,
@@ -674,7 +674,8 @@ class DigikeyStocker(Stocker):
                           distributor_reference=distributor_reference,
                           quantity=quantity,
                           cost=cost,
-                          gapping=gapping)
+                          gapping=gapping,
+                          distributor_name="Digi-Key")
 
         else:
             pprint.pprint(product)
@@ -764,7 +765,8 @@ class DigikeyStocker(Stocker):
                       distributor_reference=distributor_reference,
                       quantity=quantity,
                       cost=cost,
-                      gapping=gapping)
+                      gapping=gapping,
+                      distributor_name="Digi-Key")
 
     def process_tdk_product(self, product):  # sourcery skip: class-extract-method, extract-method, low-code-quality, move-assign
         not_included_families = ["EPC", "EER", "ELT", "PQI", "EI", "SP", "-"]
@@ -879,7 +881,8 @@ class DigikeyStocker(Stocker):
                           distributor_reference=distributor_reference,
                           quantity=quantity,
                           cost=cost,
-                          gapping=gapping)
+                          gapping=gapping,
+                          distributor_name="Digi-Key")
 
         else:
             return
@@ -980,7 +983,8 @@ class DigikeyStocker(Stocker):
                           distributor_reference=distributor_reference,
                           quantity=quantity,
                           cost=cost,
-                          gapping=gapping)
+                          gapping=gapping,
+                          distributor_name="Digi-Key")
         else:
             assert 0
 
@@ -1071,7 +1075,8 @@ class DigikeyStocker(Stocker):
                       distributor_reference=distributor_reference,
                       quantity=quantity,
                       cost=cost,
-                      gapping=gapping)
+                      gapping=gapping,
+                      distributor_name="Digi-Key")
         # if self.get_parameter(product['Parameters'], 'Core Type') == 'Toroid':
         #     approximated_shape = f"T {}/{}/{}"
         # assert 0
@@ -1171,7 +1176,11 @@ class MouserStocker(Stocker):
             'accept-language': 'es-ES,es;q=0.9,en;q=0.8"',
         }
 
-        material = self.try_get_material(product['Description'].split('Ferrite Cores & Accessories')[1].split(' ')[1])
+        try:
+            material = self.try_get_material(product['Description'].split('Ferrite Cores & Accessories')[1].split(' ')[1])
+        except IndexError:
+            return
+
         pprint.pprint(product['Description'].split(material)[1])
         pprint.pprint(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core "))
         family = self.try_get_family(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core ")[0])
@@ -1258,7 +1267,8 @@ class MouserStocker(Stocker):
                       distributor_reference=distributor_reference,
                       quantity=quantity,
                       cost=cost,
-                      gapping=gapping)
+                      gapping=gapping,
+                      distributor_name="Mouser")
 
 
 
@@ -1400,7 +1410,8 @@ class MouserStocker(Stocker):
                       distributor_reference=distributor_reference,
                       quantity=quantity,
                       cost=cost,
-                      gapping=gapping)
+                      gapping=gapping,
+                      distributor_name="Mouser")
 
         # pprint.pprint(self.core_data)
 
@@ -1613,7 +1624,8 @@ class GatewayStocker(Stocker):
                               distributor_reference=distributor_reference,
                               quantity=quantity,
                               cost=cost,
-                              gapping=gapping)
+                              gapping=gapping,
+                              distributor_name="Gateway")
 
 
         return {
