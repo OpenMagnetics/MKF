@@ -67,7 +67,7 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -105,7 +105,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
     TEST(Test_Inductance_Powder_Web) {
@@ -160,7 +160,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
     TEST(Test_Inductance_High_Flux_40_Web) {
@@ -177,7 +177,7 @@ SUITE(MagnetizingInductance) {
         auto operatingPoint = inputs.get_operating_point(0);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
     }
 
@@ -202,7 +202,7 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -228,7 +228,7 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -254,7 +254,7 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -559,7 +559,7 @@ SUITE(MagnetizingInductance) {
         auto operatingPoint = inputs.get_operating_point(0);
         auto ea = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
 
-        auto magnetizingInductance = ea.first;
+        auto magnetizingInductance = ea.first.get_magnetizing_inductance().get_nominal().value();;
         auto magneticFluxDensity = ea.second;
 
         auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -694,7 +694,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
         auto primaryExcitation = operatingPoint.get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
         double voltagePeakToPeak = 105;
@@ -760,7 +760,7 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -786,13 +786,13 @@ SUITE(MagnetizingInductance) {
 
         auto operatingPoint = inputs.get_operating_point(0);
         double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
 
         core = OpenMagneticsTesting::get_core(coreShape, gapping, 2, coreMaterial);
         double magnetizingInductance2Stacks =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         expectedValue = magnetizingInductance * 2;
 
@@ -818,7 +818,7 @@ SUITE(MagnetizingInductance) {
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
 }

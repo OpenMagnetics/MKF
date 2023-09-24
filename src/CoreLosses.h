@@ -48,9 +48,9 @@ class CoreLossesModel {
     bool _steinmetzDatumSet = false;
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
-    virtual std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                          OperatingPointExcitation excitation,
-                                                          double temperature) = 0;
+    virtual CoreLossesOutput get_core_losses(CoreWrapper core,
+                                             OperatingPointExcitation excitation,
+                                             double temperature) = 0;
     virtual double get_frequency_from_core_losses(CoreWrapper core,
                                                   SignalDescriptor magneticFluxDensity,
                                                   double temperature,
@@ -198,9 +198,9 @@ class CoreLossesModel {
 // https://sci-hub.wf/10.1109/proc.1984.12842
 class CoreLossesSteinmetzModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -215,9 +215,9 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
 // Charles R. Sullivan http://inductor.thayerschool.org/papers/IGSE.pdf
 class CoreLossesIGSEModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -237,9 +237,9 @@ class CoreLossesIGSEModel : public CoreLossesModel {
 // https://miun.diva-portal.org/smash/get/diva2:1622559/FULLTEXT01.pdf
 class CoreLossesBargModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -260,9 +260,9 @@ class CoreLossesBargModel : public CoreLossesModel {
 // https://sci-hub.wf/10.1109/TPEL.2006.886608
 class CoreLossesRoshenModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -289,9 +289,9 @@ class CoreLossesRoshenModel : public CoreLossesModel {
 // Approaches by Manfred Albach https://sci-hub.wf/10.1109/PESC.1996.548774
 class CoreLossesAlbachModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -310,9 +310,9 @@ class CoreLossesAlbachModel : public CoreLossesModel {
 // http://web.eecs.utk.edu/~dcostine/ECE482/Spring2015/materials/magnetics/NSE.pdf
 class CoreLossesNSEModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -332,9 +332,9 @@ class CoreLossesNSEModel : public CoreLossesModel {
 // Jürgen Reinert https://sci-hub.wf/10.1109/28.936396
 class CoreLossesMSEModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -353,9 +353,9 @@ class CoreLossesMSEModel : public CoreLossesModel {
 // http://inductor.thayerschool.org/papers/gse.pdf
 class CoreLossesGSEModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
@@ -373,9 +373,9 @@ class CoreLossesGSEModel : public CoreLossesModel {
 // Based on the formula provided by the manufacturer
 class CoreLossesProprietaryModel : public CoreLossesModel {
   public:
-    std::map<std::string, double> get_core_losses(CoreWrapper core,
-                                                  OperatingPointExcitation excitation,
-                                                  double temperature);
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
     double get_frequency_from_core_losses(CoreWrapper core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,

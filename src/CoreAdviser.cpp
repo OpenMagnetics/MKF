@@ -224,12 +224,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
-                    double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature)["totalLosses"];
+                    double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
                     auto aux = coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                     magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
                 }
                 else {
-                    double referenceCoreLosses = coreLossesModelProprietary->get_core_losses(core, operatingPointExcitation, temperature)["totalLosses"];
+                    double referenceCoreLosses = coreLossesModelProprietary->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
                     auto aux = coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                     magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
                 }
@@ -529,11 +529,13 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         int64_t currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
         OpenMagnetics::NumberTurns numberTurns(currentNumberTurns);
         std::vector<double> totalLossesPerOperatingPoint;
-        std::vector<double> coreLossesPerOperatingPoint;
-        std::vector<double> ohmicLossesPerOperatingPoint;
+        std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
+        std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
         double currentTotalLosses = DBL_MAX;
         double coreLosses = DBL_MAX;
+        CoreLossesOutput coreLossesOutput;
         double ohmicLosses = DBL_MAX;
+        WindingLossesOutput windingLossesOutput;
         double newTotalLosses = DBL_MAX;
         int64_t previousNumberTurnsPrimary = currentNumberTurns;
 
@@ -553,7 +555,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 auto magnetizingInductance = aux.first;
                 auto magneticFluxDensity = aux.second;
 
-                if (!check_requirement(inputs.get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
+                if (!check_requirement(inputs.get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                     winding.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
                     break;
                 }
@@ -564,10 +566,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
-                    coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature)["totalLosses"];
+                    coreLossesOutput = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
+                    coreLosses = coreLossesOutput.get_core_losses();
                 }
                 else {
-                    coreLosses = coreLossesModelProprietary->get_core_losses(core, excitation, temperature)["totalLosses"];
+                    coreLossesOutput = coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
+                    coreLosses = coreLossesOutput.get_core_losses();
                     if (coreLosses < 0) {
                         break;
                     }
@@ -582,7 +586,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                     break;
                 }
                 if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
-                    ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+                    windingLossesOutput = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+                    ohmicLosses = windingLossesOutput.get_winding_losses();
                     newTotalLosses = coreLosses + ohmicLosses;
                     if (ohmicLosses < 0) {
                         throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value() + " ohmicLosses: " + std::to_string(ohmicLosses));
@@ -612,8 +617,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
 
                 currentTotalLosses = newTotalLosses;
                 totalLossesPerOperatingPoint.push_back(currentTotalLosses);
-                coreLossesPerOperatingPoint.push_back(coreLosses);
-                ohmicLossesPerOperatingPoint.push_back(ohmicLosses);
+                coreLossesPerOperatingPoint.push_back(coreLossesOutput);
+                windingLossesPerOperatingPoint.push_back(windingLossesOutput);
             }
         }
 
@@ -635,31 +640,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
 
             if (meanTotalLosses < maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity) {
                 for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-                    WindingLossesOutput windingLossesOutput;
-                    WindingLossesPerElement windingLossesPerElement;
-                    OhmicLosses ohmicLossesObj;
-
-                    CoreLossesOutput coreLossesOutput;
-
-                    coreLossesOutput.set_method_used(models["coreLosses"]);
-                    coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
-                    coreLossesOutput.set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
-                    ohmicLossesObj.set_losses(ohmicLossesPerOperatingPoint[operatingPointIndex]);
-                    ohmicLossesObj.set_method_used("Ohm");
-                    ohmicLossesObj.set_origin(ResultOrigin::SIMULATION);
-                    windingLossesPerElement.set_ohmic_losses(ohmicLossesObj);
-                    windingLossesOutput.set_method_used("Ohm");
-                    windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
-                    auto windingLossesPerWinding = std::vector<WindingLossesPerElement>{windingLossesPerElement};
-                    double windingLosses = 0;
-                    for (auto& loss : windingLossesPerWinding) {
-                        windingLosses += loss.get_ohmic_losses().value().get_losses();
-                    }
-
-                    windingLossesOutput.set_winding_losses(windingLosses);
-                    windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
-                    mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesOutput);
-                    mas.get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesOutput);
+                    mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
+                    mas.get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
                 }
                 double scoring = meanTotalLosses;
                 newScoring.push_back(scoring);
@@ -739,10 +721,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
-                    coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature)["totalLosses"];
+                    coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature).get_core_losses();
                 }
                 else {
-                    coreLosses = coreLossesModelProprietary->get_core_losses(core, excitation, temperature)["totalLosses"];
+                    coreLosses = coreLossesModelProprietary->get_core_losses(core, excitation, temperature).get_core_losses();
                 }
                 CoreLossesOutput coreLossesOutput;
                 coreLossesOutput.set_core_losses(coreLosses);
@@ -756,9 +738,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
 
             auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(CoreTemperatureModels::MANIKTALA);
             auto coreTemperature = coreTemperatureModel->get_core_temperature(core, coreLosses, temperature);
-            double calculatedTemperature = coreTemperature["maximumTemperature"];
+            double calculatedTemperature = coreTemperature.get_maximum_temperature();
             meanTemperature += calculatedTemperature;
-
 
             if (calculatedTemperature < defaults.coreAdviserMaximumCoreTemperature / defaults.coreAdviserThresholdValidity) {
                 auto coreLossesOutput = mas.get_mutable_outputs()[operatingPointIndex].get_core_losses().value();

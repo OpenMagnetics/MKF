@@ -131,9 +131,9 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
     throw std::runtime_error("Error getting Steinmetz coefficients");
 }
 
-std::map<std::string, double> CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
-                                                                        OperatingPointExcitation excitation,
-                                                                        double temperature) {
+CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
+                                                           OperatingPointExcitation excitation,
+                                                           double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
 
@@ -157,9 +157,13 @@ std::map<std::string, double> CoreLossesSteinmetzModel::get_core_losses(CoreWrap
 
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("Steinmetz");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 };
@@ -184,9 +188,9 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     return ki;
 }
 
-std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
-                                                                   OperatingPointExcitation excitation,
-                                                                   double temperature) {
+CoreLossesOutput CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
+                                                      OperatingPointExcitation excitation,
+                                                      double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -229,16 +233,20 @@ std::map<std::string, double> CoreLossesIGSEModel::get_core_losses(CoreWrapper c
     double volumetricLosses = ki * pow(magneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("iGSE");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
 
-std::map<std::string, double> CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
-                                                                     OperatingPointExcitation excitation,
-                                                                     double temperature) {
+CoreLossesOutput CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
+                                                        OperatingPointExcitation excitation,
+                                                        double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -287,16 +295,20 @@ std::map<std::string, double> CoreLossesAlbachModel::get_core_losses(CoreWrapper
         k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("Albach");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
 
-std::map<std::string, double> CoreLossesMSEModel::get_core_losses(CoreWrapper core,
-                                                                  OperatingPointExcitation excitation,
-                                                                  double temperature) {
+CoreLossesOutput CoreLossesMSEModel::get_core_losses(CoreWrapper core,
+                                                     OperatingPointExcitation excitation,
+                                                     double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -345,9 +357,13 @@ std::map<std::string, double> CoreLossesMSEModel::get_core_losses(CoreWrapper co
         k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("MSE");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
@@ -370,9 +386,9 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
     return ki;
 }
 
-std::map<std::string, double> CoreLossesNSEModel::get_core_losses(CoreWrapper core,
-                                                                  OperatingPointExcitation excitation,
-                                                                  double temperature) {
+CoreLossesOutput CoreLossesNSEModel::get_core_losses(CoreWrapper core,
+                                                     OperatingPointExcitation excitation,
+                                                     double temperature) {
     auto constants = Constants();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
@@ -416,16 +432,20 @@ std::map<std::string, double> CoreLossesNSEModel::get_core_losses(CoreWrapper co
         kn * pow(magneticFluxDensityPeakToPeak / 2, beta - alpha) * frequency * volumetricLossesSum;
     volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("NSE");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
 
-std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper core,
-                                                                   OperatingPointExcitation excitation,
-                                                                   double temperature) {
+CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
+                                                      OperatingPointExcitation excitation,
+                                                      double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
     magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
@@ -464,16 +484,21 @@ std::map<std::string, double> CoreLossesBargModel::get_core_losses(CoreWrapper c
 
     double volumetricLosses = dutyCycleFactor * lossesFrameT1;
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("Barg");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
 
-std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
-                                                                     OperatingPointExcitation excitation,
-                                                                     double temperature) {
+CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
+                                                        OperatingPointExcitation excitation,
+                                                        double temperature) {
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     auto parameters = get_roshen_parameters(core, excitation, temperature);
     double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, excitation);
@@ -486,11 +511,15 @@ std::map<std::string, double> CoreLossesRoshenModel::get_core_losses(CoreWrapper
     double volumetricLosses =
         hysteresisVolumetricLosses + eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses;
 
-    std::map<std::string, double> result;
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["hysteresisLosses"] = hysteresisVolumetricLosses * effectiveVolume;
-    result["eddyCurrentLosses"] = (eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses) * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_eddy_current_core_losses((eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses) * effectiveVolume);
+    result.set_hysteresis_core_losses(hysteresisVolumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("Roshen");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
@@ -763,15 +792,15 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
     return excessEddyCurrentLossesDensity;
 }
 
-std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
-                                                                   OperatingPointExcitation excitation,
-                                                                   double temperature) {
+CoreLossesOutput CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
+                                                             OperatingPointExcitation excitation,
+                                                             double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    std::map<std::string, double> result;
+    CoreLossesOutput result;
     auto materialData = core.get_material();
     double volumetricLosses = -1;
 
@@ -791,8 +820,12 @@ std::map<std::string, double> CoreLossesProprietaryModel::get_core_losses(CoreWr
         double c = micrometalsData.get_c().value();
         volumetricLosses = a * pow(magneticFluxDensityAcPeak, b) * pow(frequency, c);
     }
-    result["totalLosses"] = volumetricLosses * effectiveVolume;
-    result["totalVolumetricLosses"] = volumetricLosses;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used("Proprietary");
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
 
     return result;
 }
@@ -905,7 +938,7 @@ double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
         operatingPointExcitation.set_frequency(frequency);
 
         auto coreLossesCalculated = get_core_losses(core, operatingPointExcitation, temperature);
-        double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
+        double error = fabs(coreLossesCalculated.get_core_losses() - coreLosses) / coreLosses;
         if (error < minimumError) {
             minimumError = error;
             frequencyMinimumError = frequency;
@@ -939,7 +972,7 @@ SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(Co
         operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
         auto coreLossesCalculated = get_core_losses(core, operatingPointExcitation, temperature);
-        double error = fabs(coreLossesCalculated["totalLosses"] - coreLosses) / coreLosses;
+        double error = fabs(coreLossesCalculated.get_core_losses() - coreLosses) / coreLosses;
         if (error < minimumError) {
             minimumError = error;
             magneticFluxDensityMinimumError = magneticFluxDensity;

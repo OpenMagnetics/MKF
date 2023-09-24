@@ -666,7 +666,7 @@ double run_test_core_losses(OpenMagnetics::CoreLossesModels modelName,
     OpenMagnetics::OperatingPointExcitation excitation(excitationJson);
 
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
-    double calculatedVolumetricCoreLosses = coreLosses["totalVolumetricLosses"];
+    double calculatedVolumetricCoreLosses = coreLosses.get_volumetric_losses().value();
 
     double error = abs(expectedVolumetricLosses - calculatedVolumetricCoreLosses) / expectedVolumetricLosses;
 
@@ -2365,7 +2365,7 @@ SUITE(CoreLossesFromWeb) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.002);
-        CHECK_CLOSE(coreLosses["totalLosses"], 31.2, 31.2 * maxError);
+        CHECK_CLOSE(coreLosses.get_core_losses(), 31.2, 31.2 * maxError);
     }
 
     TEST(Test_Manufacturer_Micrometals) {
@@ -2392,7 +2392,7 @@ SUITE(CoreLossesFromWeb) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.002);
-        CHECK_CLOSE(coreLosses["totalLosses"], 23.1, 23.1 * maxError);
+        CHECK_CLOSE(coreLosses.get_core_losses(), 23.1, 23.1 * maxError);
     }
 
     TEST(Test_XFlux_19) {
@@ -2436,7 +2436,7 @@ SUITE(CoreLossesFromWeb) {
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
-        auto calculatedVolumetricCoreLosses = coreLosses["totalVolumetricLosses"];
+        auto calculatedVolumetricCoreLosses = coreLosses.get_volumetric_losses().value();
         auto expectedVolumetricLosses = 297420;
 
         double maximumAdmittedErrorVolumetricCoreLossesValue =
@@ -2495,7 +2495,7 @@ SUITE(FrequencyFromCoreLosses) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
 
-        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses["totalLosses"]); 
+        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses.get_core_losses()); 
         CHECK_CLOSE(excitation.get_frequency(), frequencyFromCoreLosses, frequencyFromCoreLosses * maxError);
 
     }
@@ -2545,7 +2545,7 @@ SUITE(FrequencyFromCoreLosses) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
 
-        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses["totalLosses"]); 
+        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses.get_core_losses()); 
         CHECK_CLOSE(excitation.get_frequency(), frequencyFromCoreLosses, frequencyFromCoreLosses * maxError);
 
     }
@@ -2594,7 +2594,7 @@ SUITE(FrequencyFromCoreLosses) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
 
-        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses["totalLosses"]); 
+        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses.get_core_losses()); 
         CHECK_CLOSE(excitation.get_frequency(), frequencyFromCoreLosses, frequencyFromCoreLosses * maxError);
 
     }
@@ -2622,7 +2622,7 @@ SUITE(FrequencyFromCoreLosses) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses["totalLosses"]); 
+        auto frequencyFromCoreLosses = coreLossesModel->get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses.get_core_losses()); 
         CHECK_CLOSE(excitation.get_frequency(), frequencyFromCoreLosses, frequencyFromCoreLosses * maxError);
 
     }
@@ -2662,7 +2662,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, operatingPointExcitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses.get_core_losses()); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
@@ -2699,7 +2699,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, operatingPointExcitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, operatingPointExcitation.get_frequency(), temperature, coreLosses.get_core_losses()); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
@@ -2747,7 +2747,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, excitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, excitation.get_frequency(), temperature, coreLosses.get_core_losses()); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
@@ -2776,7 +2776,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, excitation.get_frequency(), temperature, coreLosses["totalLosses"]); 
+        auto magneticFluxDensityFromCoreLosses = coreLossesModel->get_magnetic_flux_density_from_core_losses(core, excitation.get_frequency(), temperature, coreLosses.get_core_losses()); 
         double magneticFluxDensityFromCoreLossesPeak = magneticFluxDensityFromCoreLosses.get_processed().value().get_peak().value();
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }

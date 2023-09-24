@@ -28,7 +28,7 @@ double run_test_core_temperature(OpenMagnetics::CoreTemperatureModels modelName,
     auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(modelName);
 
     auto coreTemperature = coreTemperatureModel->get_core_temperature(core, coreLosses, ambientTemperature);
-    double calculatedTemperature = coreTemperature["maximumTemperature"];
+    double calculatedTemperature = coreTemperature.get_maximum_temperature();
 
     double error = abs(expectedCoreTemperature - calculatedTemperature) / expectedCoreTemperature;
 

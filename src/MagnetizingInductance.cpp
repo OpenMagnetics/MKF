@@ -37,7 +37,7 @@ void set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
 }
 
-std::pair<double, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(
+std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(
     CoreWrapper core,
     CoilWrapper winding,
     OperatingPoint* operatingPoint) {
@@ -45,7 +45,7 @@ std::pair<double, SignalDescriptor> MagnetizingInductance::calculate_inductance_
 
     InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
 
-    std::pair<double, SignalDescriptor> result;
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
     double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
     double temperature = operatingPoint->get_conditions().get_ambient_temperature();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
@@ -158,11 +158,27 @@ std::pair<double, SignalDescriptor> MagnetizingInductance::calculate_inductance_
             InputsWrapper::calculate_induced_voltage(excitation, currentMagnetizingInductance));
     }
 
-    result.first = currentMagnetizingInductance;
+    MagnetizingInductanceOutput magnetizingInductanceOutput;
+    DimensionWithTolerance magnetizingInductanceWithTolerance;
+    magnetizingInductanceWithTolerance.set_nominal(currentMagnetizingInductance);
+    magnetizingInductanceOutput.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
+    magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
+    magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
+    DimensionWithTolerance totalReluctanceWithTolerance;
+    totalReluctanceWithTolerance.set_nominal(totalReluctance);
+    magnetizingInductanceOutput.set_reluctance_core(totalReluctanceWithTolerance);
+    DimensionWithTolerance gappingReluctanceWithTolerance;
+    gappingReluctanceWithTolerance.set_nominal(reluctanceModel->get_gapping_reluctance(core));
+    magnetizingInductanceOutput.set_reluctance_gapping(gappingReluctanceWithTolerance);
+    DimensionWithTolerance ungappedCoreReluctanceWithTolerance;
+    ungappedCoreReluctanceWithTolerance.set_nominal(reluctanceModel->get_ungapped_core_reluctance(core, currentInitialPermeability));
+    magnetizingInductanceOutput.set_reluctance_ungapped_core(ungappedCoreReluctanceWithTolerance);
+
+    result.first = magnetizingInductanceOutput;
     return result;
 }
 
-double MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
+MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
                                                                            CoilWrapper winding,
                                                                            OperatingPoint* operatingPoint) {
     auto inductance_and_magnetic_flux_density = calculate_inductance_and_magnetic_flux_density(core, winding, operatingPoint);

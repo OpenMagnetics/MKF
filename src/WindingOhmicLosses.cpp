@@ -56,7 +56,7 @@ double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double
     return dcResistance;
 };
 
-double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
+WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
     auto turns = winding.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
     std::vector<double> parallelResistancePerWinding;
@@ -69,11 +69,13 @@ double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint 
         dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value().get_processed().value().get_rms().value());
     }
 
+    std::vector<double> dcResistancePerTurn;
     for (auto& turn : turns) {
         auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
 
         double turnResistance = get_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
+        dcResistancePerTurn.push_back(turnResistance);
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
 
@@ -88,19 +90,54 @@ double WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint 
         }
         parallelResistancePerWinding.push_back(parallelResistance);
     }
+    std::vector<WindingLossesPerElement> windingLossesPerTurn;
+    std::vector<double> currentDividerPerTurn;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        Turn turn = turns[turnIndex];
+        auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
+        auto parallelIndex = turn.get_parallel();
+        auto currentThisTurn = dcCurrentPerWindingPerParallel[windingIndex][parallelIndex];
+        double windingOhmicLossesInTurn = pow(currentThisTurn, 2) * dcResistancePerTurn[turnIndex];
+        OhmicLosses ohmicLosses;
+        WindingLossesPerElement windingLossesThisTurn;
+        ohmicLosses.set_losses(windingOhmicLossesInTurn);
+        ohmicLosses.set_method_used("Ohm");
+        ohmicLosses.set_origin(ResultOrigin::SIMULATION);
+        windingLossesThisTurn.set_ohmic_losses(ohmicLosses);
+        windingLossesPerTurn.push_back(windingLossesThisTurn);
+        currentDividerPerTurn.push_back(currentThisTurn);
+    }
 
-    std::vector<double> windingOhmicLossesPerWinding;
     double windingOhmicLossesTotal = 0;
 
+    std::vector<WindingLossesPerElement> windingLossesPerWinding;
     for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
         double windingOhmicLossesInWinding = 0;
+
         for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(windingIndex); ++parallelIndex) {
             windingOhmicLossesInWinding += seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] * pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2);
         }
-        windingOhmicLossesPerWinding.push_back(windingOhmicLossesInWinding);
+        OhmicLosses ohmicLosses;
+        WindingLossesPerElement windingLossesThisWinding;
+        ohmicLosses.set_losses(windingOhmicLossesInWinding);
+        ohmicLosses.set_method_used("Ohm");
+        ohmicLosses.set_origin(ResultOrigin::SIMULATION);
+        windingLossesThisWinding.set_ohmic_losses(ohmicLosses);
+        windingLossesPerWinding.push_back(windingLossesThisWinding);
         windingOhmicLossesTotal += windingOhmicLossesInWinding;
     }
 
-    return windingOhmicLossesTotal;
+    WindingLossesOutput result;
+    result.set_winding_losses_per_winding(windingLossesPerWinding);
+    result.set_winding_losses_per_turn(windingLossesPerTurn);
+    result.set_winding_losses(windingOhmicLossesTotal);
+    result.set_temperature(temperature);
+    result.set_temperature(temperature);
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_dc_resistance_per_turn(dcResistancePerTurn);
+    result.set_current_per_winding(operatingPoint);
+    result.set_current_divider_per_turn(currentDividerPerTurn);
+
+    return result;
 };
 } // namespace OpenMagnetics
