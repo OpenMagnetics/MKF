@@ -32,9 +32,9 @@ class MagnetizingInductance {
             _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
         }
     }
-    double calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                        CoilWrapper winding,
-                                                        OperatingPoint* operatingPoint);
+    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
+                                                                                   CoilWrapper winding,
+                                                                                   OperatingPoint* operatingPoint);
 
     std::vector<CoreGap> calculate_gapping_from_number_turns_and_inductance(CoreWrapper core,
                                                                       CoilWrapper winding,
@@ -44,7 +44,7 @@ class MagnetizingInductance {
 
     int calculate_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
-    std::pair<double, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         CoreWrapper core,
         CoilWrapper winding,
         OperatingPoint* operatingPoint);

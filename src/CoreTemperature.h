@@ -30,9 +30,9 @@ class CoreTemperatureModel {
     virtual ~CoreTemperatureModel() = default;
     
     static std::shared_ptr<CoreTemperatureModel> factory(CoreTemperatureModels modelName);
-    virtual std::map<std::string, double> get_core_temperature(CoreWrapper core,
-                                                               double coreLosses,
-                                                               double ambientTemperature) = 0;
+    virtual TemperatureOutput get_core_temperature(CoreWrapper core,
+                                                   double coreLosses,
+                                                   double ambientTemperature) = 0;
 
     static std::map<std::string, std::string> get_models_information() {
         std::map<std::string, std::string> information;
@@ -80,34 +80,34 @@ class CoreTemperatureModel {
 // Based on Switching Power Supplies A - Z, 2nd edition by Sanjaya Maniktala, page 154
 class CoreTemperatureManiktalaModel : public CoreTemperatureModel {
   public:
-    std::map<std::string, double> get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
+    TemperatureOutput get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
 };
 
 // Based on High-Frequency Magnetic Components 2nd Edition by Marian Kazimierczuk, page 151
 class CoreTemperatureKazimierczukModel : public CoreTemperatureModel {
   public:
-    std::map<std::string, double> get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
+    TemperatureOutput get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
 };
 
 // Based on Ferrites and Accessories by TDK, page 23
 // https://www.tdk-electronics.tdk.com/download/531536/badc7640e8213233c951b4540e3745e2/pdf-applicationnotes.pdf
 class CoreTemperatureTdkModel : public CoreTemperatureModel {
   public:
-    std::map<std::string, double> get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
+    TemperatureOutput get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
 };
 
 // Based on Design of Flyback Transformers and Filter Inductors by Lloyd H. Dixon, page 2-4
 // https://www.ti.com/lit/ml/slup076/slup076.pdf?ts=1679429443086
 class CoreTemperatureDixonModel : public CoreTemperatureModel {
   public:
-    std::map<std::string, double> get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
+    TemperatureOutput get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
 };
 
 // Based on Iron Powder Core Loss Characteristics by Amidon
 // https://www.amidoncorp.com/product_images/specifications/1-38.pdf
 class CoreTemperatureAmidonModel : public CoreTemperatureModel {
   public:
-    std::map<std::string, double> get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
+    TemperatureOutput get_core_temperature(CoreWrapper core, double coreLosses, double ambientTemperature);
 };
 
 } // namespace OpenMagnetics

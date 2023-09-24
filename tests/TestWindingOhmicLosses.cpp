@@ -162,7 +162,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -176,7 +176,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.2e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -190,7 +190,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -204,7 +204,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 12.4e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -218,7 +218,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.55e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -232,7 +232,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 2 * 6.55e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -246,7 +246,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 9.2e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
