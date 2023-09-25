@@ -59,7 +59,6 @@ double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double
 WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
     auto turns = winding.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
-    std::vector<double> parallelResistancePerWinding;
     std::vector<std::vector<double>> dcCurrentPerWindingPerParallel;
     std::vector<double> dcCurrentPerWinding;
     auto wirePerWinding = winding.get_wires();
@@ -70,6 +69,7 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
     }
 
     std::vector<double> dcResistancePerTurn;
+    std::vector<double> dcResistancePerWinding;
     for (auto& turn : turns) {
         auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
@@ -88,7 +88,7 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
         for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(windingIndex); ++parallelIndex) {
             dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] = dcCurrentPerWinding[windingIndex] * parallelResistance / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
-        parallelResistancePerWinding.push_back(parallelResistance);
+        dcResistancePerWinding.push_back(parallelResistance);
     }
     std::vector<WindingLossesPerElement> windingLossesPerTurn;
     std::vector<double> currentDividerPerTurn;
@@ -135,6 +135,7 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
     result.set_temperature(temperature);
     result.set_origin(ResultOrigin::SIMULATION);
     result.set_dc_resistance_per_turn(dcResistancePerTurn);
+    result.set_dc_resistance_per_winding(dcResistancePerWinding);
     result.set_current_per_winding(operatingPoint);
     result.set_current_divider_per_turn(currentDividerPerTurn);
 
