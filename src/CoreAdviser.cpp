@@ -503,6 +503,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_LOSSES)) {
             if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
                 if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    if (magnetic.get_manufacturer_info().value().get_reference().value() == "ER 11/2.5/6 - 3C97 - Gapped 0.19 mm") {
+                        std::cout << "Reusing magnetic.get_manufacturer_info().value().get_reference().value() in core losses: " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
+                    }
                     newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
@@ -513,7 +516,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         }
 
         std::string shapeName = core.get_shape_name();
-        if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
+        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
             auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
             magnetic.get_mutable_coil().set_bobbin(bobbin);
             auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
@@ -541,7 +544,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
 
         size_t iteration = 10;
 
-        CoilWrapper winding = CoilWrapper(magnetic.get_coil());
+        CoilWrapper coil = CoilWrapper(magnetic.get_coil());
 
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
             auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
@@ -550,17 +553,27 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             do {
                 currentTotalLosses = newTotalLosses;
                 auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
-                winding.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
-                auto aux = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint);
+                coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
+                coil = CoilWrapper(coil);
+
+                auto aux = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
                 auto magnetizingInductance = aux.first;
                 auto magneticFluxDensity = aux.second;
 
                 if (!check_requirement(inputs.get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
-                    winding.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    coil = CoilWrapper(coil);
                     break;
                 }
                 else {
                     previousNumberTurnsPrimary = numberTurnsCombination[0];
+                }
+
+                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                    if (!coil.get_turns_description()) {
+                        newTotalLosses = coreLosses;
+                        break;
+                    }
                 }
 
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
@@ -581,12 +594,16 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                     throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value());
                 }
 
-                if (!winding.get_turns_description()) {
+                if (!coil.get_turns_description()) {
+                    if (magnetic.get_manufacturer_info().value().get_reference().value() == "ER 11/2.5/6 - 3C97 - Gapped 0.19 mm") {
+                        std::cout << "turns description not found: " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
+                    }
                     newTotalLosses = coreLosses;
                     break;
                 }
-                if (!(shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI "))) {
-                    windingLossesOutput = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature);
+
+                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                    windingLossesOutput = windingOhmicLosses.get_ohmic_losses(coil, operatingPoint, temperature);
                     ohmicLosses = windingLossesOutput.get_winding_losses();
                     newTotalLosses = coreLosses + ohmicLosses;
                     if (ohmicLosses < 0) {
@@ -613,7 +630,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
  
 
             if (coreLosses < DBL_MAX && coreLosses > 0) {
-                magnetic.set_coil(winding);
+                magnetic.set_coil(coil);
 
                 currentTotalLosses = newTotalLosses;
                 totalLossesPerOperatingPoint.push_back(currentTotalLosses);

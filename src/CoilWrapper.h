@@ -67,11 +67,11 @@ class CoilWrapper : public Coil {
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
-        void wind_by_sections();
-        void wind_by_layers();
-        void wind_by_turns();
-        void calculate_insulation();
-        void delimit_and_compact();
+        bool wind_by_sections();
+        bool wind_by_layers();
+        bool wind_by_turns();
+        bool calculate_insulation();
+        bool delimit_and_compact();
         void log(std::string entry) {
             coilLog += entry + "\n";
         }
