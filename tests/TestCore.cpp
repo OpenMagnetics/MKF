@@ -2022,4 +2022,12 @@ SUITE(CoreFunctionalDescription) {
         auto function_description = core.get_functional_description();
         CHECK_EQUAL(function_description.get_gapping().size(), 2u);
     }
+
+    TEST(Missing_Core_Hermes) {
+        // Check for segmentation fault
+        auto coreJson = json::parse(R"({"functionalDescription": {"gapping": [], "material": "3C91", "numberStacks": 1, "shape": "P 11/7/I", "type": "two-piece set"}, "name": "temp"})");
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto function_description = core.get_functional_description();
+    }
 }

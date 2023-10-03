@@ -43,8 +43,11 @@ json get_available_shape_families(){
     return magic_enum::enum_names<OpenMagnetics::CoreShapeFamily>();
 }
 
-json get_available_core_materials(){
-    return OpenMagnetics::get_material_names();
+json get_available_core_materials(std::string manufacturer){
+    if (manufacturer != "")
+        return OpenMagnetics::get_material_names(manufacturer);
+    else
+        return OpenMagnetics::get_material_names(std::nullopt);
 }
 json get_available_core_shapes(){
     return OpenMagnetics::get_shape_names();
@@ -78,7 +81,7 @@ json get_gap_reluctance_model_information(){
     return dict;
 }
 
-double calculate_inductance_from_number_turns_and_gapping(json coreData,
+json calculate_inductance_from_number_turns_and_gapping(json coreData,
                                                     json coilData,
                                                     json operatingPointData,
                                                     json modelsData){
@@ -89,7 +92,7 @@ double calculate_inductance_from_number_turns_and_gapping(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
     OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
-    double magnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
+    auto magnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
 
     return magnetizingInductance;
 }
@@ -201,7 +204,7 @@ json get_core_losses(json coreData,
         result = coreLossesModel->get_core_losses(core, excitation, temperature);
 
         auto temperatureResult = coreTemperatureModel->get_core_temperature(core, result["totalLosses"].get<double>(), temperature);
-        temperatureAfterLosses = temperatureResult["maximumTemperature"];
+        temperatureAfterLosses = temperatureResult.get_maximum_temperature();
     } while (fabs(temperature - temperatureAfterLosses) / temperatureAfterLosses >= 0.01 && enableTemperatureConvergence);
 
     result["magneticFluxDensityPeak"] = magneticFluxDensity.get_processed().value().get_peak().value();
