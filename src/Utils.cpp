@@ -183,7 +183,7 @@ void load_databases(json data, bool withAliases) {
     }
 }
 
-std::vector<std::string> get_material_names() {
+std::vector<std::string> get_material_names(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
         load_databases();
     }
@@ -191,7 +191,14 @@ std::vector<std::string> get_material_names() {
     std::vector<std::string> materialNames;
 
     for (auto& datum : coreMaterialDatabase) {
-        materialNames.push_back(datum.first);
+        if (!manufacturer) {
+            materialNames.push_back(datum.first);
+        }
+        else {
+            if (datum.second.get_manufacturer_info().get_name() == manufacturer.value()) {
+                materialNames.push_back(datum.first);
+            }
+        }
     }
 
     return materialNames;
