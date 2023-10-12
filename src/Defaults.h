@@ -24,6 +24,7 @@ struct Defaults {
     const uint64_t coreAdviserMaximumNumberStacks = 4;
     const double magneticFluxDensitySaturation = 0.5;
     const double magnetizingInductanceThresholdValidity = 0.25;
+    const double windingLossesHarmonicAmplitudeThreshold = 0.05;
 };
 } // namespace OpenMagnetics
 

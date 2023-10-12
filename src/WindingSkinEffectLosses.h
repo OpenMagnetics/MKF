@@ -18,31 +18,40 @@
 
 namespace OpenMagnetics {
 
-// enum class WindingSkinEffectLossesModels : int {
-//     DOWELL,
-//     WODJA,
-//     ALBACH,
-//     PAYNE,
-//     // NAN,
-//     VANDELAC_ZIOGAS,
-//     KAZIMIERCZUK,
-//     KUTKUT,
-//     FERREIRA,
-//     DIMITRAKAKIS,
-//     WANG,
-//     HOLGUIN,
-//     PERRY,
-// }
+
+enum class WindingSkinEffectLossesModels : int {
+    DOWELL,
+    WOJDA,
+    ALBACH,
+    PAYNE,
+    // NAN,
+    VANDELAC_ZIOGAS,
+    KAZIMIERCZUK,
+    KUTKUT,
+    FERREIRA,
+    DIMITRAKAKIS,
+    WANG,
+    HOLGUIN,
+    PERRY
+};
+
+class WindingSkinEffectLosses {
+  private:
+  protected:
+  public:
+    static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
+    static double calculate_skin_depth(WireS wire, double frequency, double temperature);
+    static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
+
+};
 
 class WindingSkinEffectLossesModel {
   private:
   protected:
   public:
-    // virtual double get_skin_effect_losses_per_meter(Turn turn) = 0;
-    // virtual std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding) = 0;
-    static double get_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
-    // static double get_effective_current_density(Harmonics harmonics, WireWrapper wire, double temperature);
-
+    std::string method_name = "Default";
+    virtual double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature) = 0;
+    static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
 };
 
 // // Based on Effects of eddy currents in transformer windings by P.L. Dowell
@@ -53,29 +62,31 @@ class WindingSkinEffectLossesModel {
 //     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
 // };
 
-// // Based on Winding Resistance and Power Loss of Inductors With Litz and Solid-Round Wires by Rafal P. Wojda
-// // https://sci-hub.wf/https://ieeexplore.ieee.org/document/8329131
-// class WindingSkinEffectLossesWodjaModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
+// Based on Winding Resistance and Power Loss of Inductors With Litz and Solid-Round Wires by Rafal P. Wojda
+// https://sci-hub.wf/https://ieeexplore.ieee.org/document/8329131
+class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
+  public:
+    std::string method_name = "Wojda";
+    double calculate_skin_factor(WireS wire, double frequency, double temperature);
+    double calculate_penetration_ratio(WireS wire, double frequency, double temperature);
+    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
 
-// // Based on Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften by Manfred Albach
-// // https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
-// class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
+};
 
-// // Based on The Ac Resistance Of Rectangular Conductors by Alan Payne
-// // https://www.researchgate.net/publication/351307928_THE_AC_RESISTANCE_OF_RECTANGULAR_CONDUCTORS
-// class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
+// Based on Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften by Manfred Albach
+// https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
+class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
+  public:
+    double calculate_skin_factor(WireS wire, double frequency, double temperature);
+    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
+};
+
+// Based on The Ac Resistance Of Rectangular Conductors by Alan Payne
+// https://www.researchgate.net/publication/351307928_THE_AC_RESISTANCE_OF_RECTANGULAR_CONDUCTORS
+class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
+  public:
+    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
+};
 
 // // Based on An Improved Calculation of Proximity-Effect Loss in High-Frequency Windings of Round Conductors by Xi Nan
 // // http://inductor.thayerschool.org/papers/newcalc.pdf

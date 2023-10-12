@@ -22,8 +22,8 @@ class WindingOhmicLosses {
     public:
         WindingOhmicLosses() {
         }
-        double get_dc_resistance(Turn turn, WireWrapper wire, double temperature);
-        WindingLossesOutput get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature);
+        static double calculate_dc_resistance(Turn turn, WireWrapper wire, double temperature);
+        static WindingLossesOutput calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature);
 };
 
 } // namespace OpenMagnetics

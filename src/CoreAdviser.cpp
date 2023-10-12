@@ -159,7 +159,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
-    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
+    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
 
     double magneticFluxDensityReference = 0.18;
     double frequencyReference = 100000;
@@ -217,7 +217,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
             double temperature = inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature();
             double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
-            auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
+            auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
             double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(2 * skinDepth);
             double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
             double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
@@ -378,8 +378,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
 
-    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
-    auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
+    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+    auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
     double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(2 * skinDepth);
     double estimatedWireConductingArea = std::numbers::pi * pow(skinDepth, 2);
     double estimatedWireTotalArea = estimatedWireConductingArea / wireAirFillingFactor;
@@ -603,7 +603,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 }
 
                 if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-                    windingLossesOutput = windingOhmicLosses.get_ohmic_losses(coil, operatingPoint, temperature);
+                    windingLossesOutput = windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
                     ohmicLosses = windingLossesOutput.get_winding_losses();
                     newTotalLosses = coreLosses + ohmicLosses;
                     if (ohmicLosses < 0) {
@@ -836,15 +836,15 @@ CoilWrapper get_dummy_coil(InputsWrapper inputs) {
         frequency = std::max(frequency, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency());
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
-    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
-    auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
+    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+    auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
 
     // Set round wire with diameter to two times the skin depth 
     WireWrapper wire;
     wire.set_nominal_value_conducting_diameter(skinDepth * 2);
     wire.set_nominal_value_outer_diameter(skinDepth * 2.05); // Hardcoded
     wire.set_material("copper");
-    wire.set_type("round");
+    wire.set_type(WireType::ROUND);
     CoilFunctionalDescription primaryCoilFunctionalDescription;
     primaryCoilFunctionalDescription.set_isolation_side(IsolationSide::PRIMARY);
     primaryCoilFunctionalDescription.set_name("primary");
@@ -878,7 +878,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     std::string file_path = __FILE__;
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
+    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores_stock.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;
     std::vector<CoreWrapper> cores;

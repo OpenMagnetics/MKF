@@ -132,6 +132,8 @@ class CoilWrapper : public Coil {
         size_t get_winding_index_by_name(std::string name);
 
         std::vector<WireWrapper> get_wires();
+        WireWrapper get_wire(size_t windingIndex);
+        WireType get_wire_type(size_t windingIndex);
 
         double horizontalFillingFactor(Section section);
 

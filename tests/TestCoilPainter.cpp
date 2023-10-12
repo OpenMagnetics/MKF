@@ -855,7 +855,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::WireWrapper wire;
         wire.set_nominal_value_outer_height(0.014);
         wire.set_nominal_value_outer_width(0.0002);
-        wire.set_type("foil");
+        wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -893,7 +893,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::WireWrapper wire;
         wire.set_nominal_value_outer_height(0.014);
         wire.set_nominal_value_outer_width(0.0002);
-        wire.set_type("foil");
+        wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -933,7 +933,7 @@ SUITE(CoilPainter) {
         wire.set_nominal_value_outer_width(0.0002);
         wire.set_nominal_value_conducting_height(0.0139);
         wire.set_nominal_value_conducting_width(0.0001);
-        wire.set_type("foil");
+        wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -1547,7 +1547,7 @@ SUITE(CoilPainter) {
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         OpenMagnetics::WireWrapper wire;
         wire.set_nominal_value_outer_diameter(0.0015);
-        wire.set_type("round");
+        wire.set_type(OpenMagnetics::WireType::ROUND);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
 
         OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;

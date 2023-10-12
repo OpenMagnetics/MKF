@@ -422,11 +422,7 @@ class FerroxcubeInventory(Stocker):
             os.remove(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson")
 
     def read_concentric_products(self, offset: int = 0):
-        cookies = {
-            '_ga': 'GA1.1.382486033.1678131350',
-            'PHPSESSID': 'q1c6dif7a9uqvc2agv7ql2mur8',
-            '_ga_KDJ2X3F53E': 'GS1.1.1681041728.13.1.1681041845.0.0.0',
-        }
+        cookies = {}
 
         headers = {
             'authority': 'www.ferroxcube.com',
@@ -477,6 +473,7 @@ class FerroxcubeInventory(Stocker):
             cookies=cookies,
             headers=headers,
             data=data,
+            timeout=2
         )
 
         clean_response = self.clean_html(str(response.json()))
@@ -545,6 +542,7 @@ class FerroxcubeInventory(Stocker):
             cookies=cookies,
             headers=headers,
             data=data,
+            timeout=2
         )
 
         clean_response = self.clean_html(str(response.json()))
@@ -686,7 +684,7 @@ class FerroxcubeInventory(Stocker):
                 remaining = current_status['total'] - current_status['current_offset']
                 pprint.pprint(f"remaining: {remaining}")
                 pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
-            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                 continue
 
         remaining = 1
@@ -699,7 +697,7 @@ class FerroxcubeInventory(Stocker):
                 remaining = current_status['total'] - current_status['current_offset']
                 pprint.pprint(f"remaining: {remaining}")
                 pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
-            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError):
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
                 continue
 
         core_data = pandas.DataFrame(self.core_data.values())
@@ -1263,7 +1261,7 @@ class FairRiteInventory(Stocker):
 
     def process(self, data):
         constants = PyMKF.get_constants()
-        not_included_materials = []
+        not_included_materials = ["43", "76", "75", "52", "68"]
         if data['shape'] is None:
             family = 'T'
             temptative_shape = f"{family} {self.adaptive_round(float(data['A']))}/{self.adaptive_round(float(data['B']))}/{self.adaptive_round(float(data['C']))}"
@@ -1318,6 +1316,9 @@ class FairRiteInventory(Stocker):
         #         if not_included_material in data['material']:
         #             return None
         #     assert 0, f"Unknown material in {data['material']}"
+
+        if material in not_included_materials:
+            return
 
         print(f"family: {family}")
         print(f"shape: {shape}")

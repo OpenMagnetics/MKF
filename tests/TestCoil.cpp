@@ -884,7 +884,7 @@ SUITE(CoilTurnsDescription) {
         wire.set_nominal_value_conducting_height(0.00076);
         wire.set_nominal_value_outer_width(0.004);
         wire.set_nominal_value_outer_height(0.0008);
-        wire.set_type("rectangular");
+        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
         wires.push_back(wire);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;

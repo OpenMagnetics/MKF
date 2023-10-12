@@ -13,6 +13,7 @@ import copy
 import ndjson
 import PyMKF
 import urllib
+import shutil
 from datetime import date
 from difflib import SequenceMatcher
 
@@ -182,6 +183,7 @@ class Stocker():
                 core['functionalDescription']['shape'] = shape
 
             print(f"Adding {core_name}")
+            core['manufacturer_reference'] = manufacturer_part_number
             if coating is not None:
                 core['functionalDescription']['coating'] = coating
             self.core_data = self.core_data.append(core, ignore_index=True)
@@ -189,7 +191,6 @@ class Stocker():
             assert 0, f"Already inserted core: {core_name}"
 
         return core_name
-
 
     def add_distributor(self, core_name, core_manufacturer, distributor_reference, product_url, quantity, cost, distributor_name=None):
         print("core_name")
@@ -529,7 +530,7 @@ class DigikeyStocker(Stocker):
         }
 
         json_data = {
-            'Keywords': 'EPCOS - TDK Electronics',
+            'Keywords': '',
             'RecordCount': 50,
             'RecordStartPosition': offset,
             'Filters': {
@@ -649,6 +650,9 @@ class DigikeyStocker(Stocker):
                           "B66283P0000X149",
                           "B66295P0000X149",
                           ]
+        material_corrections = [("B65879Q0100K097", "N95", "N97"),
+                                ("B65879Q0150K097", "N95", "N97")]
+        al_value_corrections = [("B65879Q0150K097", "100", "150")]
         exceptions = ["B64290"]
         not_included_families = ["EV", "MHB", "PCH", "PS", "I", "ILP", "QU", "TT", "B", "PTS"]
         typos = [{"typo": "PM 47/28", "corrected_shape": "P 47/28", "corrected_family": "P"},
@@ -662,22 +666,21 @@ class DigikeyStocker(Stocker):
         corrections_family = ["P"]
         not_included_materials = ["H5C2", "PC44"]
 
+        if product['ManufacturerPartNumber'] in wrong_products:
+            return
 
-        core = self.core_data[self.core_data["manufacturer_reference"] == product['ManufacturerPartNumber']]
+        for parameter_aux in product['Parameters']:
+            if parameter_aux['Parameter'] == 'Supplier Device Package':
+                if parameter_aux['Value'] == '-' and product['Series']['Value'] == '-':
+                   return
+
+        core = self.core_data[self.core_data["manufacturer_reference"].str.contains(product['ManufacturerPartNumber'])]
         if len(core.index) != 1:
             self.unfound_shapes.append(product['ManufacturerPartNumber'])
 
         if not core.empty:
             core_name = core.iloc[0]['name']
         else:
-            if product['ManufacturerPartNumber'] in wrong_products:
-                return
-
-            for parameter_aux in product['Parameters']:
-                if parameter_aux['Parameter'] == 'Supplier Device Package':
-                    if parameter_aux['Value'] == '-' and product['Series']['Value'] == '-':
-                       return
-
             shape_type = "two-piece set"
             material = None
             gap_length = None
@@ -688,6 +691,11 @@ class DigikeyStocker(Stocker):
                     shape_type = 'toroidal'
                 if parameter['Parameter'] == 'Material':
                     material = self.try_get_material(parameter['Value'], 'TDK')
+
+                    for aux in material_corrections:
+                        if product['ManufacturerPartNumber'] == aux[0] and material == aux[1]:
+                            material = aux[2]
+            
                     if material in not_included_materials:
                         return None
 
@@ -789,6 +797,11 @@ class DigikeyStocker(Stocker):
                             if parameter_aux['Parameter'] == 'Inductance Factor (Al)':
                                 al_value = parameter_aux['Value'].split(" ")[0]
                                 al_value_unit = parameter_aux['Value'].split(" ")[1]
+
+                                for aux in al_value_corrections:
+                                    if product['ManufacturerPartNumber'] == aux[0] and al_value == aux[1]:
+                                        al_value = aux[2]
+
                                 if al_value_unit == 'nH':
                                     al_value = float(al_value) * 1e-9
                                 elif al_value_unit == 'µH':
@@ -849,81 +862,97 @@ class DigikeyStocker(Stocker):
         effective_length = None
         effective_area = None
         effective_volume = None
-        for parameter in product['Parameters']:
-            if parameter['Parameter'] == 'Core Type':
-                if parameter['Value'] in not_included_families:
-                    return
-                elif parameter['Value'] == 'Toroid':
-                    shape_type = 'toroidal'
-                    family = 'T'
-                elif parameter['Value'] == 'EER':
-                    family = 'ER'
-                elif parameter['Value'] == 'P (Pot Core)':
-                    family = 'P'
-                elif parameter['Value'] in PyMKF.get_available_shape_families():
-                    family = parameter['Value']
-                else:
-                    print(parameter['Value'])
-                    assert 0
-            if parameter['Parameter'] == 'Material':
-                material = self.try_get_material(parameter['Value'], 'Fair-Rite')
-            if parameter['Parameter'] == 'Effective Length (le) mm':
-                effective_length = float(parameter['Value']) / 1000
-            if parameter['Parameter'] == 'Effective Area (Ae) mm²':
-                effective_area = float(parameter['Value']) / 1000000
-            if parameter['Parameter'] == 'Effective Magnetic Volume (Ve) mm³':
-                effective_volume = float(parameter['Value']) / 1000000000
+        coating = None
+
+        core = self.core_data[self.core_data["manufacturer_reference"] == product['ManufacturerPartNumber']]
+        if len(core.index) != 1:
+            self.unfound_shapes.append(product['ManufacturerPartNumber'])
+
+        if not core.empty:
+            core_name = core.iloc[0]['name']
+        else:
+
+            for parameter in product['Parameters']:
+                if parameter['Parameter'] == 'Core Type':
+                    if parameter['Value'] in not_included_families:
+                        return
+                    elif parameter['Value'] == 'Toroid':
+                        shape_type = 'toroidal'
+                        family = 'T'
+                    elif parameter['Value'] == 'EER':
+                        family = 'ER'
+                    elif parameter['Value'] == 'P (Pot Core)':
+                        family = 'P'
+                    elif parameter['Value'] in PyMKF.get_available_shape_families():
+                        family = parameter['Value']
+                    else:
+                        print(parameter['Value'])
+                        assert 0
+                if parameter['Parameter'] == 'Material':
+                    material = self.try_get_material(parameter['Value'], 'Fair-Rite')
+                if parameter['Parameter'] == 'Effective Length (le) mm':
+                    effective_length = float(parameter['Value']) / 1000
+                if parameter['Parameter'] == 'Effective Area (Ae) mm²':
+                    effective_area = float(parameter['Value']) / 1000000
+                if parameter['Parameter'] == 'Effective Magnetic Volume (Ve) mm³':
+                    effective_volume = float(parameter['Value']) / 1000000000
 
 
-        if family is None:
-            return
-        if effective_length is None:
-            assert 0
-        if effective_area is None:
-            assert 0
-        if effective_volume is None:
-            assert 0
-        if material is None:
-            return
+            if family is None:
+                return
+            if effective_length is None:
+                assert 0
+            if effective_area is None:
+                assert 0
+            if effective_volume is None:
+                assert 0
+            if material is None:
+                return
 
-        shape = self.find_shape_closest_effective_parameters(family=family,
-                                                             effective_length=effective_length,
-                                                             effective_area=effective_area,
-                                                             effective_volume=effective_volume)
+            shape = self.find_shape_closest_effective_parameters(family=family,
+                                                                 effective_length=effective_length,
+                                                                 effective_area=effective_area,
+                                                                 effective_volume=effective_volume)
 
-        if shape is None:
-            return
+            if shape is None:
+                return
 
-        # We check that we have the core in the database
-        core_data = self.verify_shape_is_in_database(family, shape, material, product)
+            # We check that we have the core in the database
+            core_data = self.verify_shape_is_in_database(family, shape, material, product)
 
-        core_type = 'toroidal' if family == 'T' else 'two-piece set'
+            core_type = 'toroidal' if family == 'T' else 'two-piece set'
+            core_manufacturer = 'Fair-Rite'
+            manufacturer_part_number = product['ManufacturerPartNumber']
+            product_url = product['ProductUrl']
+            distributor_reference = product['DigiKeyPartNumber']
+            quantity = int(product['QuantityAvailable'] * 2 if '2pcs' in product['ProductDescription'].lower() else product['QuantityAvailable'])
+            cost = float(product['UnitPrice'])
+            gapping = []
+
+            status = 'production'
+
+            core_name = self.add_core(family=family,
+                                      shape=shape,
+                                      material=material,
+                                      core_type=core_type,
+                                      core_manufacturer=core_manufacturer,
+                                      status=status,
+                                      manufacturer_part_number=manufacturer_part_number,
+                                      coating=coating,
+                                      gapping=gapping)
+
         core_manufacturer = 'Fair-Rite'
-        manufacturer_part_number = product['ManufacturerPartNumber']
         product_url = product['ProductUrl']
         distributor_reference = product['DigiKeyPartNumber']
         quantity = int(product['QuantityAvailable'] * 2 if '2pcs' in product['ProductDescription'].lower() else product['QuantityAvailable'])
         cost = float(product['UnitPrice'])
-        gapping = []
-
-        status = 'production'
-
-        # pprint.pprint(product)
-        # pprint.pprint(shape)
-        # assert 0
-        self.add_core(family=family,
-                      shape=shape,
-                      material=material,
-                      core_type=core_type,
-                      core_manufacturer=core_manufacturer,
-                      status=status,
-                      manufacturer_part_number=manufacturer_part_number,
-                      product_url=product_url,
-                      distributor_reference=distributor_reference,
-                      quantity=quantity,
-                      cost=cost,
-                      gapping=gapping,
-                      distributor_name="Digi-Key")
+        self.add_distributor(core_name=core_name,
+                             product_url=product_url,
+                             core_manufacturer=core_manufacturer,
+                             distributor_reference=distributor_reference,
+                             quantity=quantity,
+                             cost=cost,
+                             distributor_name="Digi-Key")
 
     def process_tdk_product(self, product):  # sourcery skip: class-extract-method, extract-method, low-code-quality, move-assign
         not_included_families = ["EPC", "EER", "EIR", "ELT", "PQI", "EI", "SP", "-"]
@@ -941,7 +970,7 @@ class DigikeyStocker(Stocker):
         corrections_family = ["P"]
         not_included_materials = ["H5C2", "PC44", "PC40", "H5A"]
 
-        core = self.core_data[self.core_data["manufacturer_reference"] == product['ManufacturerPartNumber']]
+        core = self.core_data[self.core_data["manufacturer_reference"].str.contains(product['ManufacturerPartNumber'])]
         if len(core.index) != 1:
             self.unfound_shapes.append(product['ManufacturerPartNumber'])
 
@@ -959,6 +988,7 @@ class DigikeyStocker(Stocker):
                     if material in not_included_materials:
                         return None
             family = None
+            coating = None
 
             for parameter_aux in product['Parameters']:
                 if parameter_aux['Parameter'] == 'Supplier Device Package':
@@ -1187,97 +1217,108 @@ class DigikeyStocker(Stocker):
                                   "XFlux 50",
                                   "Nanocrystalline"]
 
-        # pprint.pprint(product)
-        try:
-            material = self.try_get_material(self.get_parameter(product['Parameters'], 'Material') + " " + self.get_parameter(product['Parameters'], 'Initial Permeability (µi)'), 'Magnetics')
-        except TypeError:
-            material = None
+        core = self.core_data[self.core_data["manufacturer_reference"] == product['ManufacturerPartNumber']]
+        if len(core.index) != 1:
+            self.unfound_shapes.append(product['ManufacturerPartNumber'])
 
-        coating = None
-        for parameter_aux in product['Parameters']:
-            if parameter_aux['Parameter'] == 'Finish':
-                if parameter_aux['Value'] == 'Coated':
-                    coating = 'epoxy'
-
-        if self.get_parameter(product['Parameters'], 'Core Type') is None:
-            return
-
-        if self.get_parameter(product['Parameters'], 'Core Type') == 'Toroid':
-            try:
-                diameter = self.get_parameter(product['Parameters'], 'Diameter')
-                external_diameter = diameter.split('(')[1].split('mm)')[0]
-            except IndexError:
-                return
-            height = self.get_parameter(product['Parameters'], 'Height').split('(')[1].split('mm)')[0]
-            family = 'T'
-            pprint.pprint("external_diameter")
-            pprint.pprint(external_diameter)
-            pprint.pprint("height")
-            pprint.pprint(height)
-            pprint.pprint("coating")
-            pprint.pprint(coating)
-            if coating is None:
-                temptative_shape = f"{family} {self.adaptive_round(float(external_diameter))}/{None}/{self.adaptive_round(float(height))}"
-            else:
-                temptative_shape = f"{family} {self.adaptive_round(float(external_diameter) - 0.7)}/{None}/{self.adaptive_round(float(height) - 0.7)}"
-            pprint.pprint(temptative_shape)
-        elif self.get_parameter(product['Parameters'], 'Core Type') in ['I', 'P']:
-            return
+        if not core.empty:
+            core_name = core.iloc[0]['name']
         else:
-            try:
-                family = self.get_parameter(product['Parameters'], 'Core Type')
-                length = self.get_parameter(product['Parameters'], 'Length').split('(')[1].split('mm)')[0]
-                height = self.get_parameter(product['Parameters'], 'Height').split('(')[1].split('mm)')[0]
-                width = self.get_parameter(product['Parameters'], 'Width').split('(')[1].split('mm)')[0]
-                temptative_shape = f"{family} {self.adaptive_round(float(length))}/{self.adaptive_round(float(height))}/{self.adaptive_round(float(width))}"
-            except IndexError:
-                # pprint.pprint(product)
-                # assert 0
-                return
-        shape = self.find_shape_closest_dimensions(family, temptative_shape, limit=0.1)
-        pprint.pprint(family)
-        pprint.pprint(material)
-        pprint.pprint(shape)
-
-        if material is None:
-            material = self.try_get_material(product['ProductDescription'], 'Magnetics')
-
-        if material is None:
-            for not_included_material in not_included_materials:
-                if not_included_material in f"{self.get_parameter(product['Parameters'], 'Material')} {self.get_parameter(product['Parameters'], 'Initial Permeability (µi)')}":
-                    return None
             # pprint.pprint(product)
-            return
-            # assert 0, f"Unknown material in {self.get_parameter(product['Parameters'], 'Material')} {self.get_parameter(product['Parameters'], 'Initial Permeability (µi)')}"
+            try:
+                material = self.try_get_material(self.get_parameter(product['Parameters'], 'Material') + " " + self.get_parameter(product['Parameters'], 'Initial Permeability (µi)'), 'Magnetics')
+            except TypeError:
+                material = None
 
-        if shape is None:
-            return
-        core_data = self.verify_shape_is_in_database(family, shape, material, product)
+            coating = None
+            for parameter_aux in product['Parameters']:
+                if parameter_aux['Parameter'] == 'Finish':
+                    if parameter_aux['Value'] == 'Coated':
+                        coating = 'epoxy'
 
-        status = 'production'
+            if self.get_parameter(product['Parameters'], 'Core Type') is None:
+                return
+
+            if self.get_parameter(product['Parameters'], 'Core Type') == 'Toroid':
+                try:
+                    diameter = self.get_parameter(product['Parameters'], 'Diameter')
+                    external_diameter = diameter.split('(')[1].split('mm)')[0]
+                except IndexError:
+                    return
+                height = self.get_parameter(product['Parameters'], 'Height').split('(')[1].split('mm)')[0]
+                family = 'T'
+                pprint.pprint("external_diameter")
+                pprint.pprint(external_diameter)
+                pprint.pprint("height")
+                pprint.pprint(height)
+                pprint.pprint("coating")
+                pprint.pprint(coating)
+                if coating is None:
+                    temptative_shape = f"{family} {self.adaptive_round(float(external_diameter))}/{None}/{self.adaptive_round(float(height))}"
+                else:
+                    temptative_shape = f"{family} {self.adaptive_round(float(external_diameter) - 0.7)}/{None}/{self.adaptive_round(float(height) - 0.7)}"
+                pprint.pprint(temptative_shape)
+            elif self.get_parameter(product['Parameters'], 'Core Type') in ['I', 'P']:
+                return
+            else:
+                try:
+                    family = self.get_parameter(product['Parameters'], 'Core Type')
+                    length = self.get_parameter(product['Parameters'], 'Length').split('(')[1].split('mm)')[0]
+                    height = self.get_parameter(product['Parameters'], 'Height').split('(')[1].split('mm)')[0]
+                    width = self.get_parameter(product['Parameters'], 'Width').split('(')[1].split('mm)')[0]
+                    temptative_shape = f"{family} {self.adaptive_round(float(length))}/{self.adaptive_round(float(height))}/{self.adaptive_round(float(width))}"
+                except IndexError:
+                    # pprint.pprint(product)
+                    # assert 0
+                    return
+            shape = self.find_shape_closest_dimensions(family, temptative_shape, limit=0.1)
+            pprint.pprint(family)
+            pprint.pprint(material)
+            pprint.pprint(shape)
+
+            if material is None:
+                material = self.try_get_material(product['ProductDescription'], 'Magnetics')
+
+            if material is None:
+                for not_included_material in not_included_materials:
+                    if not_included_material in f"{self.get_parameter(product['Parameters'], 'Material')} {self.get_parameter(product['Parameters'], 'Initial Permeability (µi)')}":
+                        return None
+                # pprint.pprint(product)
+                return
+                # assert 0, f"Unknown material in {self.get_parameter(product['Parameters'], 'Material')} {self.get_parameter(product['Parameters'], 'Initial Permeability (µi)')}"
+
+            if shape is None:
+                return
+            core_data = self.verify_shape_is_in_database(family, shape, material, product)
+
+            status = 'production'
+            core_manufacturer = 'Magnetics'
+            core_type = 'toroidal' if family.lower() in ['t', 'tx', 'tc'] else 'two-piece set'
+            manufacturer_part_number = product['ManufacturerPartNumber']
+            gapping = []
+
+            core_name = self.add_core(family=family,
+                                      shape=shape,
+                                      material=material,
+                                      core_type=core_type,
+                                      core_manufacturer=core_manufacturer,
+                                      status=status,
+                                      manufacturer_part_number=manufacturer_part_number,
+                                      coating=coating,
+                                      gapping=gapping)
+
         core_manufacturer = 'Magnetics'
-        core_type = 'toroidal' if family.lower() in ['t', 'tx', 'tc'] else 'two-piece set'
-        manufacturer_part_number = product['ManufacturerPartNumber']
         product_url = product['ProductUrl']
         distributor_reference = product['DigiKeyPartNumber']
-        quantity = int(product['QuantityAvailable'] * 2 if '2PC' in product['ProductDescription'].lower() else product['QuantityAvailable'])
+        quantity = int(product['QuantityAvailable'] * 2 if '2pcs' in product['ProductDescription'].lower() else product['QuantityAvailable'])
         cost = float(product['UnitPrice'])
-        gapping = []
-
-        self.add_core(family=family,
-                      shape=shape,
-                      material=material,
-                      core_type=core_type,
-                      core_manufacturer=core_manufacturer,
-                      status=status,
-                      manufacturer_part_number=manufacturer_part_number,
-                      product_url=product_url,
-                      coating=coating,
-                      distributor_reference=distributor_reference,
-                      quantity=quantity,
-                      cost=cost,
-                      gapping=gapping,
-                      distributor_name="Digi-Key")
+        self.add_distributor(core_name=core_name,
+                             product_url=product_url,
+                             core_manufacturer=core_manufacturer,
+                             distributor_reference=distributor_reference,
+                             quantity=quantity,
+                             cost=cost,
+                             distributor_name="Digi-Key")
         # if self.get_parameter(product['Parameters'], 'Core Type') == 'Toroid':
         #     approximated_shape = f"T {}/{}/{}"
         # assert 0
@@ -1289,16 +1330,17 @@ class DigikeyStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
 
-
         self.core_data = pandas.DataFrame(self.core_data.values())
         self.core_data["manufacturer_reference"] = self.core_data.apply(lambda row: row['manufacturerInfo']['reference'].split(' ')[0], axis=1)
-
 
         while remaining > 0:
             pprint.pprint('==================================================================================================')
@@ -1311,9 +1353,10 @@ class DigikeyStocker(Stocker):
 
         pprint.pprint(self.unfound_shapes)
         # core_data = pandas.DataFrame(self.core_data.values())
-        # out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        # ndjson.dump(self.core_data.to_dict('records'), out_file)
-        # out_file.close()
+        self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        ndjson.dump(self.core_data.to_dict('records'), out_file)
+        out_file.close()
 
 
 class MouserStocker(Stocker):
@@ -1322,6 +1365,7 @@ class MouserStocker(Stocker):
         self.apikey = "6c28da81-2a3c-43b4-b03e-fca6847d5370"
         self.core_data = {}
         self.unfound_descriptions = []
+        self.unfound_shapes = []
         self.ignored_manufacturers = [
                                         "Proterial",
                                         "Laird Performance Materials",
@@ -1362,96 +1406,116 @@ class MouserStocker(Stocker):
             if family.lower() in product['Description'].lower().split(' '):
                 return
 
-        pprint.pprint(product['ProductDetailUrl'])
-        import requests
+        core = self.core_data[self.core_data["manufacturer_reference"] == product['ManufacturerPartNumber']]
+        if len(core.index) != 1:
+            self.unfound_shapes.append(product['ManufacturerPartNumber'])
 
-        url = product['ProductDetailUrl']
-        headers = {
-            'authority': 'www.dickssportinggoods.com',
-            'pragma': 'no-cache',
-            'cache-control': 'no-cache',
-            'sec-ch-ua': '" Not;A Brand";v="99", "Google Chrome";v="91", "Chromium";v="91"',
-            'sec-ch-ua-mobile': '?0',
-            'upgrade-insecure-requests': '1',
-            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'sec-fetch-site': 'none',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-user': '?1',
-            'sec-fetch-dest': 'document',
-            'accept-language': 'es-ES,es;q=0.9,en;q=0.8"',
-        }
+        if not core.empty:
+            core_name = core.iloc[0]['name']
+        else:
+            pprint.pprint(product['ProductDetailUrl'])
+            import requests
 
-        try:
-            material = self.try_get_material(product['Description'].split('Ferrite Cores & Accessories')[1].split(' ')[1], 'Fair-Rite')
-        except IndexError:
-            return
+            url = product['ProductDetailUrl']
+            headers = {
+                'authority': 'www.dickssportinggoods.com',
+                'pragma': 'no-cache',
+                'cache-control': 'no-cache',
+                'sec-ch-ua': '" Not;A Brand";v="99", "Google Chrome";v="91", "Chromium";v="91"',
+                'sec-ch-ua-mobile': '?0',
+                'upgrade-insecure-requests': '1',
+                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+                'sec-fetch-site': 'none',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-user': '?1',
+                'sec-fetch-dest': 'document',
+                'accept-language': 'es-ES,es;q=0.9,en;q=0.8"',
+            }
 
-        pprint.pprint(product['Description'].split(material)[1])
-        pprint.pprint(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core "))
-        family = self.try_get_family(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core ")[0])
-        pprint.pprint(material)
-        pprint.pprint(family)
-
-        if family is None:
-            assert 0
-
-        length = None
-        width = None
-        height = None
-        shape = None
-
-        for shape_name in PyMKF.get_available_core_shapes():
-            if shape_name in product['Description']:
-                shape = shape_name
-                family = shape_name.split(' ')[0]
-                break
-            if shape_name.upper().replace(' ', '') in product['Description'].upper().replace(' ', ''):
-                shape = shape_name
-                family = shape_name.split(' ')[0]
-                break
-
-        if shape is None:
-            response = requests.get(url, headers=headers)
             try:
-                extra_data = pandas.read_html(response.text)[8]
-            except ValueError:
+                material = self.try_get_material(product['Description'].split('Ferrite Cores & Accessories')[1].split(' ')[1], 'Fair-Rite')
+            except IndexError:
                 return
-            for datum_index, datum in extra_data.iterrows():
-                if datum['Atributo del producto'] == 'Longitud exterior:':
-                    length = float(datum['Valor del atributo'].split(' mm')[0])
-                    pprint.pprint(length)
-                if datum['Atributo del producto'] == 'Anchura exterior:':
-                    width = float(datum['Valor del atributo'].split(' mm')[0])
-                    pprint.pprint(width)
-                if datum['Atributo del producto'] == 'Altura exterior:':
-                    height = float(datum['Valor del atributo'].split(' mm')[0])
-                    pprint.pprint(height)
 
-            print(length)
-            print(width)
-            print(height)
+            pprint.pprint(product['Description'].split(material)[1])
+            pprint.pprint(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core "))
+            family = self.try_get_family(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core ")[0])
+            pprint.pprint(material)
+            pprint.pprint(family)
 
-            if (length is not None and width is not None and height is not None):
+            if family is None:
+                assert 0
 
-                temptative_shape = f"{family} {self.adaptive_round(float(length))}/{self.adaptive_round(float(height))}/{self.adaptive_round(float(width))}"
+            length = None
+            width = None
+            height = None
+            shape = None
 
-                shape = self.find_shape_closest_dimensions(family, temptative_shape, limit=0.1)
+            for shape_name in PyMKF.get_available_core_shapes():
+                if shape_name in product['Description']:
+                    shape = shape_name
+                    family = shape_name.split(' ')[0]
+                    break
+                if shape_name.upper().replace(' ', '') in product['Description'].upper().replace(' ', ''):
+                    shape = shape_name
+                    family = shape_name.split(' ')[0]
+                    break
 
             if shape is None:
-                return
+                response = requests.get(url, headers=headers)
+                try:
+                    extra_data = pandas.read_html(response.text)[8]
+                except ValueError:
+                    return
+                for datum_index, datum in extra_data.iterrows():
+                    if datum['Atributo del producto'] == 'Longitud exterior:':
+                        length = float(datum['Valor del atributo'].split(' mm')[0])
+                        pprint.pprint(length)
+                    if datum['Atributo del producto'] == 'Anchura exterior:':
+                        width = float(datum['Valor del atributo'].split(' mm')[0])
+                        pprint.pprint(width)
+                    if datum['Atributo del producto'] == 'Altura exterior:':
+                        height = float(datum['Valor del atributo'].split(' mm')[0])
+                        pprint.pprint(height)
 
-        print(family)
-        print(shape)
-        print(material)
+                print(length)
+                print(width)
+                print(height)
 
-        core_data = self.verify_shape_is_in_database(family, shape, material, product['Description'])
-        gapping = []
+                if (length is not None and width is not None and height is not None):
 
-        core_type = 'toroidal' if family == 'T' else 'two-piece set'
+                    temptative_shape = f"{family} {self.adaptive_round(float(length))}/{self.adaptive_round(float(height))}/{self.adaptive_round(float(width))}"
+
+                    shape = self.find_shape_closest_dimensions(family, temptative_shape, limit=0.1)
+
+                if shape is None:
+                    return
+
+            print(family)
+            print(shape)
+            print(material)
+
+            core_data = self.verify_shape_is_in_database(family, shape, material, product['Description'])
+            gapping = []
+            coating = None
+
+            core_type = 'toroidal' if family == 'T' else 'two-piece set'
+            core_manufacturer = 'Fair-Rite'
+            status = 'production'
+            manufacturer_part_number = product['ManufacturerPartNumber']
+
+            core_name = self.add_core(family=family,
+                                      shape=shape,
+                                      material=material,
+                                      core_type=core_type,
+                                      core_manufacturer=core_manufacturer,
+                                      status=status,
+                                      manufacturer_part_number=manufacturer_part_number,
+                                      coating=coating,
+                                      gapping=gapping)
+
         core_manufacturer = 'Fair-Rite'
-        status = 'production'
-        manufacturer_part_number = product['ManufacturerPartNumber']
         product_url = product['ProductDetailUrl']
         distributor_reference = product['MouserPartNumber']
         quantity = int(product['AvailabilityInStock'])
@@ -1461,20 +1525,13 @@ class MouserStocker(Stocker):
                 break
         else:
             assert 0
-
-        self.add_core(family=family,
-                      shape=shape,
-                      material=material,
-                      core_type=core_type,
-                      core_manufacturer=core_manufacturer,
-                      status=status,
-                      manufacturer_part_number=manufacturer_part_number,
-                      product_url=product_url,
-                      distributor_reference=distributor_reference,
-                      quantity=quantity,
-                      cost=cost,
-                      gapping=gapping,
-                      distributor_name="Mouser")
+        self.add_distributor(core_name=core_name,
+                             product_url=product_url,
+                             core_manufacturer=core_manufacturer,
+                             distributor_reference=distributor_reference,
+                             quantity=quantity,
+                             cost=cost,
+                             distributor_name="Mouser")
 
     def process_epcos_tdk_product(self, product):
         not_included_families = ["EV", "MHB", "PCH", "PS", "I", "ILP", "QU", "TT", "B", "PTS"]
@@ -1483,160 +1540,207 @@ class MouserStocker(Stocker):
                     {"typo": "TOROID", "correction": "T"},
                     {"typo": "EER", "correction": "ER"},
                 ]
+        wrong_products = [
+                          "B66417U160K187",
+                          ]
 
-        def get_core_data(description):
-            family = self.try_get_family(description)
-
-            material = self.try_get_material(description, 'TDK')
-
-            if material is None:
-                for not_included_material in not_included_materials:
-                    if not_included_material in description:
-                        return None
-                pprint.pprint(product)
-                self.unfound_descriptions.append(description)
-                return None
-                # assert 0, f"Unknown material: {material}"
-
-            print(material)
-
-            cleaned_description = description.split(material)[0]
-            cleaned_description = cleaned_description.split('Ferrite Cores & Accessories')[1]
-            cleaned_description = cleaned_description.replace('_', '')
-            cleaned_description = cleaned_description.strip()
-            if cleaned_description.endswith('-'):
-                cleaned_description = cleaned_description[0:-1]
-
-            print(cleaned_description)
-            print(family)
-            if family in ('TX', 'TC'):
-                family = 'T'
-            if family is None:
-                if description.endswith(' T'):
-                    family = 'T'
-                    cleaned_description = f"{family} {cleaned_description}"
-                elif cleaned_description.startswith('R') and not cleaned_description.startswith('RM'):
-                    family = 'T'
-                    cleaned_description = cleaned_description.replace('R', 'T')
-                elif cleaned_description.startswith('T'):
-                    family = 'T'
-                    cleaned_description = cleaned_description.replace('TX', 'T ')
-                    cleaned_description = cleaned_description.replace('TC', 'T ')
-
-            shape = None
-            if family is None:
-                family, shape = self.try_get_family_and_shape_statistically(cleaned_description)
-
-            if family is None:
-                pprint.pprint(product)
-                self.unfound_descriptions.append(cleaned_description)
-                return None
-                # assert 0, "Unknown family"
-
-            if family not in PyMKF.get_available_shape_families() and family not in not_included_families:
-                pprint.pprint(product)
-                self.unfound_descriptions.append(cleaned_description)
-                return None
-                # assert 0, "Unknown family"
-
-            if shape is None:
-                shape = self.try_get_shape(cleaned_description)
-
-            if shape is None:
-                pprint.pprint(product)
-                self.unfound_descriptions.append(cleaned_description)
-                return None
-                # assert 0, "Unknown shape"
-
-            # We check that we have the core in the database
-            core_data = self.verify_shape_is_in_database(family, shape, material, product)
-
-            if description.lower().endswith('mm'):
-                try:
-                    gap_length = description[-6:-2]
-                    gap_length = ast.literal_eval(gap_length.replace(',', '.')) / 1000
-                except SyntaxError:
-                    gap_length = description[-5:-2]
-                    gap_length = ast.literal_eval(gap_length.replace(',', '.')) / 1000
-
-                gapping = [
-                    {
-                        "type": "subtractive",
-                        "length": gap_length
-                    }]
-
-                gapping = self.process_gapping(core_data, gapping)
-
-            else:
-                try:
-
-                    if "-DG" in description:
-                        number_gaps = 3
-                        al_value = float(description.split("-DG")[1].strip()) * 1e-9
-                    else:
-                        number_gaps = 1
-                        al_value = float(description.split(material)[1].strip().split(" ")[0]) * 1e-9
-                    if al_value > 0:
-                        gapping = self.get_gapping(core_data, "TDK", al_value, number_gaps)
-                    else:
-                        gapping = []
-                except (ValueError, IndexError):
-                    gapping = []
-                except (RuntimeError):
-                    return None
-
-            return family, shape, material, gapping
-
-        exceptions = ["COIL FORMER",
-                      "Coil former",
-                      "BOBBIN",
-                      "PS",
-                      "EIR",
-                      "YOKE",
-                      "MOUNTING",
-                      "WAS",
-                      "Accessories 7.35X3.6",
-                      "Ferrite Core N95 100x100x6",
-                      "Accessories 70X14.5",
-                      "U-CORE N97U CORE",
-                      "DOUBLE-APERT",
-                      "Clamp",
-                      "COV-",
-                      "NOT AVAILABLE",
-                      "Accessories Qu",
-                      "Accessories I",
-                      "Accessories U-CORE N",
-                      "Accessories CF-E",
-                      "SUMIKON",
-                      "P CORE HALF",
-                      "CLI",
-                      "CLM",
-                      "HOUSING",
-                      "screw",
-                      "ACCS CF-",
-                      ]
-        for exception in exceptions:
-            if exception.upper() in product['Description'].upper():
-                print("exception")
-                print(exception)
-                return
-
-        for typo in typos:
-            if typo['typo'] in product['Description']:
-                product['Description'] = product['Description'].replace(typo['typo'], typo['correction'])
-
-        # pprint.pprint(product)
-        core_data = get_core_data(product['Description'])
-        if core_data is None:
-            pprint.pprint(product['Description'])
+        if product['ManufacturerPartNumber'] in wrong_products:
             return
 
-        family, shape, material, gapping = core_data
+        # print(product['ManufacturerPartNumber'])
+        # print(self.core_data["manufacturer_reference"])
+        core = self.core_data[self.core_data["manufacturer_reference"].str.contains(product['ManufacturerPartNumber'])]
+        if len(core.index) != 1:
+            self.unfound_shapes.append(product['ManufacturerPartNumber'])
 
-        core_type = 'toroidal' if family == 'T' else 'two-piece set'
+        if not core.empty:
+            core_name = core.iloc[0]['name']
+        else:
+            def get_core_data(description):
+                family = self.try_get_family(description)
+
+                material = self.try_get_material(description, 'TDK')
+
+                if material is None:
+                    for not_included_material in not_included_materials:
+                        if not_included_material in description:
+                            return None
+                    # pprint.pprint(product)
+                    self.unfound_descriptions.append(description)
+                    return None
+                    # assert 0, f"Unknown material: {material}"
+
+                print(material)
+
+                cleaned_description = description.split(material)[0]
+                cleaned_description = cleaned_description.split('Ferrite Cores & Accessories')[1]
+                cleaned_description = cleaned_description.replace('_', '')
+                cleaned_description = cleaned_description.strip()
+                if cleaned_description.endswith('-'):
+                    cleaned_description = cleaned_description[0:-1]
+
+                print(cleaned_description)
+                print(family)
+                if family in ('TX', 'TC'):
+                    family = 'T'
+                if family is None:
+                    if description.endswith(' T'):
+                        family = 'T'
+                        cleaned_description = f"{family} {cleaned_description}"
+                    elif cleaned_description.startswith('R') and not cleaned_description.startswith('RM'):
+                        family = 'T'
+                        cleaned_description = cleaned_description.replace('R', 'T')
+                    elif cleaned_description.startswith('T'):
+                        family = 'T'
+                        cleaned_description = cleaned_description.replace('TX', 'T ')
+                        cleaned_description = cleaned_description.replace('TC', 'T ')
+
+                shape = None
+                if family is None:
+                    family, shape = self.try_get_family_and_shape_statistically(cleaned_description)
+ 
+                if family is None:
+                    pprint.pprint(product)
+                    self.unfound_descriptions.append(cleaned_description)
+                    return None
+                    # assert 0, "Unknown family"
+
+                if family not in PyMKF.get_available_shape_families() and family not in not_included_families:
+                    pprint.pprint(product)
+                    self.unfound_descriptions.append(cleaned_description)
+                    return None
+                    # assert 0, "Unknown family"
+
+                if shape is None:
+                    shape = self.try_get_shape(cleaned_description)
+
+                if shape is None:
+                    pprint.pprint(product)
+                    self.unfound_descriptions.append(cleaned_description)
+                    return None
+                    # assert 0, "Unknown shape"
+
+                # We check that we have the core in the database
+                core_data = self.verify_shape_is_in_database(family, shape, material, product)
+
+                if description.lower().endswith('mm'):
+                    try:
+                        gap_length = description[-6:-2]
+                        gap_length = ast.literal_eval(gap_length.replace(',', '.')) / 1000
+                    except SyntaxError:
+                        gap_length = description[-5:-2]
+                        gap_length = ast.literal_eval(gap_length.replace(',', '.')) / 1000
+
+                    gapping = [
+                        {
+                            "type": "subtractive",
+                            "length": gap_length
+                        }]
+
+                    gapping = self.process_gapping(core_data, gapping)
+
+                else:
+                    try:
+
+
+                        if "-DG" in description:
+                            number_gaps = 3
+                            al_value = float(description.split("-DG")[1].split(" ")[0].strip()) * 1e-9
+                        else:
+                            number_gaps = 1
+                            al_value = float(description.split(material)[1].strip().split(" ")[0]) * 1e-9
+                        if al_value > 0:
+                            gapping = self.get_gapping(core_data, "TDK", al_value, number_gaps)
+                        else:
+                            gapping = []
+                    except (ValueError, IndexError):
+                        try:
+                            if product['ManufacturerPartNumber'][7:11] == '0000':
+                                gapping = []
+                            else:
+                                al_value = float(product['ManufacturerPartNumber'][7:11].lstrip('0'))
+                                gapping = self.get_gapping(core_data, "TDK", al_value, number_gaps)
+                        except (ValueError, IndexError):
+                            gapping = []
+                    except (RuntimeError):
+                        return None
+
+                return family, shape, material, gapping
+
+            exceptions = ["COIL FORMER",
+                          "Coil former",
+                          "BOBBIN",
+                          "PS",
+                          "EIR",
+                          "YOKE",
+                          "MOUNTING",
+                          "WAS",
+                          "Accessories 7.35X3.6",
+                          "Ferrite Core N95 100x100x6",
+                          "Accessories 70X14.5",
+                          "U-CORE N97U CORE",
+                          "DOUBLE-APERT",
+                          "Clamp",
+                          "COV-",
+                          "NOT AVAILABLE",
+                          "Accessories Qu",
+                          "Accessories I",
+                          "Accessories U-CORE N",
+                          "Accessories CF-E",
+                          "SUMIKON",
+                          "P CORE HALF",
+                          "CLI",
+                          "CLM",
+                          "HOUSING",
+                          "screw",
+                          "ACCS CF-",
+                          ]
+            for exception in exceptions:
+                if exception.upper() in product['Description'].upper():
+                    print("exception")
+                    print(exception)
+                    return
+
+            for typo in typos:
+                if typo['typo'] in product['Description']:
+                    product['Description'] = product['Description'].replace(typo['typo'], typo['correction'])
+
+            # pprint.pprint(product)
+            core_data = get_core_data(product['Description'])
+            if core_data is None:
+                pprint.pprint(product['Description'])
+                return
+
+            family, shape, material, gapping = core_data
+            if family != 'T':
+                coating = None
+            else:
+                if product['ManufacturerPartNumber'][6] == 'A':
+                    coating = None
+                elif product['ManufacturerPartNumber'][6] == 'L':
+                    coating = 'epoxy'
+                elif product['ManufacturerPartNumber'][6] == 'P':
+                    coating = 'parylene'
+                else:
+                    assert 0, product['ManufacturerPartNumber']
+
+
+            core_type = 'toroidal' if family == 'T' else 'two-piece set'
+            core_manufacturer = 'TDK'
+            status = 'production'
+            manufacturer_part_number = product['ManufacturerPartNumber']
+
+            core_name = self.add_core(family=family,
+                                      shape=shape,
+                                      material=material,
+                                      core_type=core_type,
+                                      core_manufacturer=core_manufacturer,
+                                      status=status,
+                                      manufacturer_part_number=manufacturer_part_number,
+                                      coating=coating,
+                                      gapping=gapping)
+
         core_manufacturer = 'TDK'
-        status = 'production'
-        manufacturer_part_number = product['ManufacturerPartNumber']
         product_url = product['ProductDetailUrl']
         distributor_reference = product['MouserPartNumber']
         quantity = int(product['AvailabilityInStock'])
@@ -1647,19 +1751,13 @@ class MouserStocker(Stocker):
         else:
             assert 0
 
-        self.add_core(family=family,
-                      shape=shape,
-                      material=material,
-                      core_type=core_type,
-                      core_manufacturer=core_manufacturer,
-                      status=status,
-                      manufacturer_part_number=manufacturer_part_number,
-                      product_url=product_url,
-                      distributor_reference=distributor_reference,
-                      quantity=quantity,
-                      cost=cost,
-                      gapping=gapping,
-                      distributor_name="Mouser")
+        self.add_distributor(core_name=core_name,
+                             product_url=product_url,
+                             core_manufacturer=core_manufacturer,
+                             distributor_reference=distributor_reference,
+                             quantity=quantity,
+                             cost=cost,
+                             distributor_name="Mouser")
 
         # pprint.pprint(self.core_data)
 
@@ -1725,11 +1823,17 @@ class MouserStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
+ 
+        self.core_data = pandas.DataFrame(self.core_data.values())
+        self.core_data["manufacturer_reference"] = self.core_data.apply(lambda row: row['manufacturerInfo']['reference'].split(' ')[0], axis=1)
 
         while remaining > 0:
             pprint.pprint('==================================================================================================')
@@ -1737,13 +1841,14 @@ class MouserStocker(Stocker):
             current_offset = current_status['current_offset']
             remaining = current_status['total'] - current_status['current_offset']
             pprint.pprint(f"remaining: {remaining}")
-            pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
+            # pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
 
 
         # pprint.pprint(self.core_data)
-        core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        # core_data = pandas.DataFrame(self.core_data.values())
+        self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        ndjson.dump(self.core_data.to_dict('records'), out_file)
         out_file.close()
 
 
@@ -1753,6 +1858,7 @@ class GatewayStocker(Stocker):
         self.apikey = "6c28da81-2a3c-43b4-b03e-fca6847d5370"
         self.core_data = {}
         self.unfound_descriptions = []
+        self.unfound_shapes = []
         self.ignored_manufacturers = [
                                         "Proterial",
                                         "Laird Performance Materials",
@@ -1775,6 +1881,16 @@ class GatewayStocker(Stocker):
 
         number = 0
         for index, datum in data.iterrows():
+
+            if 'FERROXCUBE' in datum['Franchise']:
+                core_manufacturer = 'Ferroxcube'
+            if 'MAGNETICS' in datum['Franchise']:
+                core_manufacturer = 'Magnetics'
+            if 'TDK' in datum['Franchise']:
+                core_manufacturer = 'TDK'
+            if 'FAIR-RITE' in datum['Franchise']:
+                core_manufacturer = 'Fair-Rite'
+           
             try:
                 invalid = False
                 if 'FERROXCUBE' not in datum['Franchise'] and 'MAGNETICS' not in datum['Franchise'] and 'TDK' not in datum['Franchise'] and 'FAIR-RITE' not in datum['Franchise']:
@@ -1789,91 +1905,99 @@ class GatewayStocker(Stocker):
             except TypeError:
                 continue
 
+            manufacturer_part_number = datum['Product'].rstrip('*')
+            print(manufacturer_part_number)
+            print(manufacturer_part_number)
+            print(manufacturer_part_number)
+            core = self.core_data[self.core_data["manufacturer_reference"].str.contains(manufacturer_part_number)]
+            if len(core.index) != 1:
+                self.unfound_shapes.append(manufacturer_part_number)
 
-            shape = None
-            material = None
+            core_name = None
+            if not core.empty:
+                core_name = core.iloc[0]['name']
+            else:
 
-            try:
-                length = 0
-                for shape_name in PyMKF.get_available_core_shapes():
-                    if (shape_name in datum['Description'] or shape_name.upper().replace(' ', '') in datum['Description'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T') or
-                        shape_name in datum['Product'] or shape_name.upper().replace(' ', '') in datum['Product'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T')):
+                shape = None
+                material = None
 
-                        if len(shape_name) > length:
-                            length = len(shape_name)
-                            shape = shape_name
-                            if shape[0] == 'R':
-                                shape = shape.replace('R ', 'T ')
+                try:
+                    length = 0
+                    for shape_name in PyMKF.get_available_core_shapes():
+                        if (shape_name in datum['Description'] or shape_name.upper().replace(' ', '') in datum['Description'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T') or
+                            shape_name in datum['Product'] or shape_name.upper().replace(' ', '') in datum['Product'].upper().replace('X', '/').replace(' ', '').replace('TOROID', 'T')):
 
-            except TypeError:
-                continue
+                            if len(shape_name) > length:
+                                length = len(shape_name)
+                                shape = shape_name
+                                if shape[0] == 'R':
+                                    shape = shape.replace('R ', 'T ')
 
-            if shape is not None:
-                family = shape.split(' ')[0]
-
-                length = 0
-                for material_name in PyMKF.get_available_core_materials():
-                    if material_name in datum['Description'] or material_name.upper().replace(' ', '') in datum['Description'].upper().replace(' ', ''):
-                        material = material_name
-                        if len(material_name) > length:
-                            length = len(material_name)
-                            material = material_name
-                            number += 1
-
-                if material is None:
+                except TypeError:
                     continue
 
-                core_data = self.verify_shape_is_in_database(family, shape, material, datum['Description'])
+                if shape is not None:
+                    family = shape.split(' ')[0]
 
-                core_type = 'toroidal' if family == 'T' else 'two-piece set'
-                if 'FERROXCUBE' in datum['Franchise']:
-                    core_manufacturer = 'Ferroxcube'
-                if 'MAGNETICS' in datum['Franchise']:
-                    core_manufacturer = 'Magnetics'
-                if 'TDK' in datum['Franchise']:
-                    core_manufacturer = 'TDK'
-                if 'FAIR-RITE' in datum['Franchise']:
-                    core_manufacturer = 'Fair-Rite'
-                manufacturer_part_number = datum['Product']
-                product_url = "https://www.shop.gatewaycando.com/magnetics/cores"
-                distributor_reference = datum['Product']
-                quantity = int(datum['Stock'])
-                cost = None
+                    length = 0
+                    for material_name in PyMKF.get_available_core_materials(core_manufacturer):
+                        if material_name in datum['Description'] or material_name.upper().replace(' ', '') in datum['Description'].upper().replace(' ', ''):
+                            material = material_name
+                            if len(material_name) > length:
+                                length = len(material_name)
+                                material = material_name
+                                number += 1
 
-                if ' gapped ' in datum['Description']:
-                    number_gaps = 1
-                    try:
-                        al_value = float(datum['Product'].split("-A")[1].split("-")[0]) * 1e-9
-                    except IndexError:
+                    if material is None:
+                        continue
+
+                    core_data = self.verify_shape_is_in_database(family, shape, material, datum['Description'])
+
+                    core_type = 'toroidal' if family == 'T' else 'two-piece set'
+
+
+                    if ' gapped ' in datum['Description']:
+                        number_gaps = 1
                         try:
-                            al_value = float(datum['Product'].split("-G")[1].split("-")[0]) * 1e-9
+                            al_value = float(datum['Product'].split("-A")[1].split("-")[0]) * 1e-9
                         except IndexError:
                             try:
-                                al_value = float(datum['Description'].split(" al ")[1]) * 1e-9
+                                al_value = float(datum['Product'].split("-G")[1].split("-")[0]) * 1e-9
                             except IndexError:
-                                print(datum['Product'])
-                                print(datum['Description'])
-                                assert 0
-                    gapping = self.get_gapping(core_data, core_manufacturer, al_value, number_gaps)
-                else:
-                    gapping = []
+                                try:
+                                    al_value = float(datum['Description'].split(" al ")[1]) * 1e-9
+                                except IndexError:
+                                    print(datum['Product'])
+                                    print(datum['Description'])
+                                    assert 0
+                        gapping = self.get_gapping(core_data, core_manufacturer, al_value, number_gaps)
+                    else:
+                        gapping = []
 
-                status = 'production'
+                    status = 'production'
+                    coating = None
+                    core_name = self.add_core(family=family,
+                                              shape=shape,
+                                              material=material,
+                                              core_type=core_type,
+                                              core_manufacturer=core_manufacturer,
+                                              status=status,
+                                              manufacturer_part_number=manufacturer_part_number,
+                                              coating=coating,
+                                              gapping=gapping)
 
-                self.add_core(family=family,
-                              shape=shape,
-                              material=material,
-                              core_type=core_type,
-                              core_manufacturer=core_manufacturer,
-                              status=status,
-                              manufacturer_part_number=manufacturer_part_number,
-                              product_url=product_url,
-                              distributor_reference=distributor_reference,
-                              quantity=quantity,
-                              cost=cost,
-                              gapping=gapping,
-                              distributor_name="Gateway")
-
+            product_url = "https://www.shop.gatewaycando.com/magnetics/cores"
+            distributor_reference = datum['Product']
+            quantity = int(datum['Stock'])
+            cost = None
+            if core_name is not None:
+                self.add_distributor(core_name=core_name,
+                                     product_url=product_url,
+                                     core_manufacturer=core_manufacturer,
+                                     distributor_reference=distributor_reference,
+                                     quantity=quantity,
+                                     cost=cost,
+                                     distributor_name="Gateway")
 
         return {
             'current_offset' : 0,
@@ -1884,11 +2008,17 @@ class GatewayStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
+
+        self.core_data = pandas.DataFrame(self.core_data.values())
+        self.core_data["manufacturer_reference"] = self.core_data.apply(lambda row: row['manufacturerInfo']['reference'].split(' ')[0], axis=1)
 
         while remaining > 0:
             pprint.pprint('==================================================================================================')
@@ -1896,13 +2026,14 @@ class GatewayStocker(Stocker):
             current_offset = current_status['current_offset']
             remaining = current_status['total'] - current_status['current_offset']
             pprint.pprint(f"remaining: {remaining}")
-            pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
+            # pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
 
 
         # pprint.pprint(self.core_data)
-        core_data = pandas.DataFrame(self.core_data.values())
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        # core_data = pandas.DataFrame(self.core_data.values())
+        self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        ndjson.dump(self.core_data.to_dict('records'), out_file)
         out_file.close()
 
 
@@ -1911,10 +2042,10 @@ if __name__ == '__main__':  # pragma: no cover
     digikeyStocker = DigikeyStocker()
     digikeyStocker.get_cores_stock()
 
-    # mouserStocker = MouserStocker()
-    # mouserStocker.get_cores_stock()
+    mouserStocker = MouserStocker()
+    mouserStocker.get_cores_stock()
 
-    # gatewayStocker = GatewayStocker()
-    # gatewayStocker.get_cores_stock()
+    gatewayStocker = GatewayStocker()
+    gatewayStocker.get_cores_stock()
 
     # pprint.pprint(mouserStocker.unfound_descriptions)

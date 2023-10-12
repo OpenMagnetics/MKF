@@ -18,8 +18,8 @@ SUITE(WindingSkinEffectLosses) {
         double frequency = 123000;
         double temperature = 20;
 
-        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
-        auto skinDepth = windingSkinEffectLossesModel.get_skin_depth(materialData, frequency, temperature);
+        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+        auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth(materialData, frequency, temperature);
         double expectedSkinDepth = 186.09e-6;
         CHECK_CLOSE(skinDepth, expectedSkinDepth, expectedSkinDepth * maximumError);
     }
@@ -28,8 +28,8 @@ SUITE(WindingSkinEffectLosses) {
         double frequency = 123000;
         double temperature = 20;
 
-        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
-        auto skinDepth = windingSkinEffectLossesModel.get_skin_depth("copper", frequency, temperature);
+        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+        auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);
         double expectedSkinDepth = 186.09e-6;
         CHECK_CLOSE(skinDepth, expectedSkinDepth, expectedSkinDepth * maximumError);
     }
@@ -39,8 +39,8 @@ SUITE(WindingSkinEffectLosses) {
         double frequency = 123000;
         double temperature = 120;
 
-        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLossesModel();  // TODO change to factory
-        auto skinDepth = windingSkinEffectLossesModel.get_skin_depth(materialData, frequency, temperature);
+        auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+        auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth(materialData, frequency, temperature);
         double expectedSkinDepth = 220e-6;
         CHECK_CLOSE(skinDepth, expectedSkinDepth, expectedSkinDepth * maximumError);
     }

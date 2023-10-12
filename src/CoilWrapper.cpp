@@ -220,15 +220,6 @@ size_t CoilWrapper::get_winding_index_by_name(std::string name) {
     throw std::runtime_error("No such a winding name: " + name);
 }
 
-std::vector<WireWrapper> CoilWrapper::get_wires() {
-    std::vector<WireWrapper> wirePerWinding;
-    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
-        wirePerWinding.push_back(wire);
-    }
-    return wirePerWinding;
-}
-
 double CoilWrapper::horizontalFillingFactor(Section section) {
     auto layers = get_layers_by_section(section.get_name());
     double sectionWidth = section.get_dimensions()[0];
@@ -327,7 +318,7 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
 }
 
 double get_area_used_in_wires(WireS wire, uint64_t physicalTurns) {
-        if (wire.get_type() == "round") {
+        if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
             double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
             return physicalTurns * pow(wireDiameter, 2);
         }
@@ -704,7 +695,7 @@ bool CoilWrapper::wind_by_layers() {
                 physicalTurnsInSection += round(remainingParallelsProportionInSection[parallelIndex] * get_number_turns(windingIndex));
             }
 
-            if (wirePerWinding[windingIndex].get_type() == "round") {
+            if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
                 double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::VERTICAL) {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireDiameter;
@@ -911,7 +902,7 @@ bool CoilWrapper::wind_by_turns() {
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
             auto physicalTurnsInLayer = get_number_turns(layer);
             auto alignment = layer.get_turns_alignment().value();
-            if (wirePerWinding[windingIndex].get_type() == "round") {
+            if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
                 wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
                 wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
             }
@@ -1372,6 +1363,35 @@ bool CoilWrapper::delimit_and_compact() {
     }
     return true;
 }
+
+std::vector<WireWrapper> CoilWrapper::get_wires() {
+    std::vector<WireWrapper> wirePerWinding;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
+        wirePerWinding.push_back(wire);
+    }
+    return wirePerWinding;
+}
+
+WireWrapper CoilWrapper::get_wire(size_t windingIndex) {
+    WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
+    return wire;
+}
+
+WireType CoilWrapper::get_wire_type(size_t windingIndex) {
+    auto wireOrString = get_functional_description()[windingIndex].get_wire();
+    WireS wire;
+    if (std::holds_alternative<std::string>(wireOrString)) {
+        wire = OpenMagnetics::find_wire_by_name(std::get<std::string>(wireOrString));
+    }
+    else {
+        wire = std::get<WireS>(wireOrString);
+    }
+    if (!wire.get_type())
+        throw std::runtime_error("Wire has no type!!");
+    return wire.get_type().value();
+}
+
 
 
 } // namespace OpenMagnetics

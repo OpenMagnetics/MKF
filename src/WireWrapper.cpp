@@ -27,13 +27,21 @@ namespace OpenMagnetics {
 
     }
 
-    WireWrapper WireWrapper::get_strand(WireS wire) {
+    WireWrapper WireWrapper::get_strand(WireS wire) { 
+        std::cout << "Mierdonaco 0" << std::endl;
+        if (!wire.get_strand())
+            throw std::runtime_error("Litz wire is missing strand information");
+        std::cout << "Mierdonaco 1" << std::endl;
+
         // If the strand is a string, we have to load its data from the database
         if (std::holds_alternative<std::string>(wire.get_strand().value())) {
+            std::cout << "Mierdonaco 2" << std::endl;
             throw std::runtime_error("Litz database not implemented yet");
         }
         else {
+            std::cout << "Mierdonaco 3" << std::endl;
             return WireWrapper(std::get<WireSolid>(wire.get_strand().value()));
+            std::cout << "Mierdonaco 4" << std::endl;
         }
 
     }
