@@ -13,17 +13,19 @@
 
 namespace OpenMagnetics {
 
-double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, double temperature) {
     double wireConductingArea;
     double wireLength = turn.get_length();
     WireMaterial wireMaterial;
     WireS realWire;
-    if (wire.get_type() == "litz") {
+        std::cout << "Mierdon 1" << std::endl;
+    if (wire.get_type() == WireType::LITZ) {
         realWire = WireWrapper::get_strand(wire);
     }
     else {
         realWire = wire;
     }
+        std::cout << "Mierdon 2" << std::endl;
 
     auto wireMaterialDataOrString = realWire.get_material().value();
     if (std::holds_alternative<std::string>(wireMaterialDataOrString)) {
@@ -36,27 +38,36 @@ double WindingOhmicLosses::get_dc_resistance(Turn turn, WireWrapper wire, double
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
-    if (wire.get_type() == "round" || wire.get_type() == "litz") {
-        wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
+        std::cout << "Mierdon 3" << std::endl;
+    switch(wire.get_type().value()) {
+        case WireType::ROUND:
+            wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
+            break;
+        case WireType::LITZ:
+            wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
+            break;
+        case WireType::RECTANGULAR:
+        case WireType::FOIL:
+            wireConductingArea = resolve_dimensional_values(realWire.get_conducting_width().value()) * resolve_dimensional_values(realWire.get_conducting_height().value());
+            break;
+        default:
+            throw std::runtime_error("Unknown wire type in WindingOhmicLosses");
     }
-    else if (wire.get_type() == "rectangular" || wire.get_type() == "foil") {
-        wireConductingArea = resolve_dimensional_values(realWire.get_conducting_width().value()) * resolve_dimensional_values(realWire.get_conducting_height().value());
-    }
-    else {
-        throw std::runtime_error("Unknown wire type in WindingOhmicLosses");
-    }
+        std::cout << "Mierdon 4" << std::endl;
 
     if (wire.get_number_conductors()) {
         double numberConductors = wire.get_number_conductors().value();
         wireConductingArea *= numberConductors;
     }
-
-
     double dcResistance = resistivity * wireLength / wireConductingArea;
+
     return dcResistance;
 };
 
-WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
+WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
+    if (!winding.get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
     auto turns = winding.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
     std::vector<std::vector<double>> dcCurrentPerWindingPerParallel;
@@ -74,7 +85,7 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
         auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
 
-        double turnResistance = get_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
+        double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
         dcResistancePerTurn.push_back(turnResistance);
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
@@ -96,8 +107,9 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
         Turn turn = turns[turnIndex];
         auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
-        auto currentThisTurn = dcCurrentPerWindingPerParallel[windingIndex][parallelIndex];
-        double windingOhmicLossesInTurn = pow(currentThisTurn, 2) * dcResistancePerTurn[turnIndex];
+
+        auto currentDividerThisTurn = dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
+        double windingOhmicLossesInTurn = pow(currentDividerThisTurn, 2) * dcResistancePerTurn[turnIndex];
         OhmicLosses ohmicLosses;
         WindingLossesPerElement windingLossesThisTurn;
         ohmicLosses.set_losses(windingOhmicLossesInTurn);
@@ -105,7 +117,7 @@ WindingLossesOutput WindingOhmicLosses::get_ohmic_losses(CoilWrapper winding, Op
         ohmicLosses.set_origin(ResultOrigin::SIMULATION);
         windingLossesThisTurn.set_ohmic_losses(ohmicLosses);
         windingLossesPerTurn.push_back(windingLossesThisTurn);
-        currentDividerPerTurn.push_back(currentThisTurn);
+        currentDividerPerTurn.push_back(currentDividerThisTurn);
     }
 
     double windingOhmicLossesTotal = 0;

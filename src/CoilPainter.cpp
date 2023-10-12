@@ -116,7 +116,7 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        if (wirePerWinding[windingIndex].get_type() == "round") {
+        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
             *shapes << SVG::Circle(turns[i].get_coordinates()[0] * constants.coilPainterScale,
                                    (imageHeight / 2 - turns[i].get_coordinates()[1]) * constants.coilPainterScale,
                                    resolve_dimensional_values(wire.get_outer_diameter().value()) / 2 * constants.coilPainterScale);

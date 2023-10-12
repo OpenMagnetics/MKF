@@ -195,7 +195,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
             materialNames.push_back(datum.first);
         }
         else {
-            if (datum.second.get_manufacturer_info().get_name() == manufacturer.value()) {
+            if (datum.second.get_manufacturer_info().get_name() == manufacturer.value() || manufacturer.value() == "") {
                 materialNames.push_back(datum.first);
             }
         }

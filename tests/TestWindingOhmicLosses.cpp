@@ -51,10 +51,10 @@ SUITE(WindingOhmicLosses) {
         OpenMagnetics::WireWrapper wire;
         wire.set_nominal_value_conducting_diameter(0.00032114);
         wire.set_material("copper");
-        wire.set_type("round");
+        wire.set_type(OpenMagnetics::WireType::ROUND);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 211.1e-3;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -67,10 +67,10 @@ SUITE(WindingOhmicLosses) {
         OpenMagnetics::WireWrapper wire;
         wire.set_nominal_value_conducting_diameter(0.00032114);
         wire.set_material("copper");
-        wire.set_type("round");
+        wire.set_type(OpenMagnetics::WireType::ROUND);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 357e-3;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -82,17 +82,17 @@ SUITE(WindingOhmicLosses) {
 
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::WireSolid strand;
-        strand.set_type(OpenMagnetics::WireSolidType::ROUND);
+        strand.set_type(OpenMagnetics::WireType::ROUND);
         strand.set_material("copper");
         OpenMagnetics::DimensionWithTolerance conductingDiameter;
         conductingDiameter.set_nominal(0.000040);
         strand.set_conducting_diameter(conductingDiameter);
         wire.set_strand(strand);
         wire.set_number_conductors(30);
-        wire.set_type("litz");
+        wire.set_type(OpenMagnetics::WireType::LITZ);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 0.4625;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -104,17 +104,17 @@ SUITE(WindingOhmicLosses) {
 
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::WireSolid strand;
-        strand.set_type(OpenMagnetics::WireSolidType::ROUND);
+        strand.set_type(OpenMagnetics::WireType::ROUND);
         strand.set_material("copper");
         OpenMagnetics::DimensionWithTolerance conductingDiameter;
         conductingDiameter.set_nominal(0.00012);
         strand.set_conducting_diameter(conductingDiameter);
         wire.set_strand(strand);
         wire.set_number_conductors(600);
-        wire.set_type("litz");
+        wire.set_type(OpenMagnetics::WireType::LITZ);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 0.0025;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -128,10 +128,10 @@ SUITE(WindingOhmicLosses) {
         wire.set_nominal_value_conducting_width(0.0005);
         wire.set_nominal_value_conducting_height(0.01);
         wire.set_material("copper");
-        wire.set_type("foil");
+        wire.set_type(OpenMagnetics::WireType::FOIL);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 3.3e-3;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -145,10 +145,10 @@ SUITE(WindingOhmicLosses) {
         wire.set_nominal_value_conducting_width(0.005);
         wire.set_nominal_value_conducting_height(0.001);
         wire.set_material("copper");
-        wire.set_type("foil");
+        wire.set_type(OpenMagnetics::WireType::FOIL);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.get_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
         double expectedDcResistance = 3.3e-3;
         CHECK_CLOSE(expectedDcResistance, dcResistance, expectedDcResistance * maximumError);
     }
@@ -162,7 +162,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -176,7 +176,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.2e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -190,7 +190,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 3.1e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -204,7 +204,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 12.4e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -218,7 +218,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 6.55e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -232,7 +232,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 2 * 6.55e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }
@@ -246,7 +246,7 @@ SUITE(WindingOhmicLosses) {
         auto winding = get_coil(numberTurns, numberParallels);
 
         auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
-        double ohmicLosses = windingOhmicLosses.get_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
+        double ohmicLosses = windingOhmicLosses.calculate_ohmic_losses(winding, operatingPoint, temperature).get_winding_losses();
         double expectedOhmicLosses = 9.2e-3;
         CHECK_CLOSE(expectedOhmicLosses, ohmicLosses, expectedOhmicLosses * maximumError);
     }

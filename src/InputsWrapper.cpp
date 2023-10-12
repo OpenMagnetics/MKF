@@ -574,6 +574,7 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
                                                  double ratio,
                                                  WaveformLabel label) {
     
+    std::cout << "label: " << magic_enum::enum_name(label) << std::endl;
     if (label == WaveformLabel::CUSTOM) {
         return reflect_waveform(signal, ratio);
     }
@@ -595,6 +596,8 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
     double peakToPeak = processed.get_peak_to_peak().value() * ratio;
     double offset = processed.get_offset() * ratio;
     double dutyCycle = processed.get_duty_cycle().value();
+
+    std::cout << "label: " << magic_enum::enum_name(label) << std::endl;
 
     switch(label) {
         case WaveformLabel::FLYBACK_PRIMARY:
@@ -1086,6 +1089,48 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
 
     return inputs;
 }
+InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double frequency,
+                                                          double magnetizingInductance,
+                                                          double temperature,
+                                                          WaveformLabel waveShape,
+                                                          double peakToPeak,
+                                                          double dutyCycle,
+                                                          double dcCurrent,
+                                                          std::vector<double> turnsRatios) {
+    json inputsJson;
+
+    inputsJson["operatingPoints"] = json::array();
+    json operatingPointJson = json();
+    operatingPointJson["name"] = "Nominal";
+    operatingPointJson["conditions"] = json();
+    operatingPointJson["conditions"]["ambientTemperature"] = temperature;
+
+    json windingExcitation = json();
+    windingExcitation["winding"] = "primary";
+    windingExcitation["frequency"] = frequency;
+    windingExcitation["current"]["processed"]["dutyCycle"] = dutyCycle;
+    windingExcitation["current"]["processed"]["label"] = waveShape;
+    windingExcitation["current"]["processed"]["offset"] = dcCurrent;
+    windingExcitation["current"]["processed"]["peakToPeak"] = peakToPeak;
+    operatingPointJson["excitationsPerWinding"] = json::array();
+    operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+    inputsJson["operatingPoints"].push_back(operatingPointJson);
+
+    inputsJson["designRequirements"] = json();
+    inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = magnetizingInductance * 0.8;
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
+    inputsJson["designRequirements"]["magnetizingInductance"]["maximum"] = magnetizingInductance * 1.2;
+    json turnsRatiosJson = json::array();
+    for (auto& turnsRatio : turnsRatios) {
+        json turnsRatioJson = json();
+        turnsRatioJson["nominal"] = turnsRatio;
+        turnsRatiosJson.push_back(turnsRatioJson);
+    }
+    inputsJson["designRequirements"]["turnsRatios"] = turnsRatiosJson;
+
+    InputsWrapper inputs(inputsJson);
+    return inputs;
+}
 
 OperatingPoint InputsWrapper::get_operating_point(size_t index) {
     return get_mutable_operating_points()[index];
@@ -1312,6 +1357,7 @@ OperatingPoint InputsWrapper::scale_time_to_frequency(OperatingPoint operatingPo
 
 OperatingPointExcitation InputsWrapper::scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency){
     OperatingPointExcitation scaledExcitation(excitation);
+    scaledExcitation.set_frequency(newFrequency);
     if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
         auto current = excitation.get_current().value();
         current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));

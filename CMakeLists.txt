@@ -60,7 +60,10 @@ FetchContent_Declare(spline
 FetchContent_Declare(svg
         GIT_REPOSITORY https://github.com/AlfVII/svg)
 
-FetchContent_MakeAvailable(json magic-enum spline svg)
+FetchContent_Declare(complex_bessel
+        GIT_REPOSITORY https://github.com/joeydumont/complex_bessel)
+
+FetchContent_MakeAvailable(json magic-enum spline svg complex_bessel)
 
 if(INCLUDE_MKF_TESTS)
         FetchContent_MakeAvailable(UnitTest++)
@@ -126,9 +129,12 @@ endif(INCLUDE_MKF_TESTS)
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
 include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
+include_directories("${CMAKE_BINARY_DIR}/_deps/complex_bessel-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${MAS_DIRECTORY}/")
+
+target_link_libraries(MKF complex_bessel::complex_bessel)
 
 target_link_libraries(MKF nlohmann_json::nlohmann_json)
 if(INCLUDE_MKF_TESTS)
