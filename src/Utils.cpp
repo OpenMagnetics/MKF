@@ -3,6 +3,7 @@
 #include "Utils.h"
 #include "json.hpp"
 
+#include <math.h>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -390,6 +391,39 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
         }
     }
     return false;
+}
+
+// double modified_bessel_first_kind(double order, std::complex<double> x) {
+//     std::complex<double> integral = 0;
+//     std::cout << order << std::endl;
+//     std::cout << x << std::endl;
+//     double dtetha = 0.000001;
+//     for (double tetha = 0; tetha < std::numbers::pi; tetha+=dtetha)
+//     {
+//         integral += exp(x * cos(tetha)) * cos(order * tetha) * dtetha;
+//     }
+
+//     auto bessel = integral / std::numbers::pi;
+//     return bessel.real();
+// }
+
+std::complex<double> modified_bessel_first_kind(double order, std::complex<double> z) {
+    std::complex<double> sum = 0;
+    size_t limitK = 1000;
+    for (size_t k = 0; k < limitK; ++k)
+    {
+        double divider = tgammal(k + 1) * tgammal(order + k + 1);
+        if (std::isinf(divider)) {
+            break;
+        }
+        sum += pow(0.25 * pow(z, 2), k) / divider;
+        // if (std::isnan(sum.real())) {
+        //     break;
+        // }
+    }
+
+    auto bessel = sum * pow(0.5 * z, order);
+    return bessel;
 }
 
 } // namespace OpenMagnetics

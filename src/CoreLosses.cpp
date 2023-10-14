@@ -534,7 +534,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
 
     roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
     roshenParameters["remanence"] = core.get_remanence(temperature);
-    roshenParameters["saturationMagneticFluxDensity"] = core.get_magneticFluxDensitySaturation(temperature, false);
+    roshenParameters["saturationMagneticFluxDensity"] = core.get_magnetic_flux_density_saturation(temperature, false);
     roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_field_strength_saturation(temperature);
 
     if (roshenData.get_coefficients()) {

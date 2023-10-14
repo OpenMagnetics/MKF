@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cmath>
+#include <complex>
 #include "spline.h"
 
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
@@ -76,6 +78,7 @@ CoreShape flatten_dimensions(CoreShape shape);
 std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions);
 
 double try_get_duty_cycle(Waveform waveform, double frequency);
+std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
 } // namespace OpenMagnetics
