@@ -1,4 +1,5 @@
 #include "Reluctance.h"
+#include "Defaults.h"
 
 #include <cmath>
 #include <filesystem>
@@ -408,5 +409,9 @@ std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels model
     else
         throw std::runtime_error("Unknown Reluctance mode, available options are: {ZHANG, PARTRIDGE, EFFECTIVE_AREA, "
                                  "EFFECTIVE_LENGTH, MUEHLETHALER, STENGLEIN, BALAKRISHNAN, CLASSIC}");
+}
+std::shared_ptr<ReluctanceModel> ReluctanceModel::factory() {
+    auto defaults = Defaults();
+    return factory(defaults.reluctanceModelDefault);
 }
 } // namespace OpenMagnetics

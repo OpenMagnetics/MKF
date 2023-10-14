@@ -1537,7 +1537,7 @@ SUITE(CoreProcessedDescription) {
 
         CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(), 0.0002756,
                     0.0002756 * 0.2);
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
     }
 }
 
@@ -1676,6 +1676,7 @@ SUITE(CoreGeometricalDescription) {
 
 SUITE(CoreFunctionalDescription) {
     std::string filePath = __FILE__;
+    double maximumError = 0.05;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
 
     TEST(E_55_21_all_gaps_residual) {
@@ -1687,21 +1688,21 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 3u);
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[1].get_type());
-        CHECK(*(function_description.get_gapping()[0].get_shape()) ==
-              *(function_description.get_gapping()[1].get_shape()));
-        CHECK(*(function_description.get_gapping()[0].get_distance_closest_normal_surface()) ==
-              *(function_description.get_gapping()[1].get_distance_closest_normal_surface()));
-        CHECK(function_description.get_gapping()[0].get_length() == function_description.get_gapping()[1].get_length());
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[1].get_area()) * 2, 0.2);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] ==
-              -(*function_description.get_gapping()[2].get_coordinates())[0]);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 3u);
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[1].get_type());
+        CHECK(*(functionalDescription.get_gapping()[0].get_shape()) ==
+              *(functionalDescription.get_gapping()[1].get_shape()));
+        CHECK(*(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()) ==
+              *(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()));
+        CHECK(functionalDescription.get_gapping()[0].get_length() == functionalDescription.get_gapping()[1].get_length());
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[1].get_area()) * 2, 0.2);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[0] ==
+              -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
     }
 
     TEST(E_55_21_central_gap) {
@@ -1712,21 +1713,21 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 3u);
-        CHECK(function_description.get_gapping()[0].get_type() != function_description.get_gapping()[1].get_type());
-        CHECK(*(function_description.get_gapping()[0].get_shape()) ==
-              *(function_description.get_gapping()[1].get_shape()));
-        CHECK(*(function_description.get_gapping()[0].get_distance_closest_normal_surface()) !=
-              *(function_description.get_gapping()[1].get_distance_closest_normal_surface()));
-        CHECK(function_description.get_gapping()[0].get_length() != function_description.get_gapping()[1].get_length());
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[1].get_area()) * 2, 0.2);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] != 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] ==
-              -(*function_description.get_gapping()[2].get_coordinates())[0]);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 3u);
+        CHECK(functionalDescription.get_gapping()[0].get_type() != functionalDescription.get_gapping()[1].get_type());
+        CHECK(*(functionalDescription.get_gapping()[0].get_shape()) ==
+              *(functionalDescription.get_gapping()[1].get_shape()));
+        CHECK(*(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()) !=
+              *(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()));
+        CHECK(functionalDescription.get_gapping()[0].get_length() != functionalDescription.get_gapping()[1].get_length());
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[1].get_area()) * 2, 0.2);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] != 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[0] ==
+              -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
     }
 
     TEST(E_55_21_gap_all_columns) {
@@ -1739,22 +1740,22 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 3u);
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[1].get_type());
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[2].get_type());
-        CHECK(*(function_description.get_gapping()[0].get_shape()) ==
-              *(function_description.get_gapping()[1].get_shape()));
-        CHECK(*(function_description.get_gapping()[0].get_distance_closest_normal_surface()) ==
-              *(function_description.get_gapping()[1].get_distance_closest_normal_surface()));
-        CHECK(function_description.get_gapping()[0].get_length() == function_description.get_gapping()[1].get_length());
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[1].get_area()) * 2, 0.2);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] ==
-              -(*function_description.get_gapping()[2].get_coordinates())[0]);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 3u);
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[1].get_type());
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[2].get_type());
+        CHECK(*(functionalDescription.get_gapping()[0].get_shape()) ==
+              *(functionalDescription.get_gapping()[1].get_shape()));
+        CHECK(*(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()) ==
+              *(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()));
+        CHECK(functionalDescription.get_gapping()[0].get_length() == functionalDescription.get_gapping()[1].get_length());
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[1].get_area()) * 2, 0.2);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[0] ==
+              -(*functionalDescription.get_gapping()[2].get_coordinates())[0]);
     }
 
     TEST(E_55_21_central_distributed_gap_even) {
@@ -1766,30 +1767,30 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 4u);
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[1].get_type());
-        CHECK(function_description.get_gapping()[0].get_type() != function_description.get_gapping()[2].get_type());
-        CHECK(*(function_description.get_gapping()[0].get_shape()) ==
-              *(function_description.get_gapping()[1].get_shape()));
-        CHECK(*(function_description.get_gapping()[0].get_distance_closest_normal_surface()) ==
-              *(function_description.get_gapping()[1].get_distance_closest_normal_surface()));
-        CHECK(*(function_description.get_gapping()[0].get_distance_closest_normal_surface()) !=
-              *(function_description.get_gapping()[2].get_distance_closest_normal_surface()));
-        CHECK(function_description.get_gapping()[0].get_length() == function_description.get_gapping()[1].get_length());
-        CHECK(function_description.get_gapping()[0].get_length() != function_description.get_gapping()[2].get_length());
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[1].get_area()), 0.2);
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[2].get_area()) * 2, 0.2);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] ==
-              (*function_description.get_gapping()[1].get_coordinates())[0]);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] ==
-              -(*function_description.get_gapping()[1].get_coordinates())[1]);
-        CHECK((*function_description.get_gapping()[2].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[2].get_coordinates())[0] ==
-              -(*function_description.get_gapping()[3].get_coordinates())[0]);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 4u);
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[1].get_type());
+        CHECK(functionalDescription.get_gapping()[0].get_type() != functionalDescription.get_gapping()[2].get_type());
+        CHECK(*(functionalDescription.get_gapping()[0].get_shape()) ==
+              *(functionalDescription.get_gapping()[1].get_shape()));
+        CHECK(*(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()) ==
+              *(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()));
+        CHECK(*(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()) !=
+              *(functionalDescription.get_gapping()[2].get_distance_closest_normal_surface()));
+        CHECK(functionalDescription.get_gapping()[0].get_length() == functionalDescription.get_gapping()[1].get_length());
+        CHECK(functionalDescription.get_gapping()[0].get_length() != functionalDescription.get_gapping()[2].get_length());
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[1].get_area()), 0.2);
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[2].get_area()) * 2, 0.2);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] ==
+              (*functionalDescription.get_gapping()[1].get_coordinates())[0]);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] ==
+              -(*functionalDescription.get_gapping()[1].get_coordinates())[1]);
+        CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[0] ==
+              -(*functionalDescription.get_gapping()[3].get_coordinates())[0]);
     }
 
     TEST(E_55_21_central_distributed_gap_odd) {
@@ -1802,39 +1803,39 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 5u);
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[1].get_type());
-        CHECK(function_description.get_gapping()[0].get_type() == function_description.get_gapping()[2].get_type());
-        CHECK(function_description.get_gapping()[0].get_type() != function_description.get_gapping()[3].get_type());
-        CHECK(*(function_description.get_gapping()[0].get_shape()) ==
-              *(function_description.get_gapping()[1].get_shape()));
-        CHECK(*(function_description.get_gapping()[1].get_distance_closest_normal_surface()) >
-              *(function_description.get_gapping()[0].get_distance_closest_normal_surface()));
-        CHECK(*(function_description.get_gapping()[1].get_distance_closest_normal_surface()) >
-              *(function_description.get_gapping()[2].get_distance_closest_normal_surface()));
-        CHECK(*(function_description.get_gapping()[1].get_distance_closest_normal_surface()) <
-              *(function_description.get_gapping()[3].get_distance_closest_normal_surface()));
-        CHECK(function_description.get_gapping()[0].get_length() == function_description.get_gapping()[1].get_length());
-        CHECK(function_description.get_gapping()[0].get_length() == function_description.get_gapping()[2].get_length());
-        CHECK(function_description.get_gapping()[0].get_length() != function_description.get_gapping()[3].get_length());
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[1].get_area()), 0.2);
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[2].get_area()), 0.2);
-        CHECK_CLOSE(*(function_description.get_gapping()[0].get_area()),
-                    *(function_description.get_gapping()[3].get_area()) * 2, 0.2);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] ==
-              (*function_description.get_gapping()[1].get_coordinates())[0]);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] ==
-              (*function_description.get_gapping()[2].get_coordinates())[0]);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] ==
-              -(*function_description.get_gapping()[2].get_coordinates())[1]);
-        CHECK((*function_description.get_gapping()[3].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[3].get_coordinates())[0] ==
-              -(*function_description.get_gapping()[4].get_coordinates())[0]);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 5u);
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[1].get_type());
+        CHECK(functionalDescription.get_gapping()[0].get_type() == functionalDescription.get_gapping()[2].get_type());
+        CHECK(functionalDescription.get_gapping()[0].get_type() != functionalDescription.get_gapping()[3].get_type());
+        CHECK(*(functionalDescription.get_gapping()[0].get_shape()) ==
+              *(functionalDescription.get_gapping()[1].get_shape()));
+        CHECK(*(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()) >
+              *(functionalDescription.get_gapping()[0].get_distance_closest_normal_surface()));
+        CHECK(*(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()) >
+              *(functionalDescription.get_gapping()[2].get_distance_closest_normal_surface()));
+        CHECK(*(functionalDescription.get_gapping()[1].get_distance_closest_normal_surface()) <
+              *(functionalDescription.get_gapping()[3].get_distance_closest_normal_surface()));
+        CHECK(functionalDescription.get_gapping()[0].get_length() == functionalDescription.get_gapping()[1].get_length());
+        CHECK(functionalDescription.get_gapping()[0].get_length() == functionalDescription.get_gapping()[2].get_length());
+        CHECK(functionalDescription.get_gapping()[0].get_length() != functionalDescription.get_gapping()[3].get_length());
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[1].get_area()), 0.2);
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[2].get_area()), 0.2);
+        CHECK_CLOSE(*(functionalDescription.get_gapping()[0].get_area()),
+                    *(functionalDescription.get_gapping()[3].get_area()) * 2, 0.2);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] ==
+              (*functionalDescription.get_gapping()[1].get_coordinates())[0]);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] ==
+              (*functionalDescription.get_gapping()[2].get_coordinates())[0]);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] ==
+              -(*functionalDescription.get_gapping()[2].get_coordinates())[1]);
+        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[0] ==
+              -(*functionalDescription.get_gapping()[4].get_coordinates())[0]);
     }
 
     TEST(Web_0) {
@@ -1849,7 +1850,7 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
     }
 
     TEST(Web_1) {
@@ -1869,16 +1870,16 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[2] == 0);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[2] == 0);
 
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[2] != 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[2] != 0);
     }
 
     TEST(Web_2) {
@@ -1901,24 +1902,24 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
 
-        CHECK_EQUAL(function_description.get_gapping().size(), 4u);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[0].get_coordinates())[2] == 0);
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 4u);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[0].get_coordinates())[2] == 0);
 
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[1] != 0);
-        CHECK((*function_description.get_gapping()[1].get_coordinates())[2] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[1] != 0);
+        CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[2] == 0);
 
-        CHECK((*function_description.get_gapping()[2].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[2].get_coordinates())[1] == 0);
-        CHECK((*function_description.get_gapping()[2].get_coordinates())[2] != 0);
+        CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[1] == 0);
+        CHECK((*functionalDescription.get_gapping()[2].get_coordinates())[2] != 0);
 
-        CHECK((*function_description.get_gapping()[3].get_coordinates())[0] == 0);
-        CHECK((*function_description.get_gapping()[3].get_coordinates())[1] != 0);
-        CHECK((*function_description.get_gapping()[3].get_coordinates())[2] != 0);
+        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[0] == 0);
+        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[1] != 0);
+        CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[2] != 0);
     }
 
     TEST(Web_3) {
@@ -1936,7 +1937,7 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
     }
 
     TEST(Web_4) {
@@ -1958,7 +1959,7 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
     }
 
     TEST(Web_5) {
@@ -1975,8 +1976,8 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
-        CHECK_EQUAL(function_description.get_gapping().size(), 5u);
+        auto functionalDescription = core.get_functional_description();
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 5u);
     }
 
     TEST(Web_6) {
@@ -1999,8 +2000,8 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
-        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
+        auto functionalDescription = core.get_functional_description();
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
     TEST(Web_7) {
@@ -2009,8 +2010,8 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
-        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
+        auto functionalDescription = core.get_functional_description();
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
     TEST(Web_8) {
@@ -2019,8 +2020,8 @@ SUITE(CoreFunctionalDescription) {
 
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
-        CHECK_EQUAL(function_description.get_gapping().size(), 2u);
+        auto functionalDescription = core.get_functional_description();
+        CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
     TEST(Missing_Core_Hermes) {
@@ -2028,6 +2029,78 @@ SUITE(CoreFunctionalDescription) {
         auto coreJson = json::parse(R"({"functionalDescription": {"gapping": [], "material": "3C91", "numberStacks": 1, "shape": "P 11/7/I", "type": "two-piece set"}, "name": "temp"})");
         OpenMagnetics::CoreWrapper core(coreJson, true);
 
-        auto function_description = core.get_functional_description();
+        auto functionalDescription = core.get_functional_description();
+    }
+
+    TEST(Test_Core_Initial_Permeability) {
+        auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
+        std::ifstream json_file(coreFilePath);
+
+        auto coreJson = json::parse(json_file);
+
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto initialPermeability = core.get_initial_permeability(25);
+        double expectedInitialPermeability = 2270;
+
+        CHECK_CLOSE(expectedInitialPermeability, initialPermeability, expectedInitialPermeability * maximumError);
+
+        initialPermeability = core.get_initial_permeability(125);
+        expectedInitialPermeability = 3975;
+        CHECK_CLOSE(expectedInitialPermeability, initialPermeability, expectedInitialPermeability * maximumError);
+    }
+
+    TEST(Test_Core_Effective_Permeability) {
+        auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
+        std::ifstream json_file(coreFilePath);
+
+        auto coreJson = json::parse(json_file);
+
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto effectivePermeability = core.get_effective_permeability(25);
+        double expectedEffectivePermeability = 136;
+
+        CHECK_CLOSE(expectedEffectivePermeability, effectivePermeability, expectedEffectivePermeability * maximumError);
+
+        effectivePermeability = core.get_effective_permeability(125);
+        expectedEffectivePermeability = 139;
+        CHECK_CLOSE(expectedEffectivePermeability, effectivePermeability, expectedEffectivePermeability * maximumError);
+    }
+
+    TEST(Test_Core_Reluctance) {
+        auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
+        std::ifstream json_file(coreFilePath);
+
+        auto coreJson = json::parse(json_file);
+
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto reluctance = core.get_reluctance(25);
+        double expectedReluctance = 1.02e+06;
+
+        CHECK_CLOSE(expectedReluctance, reluctance, expectedReluctance * maximumError);
+
+        reluctance = core.get_reluctance(125);
+        expectedReluctance = 997019;
+        CHECK_CLOSE(expectedReluctance, reluctance, expectedReluctance * maximumError);
+    }
+
+    TEST(Test_Core_Resistivity) {
+        auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
+        std::ifstream json_file(coreFilePath);
+
+        auto coreJson = json::parse(json_file);
+
+        OpenMagnetics::CoreWrapper core(coreJson, true);
+
+        auto resistivity = core.get_resistivity(25);
+        double expectedResistivity = 8;
+
+        CHECK_CLOSE(expectedResistivity, resistivity, expectedResistivity * maximumError);
+
+        resistivity = core.get_resistivity(125);
+        expectedResistivity = 8;
+        CHECK_CLOSE(expectedResistivity, resistivity, expectedResistivity * maximumError);
     }
 }

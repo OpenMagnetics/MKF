@@ -18,14 +18,12 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
     double wireLength = turn.get_length();
     WireMaterial wireMaterial;
     WireS realWire;
-        std::cout << "Mierdon 1" << std::endl;
     if (wire.get_type() == WireType::LITZ) {
         realWire = WireWrapper::get_strand(wire);
     }
     else {
         realWire = wire;
     }
-        std::cout << "Mierdon 2" << std::endl;
 
     auto wireMaterialDataOrString = realWire.get_material().value();
     if (std::holds_alternative<std::string>(wireMaterialDataOrString)) {
@@ -38,7 +36,6 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
-        std::cout << "Mierdon 3" << std::endl;
     switch(wire.get_type().value()) {
         case WireType::ROUND:
             wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
@@ -53,14 +50,12 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
         default:
             throw std::runtime_error("Unknown wire type in WindingOhmicLosses");
     }
-        std::cout << "Mierdon 4" << std::endl;
 
     if (wire.get_number_conductors()) {
         double numberConductors = wire.get_number_conductors().value();
         wireConductingArea *= numberConductors;
     }
     double dcResistance = resistivity * wireLength / wireConductingArea;
-
     return dcResistance;
 };
 

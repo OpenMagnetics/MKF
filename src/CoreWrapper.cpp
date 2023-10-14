@@ -1,5 +1,6 @@
 #include "CoreWrapper.h"
 #include "WireWrapper.h"
+#include "Resistivity.h"
 #include "spline.h"
 
 #include "Defaults.h"
@@ -24,6 +25,39 @@ double roundFloat(double value, size_t decimals) {
     return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
+double interp(std::vector<std::pair<double, double>> data, double temperature) {
+    double result;
+
+    if (data.size() == 0) {
+        throw std::runtime_error("Data cannot be empty");
+    }
+    else if (data.size() == 1) {
+        result = data[0].second;
+    }
+    else if (data.size() == 2) {
+        result = data[0].second -
+        (data[0].first - temperature) *
+            (data[0].second - data[1].second) /
+            (data[0].first - data[1].first);
+    }
+    else {
+        std::sort(data.begin(), data.end(), [](const std::pair<double, double>& b1, const std::pair<double, double>& b2) {
+                return b1.first < b2.first;
+        });
+        size_t n = data.size();
+        std::vector<double> x, y;
+
+        for (size_t i = 0; i < n; i++) {
+            if (x.size() == 0 || data[i].first != x.back()) {
+                x.push_back(data[i].first);
+                y.push_back(data[i].second);
+            }
+        }
+        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
+        result = interp(temperature);
+    }
+    return result;
+}
 
 template<int decimals> double roundFloat(double value) {
     if (value < 0)
@@ -2546,83 +2580,43 @@ void CoreWrapper::process_data() {
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
 }
 
-double CoreWrapper::get_magneticFluxDensitySaturation(double temperature, bool proportion) {
+double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
     auto defaults = Defaults();
     auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
-    double saturationMagneticFluxDensity;
+    std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
         throw std::runtime_error("Missing saturation data in core material");
     }
-    else if (saturationData.size() == 1) {
-        saturationMagneticFluxDensity = saturationData[0].get_magnetic_flux_density();
+    for (auto& datum : saturationData) {
+        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
     }
-    else if (saturationData.size() == 2) {
-        saturationMagneticFluxDensity = saturationData[0].get_magnetic_flux_density() -
-        (saturationData[0].get_temperature() - temperature) *
-            (saturationData[0].get_magnetic_flux_density() - saturationData[1].get_magnetic_flux_density()) /
-            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
-    }
-    else {
-        std::sort(saturationData.begin(), saturationData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
-                return b1.get_temperature() < b2.get_temperature();
-        });
-        size_t n = saturationData.size();
-        std::vector<double> x, y;
 
-        for (size_t i = 0; i < n; i++) {
-            if (x.size() == 0 || saturationData[i].get_temperature() != x.back()) {
-                x.push_back(saturationData[i].get_temperature());
-                y.push_back(saturationData[i].get_magnetic_flux_density());
-            }
-        }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        saturationMagneticFluxDensity = interp(temperature);
-    }
+    double saturationMagneticFluxDensity = interp(data, temperature);
 
     if (proportion)
         return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;
     else
         return saturationMagneticFluxDensity;
 }
-double CoreWrapper::get_magneticFluxDensitySaturation(bool proportion) {
-    return get_magneticFluxDensitySaturation(25, proportion);
+double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
+    return get_magnetic_flux_density_saturation(25, proportion);
 }
 
 double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
     auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
-    double saturationMagneticFieldStrength;
+    std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
         throw std::runtime_error("Missing saturation data in core material");
     }
-    else if (saturationData.size() == 1) {
-        saturationMagneticFieldStrength = saturationData[0].get_magnetic_field();
+    for (auto& datum : saturationData) {
+        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
     }
-    else if (saturationData.size() == 2) {
-        saturationMagneticFieldStrength = saturationData[0].get_magnetic_field() -
-        (saturationData[0].get_temperature() - temperature) *
-            (saturationData[0].get_magnetic_field() - saturationData[1].get_magnetic_field()) /
-            (saturationData[0].get_temperature() - saturationData[1].get_temperature());
-    }
-    else {
-        std::sort(saturationData.begin(), saturationData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
-                return b1.get_temperature() < b2.get_temperature();
-        });
-        size_t n = saturationData.size();
-        std::vector<double> x, y;
 
-        for (size_t i = 0; i < n; i++) {
-            if (x.size() == 0 || saturationData[i].get_temperature() != x.back()) {
-                x.push_back(saturationData[i].get_temperature());
-                y.push_back(saturationData[i].get_magnetic_field());
-            }
-        }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        saturationMagneticFieldStrength = interp(temperature);
-    }
+    double saturationMagneticFieldStrength = interp(data, temperature);
 
     return saturationMagneticFieldStrength;
 }
@@ -2630,36 +2624,16 @@ double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
 double CoreWrapper::get_remanence(double temperature) {
     auto coreMaterial =  get_material();
     auto remanenceData = coreMaterial.get_remanence().value();
-    double remanence;
+    std::vector<std::pair<double, double>> data;
 
     if (remanenceData.size() == 0) {
         throw std::runtime_error("Missing remanence data in core material");
     }
-    else if (remanenceData.size() == 1) {
-        remanence = remanenceData[0].get_magnetic_flux_density();
+    for (auto& datum : remanenceData) {
+        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
     }
-    else if (remanenceData.size() == 2) {
-        remanence = remanenceData[0].get_magnetic_flux_density() -
-        (remanenceData[0].get_temperature() - temperature) *
-            (remanenceData[0].get_magnetic_flux_density() - remanenceData[1].get_magnetic_flux_density()) /
-            (remanenceData[0].get_temperature() - remanenceData[1].get_temperature());
-    }
-    else {
-        std::sort(remanenceData.begin(), remanenceData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
-                return b1.get_temperature() < b2.get_temperature();
-        });
-        size_t n = remanenceData.size();
-        std::vector<double> x, y;
 
-        for (size_t i = 0; i < n; i++) {
-            if (x.size() == 0 || remanenceData[i].get_temperature() != x.back()) {
-                x.push_back(remanenceData[i].get_temperature());
-                y.push_back(remanenceData[i].get_magnetic_flux_density());
-            }
-        }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        remanence = interp(temperature);
-    }
+    double remanence = interp(data, temperature);
 
     return remanence;
 }
@@ -2667,41 +2641,58 @@ double CoreWrapper::get_remanence(double temperature) {
 double CoreWrapper::get_coercive_force(double temperature) {
     auto coreMaterial =  get_material();
     auto coerciveForceData = coreMaterial.get_coercive_force().value();
-    double coerciveForce;
+    std::vector<std::pair<double, double>> data;
 
     if (coerciveForceData.size() == 0) {
-        throw std::runtime_error("Missing coerciveForce data in core material");
+        throw std::runtime_error("Missing coercive force data in core material");
     }
-    else if (coerciveForceData.size() == 1) {
-        coerciveForce = coerciveForceData[0].get_magnetic_field();
+    for (auto& datum : coerciveForceData) {
+        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
     }
-    else if (coerciveForceData.size() == 2) {
-        coerciveForce = coerciveForceData[0].get_magnetic_field() -
-        (coerciveForceData[0].get_temperature() - temperature) *
-            (coerciveForceData[0].get_magnetic_field() - coerciveForceData[1].get_magnetic_field()) /
-            (coerciveForceData[0].get_temperature() - coerciveForceData[1].get_temperature());
-    }
-    else {
-        std::sort(coerciveForceData.begin(), coerciveForceData.end(), [](const BhCycleElement& b1, const BhCycleElement& b2) {
-                return b1.get_temperature() < b2.get_temperature();
-        });
-        size_t n = coerciveForceData.size();
-        std::vector<double> x, y;
 
-        for (size_t i = 0; i < n; i++) {
-            x.push_back(coerciveForceData[i].get_temperature());
-            y.push_back(coerciveForceData[i].get_magnetic_field());
-        }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        coerciveForce = interp(temperature);
-    }
+    double coerciveForce = interp(data, temperature);
 
     return coerciveForce;
 }
 
+double CoreWrapper::get_initial_permeability(double temperature){
+    auto coreMaterial =  get_material();
+    OpenMagnetics::InitialPermeability initialPermeability;
+    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
+    return initialPermeabilityValue;
+}
+
+double CoreWrapper::get_effective_permeability(double temperature){
+    auto constants = Constants();
+    auto reluctance = get_reluctance(temperature);
+    if (!get_processed_description()) {
+        process_data();
+    }
+    auto effectiveLength = get_processed_description().value().get_effective_parameters().get_effective_length();
+    auto effectiveArea = get_processed_description().value().get_effective_parameters().get_effective_area();
+    double effectivePermeability = effectiveLength / (reluctance * effectiveArea) / constants.vacuumPermeability;
+    return effectivePermeability;
+}
+
+double CoreWrapper::get_reluctance(double temperature){
+    auto coreMaterial =  get_material();
+    OpenMagnetics::InitialPermeability initialPermeability;
+    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    double calculatedReluctance = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);
+    return calculatedReluctance;
+}
+
+double CoreWrapper::get_resistivity(double temperature){
+    auto coreMaterial =  get_material();
+    auto resistivityModel = ResistivityModel::factory(ResistivityModels::CORE_MATERIAL);
+    auto resistivity = (*resistivityModel).get_resistivity(coreMaterial, temperature);
+    return resistivity;
+}
+
 std::vector<ColumnElement> CoreWrapper::get_columns() {
     if (get_processed_description()) {
-    return get_processed_description().value().get_columns();
+        return get_processed_description().value().get_columns();
     }
     else {
         return std::vector<ColumnElement>();
@@ -2749,6 +2740,4 @@ std::vector<std::string> CoreWrapper::get_available_core_losses_methods(){
 OpenMagnetics::CoreType CoreWrapper::get_type() {
     return get_functional_description().get_type();
 }
-
-
 } // namespace OpenMagnetics

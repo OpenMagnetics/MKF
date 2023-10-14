@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <complex_bessel.h>
 #include <magic_enum.hpp>
 #include <numbers>
 #include <streambuf>
@@ -128,13 +127,16 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
                 continue;
             }
             auto wire = coil.get_wire(windingIndex);
-            if (wire.get_type() == WireType::LITZ)
-                throw std::runtime_error("Review Litz wire regarding DC resistance, current and number of conductors");
+            // if (wire.get_type() == WireType::LITZ)
+            //     throw std::runtime_error("Review Litz wire regarding DC resistance, current and number of conductors");
 
             auto harmonicRmsCurrent = harmonics.get_amplitudes()[harmonicIndex] / sqrt(2);  // Because a harmonic is always sinusoidal
             auto harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
             auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDividerPerTurn[turnIndex];
             auto dcLossTurn = pow(harmonicRmsCurrentInTurn, 2) * dcResistancePerTurn[turnIndex];
+            std::cout << "harmonicRmsCurrent: " << harmonicRmsCurrent << std::endl;
+            std::cout << "currentDividerPerTurn[turnIndex]: " << currentDividerPerTurn[turnIndex] << std::endl;
+            std::cout << "dcResistancePerTurn[turnIndex]: " << dcResistancePerTurn[turnIndex] << std::endl;
 
             auto turnLosses = lossesModelPerWinding[windingIndex]->calculate_turn_losses(wire, dcLossTurn, harmonicFrequency, temperature);
 
@@ -156,7 +158,15 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
 
 
 double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(WireS wire, double frequency, double temperature) {
-    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    WireS realWire;
+    if (wire.get_type() == WireType::LITZ) {
+        realWire = WireWrapper::get_strand(wire);
+    }
+    else {
+        realWire = wire;
+    }
+
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(realWire, frequency, temperature);
 
     double penetrationRatio;
     switch(wire.get_type().value()) {
@@ -169,7 +179,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(WireS wire
                 throw std::runtime_error("Litz wire is missing strand information");
 
             auto strand = WireWrapper::get_strand(wire);
-            penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter().value()) / resolve_dimensional_values(wire.get_outer_diameter().value()));
+            penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter().value()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
             break;
         }
         case WireType::RECTANGULAR: {
@@ -220,7 +230,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(WireS wire, dou
 
     std::complex<double> alpha(1, 1);
     alpha *= wireRadius / skinDepth;
-    double factor = 0.5 * (alpha * (sp_bessel::besselI(0, alpha) / sp_bessel::besselI(1, alpha) + wire.get_number_conductors().value() * (wire.get_number_conductors().value() - 1) * pow(wireRadius, 2) / pow(wireOuterRadius, 2) * sp_bessel::besselI(1, alpha * wireRadius) / sp_bessel::besselI(0, alpha * wireRadius))).real();
+    double factor = 0.5 * (alpha * (modified_bessel_first_kind(0, alpha) / modified_bessel_first_kind(1, alpha) + wire.get_number_conductors().value() * (wire.get_number_conductors().value() - 1) * pow(wireRadius, 2) / pow(wireOuterRadius, 2) * modified_bessel_first_kind(1, alpha * wireRadius) / modified_bessel_first_kind(0, alpha * wireRadius))).real();
 
     return factor;
 }
