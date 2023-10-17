@@ -169,6 +169,13 @@ std::vector<uint64_t> CoilWrapper::get_number_turns() {
     return numberTurns;
 }
 
+void CoilWrapper::set_number_turns(std::vector<uint64_t> numberTurns) {
+    for (size_t i=0; i< get_functional_description().size(); ++i) {
+        get_mutable_functional_description()[i].set_number_turns(numberTurns[i]);
+    }
+}
+
+
 std::vector<Layer> CoilWrapper::get_layers_by_section(std::string sectionName) {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
@@ -201,6 +208,11 @@ std::vector<uint64_t> CoilWrapper::get_number_parallels() {
     return numberParallels;
 }
 
+void CoilWrapper::set_number_parallels(std::vector<uint64_t> numberParallels){
+    for (size_t i=0; i< get_functional_description().size(); ++i) {
+        get_mutable_functional_description()[i].set_number_parallels(numberParallels[i]);
+    }
+}
 
 CoilFunctionalDescription CoilWrapper::get_winding_by_name(std::string name) {
     for (auto& CoilFunctionalDescription : get_functional_description()) {

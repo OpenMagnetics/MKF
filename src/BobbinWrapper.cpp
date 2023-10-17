@@ -32,6 +32,7 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
             processedDescription.set_column_thickness(dimensions["s1"]);
             processedDescription.set_wall_thickness(dimensions["s2"]);
             WindingWindowElement windingWindowElement;
@@ -51,6 +52,7 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["H5"]);
             WindingWindowElement windingWindowElement;
@@ -70,6 +72,7 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["s"]);
             WindingWindowElement windingWindowElement;
@@ -90,6 +93,7 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["h1"] - dimensions["h2"]) / 2);
             WindingWindowElement windingWindowElement;
@@ -110,6 +114,7 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
             processedDescription.set_wall_thickness(dimensions["s1"]);
             WindingWindowElement windingWindowElement;
@@ -129,6 +134,7 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
@@ -148,6 +154,7 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
             processedDescription.set_wall_thickness((dimensions["H1"] - dimensions["H2"]) / 2);
             WindingWindowElement windingWindowElement;
@@ -167,6 +174,7 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
+            processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
             processedDescription.set_column_thickness(dimensions["S1"]);
             processedDescription.set_wall_thickness(dimensions["S2"]);
             WindingWindowElement windingWindowElement;

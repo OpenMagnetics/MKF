@@ -11,7 +11,7 @@
 
 namespace OpenMagnetics {
 
-std::vector<int64_t> NumberTurns::get_next_number_turns_combination() {
+std::vector<uint64_t> NumberTurns::get_next_number_turns_combination() {
     auto currentNumberTurns = _currentNumberTurns;
     increment_number_turns();
 
@@ -19,7 +19,7 @@ std::vector<int64_t> NumberTurns::get_next_number_turns_combination() {
 }
 
 void NumberTurns::increment_number_turns() {
-    int64_t primaryNumberTurns = _currentNumberTurns[0];
+    uint64_t primaryNumberTurns = _currentNumberTurns[0];
     bool allRequirementsPassed = false;
     while (!allRequirementsPassed) {
         _currentNumberTurns.clear();
@@ -30,7 +30,7 @@ void NumberTurns::increment_number_turns() {
             auto turnsRatio = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::NOMINAL);
             auto turnsRatioMinimum = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::MINIMUM);
             auto turnsRatioMaximum = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::MAXIMUM);
-            int64_t numberTurns = round(primaryNumberTurns / turnsRatio);
+            uint64_t numberTurns = round(primaryNumberTurns / turnsRatio);
 
             if (check_requirement(turnsRatioRequirement, double(primaryNumberTurns) / numberTurns)) {
                 _currentNumberTurns.push_back(numberTurns);

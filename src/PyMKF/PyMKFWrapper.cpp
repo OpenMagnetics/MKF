@@ -29,6 +29,14 @@ json get_core_data(json coreData, bool includeMaterialData=false){
     return core;
 }
 
+json get_bobbin_data(json bobbinData){
+    OpenMagnetics::BobbinWrapper bobbin(bobbinData);
+    json mierda;
+    to_json(mierda, bobbin);
+
+    return bobbin;
+}
+
 json get_material_data(json materialName){
     auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
     return materialData;
@@ -256,6 +264,7 @@ PYBIND11_MODULE(PyMKF, m) {
     m.def("get_available_core_materials", &get_available_core_materials, "Returns the names of all the core materials");
     m.def("get_available_core_shapes", &get_available_core_shapes, "Returns the names of all the core shapes");
     m.def("get_core_data", &get_core_data, "Returns the processed data from a core");
+    m.def("get_bobbin_data", &get_bobbin_data, "Returns the processed data from a bobbin");
     m.def("get_gap_reluctance", &get_gap_reluctance, "Returns the reluctance and fringing flux factor of a gap");
     m.def("get_gap_reluctance_model_information", &get_gap_reluctance_model_information, "Returns the information and average error for gap reluctance models");
     m.def("calculate_inductance_from_number_turns_and_gapping", &calculate_inductance_from_number_turns_and_gapping, "Returns the inductance of a core, given its number of turns and gapping");

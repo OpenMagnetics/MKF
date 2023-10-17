@@ -11,7 +11,7 @@ class MagneticWrapper : public Magnetic {
         CoreWrapper core;
         std::optional<std::vector<DistributorInfo>> distributors_info;
         std::optional<ManufacturerInfo> manufacturer_info;
-        CoilWrapper winding;
+        CoilWrapper coil;
     public:
 
         MagneticWrapper(const Magnetic magnetic) {
