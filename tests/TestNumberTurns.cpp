@@ -8,10 +8,10 @@ SUITE(NumberTurns) {
     TEST(Number_Turns_Inductor) {
         OpenMagnetics::DesignRequirements designRequirements;
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{});
-        int64_t initialPrimaryNumberTurns = 42;
+        uint64_t initialPrimaryNumberTurns = 42;
 
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns + 1);
@@ -23,10 +23,10 @@ SUITE(NumberTurns) {
         double turnsRatioValue = 1;
         turnsRatio.set_nominal(turnsRatioValue);
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-        int64_t initialPrimaryNumberTurns = 42;
+        uint64_t initialPrimaryNumberTurns = 42;
 
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
         CHECK(numberTurnsCombination[1] == initialPrimaryNumberTurns * 1);
         numberTurnsCombination = numberTurns.get_next_number_turns_combination();
@@ -42,10 +42,10 @@ SUITE(NumberTurns) {
         turnsRatio.set_minimum(turnsRatioValue * 0.8);
         turnsRatio.set_maximum(turnsRatioValue * 1.2);
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-        int64_t initialPrimaryNumberTurns = 42;
+        uint64_t initialPrimaryNumberTurns = 42;
 
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
         CHECK(OpenMagnetics::check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
@@ -62,10 +62,10 @@ SUITE(NumberTurns) {
         turnsRatio.set_minimum(turnsRatioValue * 0.8);
         turnsRatio.set_maximum(turnsRatioValue * 1.2);
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-        int64_t initialPrimaryNumberTurns = 42;
+        uint64_t initialPrimaryNumberTurns = 42;
 
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] == initialPrimaryNumberTurns);
         CHECK(OpenMagnetics::check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
@@ -88,10 +88,10 @@ SUITE(NumberTurns) {
             turnsRatio.set_minimum(turnsRatioValue * 0.95);
             turnsRatio.set_maximum(turnsRatioValue * 1.05);
             designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-            int64_t initialPrimaryNumberTurns = std::rand() % 100 + 1UL;
+            uint64_t initialPrimaryNumberTurns = std::rand() % 100 + 1UL;
             
             OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-            std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
             CHECK(OpenMagnetics::check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
@@ -120,10 +120,10 @@ SUITE(NumberTurns) {
 
             }
             designRequirements.set_turns_ratios(turnsRatios);
-            int64_t initialPrimaryNumberTurns = std::rand() % 100 + 1UL;
+            uint64_t initialPrimaryNumberTurns = std::rand() % 100 + 1UL;
             
             OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-            std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
             for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex)
             {
@@ -148,10 +148,10 @@ SUITE(NumberTurns) {
         turnsRatio.set_minimum(turnsRatioValue * 0.8);
         turnsRatio.set_maximum(turnsRatioValue * 1.2);
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-        int64_t initialPrimaryNumberTurns = 40;
+        uint64_t initialPrimaryNumberTurns = 40;
         
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
         CHECK(OpenMagnetics::check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 
@@ -168,10 +168,10 @@ SUITE(NumberTurns) {
         turnsRatio.set_minimum(turnsRatioValue * 0.8);
         turnsRatio.set_maximum(turnsRatioValue * 1.2);
         designRequirements.set_turns_ratios(std::vector<OpenMagnetics::DimensionWithTolerance>{turnsRatio});
-        int64_t initialPrimaryNumberTurns = 60;
+        uint64_t initialPrimaryNumberTurns = 60;
         
         OpenMagnetics::NumberTurns numberTurns(initialPrimaryNumberTurns, designRequirements);
-        std::vector<int64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        std::vector<uint64_t> numberTurnsCombination = numberTurns.get_next_number_turns_combination();
         CHECK(numberTurnsCombination[0] >= initialPrimaryNumberTurns);
         CHECK(OpenMagnetics::check_requirement(turnsRatio, double(numberTurnsCombination[0]) / numberTurnsCombination[1]));
 

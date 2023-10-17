@@ -120,12 +120,14 @@ class CoilWrapper : public Coil {
         }
 
         std::vector<uint64_t> get_number_turns();
+        void set_number_turns(std::vector<uint64_t> numberTurns);
 
         std::vector<Layer> get_layers_by_section(std::string sectionName);
 
         std::vector<Turn> get_turns_by_layer(std::string layerName);
 
         std::vector<uint64_t> get_number_parallels();
+        void set_number_parallels(std::vector<uint64_t> numberParallels);
 
         CoilFunctionalDescription get_winding_by_name(std::string name);
 

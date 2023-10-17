@@ -529,7 +529,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             }
         }
 
-        int64_t currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+        auto currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
         OpenMagnetics::NumberTurns numberTurns(currentNumberTurns);
         std::vector<double> totalLossesPerOperatingPoint;
         std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
@@ -540,7 +540,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         double ohmicLosses = DBL_MAX;
         WindingLossesOutput windingLossesOutput;
         double newTotalLosses = DBL_MAX;
-        int64_t previousNumberTurnsPrimary = currentNumberTurns;
+        auto previousNumberTurnsPrimary = currentNumberTurns;
 
         size_t iteration = 10;
 
@@ -1096,6 +1096,22 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
     }
 }
 
+void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWithScoring, InputsWrapper inputs) {
+    MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+    for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i){
+
+        CoilWrapper coil = CoilWrapper((*masMagneticsWithScoring)[i].first.get_magnetic().get_coil());
+        OpenMagnetics::NumberTurns numberTurns(coil.get_number_turns(0), inputs.get_design_requirements());
+        auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+
+        for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
+            auto primary_winding = coil.get_functional_description()[0];
+            primary_winding.set_number_turns(numberTurnsCombination[windingIndex]);
+            (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description().push_back(primary_winding);
+        }
+    }
+}
+
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vector<std::pair<MasWrapper, double>>* masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
     MagneticCoreFilterAreaProduct filterAreaProduct;
     MagneticCoreFilterEnergyStored filterEnergyStored;
@@ -1217,6 +1233,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     if (masMagneticsWithScoring.size() > maximumNumberResults) {
         masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
     }
+
+    correct_windings(&masMagneticsWithScoring, inputs);
 
     return masMagneticsWithScoring;
 }
