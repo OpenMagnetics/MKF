@@ -6,6 +6,7 @@
 #include "Defaults.h"
 #include <MAS.hpp>
 #include "InputsWrapper.h"
+#include "MagneticWrapper.h"
 #include "CoreWrapper.h"
 #include "Reluctance.h"
 #include "MagnetizingInductance.h"
@@ -159,12 +160,12 @@ json get_steinmetz_coefficients(std::string material, double frequency){
     return coefficients;
 }
 
-json get_core_losses(json coreData,
-                     json coilData,
+json get_core_losses(json magneticData,
                      json inputsData,    
                      json modelsData){
-    OpenMagnetics::CoreWrapper core(coreData);
-    OpenMagnetics::CoilWrapper coil(coilData);
+    OpenMagnetics::MagneticWrapper magnetic(magneticData);
+    OpenMagnetics::CoreWrapper core = magnetic.get_core();
+    OpenMagnetics::CoilWrapper coil = magnetic.get_coil();
     OpenMagnetics::InputsWrapper inputs(inputsData);
     auto operatingPoint = inputs.get_operating_point(0);
     OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
