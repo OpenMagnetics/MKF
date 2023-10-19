@@ -134,9 +134,9 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
             auto harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
             auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDividerPerTurn[turnIndex];
             auto dcLossTurn = pow(harmonicRmsCurrentInTurn, 2) * dcResistancePerTurn[turnIndex];
-            std::cout << "harmonicRmsCurrent: " << harmonicRmsCurrent << std::endl;
-            std::cout << "currentDividerPerTurn[turnIndex]: " << currentDividerPerTurn[turnIndex] << std::endl;
-            std::cout << "dcResistancePerTurn[turnIndex]: " << dcResistancePerTurn[turnIndex] << std::endl;
+            // std::cout << "harmonicRmsCurrent: " << harmonicRmsCurrent << std::endl;
+            // std::cout << "currentDividerPerTurn[turnIndex]: " << currentDividerPerTurn[turnIndex] << std::endl;
+            // std::cout << "dcResistancePerTurn[turnIndex]: " << dcResistancePerTurn[turnIndex] << std::endl;
 
             auto turnLosses = lossesModelPerWinding[windingIndex]->calculate_turn_losses(wire, dcLossTurn, harmonicFrequency, temperature);
 

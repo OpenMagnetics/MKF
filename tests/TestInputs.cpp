@@ -2711,7 +2711,6 @@ SUITE(Inputs) {
         auto reflectedCurrentSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
         json mierda;
         to_json(mierda, reflectedCurrentSignalDescriptor);
-        std::cout << mierda << std::endl;
         auto processed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(reflectedCurrentSignalDescriptor.get_waveform().value());
         CHECK(processed.get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
     }

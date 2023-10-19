@@ -12,6 +12,39 @@
 
 namespace OpenMagnetics {
 
+
+double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability) {
+    auto constants = Constants();
+    double absolutePermeability = constants.vacuumPermeability * initialPermeability;
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+
+    double reluctanceCore = effectiveLength / (absolutePermeability * effectiveArea);
+    return reluctanceCore;
+}
+
+double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
+    OpenMagnetics::InitialPermeability initialPermeability;
+
+    auto coreMaterial = core.get_functional_description().get_material();
+
+    double initialPermeabilityValue;
+    if (operatingPoint != nullptr) {
+        double temperature =
+            operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+        _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
+        auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(
+            coreMaterial, &temperature, nullptr, &frequency);
+    }
+    else {
+        initialPermeabilityValue =
+            initialPermeability.get_initial_permeability(coreMaterial);
+        _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
+    }
+    return get_ungapped_core_reluctance(core, initialPermeabilityValue);
+}
+
 std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
     double perimeter = 0;
     auto constants = Constants();

@@ -248,17 +248,16 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
 
 CoreWrapper get_core_with_grinded_gapping(CoreWrapper core, double gapLength) {
     auto constants = OpenMagnetics::Constants();
-    auto gappingJson = json::array();
-    auto basicCentralGap = json();
-    basicCentralGap["type"] = "subtractive";
-    basicCentralGap["length"] = gapLength;
-    auto basicLateralGap = json();
-    basicLateralGap["type"] = "residual";
-    basicLateralGap["length"] = constants.residualGap;
+    auto basicCentralGap = CoreGap();
+    basicCentralGap.set_type(GapType::SUBTRACTIVE);
+    basicCentralGap.set_length(gapLength);
+    auto basicLateralGap = CoreGap();
+    basicLateralGap.set_type(GapType::RESIDUAL);
+    basicLateralGap.set_length(constants.residualGap);
     std::vector<CoreGap> gapping;
-    gapping.push_back(CoreGap(basicCentralGap));
+    gapping.push_back(basicCentralGap);
     for (size_t i = 0; i < core.get_processed_description().value().get_columns().size() - 1; ++i) {
-        gapping.push_back(CoreGap(basicLateralGap));
+        gapping.push_back(basicLateralGap);
     }
     core.get_mutable_functional_description().set_gapping(gapping);
     core.process_gap();
@@ -267,38 +266,35 @@ CoreWrapper get_core_with_grinded_gapping(CoreWrapper core, double gapLength) {
 
 CoreWrapper get_core_with_distributed_gapping(CoreWrapper core, double gapLength, size_t numberDistributedGaps) {
     auto constants = OpenMagnetics::Constants();
-    auto gappingJson = json::array();
-    auto basicCentralGap = json();
-    basicCentralGap["type"] = "subtractive";
-    basicCentralGap["length"] = gapLength;
-    auto basicLateralGap = json();
-    basicLateralGap["type"] = "residual";
-    basicLateralGap["length"] = constants.residualGap;
+    auto basicCentralGap = CoreGap();
+    basicCentralGap.set_type(GapType::SUBTRACTIVE);
+    basicCentralGap.set_length(gapLength);
+    auto basicLateralGap = CoreGap();
+    basicLateralGap.set_type(GapType::RESIDUAL);
+    basicLateralGap.set_length(constants.residualGap);
     std::vector<CoreGap> gapping;
     for (size_t i = 0; i < numberDistributedGaps; ++i) {
-        gapping.push_back(CoreGap(basicCentralGap));
+        gapping.push_back(basicCentralGap);
     }
     for (size_t i = 0; i < core.get_processed_description().value().get_columns().size() - 1; ++i) {
-        gapping.push_back(CoreGap(basicLateralGap));
+        gapping.push_back(basicLateralGap);
     }
-    json coreJson;
     core.get_mutable_functional_description().set_gapping(gapping);
     core.process_gap();
     return core;
 }
 
 CoreWrapper get_core_with_spacer_gapping(CoreWrapper core, double gapLength) {
-    auto gappingJson = json::array();
-    auto basicCentralGap = json();
-    basicCentralGap["type"] = "additive";
-    basicCentralGap["length"] = gapLength;
-    auto basicLateralGap = json();
-    basicLateralGap["type"] = "additive";
-    basicLateralGap["length"] = gapLength;
+    auto basicCentralGap = CoreGap();
+    basicCentralGap.set_type(GapType::ADDITIVE);
+    basicCentralGap.set_length(gapLength);
+    auto basicLateralGap = CoreGap();
+    basicLateralGap.set_type(GapType::ADDITIVE);
+    basicLateralGap.set_length(gapLength);
     std::vector<CoreGap> gapping;
-    gapping.push_back(CoreGap(basicCentralGap));
+    gapping.push_back(basicCentralGap);
     for (size_t i = 0; i < core.get_processed_description().value().get_columns().size() - 1; ++i) {
-        gapping.push_back(CoreGap(basicLateralGap));
+        gapping.push_back(basicLateralGap);
     }
     core.get_mutable_functional_description().set_gapping(gapping);
     core.process_gap();

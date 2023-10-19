@@ -111,6 +111,6 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
     }
 
     return initial_permeability_value;
-};
+}
 
 } // namespace OpenMagnetics

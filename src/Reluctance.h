@@ -34,37 +34,9 @@ class ReluctanceModel {
   public:
     virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
 
-    double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability) {
-        auto constants = Constants();
-        double absolutePermeability = constants.vacuumPermeability * initialPermeability;
-        double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
-        double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability);
 
-        double reluctanceCore = effectiveLength / (absolutePermeability * effectiveArea);
-        return reluctanceCore;
-    }
-
-    double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr) {
-        OpenMagnetics::InitialPermeability initialPermeability;
-
-        auto coreMaterial = core.get_functional_description().get_material();
-
-        double initialPermeabilityValue;
-        if (operatingPoint != nullptr) {
-            double temperature =
-                operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
-            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
-            auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-            initialPermeabilityValue = initialPermeability.get_initial_permeability(
-                coreMaterial, &temperature, nullptr, &frequency);
-        }
-        else {
-            initialPermeabilityValue =
-                initialPermeability.get_initial_permeability(coreMaterial);
-            _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
-        }
-        return get_ungapped_core_reluctance(core, initialPermeabilityValue);
-    }
+    double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
     double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
         auto constants = Constants();
         auto gapLength = gapInfo.get_length();
