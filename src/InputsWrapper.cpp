@@ -574,7 +574,6 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
                                                  double ratio,
                                                  WaveformLabel label) {
     
-    std::cout << "label: " << magic_enum::enum_name(label) << std::endl;
     if (label == WaveformLabel::CUSTOM) {
         return reflect_waveform(signal, ratio);
     }
@@ -597,7 +596,6 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
     double offset = processed.get_offset() * ratio;
     double dutyCycle = processed.get_duty_cycle().value();
 
-    std::cout << "label: " << magic_enum::enum_name(label) << std::endl;
 
     switch(label) {
         case WaveformLabel::FLYBACK_PRIMARY:

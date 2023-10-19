@@ -201,8 +201,8 @@ SUITE(MagnetizingInductance) {
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
@@ -253,8 +253,8 @@ SUITE(MagnetizingInductance) {
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
