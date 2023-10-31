@@ -875,7 +875,6 @@ SUITE(CoilTurnsDescription) {
     TEST(Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin) {
         std::vector<uint64_t> numberTurns = {7};
         std::vector<uint64_t> numberParallels = {1};
-        double wireDiameter = 0.000509;
         uint64_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         std::vector<OpenMagnetics::WireWrapper> wires;

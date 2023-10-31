@@ -14,7 +14,7 @@
 
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-extern std::map<std::string, OpenMagnetics::WireS> wireDatabase;
+extern std::map<std::string, OpenMagnetics::Wire> wireDatabase;
 extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
@@ -25,6 +25,9 @@ extern tk::spline bobbinFillingFactorInterpHeight;
 extern tk::spline bobbinWindingWindowInterpWidth;
 extern tk::spline bobbinWindingWindowInterpHeight;
 extern std::map<std::string, tk::spline> wireFillingFactorInterps;
+extern std::map<std::string, tk::spline> wirePackingFactorInterps;
+extern std::map<std::string, tk::spline> wireOuterDimensionInterps;
+extern std::map<std::string, tk::spline> wireConductingAreaInterps;
 extern double minBobbinWidth;
 extern double maxBobbinWidth;
 extern double minBobbinHeight;
@@ -34,8 +37,10 @@ extern double maxWindingWindowWidth;
 extern double minWindingWindowHeight;
 extern double maxWindingWindowHeight;
 
-extern std::map<std::string, double> minWireConductingWidths;
-extern std::map<std::string, double> maxWireConductingWidths;
+extern std::map<std::string, double> minWireConductingDimensions;
+extern std::map<std::string, double> maxWireConductingDimensions;
+extern std::map<std::string, int64_t> minLitzWireNumberConductors;
+extern std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 
 namespace OpenMagnetics {
@@ -56,7 +61,7 @@ double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, Dimen
 bool check_requirement(DimensionWithTolerance requirement, double value);
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
-OpenMagnetics::WireS find_wire_by_name(std::string name);
+OpenMagnetics::Wire find_wire_by_name(std::string name);
 OpenMagnetics::Bobbin find_bobbin_by_name(std::string name);
 OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string name);
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);

@@ -1395,4 +1395,129 @@ Waveform InputsWrapper::scale_time_to_frequency(Waveform waveform, double newFre
     return waveform;
 }
 
+
+double InputsWrapper::get_maximum_voltage_peak() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumVoltage = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_voltage()) 
+                throw std::invalid_argument("Missing voltage in excitation");
+            if (!excitation.get_voltage().value().get_processed()) 
+                throw std::invalid_argument("Voltage has not been processed");
+            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage().value().get_processed().value().get_peak().value());
+        }
+    }
+
+    return maximumVoltage;
+}
+
+double InputsWrapper::get_maximum_voltage_rms() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumVoltage = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_voltage()) 
+                throw std::invalid_argument("Missing voltage in excitation");
+            if (!excitation.get_voltage().value().get_processed()) 
+                throw std::invalid_argument("Voltage has not been processed");
+            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage().value().get_processed().value().get_rms().value());
+        }
+    }
+
+    return maximumVoltage;
+}
+
+double InputsWrapper::get_maximum_frequency() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumFrequency = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            maximumFrequency = std::max(maximumFrequency, excitation.get_frequency());
+        }
+    }
+
+    return maximumFrequency;
+}
+
+DimensionWithTolerance InputsWrapper::get_altitude() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_altitude())
+        throw std::invalid_argument("Missing altitude in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_altitude().value();
+}
+
+Cti InputsWrapper::get_cti() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_cti())
+        throw std::invalid_argument("Missing cti in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_cti().value();
+}
+
+InsulationType InputsWrapper::get_insulation_type() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_insulation_type())
+        throw std::invalid_argument("Missing insulation_type in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_insulation_type().value();
+}
+
+DimensionWithTolerance InputsWrapper::get_main_supply_voltage() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_main_supply_voltage())
+        throw std::invalid_argument("Missing main_supply_voltage in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_main_supply_voltage().value();
+}
+
+OvervoltageCategory InputsWrapper::get_overvoltage_category() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_overvoltage_category())
+        throw std::invalid_argument("Missing overvoltage_category in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_overvoltage_category().value();
+}
+
+PollutionDegree InputsWrapper::get_pollution_degree() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_pollution_degree())
+        throw std::invalid_argument("Missing pollution_degree in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_pollution_degree().value();
+}
+
+std::vector<InsulationStandards> InputsWrapper::get_standards() {
+    if (!get_design_requirements().get_insulation())
+        throw std::invalid_argument("Missing insulation in designRequirements");
+    if (!get_design_requirements().get_insulation().value().get_standards())
+        throw std::invalid_argument("Missing standards in insulation requirements");
+
+    return get_design_requirements().get_insulation().value().get_standards().value();
+}
+
+
+
 } // namespace OpenMagnetics

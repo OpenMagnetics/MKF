@@ -46,6 +46,19 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<uint64_t> numbe
                                                      OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
                                                      std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
 
+
+OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::DimensionWithTolerance altitude,
+                                                         OpenMagnetics::Cti cti,
+                                                         OpenMagnetics::InsulationType insulation_type,
+                                                         OpenMagnetics::DimensionWithTolerance main_supply_voltage,
+                                                         OpenMagnetics::OvervoltageCategory overvoltage_category,
+                                                         OpenMagnetics::PollutionDegree pollution_degree,
+                                                         std::vector<OpenMagnetics::InsulationStandards> standards,
+                                                         double maximumVoltageRms,
+                                                         double maximumVoltagePeak,
+                                                         double frequency,
+                                                         OpenMagnetics::WiringTechnology wiringTechnology = OpenMagnetics::WiringTechnology::WOUND);
+
 OpenMagnetics::CoreWrapper get_core(std::string shapeName,
                                     json basicGapping,
                                     int numberStacks = 1,

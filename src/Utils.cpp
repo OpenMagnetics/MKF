@@ -18,7 +18,7 @@ using json = nlohmann::json;
 
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-std::map<std::string, OpenMagnetics::WireS> wireDatabase;
+std::map<std::string, OpenMagnetics::Wire> wireDatabase;
 std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
 std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
@@ -66,7 +66,7 @@ void load_databases(bool withAliases) {
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {
             json jf = json::parse(myline);
-            WireS wire(jf);
+            Wire wire(jf);
             wireDatabase[jf["name"]] = wire;
         }
     }
@@ -161,7 +161,7 @@ void load_databases(json data, bool withAliases) {
             standardName = std::to_string(jf["standardName"].get<int>());
         }
         jf["standardName"] = standardName;
-        WireS wire(jf);
+        Wire wire(jf);
         wireDatabase[jf["name"]] = wire;
     }
 
@@ -257,7 +257,7 @@ std::vector<std::string> get_wire_names() {
     return wireNames;
 }
 
-OpenMagnetics::WireS find_wire_by_name(std::string name) {
+OpenMagnetics::Wire find_wire_by_name(std::string name) {
     if (wireDatabase.empty()) {
         load_databases();
     }
@@ -265,7 +265,7 @@ OpenMagnetics::WireS find_wire_by_name(std::string name) {
         return wireDatabase[name];
     }
     else {
-        return json::parse("{}");
+        throw std::runtime_error("wire not found: " + name);
     }
 }
 

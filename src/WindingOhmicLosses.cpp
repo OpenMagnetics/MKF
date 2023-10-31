@@ -17,7 +17,7 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
     double wireConductingArea;
     double wireLength = turn.get_length();
     WireMaterial wireMaterial;
-    WireS realWire;
+    Wire realWire;
     if (wire.get_type() == WireType::LITZ) {
         realWire = WireWrapper::get_strand(wire);
     }
@@ -36,7 +36,7 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
-    switch(wire.get_type().value()) {
+    switch(wire.get_type()) {
         case WireType::ROUND:
             wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
             break;

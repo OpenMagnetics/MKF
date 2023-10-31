@@ -410,7 +410,7 @@ SUITE(WindingLosses) {
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
         OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
@@ -486,7 +486,7 @@ SUITE(WindingLosses) {
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
         OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
@@ -562,7 +562,7 @@ SUITE(WindingLosses) {
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
         OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
@@ -632,7 +632,7 @@ SUITE(WindingLosses) {
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
         OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
@@ -708,7 +708,7 @@ SUITE(WindingLosses) {
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
         OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
         OpenMagnetics::DimensionWithTolerance strandOuterDiameter;

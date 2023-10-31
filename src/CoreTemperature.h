@@ -36,8 +36,8 @@ class CoreTemperatureModel {
 
     static std::map<std::string, std::string> get_models_information() {
         std::map<std::string, std::string> information;
-        information["Kazimierczuk"] = R"(Based on "witching Power Supplies A - Z, 2nd edition" by Sanjaya Maniktala)";
-        information["Maniktala"] =
+        information["Maniktala"] = R"(Based on "witching Power Supplies A - Z, 2nd edition" by Sanjaya Maniktala)";
+        information["Kazimierczuk"] =
             R"(Based on "High-Frequency Magnetic Components 2nd Edition" by Marian Kazimierczuk)";
         information["TDK"] = R"(Based on "Ferrites and Accessories" by TDK)";
         information["Dixon"] = R"(Based on "Design of Flyback Transformers and Filter Inductors" by Lloyd H. Dixon)";

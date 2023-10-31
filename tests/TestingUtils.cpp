@@ -174,6 +174,45 @@ OpenMagnetics::CoreWrapper get_core(std::string shapeName,
     return core;
 }
 
+OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::DimensionWithTolerance altitude,
+                                                         OpenMagnetics::Cti cti,
+                                                         OpenMagnetics::InsulationType insulationType,
+                                                         OpenMagnetics::DimensionWithTolerance mainSupplyVoltage,
+                                                         OpenMagnetics::OvervoltageCategory overvoltageCategory,
+                                                         OpenMagnetics::PollutionDegree pollutionDegree,
+                                                         std::vector<OpenMagnetics::InsulationStandards> standards,
+                                                         double maximumVoltageRms,
+                                                         double maximumVoltagePeak,
+                                                         double frequency,
+                                                         OpenMagnetics::WiringTechnology wiringTechnology){
+    OpenMagnetics::InputsWrapper inputs;
+    OpenMagnetics::DesignRequirements designRequirements;
+    OpenMagnetics::InsulationRequirements insulationRequirements;
+    OpenMagnetics::OperatingPoint operatingPoint;
+    OpenMagnetics::OperatingPointExcitation excitation;
+    OpenMagnetics::SignalDescriptor voltage;
+    OpenMagnetics::Processed processedVoltage;
+
+    processedVoltage.set_rms(maximumVoltageRms);
+    processedVoltage.set_peak(maximumVoltagePeak);
+    voltage.set_processed(processedVoltage);
+    excitation.set_frequency(frequency);
+    excitation.set_voltage(voltage);
+    operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    insulationRequirements.set_altitude(altitude);
+    insulationRequirements.set_cti(cti);
+    insulationRequirements.set_insulation_type(insulationType);
+    insulationRequirements.set_main_supply_voltage(mainSupplyVoltage);
+    insulationRequirements.set_overvoltage_category(overvoltageCategory);
+    insulationRequirements.set_pollution_degree(pollutionDegree);
+    insulationRequirements.set_standards(standards);
+    designRequirements.set_insulation(insulationRequirements);
+    designRequirements.set_wiring_technology(wiringTechnology);
+    inputs.set_design_requirements(designRequirements);
+    return inputs;
+}
+
 json get_grinded_gap(double gapLength) {
     auto constants = OpenMagnetics::Constants();
     auto basicGapping = json::array();

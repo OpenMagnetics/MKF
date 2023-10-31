@@ -821,4 +821,34 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
+    TEST(Test_Magnetizing_Inductance_PQ_27_15) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 7;
+        double frequency = 100000;
+        std::string coreShape = "PQ 27/15";
+        std::string coreMaterial = "DMR95";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.00228);
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::CoilWrapper winding; 
+        OpenMagnetics::InputsWrapper inputs; 
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
+            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto ea = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        auto magnetizingInductance = ea.get_magnetizing_inductance().get_nominal().value();
+        auto reluctanceCore = ea.get_reluctance_core().value().get_nominal().value();
+        auto reluctanceGapping = ea.get_reluctance_gapping().value().get_nominal().value();
+        auto reluctanceUngappedCore = ea.get_reluctance_ungapped_core().value().get_nominal().value();
+        std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+        std::cout << "reluctanceCore: " << reluctanceCore << std::endl;
+        std::cout << "reluctanceGapping: " << reluctanceGapping << std::endl;
+        std::cout << "reluctanceUngappedCore: " << reluctanceUngappedCore << std::endl;
+    }
+
 }
