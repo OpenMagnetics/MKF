@@ -374,7 +374,7 @@ class Stocker():
 
     def try_get_material(self, text, manufacturer):  # sourcery skip: use-next
         def fix(text):
-            return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").upper()
+            return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").replace("Hƒ", "Hf").upper()
 
         materials = PyMKF.get_available_core_materials(manufacturer)
 
@@ -702,7 +702,7 @@ class FerroxcubeInventory(Stocker):
 
         core_data = pandas.DataFrame(self.core_data.values())
         out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        ndjson.dump(core_data.to_dict('records'), out_file, ensure_ascii=False)
         out_file.close()
 
 
@@ -954,7 +954,7 @@ class TdkInventory(Stocker):
 
         core_data = pandas.DataFrame(self.core_data.values())
         out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        ndjson.dump(core_data.to_dict('records'), out_file, ensure_ascii=False)
         out_file.close()
 
 
@@ -1200,7 +1200,7 @@ class MagneticsInventory(Stocker):
 
         core_data = pandas.DataFrame(self.core_data.values())
         out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        ndjson.dump(core_data.to_dict('records'), out_file, ensure_ascii=False)
         out_file.close()
 
 
@@ -1398,7 +1398,7 @@ class FairRiteInventory(Stocker):
         print(self.unfound_shapes)
         core_data = pandas.DataFrame(self.core_data.values())
         out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
-        ndjson.dump(core_data.to_dict('records'), out_file)
+        ndjson.dump(core_data.to_dict('records'), out_file, ensure_ascii=False)
         out_file.close()
 
 

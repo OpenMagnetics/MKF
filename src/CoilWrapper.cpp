@@ -329,7 +329,7 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     return {physicalTurnsThisSlot, slotParallelsProportion};
 }
 
-double get_area_used_in_wires(WireS wire, uint64_t physicalTurns) {
+double get_area_used_in_wires(Wire wire, uint64_t physicalTurns) {
         if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
             double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
             return physicalTurns * pow(wireDiameter, 2);
@@ -1379,29 +1379,27 @@ bool CoilWrapper::delimit_and_compact() {
 std::vector<WireWrapper> CoilWrapper::get_wires() {
     std::vector<WireWrapper> wirePerWinding;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
+        WireWrapper wire(std::get<Wire>(get_functional_description()[windingIndex].get_wire()));
         wirePerWinding.push_back(wire);
     }
     return wirePerWinding;
 }
 
 WireWrapper CoilWrapper::get_wire(size_t windingIndex) {
-    WireWrapper wire(std::get<WireS>(get_functional_description()[windingIndex].get_wire()));
+    WireWrapper wire(std::get<Wire>(get_functional_description()[windingIndex].get_wire()));
     return wire;
 }
 
 WireType CoilWrapper::get_wire_type(size_t windingIndex) {
     auto wireOrString = get_functional_description()[windingIndex].get_wire();
-    WireS wire;
+    Wire wire;
     if (std::holds_alternative<std::string>(wireOrString)) {
         wire = OpenMagnetics::find_wire_by_name(std::get<std::string>(wireOrString));
     }
     else {
-        wire = std::get<WireS>(wireOrString);
+        wire = std::get<Wire>(wireOrString);
     }
-    if (!wire.get_type())
-        throw std::runtime_error("Wire has no type!!");
-    return wire.get_type().value();
+    return wire.get_type();
 }
 
 

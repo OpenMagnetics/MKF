@@ -81,7 +81,7 @@ SUITE(WindingOhmicLosses) {
         turn.set_length(1);
 
         OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         strand.set_type(OpenMagnetics::WireType::ROUND);
         strand.set_material("copper");
         OpenMagnetics::DimensionWithTolerance conductingDiameter;
@@ -103,7 +103,7 @@ SUITE(WindingOhmicLosses) {
         turn.set_length(1);
 
         OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::WireSolid strand;
+        OpenMagnetics::WireRound strand;
         strand.set_type(OpenMagnetics::WireType::ROUND);
         strand.set_material("copper");
         OpenMagnetics::DimensionWithTolerance conductingDiameter;

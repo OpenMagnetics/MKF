@@ -25,7 +25,6 @@ enum class WindingSkinEffectLossesModels : int {
     ALBACH,
     PAYNE,
     // NAN,
-    VANDELAC_ZIOGAS,
     KAZIMIERCZUK,
     KUTKUT,
     FERREIRA,
@@ -40,7 +39,7 @@ class WindingSkinEffectLosses {
   protected:
   public:
     static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
-    static double calculate_skin_depth(WireS wire, double frequency, double temperature);
+    static double calculate_skin_depth(Wire wire, double frequency, double temperature);
     static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
 
 };
@@ -50,7 +49,7 @@ class WindingSkinEffectLossesModel {
   protected:
   public:
     std::string method_name = "Default";
-    virtual double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature) = 0;
+    virtual double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature) = 0;
     static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
 };
 
@@ -67,9 +66,9 @@ class WindingSkinEffectLossesModel {
 class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
   public:
     std::string method_name = "Wojda";
-    double calculate_skin_factor(WireS wire, double frequency, double temperature);
-    double calculate_penetration_ratio(WireS wire, double frequency, double temperature);
-    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_skin_factor(Wire wire, double frequency, double temperature);
+    double calculate_penetration_ratio(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature);
 
 };
 
@@ -77,28 +76,20 @@ class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 // https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_skin_factor(WireS wire, double frequency, double temperature);
-    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_skin_factor(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature);
 };
 
 // Based on The Ac Resistance Of Rectangular Conductors by Alan Payne
 // https://www.researchgate.net/publication/351307928_THE_AC_RESISTANCE_OF_RECTANGULAR_CONDUCTORS
 class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireS wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature);
 };
 
 // // Based on An Improved Calculation of Proximity-Effect Loss in High-Frequency Windings of Round Conductors by Xi Nan
 // // http://inductor.thayerschool.org/papers/newcalc.pdf
 // class WindingSkinEffectLossesNanModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
-
-// // Based on A Novel Approach for Minimizing High-Frequency Transformer Copper Losses by Jean-Pierre Vandelac And Phoivos D. Ziogas
-// // https://sci-hub.wf/10.1109/63.17944
-// class WindingSkinEffectLossesVandelacZiogasModel : public WindingSkinEffectLossesModel {
 //   public:
 //     static double get_skin_effect_losses_per_meter(Turn turn);
 //     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);

@@ -98,6 +98,17 @@ class InputsWrapper : public Inputs {
         get_mutable_operating_points()[index] = value;
     }
 
+    DimensionWithTolerance get_altitude();
+    Cti get_cti();
+    InsulationType get_insulation_type();
+    DimensionWithTolerance get_main_supply_voltage();
+    OvervoltageCategory get_overvoltage_category();
+    PollutionDegree get_pollution_degree();
+    std::vector<InsulationStandards> get_standards();
+    double get_maximum_voltage_peak();
+    double get_maximum_voltage_rms();
+    double get_maximum_frequency();
+
     void from_json(const json& j, Inputs& x);
     void to_json(json& j, const Inputs& x);
 

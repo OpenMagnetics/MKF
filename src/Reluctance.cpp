@@ -45,6 +45,62 @@ double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, Operating
     return get_ungapped_core_reluctance(core, initialPermeabilityValue);
 }
 
+
+double ReluctanceModel::get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
+    auto coreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
+
+    if (std::isnan(coreReluctance)) {
+        throw std::runtime_error("Core Reluctance must be a number, not NaN");
+    }
+    double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+    if (std::isnan(calculatedReluctance)) {
+        throw std::runtime_error("Reluctance must be a number, not NaN");
+    }
+    return calculatedReluctance;
+}
+
+double ReluctanceModel::get_core_reluctance(CoreWrapper core, double initialPermeability) {
+    auto coreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
+
+    double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+
+    return calculatedReluctance;
+}
+
+double ReluctanceModel::get_gapping_reluctance(CoreWrapper core) {
+    double calculatedReluctance = 0;
+    double calculatedCentralReluctance = 0;
+    double calculatedLateralReluctance = 0;
+    auto gapping = core.get_functional_description().get_gapping();
+    if (gapping.size() == 0) {
+        return 0;
+    }
+
+    // We recompute all gaps in case some is missing coordinates
+    for (const auto& gap : gapping) {
+        if (!gap.get_coordinates()) {
+            core.process_gap();
+            gapping = core.get_functional_description().get_gapping();
+            break;
+        }
+    }
+    for (const auto& gap : gapping) {
+        auto gapReluctance = get_gap_reluctance(gap);
+        auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
+        if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
+            calculatedLateralReluctance += 1 / gapReluctance["reluctance"];
+        }
+        else {
+            calculatedCentralReluctance += gapReluctance["reluctance"];
+        }
+        if (gapReluctance["fringing_factor"] < 1) {
+            std::cout << "fringing_factor " << gapReluctance["fringing_factor"] << std::endl;
+        }
+    }
+    calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
+    return calculatedReluctance;
+}
+
 std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
     double perimeter = 0;
     auto constants = Constants();

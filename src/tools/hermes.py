@@ -420,7 +420,7 @@ class Stocker():
 
     def try_get_material(self, text, manufacturer):  # sourcery skip: use-next
         def fix(text):
-            return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").upper()
+            return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").replace("Hƒ", "Hƒ").upper()
 
         materials = PyMKF.get_available_core_materials(manufacturer)
         materials.reverse()
@@ -2039,13 +2039,27 @@ class GatewayStocker(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    digikeyStocker = DigikeyStocker()
-    digikeyStocker.get_cores_stock()
+    # digikeyStocker = DigikeyStocker()
+    # digikeyStocker.get_cores_stock()
 
-    mouserStocker = MouserStocker()
-    mouserStocker.get_cores_stock()
+    # mouserStocker = MouserStocker()
+    # mouserStocker.get_cores_stock()
 
-    gatewayStocker = GatewayStocker()
-    gatewayStocker.get_cores_stock()
+    # gatewayStocker = GatewayStocker()
+    # gatewayStocker.get_cores_stock()
+
+
+    # cores = {}
+    # if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
+    #     with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+    #         previous_data = ndjson.load(f)
+    #         for row in previous_data:
+    #             cores[row['name']] = row
+    #             cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
+
+    # cores = pandas.DataFrame(cores.values())
+    # out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores.ndjson", "w")
+    # ndjson.dump(cores.to_dict('records'), out_file)
+    # out_file.close()
 
     # pprint.pprint(mouserStocker.unfound_descriptions)

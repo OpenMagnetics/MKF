@@ -218,7 +218,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             double temperature = inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature();
             double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
             auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
-            double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(2 * skinDepth);
+            double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor_round(2 * skinDepth);
             double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
             double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
@@ -380,7 +380,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
 
     auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
     auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
-    double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor(2 * skinDepth);
+    double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor_round(2 * skinDepth);
     double estimatedWireConductingArea = std::numbers::pi * pow(skinDepth, 2);
     double estimatedWireTotalArea = estimatedWireConductingArea / wireAirFillingFactor;
     double necessaryWireCopperArea = primaryCurrentRms / defaults.coreAdviserMaximumCurrentDensity;
