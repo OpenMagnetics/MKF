@@ -1,4 +1,5 @@
 #pragma once
+#include "WireWrapper.h"
 #include "BobbinWrapper.h"
 #include "InsulationMaterialWrapper.h"
 
@@ -14,7 +15,7 @@
 
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-extern std::map<std::string, OpenMagnetics::Wire> wireDatabase;
+extern std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
 extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;

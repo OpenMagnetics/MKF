@@ -42,8 +42,8 @@ class InputsWrapper : public Inputs {
 
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
     OperatingPoint get_operating_point(size_t index);
-    OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex, size_t windingIndex);
-    OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex);
+    OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex = 0, size_t windingIndex = 0);
+    OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex = 0);
     static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
 
     static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation,
@@ -107,6 +107,9 @@ class InputsWrapper : public Inputs {
     std::vector<InsulationStandards> get_standards();
     double get_maximum_voltage_peak();
     double get_maximum_voltage_rms();
+    double get_maximum_current_effective_frequency();
+    double get_maximum_current_peak();
+    double get_maximum_current_rms();
     double get_maximum_frequency();
 
     void from_json(const json& j, Inputs& x);

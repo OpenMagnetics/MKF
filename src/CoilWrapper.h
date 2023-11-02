@@ -64,10 +64,12 @@ class CoilWrapper : public Coil {
         CoilWrapper(const Coil coil, bool delimitAndCompact = true);
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
+        bool try_wind(bool delimitAndCompact);
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
         bool wind_by_sections();
+        bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_layers();
         bool wind_by_turns();
         bool calculate_insulation();

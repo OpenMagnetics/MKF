@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Utils.h"
+#include "InputsWrapper.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
@@ -112,8 +112,13 @@ class WireWrapper : public Wire {
         WireWrapper() = default;
         virtual ~WireWrapper() = default;
 
-        static std::optional<InsulationWireCoating> get_coating(Wire wire);
-        static WireWrapper get_strand(Wire wire);
+        static std::optional<InsulationWireCoating> resolve_coating(WireWrapper wire);
+        std::optional<InsulationWireCoating> resolve_coating();
+        static WireWrapper resolve_strand(WireWrapper wire);
+        WireWrapper resolve_strand();
+        static WireMaterial resolve_material(WireWrapper wire);
+        WireMaterial resolve_material();
+
         // Thought for enamelled round wires
         static double get_filling_factor_round(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
         static double get_outer_diameter_round(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
@@ -169,5 +174,10 @@ class WireWrapper : public Wire {
         }
 
         int get_equivalent_insulation_layers(double voltageToInsulate);
+
+        double calculate_effective_current_density(double rms, double frequency, double temperature);
+        double calculate_effective_current_density(OperatingPointExcitation excitation, double temperature);
+        double calculate_conducting_area();
+        static int calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
 };
 } // namespace OpenMagnetics

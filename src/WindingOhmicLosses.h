@@ -22,7 +22,9 @@ class WindingOhmicLosses {
     public:
         WindingOhmicLosses() {
         }
+        static double calculate_dc_resistance_per_meter(WireWrapper wire, double temperature);
         static double calculate_dc_resistance(Turn turn, WireWrapper wire, double temperature);
+        static double calculate_dc_resistance(double wireLength, WireWrapper wire, double temperature);
         static WindingLossesOutput calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature);
 };
 

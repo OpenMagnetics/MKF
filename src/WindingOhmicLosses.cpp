@@ -14,12 +14,20 @@
 namespace OpenMagnetics {
 
 double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, double temperature) {
-    double wireConductingArea;
     double wireLength = turn.get_length();
+    return calculate_dc_resistance(wireLength, wire, temperature);
+}
+
+double WindingOhmicLosses::calculate_dc_resistance(double wireLength, WireWrapper wire, double temperature) {
+    return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
+}
+
+double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, double temperature) {
+    double wireConductingArea;
     WireMaterial wireMaterial;
     Wire realWire;
     if (wire.get_type() == WireType::LITZ) {
-        realWire = WireWrapper::get_strand(wire);
+        realWire = WireWrapper::resolve_strand(wire);
     }
     else {
         realWire = wire;
@@ -55,8 +63,8 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, 
         double numberConductors = wire.get_number_conductors().value();
         wireConductingArea *= numberConductors;
     }
-    double dcResistance = resistivity * wireLength / wireConductingArea;
-    return dcResistance;
+    double dcResistancePerMeter = resistivity / wireConductingArea;
+    return dcResistancePerMeter;
 };
 
 WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
