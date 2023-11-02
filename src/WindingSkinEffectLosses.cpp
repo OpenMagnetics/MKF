@@ -160,7 +160,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
 double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(Wire wire, double frequency, double temperature) {
     Wire realWire;
     if (wire.get_type() == WireType::LITZ) {
-        realWire = WireWrapper::get_strand(wire);
+        realWire = WireWrapper::resolve_strand(wire);
     }
     else {
         realWire = wire;
@@ -178,7 +178,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(Wire wire,
             if (!wire.get_strand())
                 throw std::runtime_error("Litz wire is missing strand information");
 
-            auto strand = WireWrapper::get_strand(wire);
+            auto strand = WireWrapper::resolve_strand(wire);
             penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter().value()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter().value()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
             break;
         }

@@ -69,6 +69,29 @@ CoilWrapper::CoilWrapper(const Coil coil, bool delimitAndCompact) {
 
 }
 
+bool CoilWrapper::try_wind(bool delimitAndCompact) {
+    bool hasSectionsData = false;
+    bool hasLayersData = false;
+    bool hasTurnsData = false;
+
+    if (get_sections_description()) {
+        hasSectionsData = true;
+    }
+    if (get_layers_description()) {
+        hasLayersData = true;
+    }
+    if (get_turns_description()) {
+        hasTurnsData = true;
+    }
+
+    if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
+        if (wind() && delimitAndCompact) {
+            return delimit_and_compact();
+        }
+    }
+    return false;
+}
+
 bool CoilWrapper::wind() {
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
@@ -541,6 +564,9 @@ bool CoilWrapper::wind_by_sections() {
 
     if (_windingOrientation == WindingOrientation::HORIZONTAL) {
         interleavedWidth = roundFloat((windingWindowWidth - totalInsulationWidth) / _interleavingLevel / get_functional_description().size(), 9);
+        // std::cout << "get_functional_description().size(): " << get_functional_description().size() << std::endl;
+        // std::cout << "windingWindowWidth: " << windingWindowWidth << std::endl;
+        // std::cout << "interleavedWidth: " << interleavedWidth << std::endl;
         interleavedHeight = windingWindowHeight;
         currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + interleavedWidth / 2;
         currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1];
@@ -672,7 +698,6 @@ bool CoilWrapper::wind_by_sections() {
 
     set_sections_description(sectionsDescription);
     return true;
-
 }
 
 bool CoilWrapper::wind_by_layers() {

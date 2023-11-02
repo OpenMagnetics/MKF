@@ -70,7 +70,7 @@ void fft(std::vector<std::complex<double>>& x) {
 
 double calculate_waveform_average(Waveform waveform) {
     double integration = 0;
-    double period = waveform.get_time().value().back() - waveform.get_time().value().front();
+    double period = waveform.get_time()->back() - waveform.get_time()->front();
     for (size_t i = 0; i < waveform.get_data().size() - 1; ++i)
     {
         double area = (waveform.get_data()[i + 1] + waveform.get_data()[i]) / 2 * (waveform.get_time().value()[i + 1] - waveform.get_time().value()[i]);
@@ -374,7 +374,7 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
 SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
-    Waveform sourceWaveform = excitation.get_current().value().get_waveform().value();
+    Waveform sourceWaveform = excitation.get_current()->get_waveform().value();
     std::vector<double> source = sourceWaveform.get_data();
     bool isWaveformSampled =
         !bool(sourceWaveform.get_time()) || source.size() == constants.numberPointsSamplesWaveforms;
@@ -564,7 +564,7 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor primarySignalD
     for (auto& datum : primaryWaveform.get_data()) {
         waveform.get_mutable_data().push_back(datum * ratio);
     }
-    // waveform.set_time(primarySignalDescriptor.get_waveform().value().get_time());
+    // waveform.set_time(primarySignalDescriptor.get_waveform()->get_time());
     reflected_waveform.set_waveform(waveform);
 
     return reflected_waveform;
@@ -590,7 +590,7 @@ SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor signal,
     }
     Waveform newWaveform;
 
-    double period = signal.get_waveform().value().get_time().value().back() - signal.get_waveform().value().get_time().value().front();
+    double period = signal.get_waveform()->get_time()->back() - signal.get_waveform()->get_time()->front();
     double frequency = 1.0 / period;
     double peakToPeak = processed.get_peak_to_peak().value() * ratio;
     double offset = processed.get_offset() * ratio;
@@ -673,7 +673,7 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
                 excitation.set_current(current_excitation);
             }
             else {
-                auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
+                auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
                 excitation.set_current(
                     calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
@@ -940,7 +940,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
                                                                 bool compress) {
     double dcCurrent = 0;
     if (excitation.get_current()) {
-        if (!excitation.get_current().value().get_processed()) {
+        if (!excitation.get_current()->get_processed()) {
             auto currentExcitation = excitation.get_current().value();
             auto currentExcitationWaveform = currentExcitation.get_waveform().value();
             auto sampledCurrentWaveform = calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
@@ -948,7 +948,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
             currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform));
             excitation.set_current(currentExcitation);
         }
-        dcCurrent = excitation.get_current().value().get_processed().value().get_offset();
+        dcCurrent = excitation.get_current()->get_processed()->get_offset();
     }
 
     auto sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
@@ -1134,11 +1134,11 @@ OperatingPoint InputsWrapper::get_operating_point(size_t index) {
     return get_mutable_operating_points()[index];
 }
 
-OperatingPointExcitation InputsWrapper::get_winding_excitation(size_t operatingPointIndex=0, size_t windingIndex=0) {
+OperatingPointExcitation InputsWrapper::get_winding_excitation(size_t operatingPointIndex, size_t windingIndex) {
     return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 }
 
-OperatingPointExcitation InputsWrapper::get_primary_excitation(size_t operatingPointIndex=0) {
+OperatingPointExcitation InputsWrapper::get_primary_excitation(size_t operatingPointIndex) {
     return get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0];
 }
 
@@ -1166,7 +1166,7 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
 
             currentWaveform = current.get_waveform().value();
 
-            currentWaveform = operatingPoint->get_excitations_per_winding()[0].get_current().value().get_waveform().value();
+            currentWaveform = operatingPoint->get_excitations_per_winding()[0].get_current()->get_waveform().value();
         }
     }
     if (excitation.get_voltage()) {
@@ -1184,7 +1184,7 @@ double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPo
     auto constants = Constants();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
     double frequency = excitation.get_frequency();
-    Waveform sampledWaveform = excitation.get_voltage().value().get_waveform().value();
+    Waveform sampledWaveform = excitation.get_voltage()->get_waveform().value();
 
     if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.numberPointsSamplesWaveforms) {
         sampledWaveform = calculate_sampled_waveform(sampledWaveform, frequency);
@@ -1203,7 +1203,7 @@ double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPo
     }
     integral *= time_per_point;
 
-    double voltageRms = excitation.get_voltage().value().get_processed().value().get_rms().value();
+    double voltageRms = excitation.get_voltage()->get_processed()->get_rms().value();
 
     double waveformCoefficient = 2 * voltageRms / (frequency * integral);
     return waveformCoefficient;
@@ -1211,8 +1211,8 @@ double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPo
 
 double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
-    Waveform voltageSampledWaveform = excitation.get_voltage().value().get_waveform().value();
-    Waveform currentSampledWaveform = excitation.get_current().value().get_waveform().value();
+    Waveform voltageSampledWaveform = excitation.get_voltage()->get_waveform().value();
+    Waveform currentSampledWaveform = excitation.get_current()->get_waveform().value();
 
     if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != constants.numberPointsSamplesWaveforms) {
         voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency);
@@ -1242,7 +1242,7 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     auto compressedWaveform = waveform;
     if (is_waveform_sampled(waveform))
         compressedWaveform = compress_waveform(waveform);
-    double period = compressedWaveform.get_time().value().back() - compressedWaveform.get_time().value().front();
+    double period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
 
     if (compressedWaveform.get_data().size() == 3 && 
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[2]) {
@@ -1356,27 +1356,27 @@ OperatingPoint InputsWrapper::scale_time_to_frequency(OperatingPoint operatingPo
 OperatingPointExcitation InputsWrapper::scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency){
     OperatingPointExcitation scaledExcitation(excitation);
     scaledExcitation.set_frequency(newFrequency);
-    if (excitation.get_current() && excitation.get_current().value().get_waveform()) {
+    if (excitation.get_current() && excitation.get_current()->get_waveform()) {
         auto current = excitation.get_current().value();
         current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));
         scaledExcitation.set_current(current);
     }
-    if (excitation.get_voltage() && excitation.get_voltage().value().get_waveform()) {
+    if (excitation.get_voltage() && excitation.get_voltage()->get_waveform()) {
         auto voltage = excitation.get_voltage().value();
         voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
         scaledExcitation.set_voltage(voltage);
     }
-    if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current().value().get_waveform()) {
+    if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
         magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetizing_current(magnetizingCurrent);
     }
-    if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density().value().get_waveform()) {
+    if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
         magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetic_flux_density(magneticFluxDensity);
     }
-    if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength().value().get_waveform()) {
+    if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
         auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
         magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
         scaledExcitation.set_magnetic_field_strength(magneticFieldStrength);
@@ -1408,9 +1408,9 @@ double InputsWrapper::get_maximum_voltage_peak() {
         for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
             if (!excitation.get_voltage()) 
                 throw std::invalid_argument("Missing voltage in excitation");
-            if (!excitation.get_voltage().value().get_processed()) 
+            if (!excitation.get_voltage()->get_processed()) 
                 throw std::invalid_argument("Voltage has not been processed");
-            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage().value().get_processed().value().get_peak().value());
+            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_peak().value());
         }
     }
 
@@ -1429,13 +1429,73 @@ double InputsWrapper::get_maximum_voltage_rms() {
         for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
             if (!excitation.get_voltage()) 
                 throw std::invalid_argument("Missing voltage in excitation");
-            if (!excitation.get_voltage().value().get_processed()) 
+            if (!excitation.get_voltage()->get_processed()) 
                 throw std::invalid_argument("Voltage has not been processed");
-            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage().value().get_processed().value().get_rms().value());
+            maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_rms().value());
         }
     }
 
     return maximumVoltage;
+}
+
+double InputsWrapper::get_maximum_current_rms() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentRms = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_current()) 
+                throw std::invalid_argument("Missing current in excitation");
+            if (!excitation.get_current()->get_processed()) 
+                throw std::invalid_argument("Current has not been processed");
+            maximumCurrentRms = std::max(maximumCurrentRms, excitation.get_current()->get_processed()->get_rms().value());
+        }
+    }
+    return maximumCurrentRms;
+}
+
+double InputsWrapper::get_maximum_current_peak() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentPeak = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_current()) 
+                throw std::invalid_argument("Missing current in excitation");
+            if (!excitation.get_current()->get_processed()) 
+                throw std::invalid_argument("Current has not been processed");
+            maximumCurrentPeak = std::max(maximumCurrentPeak, excitation.get_current()->get_processed()->get_peak().value());
+        }
+    }
+    return maximumCurrentPeak;
+}
+
+double InputsWrapper::get_maximum_current_effective_frequency() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentEffectiveFrequency = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_current()) 
+                throw std::invalid_argument("Missing current in excitation");
+            if (!excitation.get_current()->get_processed()) 
+                throw std::invalid_argument("Current has not been processed");
+            maximumCurrentEffectiveFrequency = std::max(maximumCurrentEffectiveFrequency, excitation.get_current()->get_processed()->get_effective_frequency().value());
+        }
+    }
+    return maximumCurrentEffectiveFrequency;
 }
 
 double InputsWrapper::get_maximum_frequency() {
@@ -1458,64 +1518,64 @@ double InputsWrapper::get_maximum_frequency() {
 DimensionWithTolerance InputsWrapper::get_altitude() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_altitude())
+    if (!get_design_requirements().get_insulation()->get_altitude())
         throw std::invalid_argument("Missing altitude in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_altitude().value();
+    return get_design_requirements().get_insulation()->get_altitude().value();
 }
 
 Cti InputsWrapper::get_cti() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_cti())
+    if (!get_design_requirements().get_insulation()->get_cti())
         throw std::invalid_argument("Missing cti in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_cti().value();
+    return get_design_requirements().get_insulation()->get_cti().value();
 }
 
 InsulationType InputsWrapper::get_insulation_type() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_insulation_type())
+    if (!get_design_requirements().get_insulation()->get_insulation_type())
         throw std::invalid_argument("Missing insulation_type in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_insulation_type().value();
+    return get_design_requirements().get_insulation()->get_insulation_type().value();
 }
 
 DimensionWithTolerance InputsWrapper::get_main_supply_voltage() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_main_supply_voltage())
+    if (!get_design_requirements().get_insulation()->get_main_supply_voltage())
         throw std::invalid_argument("Missing main_supply_voltage in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_main_supply_voltage().value();
+    return get_design_requirements().get_insulation()->get_main_supply_voltage().value();
 }
 
 OvervoltageCategory InputsWrapper::get_overvoltage_category() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_overvoltage_category())
+    if (!get_design_requirements().get_insulation()->get_overvoltage_category())
         throw std::invalid_argument("Missing overvoltage_category in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_overvoltage_category().value();
+    return get_design_requirements().get_insulation()->get_overvoltage_category().value();
 }
 
 PollutionDegree InputsWrapper::get_pollution_degree() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_pollution_degree())
+    if (!get_design_requirements().get_insulation()->get_pollution_degree())
         throw std::invalid_argument("Missing pollution_degree in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_pollution_degree().value();
+    return get_design_requirements().get_insulation()->get_pollution_degree().value();
 }
 
 std::vector<InsulationStandards> InputsWrapper::get_standards() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");
-    if (!get_design_requirements().get_insulation().value().get_standards())
+    if (!get_design_requirements().get_insulation()->get_standards())
         throw std::invalid_argument("Missing standards in insulation requirements");
 
-    return get_design_requirements().get_insulation().value().get_standards().value();
+    return get_design_requirements().get_insulation()->get_standards().value();
 }
 
 

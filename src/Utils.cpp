@@ -18,7 +18,7 @@ using json = nlohmann::json;
 
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-std::map<std::string, OpenMagnetics::Wire> wireDatabase;
+std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
 std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
 std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
@@ -66,7 +66,7 @@ void load_databases(bool withAliases) {
         std::string myline;
         while (std::getline(ndjsonFile, myline)) {
             json jf = json::parse(myline);
-            Wire wire(jf);
+            WireWrapper wire(jf);
             wireDatabase[jf["name"]] = wire;
         }
     }
