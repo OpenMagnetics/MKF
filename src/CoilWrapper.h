@@ -2,7 +2,7 @@
 
 #include "InputsWrapper.h"
 #include "WireWrapper.h"
-#include "Utils.h"
+#include "BobbinWrapper.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
@@ -81,8 +81,38 @@ class CoilWrapper : public Coil {
             return coilLog;
         }
 
-        void set_inputs(InputsWrapper inputs) {
+        void set_inputs(InputsWrapper inputs) {  // TODO: change to DesignRequirements?
             _inputs = inputs;
+        }
+        void set_interleaving_level(uint8_t interleavingLevel) {
+            _interleavingLevel = interleavingLevel;
+        }
+        void set_winding_orientation(WindingOrientation windingOrientation) {
+            _windingOrientation = windingOrientation;
+        }
+        void set_layers_orientation(WindingOrientation layersOrientation) {
+            _layersOrientation = layersOrientation;
+        }
+        void set_turns_alignment(CoilAlignment turnsAlignment) {
+            _turnsAlignment = turnsAlignment;
+        }
+        void set_section_alignment(CoilAlignment sectionAlignment) {
+            _sectionAlignment = sectionAlignment;
+        }
+        uint8_t get_interleaving_level() {
+            return _interleavingLevel;
+        }
+        WindingOrientation get_winding_orientation() {
+            return _windingOrientation;
+        }
+        WindingOrientation get_layers_orientation() {
+            return _layersOrientation;
+        }
+        CoilAlignment get_turns_alignment() {
+            return _turnsAlignment;
+        }
+        CoilAlignment get_section_alignment() {
+            return _sectionAlignment;
         }
 
         bool wind();
@@ -136,8 +166,10 @@ class CoilWrapper : public Coil {
         size_t get_winding_index_by_name(std::string name);
 
         std::vector<WireWrapper> get_wires();
-        WireWrapper get_wire(size_t windingIndex);
         WireType get_wire_type(size_t windingIndex);
+        static WireType get_wire_type(CoilFunctionalDescription coilFunctionalDescription);
+        WireWrapper resolve_wire(size_t windingIndex);
+        static WireWrapper resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
 
         double horizontalFillingFactor(Section section);
 
@@ -146,6 +178,9 @@ class CoilWrapper : public Coil {
         double horizontalFillingFactor(Layer layer);
 
         double verticalFillingFactor(Layer layer);
+
+        static BobbinWrapper resolve_bobbin(CoilWrapper coil);
+        BobbinWrapper resolve_bobbin();
 
 };
 } // namespace OpenMagnetics

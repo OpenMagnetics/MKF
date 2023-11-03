@@ -23,47 +23,27 @@ double WindingOhmicLosses::calculate_dc_resistance(double wireLength, WireWrappe
 }
 
 double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, double temperature) {
-    double wireConductingArea;
-    WireMaterial wireMaterial;
-    Wire realWire;
-    if (wire.get_type() == WireType::LITZ) {
-        realWire = WireWrapper::resolve_strand(wire);
-    }
-    else {
-        realWire = wire;
-    }
 
-    auto wireMaterialDataOrString = realWire.get_material().value();
-    if (std::holds_alternative<std::string>(wireMaterialDataOrString)) {
-        auto wireMaterialName = std::get<std::string>(wireMaterialDataOrString);
-        wireMaterial = find_wire_material_by_name(wireMaterialName);
-    }
-    else {
-        wireMaterial = std::get<WireMaterial>(wireMaterialDataOrString);
-    }
+    WireMaterial wireMaterial = wire.resolve_material();
+
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
-    switch(wire.get_type()) {
-        case WireType::ROUND:
-            wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
-            break;
-        case WireType::LITZ:
-            wireConductingArea = std::numbers::pi * pow(resolve_dimensional_values(realWire.get_conducting_diameter().value()) / 2, 2);
-            break;
-        case WireType::RECTANGULAR:
-        case WireType::FOIL:
-            wireConductingArea = resolve_dimensional_values(realWire.get_conducting_width().value()) * resolve_dimensional_values(realWire.get_conducting_height().value());
-            break;
-        default:
-            throw std::runtime_error("Unknown wire type in WindingOhmicLosses");
-    }
+    double wireConductingArea = wire.calculate_conducting_area();
 
-    if (wire.get_number_conductors()) {
-        double numberConductors = wire.get_number_conductors().value();
-        wireConductingArea *= numberConductors;
-    }
     double dcResistancePerMeter = resistivity / wireConductingArea;
+    return dcResistancePerMeter;
+};
+
+double WindingOhmicLosses::calculate_effective_resistance_per_meter(WireWrapper wire, double frequency, double temperature) {
+    WireMaterial wireMaterial = wire.resolve_material();
+
+    auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
+
+    double wireEffectiveConductingArea = wire.calculate_effective_conducting_area(frequency, temperature);
+
+    double dcResistancePerMeter = resistivity / wireEffectiveConductingArea;
     return dcResistancePerMeter;
 };
 
@@ -79,7 +59,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
     for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
         seriesResistancePerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
         dcCurrentPerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
-        dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value().get_processed().value().get_rms().value());
+        dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value());
     }
 
     std::vector<double> dcResistancePerTurn;
@@ -155,5 +135,20 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
     result.set_current_divider_per_turn(currentDividerPerTurn);
 
     return result;
+}
+
+double WindingOhmicLosses::calculate_ohmic_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature) {
+
+    double dcResistancePerMeter = calculate_dc_resistance_per_meter(wire, temperature);
+    if (!current.get_processed()) {
+        throw std::runtime_error("Current is not processed");
+    }
+    if (!current.get_processed()->get_rms()) {
+        throw std::runtime_error("Current processed is missing field RMS");
+    }
+    auto currentRms = current.get_processed()->get_rms().value();
+    double windingOhmicLossesPerMeter = pow(currentRms, 2) * dcResistancePerMeter;
+
+    return windingOhmicLossesPerMeter;
 };
 } // namespace OpenMagnetics

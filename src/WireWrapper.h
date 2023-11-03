@@ -87,6 +87,10 @@ class WireWrapper : public Wire {
                 set_standard_name(wire.get_standard_name().value());
             if (wire.get_strand())
                 set_strand(wire.get_strand().value());
+            if (wire.get_conducting_area())
+                set_conducting_area(wire.get_conducting_area().value());
+            if (wire.get_edge_radius())
+                set_edge_radius(wire.get_edge_radius().value());
         }
 
         WireWrapper(WireRound wire) {
@@ -108,7 +112,11 @@ class WireWrapper : public Wire {
                 set_standard(wire.get_standard().value());
             if (wire.get_standard_name())
                 set_standard_name(wire.get_standard_name().value());
+            if (wire.get_conducting_area())
+                set_conducting_area(wire.get_conducting_area().value());
         }
+
+
         WireWrapper() = default;
         virtual ~WireWrapper() = default;
 
@@ -175,9 +183,19 @@ class WireWrapper : public Wire {
 
         int get_equivalent_insulation_layers(double voltageToInsulate);
 
-        double calculate_effective_current_density(double rms, double frequency, double temperature);
         double calculate_effective_current_density(OperatingPointExcitation excitation, double temperature);
+        double calculate_effective_current_density(SignalDescriptor current, double temperature);
+        double calculate_effective_current_density(double rms, double frequency, double temperature);
+        double calculate_effective_conducting_area(double frequency, double temperature);
         double calculate_conducting_area();
-        static int calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
+
+        static int calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper& wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
+        static int calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
+        static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
+        static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
+
+        double get_maximum_width();
+        double get_maximum_height();
+
 };
 } // namespace OpenMagnetics

@@ -16,6 +16,26 @@ class WindingLosses
         return windingLossesOutput;
     }
 
+    static double calculate_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature)
+    {
+        return WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature);
+    }
+
+    static double calculate_effective_resistance_per_meter(WireWrapper wire, double effectiveFrequency, double temperature)
+    {
+        return WindingOhmicLosses::calculate_effective_resistance_per_meter(wire, effectiveFrequency, temperature);
+    }
+
+
+    static double calculate_skin_effect_resistance_per_meter(WireWrapper wire, SignalDescriptor current, double temperature)
+    {
+        if (!current.get_processed()->get_rms()) {
+            throw std::runtime_error("Current processed is missing field RMS");
+        }
+        auto currentRms = current.get_processed()->get_rms().value();
+        return WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature) / pow(currentRms, 2);
+    }
+
 };
 
 } // namespace OpenMagnetics

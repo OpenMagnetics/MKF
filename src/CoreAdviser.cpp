@@ -1,3 +1,4 @@
+#include "BobbinWrapper.h"
 #include "CoreAdviser.h"
 #include "MagnetizingInductance.h"
 #include "WindingSkinEffectLosses.h"
@@ -153,7 +154,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             powerMean += fabs(voltageWaveformData[i] * currentWaveformData[i]);
         }
         powerMean /= voltageWaveformData.size();
-        areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * frequency * defaults.coreAdviserMaximumCurrentDensity));
+        areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * frequency * defaults.maximumCurrentDensity));
     }
 
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
@@ -383,7 +384,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
     double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor_round(2 * skinDepth);
     double estimatedWireConductingArea = std::numbers::pi * pow(skinDepth, 2);
     double estimatedWireTotalArea = estimatedWireConductingArea / wireAirFillingFactor;
-    double necessaryWireCopperArea = primaryCurrentRms / defaults.coreAdviserMaximumCurrentDensity;
+    double necessaryWireCopperArea = primaryCurrentRms / defaults.maximumCurrentDensity;
     double estimatedParallels = ceil(necessaryWireCopperArea / estimatedWireConductingArea);
 
     std::list<size_t> listOfIndexesToErase;
@@ -1106,6 +1107,10 @@ void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWi
         OpenMagnetics::NumberTurns numberTurns(coil.get_number_turns(0), inputs.get_design_requirements());
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 
+        (*masMagneticsWithScoring)[i].first.set_inputs(inputs);
+        if ((*masMagneticsWithScoring)[i].first.get_magnetic().get_core().get_functional_description().get_type() != CoreType::TOROIDAL) {
+            (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().set_bobbin(BobbinWrapper::create_quick_bobbin((*masMagneticsWithScoring)[i].first.get_magnetic().get_core()));
+        }
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
             auto primary_winding = coil.get_functional_description()[0];
             primary_winding.set_number_turns(numberTurnsCombination[windingIndex]);

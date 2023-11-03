@@ -16,12 +16,14 @@ struct Defaults {
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
     const double coreAdviserMagneticFluxDensityReference = 0.5;
-    const double coreAdviserMaximumCurrentDensity = 7000000;
     const double coreAdviserThresholdValidity = 0.9;
     const double coreAdviserMaximumCoreTemperature = 150;
     const double coreAdviserMaximumPercentagePowerCoreLosses = 0.05;
     const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 500;
     const uint64_t coreAdviserMaximumNumberStacks = 4;
+    const double maximumCurrentDensity = 7000000;
+    const double maximumEffectiveCurrentDensity = 12000000;
+    const double maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double windingLossesHarmonicAmplitudeThreshold = 0.05;

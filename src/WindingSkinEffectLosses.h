@@ -41,6 +41,7 @@ class WindingSkinEffectLosses {
     static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
     static double calculate_skin_depth(Wire wire, double frequency, double temperature);
     static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
+    static double calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
 
 };
 

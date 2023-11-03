@@ -2,6 +2,7 @@
 
 #include "json.hpp"
 
+#include "CoreWrapper.h"
 #include <MAS.hpp>
 #include <cmath>
 #include <filesystem>
@@ -41,10 +42,11 @@ class BobbinWrapper : public Bobbin {
     }
     BobbinWrapper() = default;
     virtual ~BobbinWrapper() = default;
+    
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
     static std::pair<double, double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
     static BobbinWrapper create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
-    static BobbinWrapper create_quick_bobbin(MagneticCore core, bool nullDimensions=false);
+    static BobbinWrapper create_quick_bobbin(CoreWrapper core, bool nullDimensions=false);
 
 };
 } // namespace OpenMagnetics

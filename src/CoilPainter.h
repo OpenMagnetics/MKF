@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreWrapper.h"
-#include "CoilWrapper.h"
+#include "MagneticWrapper.h"
 #include "Utils.h"
 #include "svg.hpp"
 #include <MAS.hpp>
@@ -28,16 +28,16 @@ class CoilPainter : public Coil {
     void set_opacity(double opacity) {
         _opacity = opacity;
     }
-    SVG::SVG* paint_core(Magnetic magnetic);
+    SVG::SVG* paint_core(MagneticWrapper magnetic);
     SVG::SVG* paint_two_piece_set_core(CoreWrapper core);
-    SVG::SVG* paint_bobbin(Magnetic magnetic);
-    SVG::SVG* paint_two_piece_set_bobbin(Magnetic magnetic);
-    SVG::SVG* paint_winding_sections(Magnetic magnetic);
-    SVG::SVG* paint_two_piece_set_winding_sections(Magnetic magnetic);
-    SVG::SVG* paint_winding_layers(Magnetic magnetic);
-    SVG::SVG* paint_two_piece_set_winding_layers(Magnetic magnetic);
-    SVG::SVG* paint_winding_turns(Magnetic magnetic);
-    SVG::SVG* paint_two_piece_set_winding_turns(Magnetic magnetic);
+    SVG::SVG* paint_bobbin(MagneticWrapper magnetic);
+    SVG::SVG* paint_two_piece_set_bobbin(MagneticWrapper magnetic);
+    SVG::SVG* paint_winding_sections(MagneticWrapper magnetic);
+    SVG::SVG* paint_two_piece_set_winding_sections(MagneticWrapper magnetic);
+    SVG::SVG* paint_winding_layers(MagneticWrapper magnetic);
+    SVG::SVG* paint_two_piece_set_winding_layers(MagneticWrapper magnetic);
+    SVG::SVG* paint_winding_turns(MagneticWrapper magnetic);
+    SVG::SVG* paint_two_piece_set_winding_turns(MagneticWrapper magnetic);
 
 };
 } // namespace OpenMagnetics
