@@ -1,3 +1,4 @@
+#include "CoilWrapper.h"
 #include "CoilPainter.h"
 #include "MAS.hpp"
 #include "Utils.h"
@@ -14,11 +15,11 @@ std::vector<SVG::Point> scale_points(std::vector<SVG::Point> points, double imag
     return scaledPoints;
 }
 
-SVG::SVG* CoilPainter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
     auto constants = Constants();
-    CoilWrapper winding = CoilWrapper(magnetic.get_coil());
+    CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
-    double imageHeight = core.get_processed_description().value().get_height();
+    double imageHeight = core.get_processed_description()->get_height();
 
     if (!magnetic.get_coil().get_sections_description()) {
         throw std::runtime_error("Winding sections not created");
@@ -55,11 +56,14 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
     return _root;
 }
 
-SVG::SVG* CoilPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
-    double imageHeight = core.get_processed_description().value().get_height();
+    if (!core.get_processed_description()) {
+        throw std::runtime_error("Core has not being processed");
+    }
+    double imageHeight = core.get_processed_description()->get_height();
 
     if (!winding.get_layers_description()) {
         throw std::runtime_error("Winding layers not created");
@@ -98,11 +102,11 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
     return _root;
 }
 
-SVG::SVG* CoilPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
-    double imageHeight = core.get_processed_description().value().get_height();
+    double imageHeight = core.get_processed_description()->get_height();
     auto wirePerWinding = winding.get_wires();
 
     if (!winding.get_turns_description()) {
@@ -194,10 +198,14 @@ SVG::SVG* CoilPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
     return _root;
 }
 
-SVG::SVG* CoilPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
-    auto bobbinProcessedDescription = std::get<Bobbin>(magnetic.get_coil().get_bobbin()).get_processed_description().value();
+SVG::SVG* CoilPainter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        throw std::runtime_error("Bobbin has not being processed");
+    }
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     CoreWrapper core = magnetic.get_core();
-    double imageHeight = core.get_processed_description().value().get_height();
+    double imageHeight = core.get_processed_description()->get_height();
 
     std::vector<double> bobbinCoordinates = std::vector<double>({0, 0, 0});
     if (bobbinProcessedDescription.get_coordinates()) {
@@ -366,7 +374,7 @@ SVG::SVG* CoilPainter::paint_two_piece_set_core(CoreWrapper core) {
     return _root;
 }
 
-SVG::SVG* CoilPainter::paint_core(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_core(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     switch(shape.get_family()) {
@@ -379,7 +387,7 @@ SVG::SVG* CoilPainter::paint_core(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* CoilPainter::paint_bobbin(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_bobbin(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     switch(shape.get_family()) {
@@ -392,7 +400,7 @@ SVG::SVG* CoilPainter::paint_bobbin(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* CoilPainter::paint_winding_sections(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_sections(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -406,7 +414,7 @@ SVG::SVG* CoilPainter::paint_winding_sections(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* CoilPainter::paint_winding_layers(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_layers(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -420,7 +428,7 @@ SVG::SVG* CoilPainter::paint_winding_layers(Magnetic magnetic) {
     }
 }
 
-SVG::SVG* CoilPainter::paint_winding_turns(Magnetic magnetic) {
+SVG::SVG* CoilPainter::paint_winding_turns(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();

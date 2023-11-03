@@ -896,7 +896,12 @@ namespace OpenMagnetics {
 
     double WireWrapper::calculate_conducting_area() {
         if (!get_number_conductors()) {
-            throw std::runtime_error("Missing number of conductors for wire");
+            if (get_type() == WireType::LITZ) {
+                throw std::runtime_error("Missing number of conductors for wire");
+            }
+            else {
+                set_number_conductors(1);
+            }
         }
         switch (get_type()) {
             case WireType::LITZ:
@@ -946,15 +951,24 @@ namespace OpenMagnetics {
     }
 
     double WireWrapper::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
-        double frequency = excitation.get_frequency();
-        double rms = excitation.get_current()->get_processed()->get_rms().value();
-        return calculate_effective_current_density(rms, frequency, temperature);
+        if (!excitation.get_current()) {
+            throw std::runtime_error("Current is missing");
+        }
+        return calculate_effective_current_density(excitation.get_current().value(), temperature);
     }
 
-    double WireWrapper::calculate_effective_current_density(double rms, double frequency, double temperature) {
+    double WireWrapper::calculate_effective_current_density(SignalDescriptor current, double temperature) {
+        if (!current.get_processed()) {
+            throw std::runtime_error("Current is not processed");
+        }
+        double effectiveFrequency = current.get_processed()->get_effective_frequency().value();
+        double rms = current.get_processed()->get_rms().value();
+        return calculate_effective_current_density(rms, effectiveFrequency, temperature);
+    }
+
+    double WireWrapper::calculate_effective_conducting_area(double frequency, double temperature) {
         auto material = resolve_material();
         auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material,  frequency, temperature);
-        double effectiveCurrentDensity;
         double conductingSmallestDimension;
         double effectiveConductingArea;
         switch (get_type()) {
@@ -992,6 +1006,11 @@ namespace OpenMagnetics {
         }
 
         auto conductingArea = calculate_conducting_area();
+        if (!get_conducting_area()) {
+            DimensionWithTolerance dimensionWithTolerance;
+            dimensionWithTolerance.set_nominal(conductingArea);
+            set_conducting_area(dimensionWithTolerance);
+        }
         double nonConductingArea;
         if (skinDepth < conductingSmallestDimension / 2) {
             switch (get_type()) {
@@ -1022,9 +1041,14 @@ namespace OpenMagnetics {
             effectiveConductingArea = conductingArea;
         }
 
-        return rms / effectiveConductingArea;
+        return effectiveConductingArea;
     }
-    int WireWrapper::calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper wire, double maximumEffectiveCurrentDensity, size_t windingIndex) {
+
+    double WireWrapper::calculate_effective_current_density(double rms, double frequency, double temperature) {
+        return rms / calculate_effective_conducting_area(frequency, temperature);
+    }
+
+    int WireWrapper::calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper& wire, double maximumEffectiveCurrentDensity, size_t windingIndex) {
         int maximumNumberParallels = 0;
         for (int operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
             double temperature = inputs.get_operating_points()[operatingPointIndex].get_conditions().get_ambient_temperature();
@@ -1034,6 +1058,50 @@ namespace OpenMagnetics {
         }
 
         return maximumNumberParallels;
+    }
+
+    int WireWrapper::calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+        auto effectiveCurrentDensity = wire.calculate_effective_current_density(rms, effectiveFrequency, temperature);
+        int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
+        return numberParallels;
+    }
+
+    int WireWrapper::calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+        auto effectiveCurrentDensity = wire.calculate_effective_current_density(excitation, temperature);
+        int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
+        return numberParallels;
+    }
+
+    int WireWrapper::calculate_number_parallels_needed(SignalDescriptor current, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+        auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, temperature);
+        int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
+        return numberParallels;
+    }
+
+    double WireWrapper::get_maximum_width() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                    return resolve_dimensional_values(get_outer_diameter().value());
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_outer_width().value());
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
+    double WireWrapper::get_maximum_height() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                    return resolve_dimensional_values(get_outer_diameter().value());
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_outer_height().value());
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
     }
 
 } // namespace OpenMagnetics

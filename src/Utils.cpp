@@ -257,7 +257,7 @@ std::vector<std::string> get_wire_names() {
     return wireNames;
 }
 
-OpenMagnetics::Wire find_wire_by_name(std::string name) {
+OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
     if (wireDatabase.empty()) {
         load_databases();
     }
@@ -269,7 +269,7 @@ OpenMagnetics::Wire find_wire_by_name(std::string name) {
     }
 }
 
-OpenMagnetics::Bobbin find_bobbin_by_name(std::string name) {
+OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
     if (bobbinDatabase.empty()) {
         load_databases();
     }

@@ -1,5 +1,4 @@
 #include "Utils.h"
-#include "CoreWrapper.h"
 #include "BobbinWrapper.h"
 #include <cmath>
 #include <filesystem>
@@ -30,7 +29,7 @@ namespace OpenMagnetics {
 class BobbinEDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
             processedDescription.set_column_thickness(dimensions["s1"]);
@@ -50,7 +49,7 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
 class BobbinRmDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
@@ -70,7 +69,7 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
 class BobbinEpDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
@@ -91,7 +90,7 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
 class BobbinEtdDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
@@ -112,7 +111,7 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
 class BobbinPmDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["d2"] - dimensions["d3"]) / 2);
@@ -132,7 +131,7 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
 class BobbinPqDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
@@ -152,7 +151,7 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
 class BobbinEcDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
             processedDescription.set_column_thickness((dimensions["D2"] - dimensions["D3"]) / 2);
@@ -172,7 +171,7 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
 class BobbinEfdDataProcessor : public BobbinDataProcessor{
     public:
         CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
-            auto dimensions = flatten_dimensions(bobbin.get_functional_description().value().get_dimensions());
+            auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
             processedDescription.set_column_thickness(dimensions["S1"]);
@@ -191,7 +190,7 @@ class BobbinEfdDataProcessor : public BobbinDataProcessor{
 
 std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin) {
 
-    auto family = bobbin.get_functional_description().value().get_family();
+    auto family = bobbin.get_functional_description()->get_family();
     if (family == BobbinFamily::E) {
         return std::make_shared<BobbinEDataProcessor>();
     }
@@ -252,15 +251,15 @@ void load_interpolators() {
 
 
         for (auto& datum : bobbinDatabase) {
-            auto coreShapeName = datum.second.get_functional_description().value().get_shape();
+            auto coreShapeName = datum.second.get_functional_description()->get_shape();
             auto coreShape = find_core_shape_by_name(coreShapeName);
             auto corePiece = OpenMagnetics::CorePiece::factory(coreShape);
 
-            auto bobbinWindingWindowArea = datum.second.get_processed_description().value().get_winding_windows()[0].get_area().value();
+            auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
             auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
             double bobbinFillingFactor = bobbinWindingWindowArea / coreShapeWindingWindowArea;
-            double bobbinWindingWindowWidth = datum.second.get_processed_description().value().get_winding_windows()[0].get_width().value();
-            double bobbinWindingWindowHeight = datum.second.get_processed_description().value().get_winding_windows()[0].get_height().value();
+            double bobbinWindingWindowWidth = datum.second.get_processed_description()->get_winding_windows()[0].get_width().value();
+            double bobbinWindingWindowHeight = datum.second.get_processed_description()->get_winding_windows()[0].get_height().value();
             double coreWindingWindowWidth = corePiece->get_winding_window().get_width().value();
             double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
             AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
@@ -420,15 +419,17 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, dou
     return bobbin;
 }
 
-BobbinWrapper BobbinWrapper::create_quick_bobbin(MagneticCore core, bool nullDimensions) {
-    CoreWrapper coreWrapper(core);
+BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDimensions) {
+    if (!core.get_processed_description()) {
+        throw std::runtime_error("Core has not been processed yet");
+    }
 
-    if (coreWrapper.get_processed_description().value().get_winding_windows().size() > 1) {
+    if (core.get_processed_description()->get_winding_windows().size() > 1) {
         throw std::runtime_error("More than one winding window not supported yet");
     }
 
-    auto coreWindingWindow = coreWrapper.get_processed_description().value().get_winding_windows()[0];
-    auto coreCentralColumn = coreWrapper.get_processed_description().value().get_columns()[0];
+    auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
+    auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
     std::pair<double, double> bobbinWindingWindow({coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value()});
 
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;

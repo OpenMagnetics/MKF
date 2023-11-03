@@ -6,6 +6,7 @@
 #include "Defaults.h"
 #include "Constants.h"
 #include "json.hpp"
+#include "Utils.h"
 
 #include <cmath>
 #include <filesystem>

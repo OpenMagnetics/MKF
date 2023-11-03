@@ -1,5 +1,6 @@
 #include "CoilWrapper.h"
 #include "json.hpp"
+#include "Utils.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

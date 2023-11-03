@@ -352,16 +352,16 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     return {physicalTurnsThisSlot, slotParallelsProportion};
 }
 
-double get_area_used_in_wires(Wire wire, uint64_t physicalTurns) {
-        if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-            double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-            return physicalTurns * pow(wireDiameter, 2);
-        }
-        else {
-            double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
-            double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
-            return physicalTurns * wireWidth * wireHeight;
-        }
+double get_area_used_in_wires(WireWrapper wire, uint64_t physicalTurns) {
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+        return physicalTurns * pow(wireDiameter, 2);
+    }
+    else {
+        double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
+        double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
+        return physicalTurns * wireWidth * wireHeight;
+    }
 }
 
 
@@ -520,9 +520,18 @@ bool CoilWrapper::calculate_insulation() {
 }
 
 bool CoilWrapper::wind_by_sections() {
+    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    return wind_by_sections(proportionPerWinding);
+}
+
+bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding) {
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
     auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), _interleavingLevel);
+    auto bobbin = resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        throw std::runtime_error("Bobbin not processed");
+    }
     auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
     if (windingWindows.size() > 1) {
         throw std::runtime_error("Bobbins with more than winding window not implemented yet");
@@ -536,8 +545,8 @@ bool CoilWrapper::wind_by_sections() {
     }
     double interleavedHeight = 0;
     double interleavedWidth = 0;
-    double currentSectionCenterWidth = 0;
-    double currentSectionCenterHeight = 0;
+    double currentSectionCenterWidth = DBL_MAX;
+    double currentSectionCenterHeight = DBL_MAX;
 
     double totalInsulationWidth = 0;
     double totalInsulationHeight = 0;
@@ -561,29 +570,35 @@ bool CoilWrapper::wind_by_sections() {
             }
         }
     }
-
-    if (_windingOrientation == WindingOrientation::HORIZONTAL) {
-        interleavedWidth = roundFloat((windingWindowWidth - totalInsulationWidth) / _interleavingLevel / get_functional_description().size(), 9);
-        // std::cout << "get_functional_description().size(): " << get_functional_description().size() << std::endl;
-        // std::cout << "windingWindowWidth: " << windingWindowWidth << std::endl;
-        // std::cout << "interleavedWidth: " << interleavedWidth << std::endl;
-        interleavedHeight = windingWindowHeight;
-        currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + interleavedWidth / 2;
-        currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1];
-    }
-    else if (_windingOrientation == WindingOrientation::VERTICAL) {
-        interleavedWidth = windingWindowWidth;
-        interleavedHeight = roundFloat((windingWindowHeight - totalInsulationHeight) / _interleavingLevel / get_functional_description().size(), 9);
-        currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0];
-        currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - interleavedHeight / 2;
-    }
-    else {
-        throw std::runtime_error("Toroidal windings not implemented");
-    }
-
     for (size_t sectionIndex = 0; sectionIndex < _interleavingLevel; ++sectionIndex) {
-
         for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+
+            if (_windingOrientation == WindingOrientation::HORIZONTAL) {
+                interleavedWidth = roundFloat((windingWindowWidth - totalInsulationWidth) * proportionPerWinding[windingIndex] / _interleavingLevel, 9);
+                interleavedHeight = windingWindowHeight;
+
+                if (currentSectionCenterWidth == DBL_MAX) {
+                    currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + interleavedWidth / 2;
+                }
+                if (currentSectionCenterHeight == DBL_MAX) {
+                    currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1];
+                }
+            }
+            else if (_windingOrientation == WindingOrientation::VERTICAL) {
+                interleavedWidth = windingWindowWidth;
+                interleavedHeight = roundFloat((windingWindowHeight - totalInsulationHeight) * proportionPerWinding[windingIndex] / _interleavingLevel, 9);
+                if (currentSectionCenterWidth == DBL_MAX) {
+                    currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0];
+                }
+                if (currentSectionCenterHeight == DBL_MAX) {
+                    currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - interleavedHeight / 2;
+                }
+            }
+            else {
+                throw std::runtime_error("Toroidal windings not implemented");
+            }
+
+            
             PartialWinding partialWinding;
             Section section;
             partialWinding.set_winding(get_name(windingIndex));
@@ -1105,7 +1120,8 @@ bool CoilWrapper::wind_by_turns() {
 }
 
 bool CoilWrapper::delimit_and_compact() {
-    { // Delimit
+    // Delimit
+    if (get_layers_description()) {
         auto layers = get_layers_description().value();
         if (get_turns_description()) {
             for (size_t i = 0; i < layers.size(); ++i) {
@@ -1163,9 +1179,9 @@ bool CoilWrapper::delimit_and_compact() {
         set_sections_description(sections);
     }
 
-    { // Compact
+     // Compact
+    if (get_sections_description()) {
         auto sections = get_sections_description().value();
-        auto layers = get_layers_description().value();
 
         auto windingWindows = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows();
         double windingWindowHeight = windingWindows[0].get_height().value();
@@ -1306,6 +1322,11 @@ bool CoilWrapper::delimit_and_compact() {
             turns = get_turns_description().value();
         }
 
+        std::vector<Layer> layers;
+        if (get_layers_description()) {
+            layers = get_layers_description().value();
+        }
+
         auto bobbinColumnShape = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_shape();
         auto bobbinColumnDepth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_depth();
         double bobbinColumnWidth;
@@ -1395,8 +1416,10 @@ bool CoilWrapper::delimit_and_compact() {
         if (get_turns_description()) {
             set_turns_description(turns);
         }
+        if (get_layers_description()) {
+            set_layers_description(layers);
+        }
         set_sections_description(sections);
-        set_layers_description(layers);
     }
     return true;
 }
@@ -1404,29 +1427,52 @@ bool CoilWrapper::delimit_and_compact() {
 std::vector<WireWrapper> CoilWrapper::get_wires() {
     std::vector<WireWrapper> wirePerWinding;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        WireWrapper wire(std::get<Wire>(get_functional_description()[windingIndex].get_wire()));
+        WireWrapper wire = resolve_wire(get_functional_description()[windingIndex]);
         wirePerWinding.push_back(wire);
     }
     return wirePerWinding;
 }
 
-WireWrapper CoilWrapper::get_wire(size_t windingIndex) {
-    WireWrapper wire(std::get<Wire>(get_functional_description()[windingIndex].get_wire()));
-    return wire;
+WireWrapper CoilWrapper::resolve_wire(size_t windingIndex) {
+    return resolve_wire(get_functional_description()[windingIndex]);
 }
 
-WireType CoilWrapper::get_wire_type(size_t windingIndex) {
-    auto wireOrString = get_functional_description()[windingIndex].get_wire();
-    Wire wire;
+WireWrapper CoilWrapper::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
+    auto wireOrString = coilFunctionalDescription.get_wire();
+    WireWrapper wire;
     if (std::holds_alternative<std::string>(wireOrString)) {
-        wire = OpenMagnetics::find_wire_by_name(std::get<std::string>(wireOrString));
+        wire = find_wire_by_name(std::get<std::string>(wireOrString));
     }
     else {
         wire = std::get<Wire>(wireOrString);
     }
-    return wire.get_type();
+    return wire;
+}
+
+WireType CoilWrapper::get_wire_type(CoilFunctionalDescription coilFunctionalDescription) {
+    return resolve_wire(coilFunctionalDescription).get_type();
+}
+
+WireType CoilWrapper::get_wire_type(size_t windingIndex) {
+    return get_wire_type(get_functional_description()[windingIndex]);
 }
 
 
+BobbinWrapper CoilWrapper::resolve_bobbin(CoilWrapper coil) { 
+    return coil.resolve_bobbin();
+}
 
+BobbinWrapper CoilWrapper::resolve_bobbin() { 
+    auto bobbinDataOrNameUnion = get_bobbin();
+    if (std::holds_alternative<std::string>(bobbinDataOrNameUnion)) {
+        if (std::get<std::string>(bobbinDataOrNameUnion) == "Dummy")
+            throw std::runtime_error("Bobbin is dummy");
+
+        auto bobbin = find_bobbin_by_name(std::get<std::string>(bobbinDataOrNameUnion));
+        return BobbinWrapper(bobbin);
+    }
+    else {
+        return BobbinWrapper(std::get<Bobbin>(bobbinDataOrNameUnion));
+    }
+}
 } // namespace OpenMagnetics

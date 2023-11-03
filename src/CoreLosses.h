@@ -3,6 +3,7 @@
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
+#include <Utils.h>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
