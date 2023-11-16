@@ -645,7 +645,7 @@ double run_test_core_losses(OpenMagnetics::CoreLossesModels modelName,
                             double expectedVolumetricLosses,
                             json steinmetzCoefficients = json({})) {
     double maximumAdmittedErrorVolumetricCoreLossesValue = maximumAdmittedErrorVolumetricCoreLosses[modelName];
-    OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_core(shapeName, json::array(), 1, materialName);
+    OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
     auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(modelName);
     if (!steinmetzCoefficients.empty()) {
         OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum(steinmetzCoefficients);
@@ -1765,7 +1765,7 @@ SUITE(IGSEModel) {
         std::string shapeName = "PQ 20/20"; // Provisionally because toroid are not implemented
         std::string materialName = "3C95";
 
-        OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_core(shapeName, json::array(), 1, materialName);
+        OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
         auto steinmetzDatum = OpenMagnetics::CoreLossesModel::get_steinmetz_coefficients(
             core.get_functional_description().get_material(), 100000);
         auto coreLossesIGSEModel = OpenMagnetics::CoreLossesIGSEModel();

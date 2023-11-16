@@ -19,8 +19,8 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Tendency) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
 
         auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
         double offset = 0;
@@ -46,7 +46,7 @@ SUITE(WindingLosses) {
         double bobbinHeight = 0.0035;
         double bobbinWidth = 0.0031;
         std::vector<double> bobbinCenterCoodinates({0.01, 0, 0});
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -69,7 +69,9 @@ SUITE(WindingLosses) {
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
 
-        auto scaledOperationPoint = OpenMagnetics::InputsWrapper::scale_time_to_frequency(inputs.get_operating_point(0), frequency * 10);
+        // auto scaledOperationPoint = OpenMagnetics::InputsWrapper::scale_time_to_frequency(inputs.get_operating_point(0), frequency * 10);
+        OpenMagnetics::OperatingPoint scaledOperationPoint = inputs.get_operating_point(0);
+        OpenMagnetics::InputsWrapper::scale_time_to_frequency(scaledOperationPoint, frequency * 10);
         scaledOperationPoint = OpenMagnetics::InputsWrapper::process_operating_point(scaledOperationPoint, frequency * 10);
         auto ohmicLosses1MHz = OpenMagnetics::WindingLosses::calculate_losses(coil, scaledOperationPoint, temperature);
         CHECK_CLOSE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
@@ -82,10 +84,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -148,10 +150,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -214,10 +216,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -276,10 +278,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -338,10 +340,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_90_Duty) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -400,10 +402,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -476,10 +478,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -552,10 +554,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -622,10 +624,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -698,10 +700,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -774,10 +776,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "EQ 13";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -843,10 +845,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Foil_Sinusoidal) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({1});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -912,10 +914,10 @@ SUITE(WindingLosses) {
     TEST(Test_Winding_Losses_One_Turn_Thin_Rectangular_Sinusoidal) {
 
         double temperature = 20;
-        std::vector<uint64_t> numberTurns({20});
-        std::vector<uint64_t> numberParallels({1});
+        std::vector<int64_t> numberTurns({20});
+        std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 44/22/15";
-        uint64_t interleavingLevel = 1;
+        uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;

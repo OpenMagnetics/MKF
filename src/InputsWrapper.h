@@ -50,11 +50,13 @@ class InputsWrapper : public Inputs {
                                                         double magnetizingInductance);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
-                                                            bool compress = true);
+                                                            bool compress = true,
+                                                            double offset=0);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             Waveform sampledWaveform,
                                                             double magnetizingInductance,
-                                                            bool compress = true);
+                                                            bool compress = true,
+                                                            double offset=0);
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);
@@ -90,8 +92,9 @@ class InputsWrapper : public Inputs {
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    static OperatingPoint scale_time_to_frequency(OperatingPoint operatingPoint, double newFrequency);
-    static OperatingPointExcitation scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency);
+    static void scale_time_to_frequency(InputsWrapper& inputs, double newFrequency);
+    static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency);
+    static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency);
     static Waveform scale_time_to_frequency(Waveform waveform, double newFrequency);
     
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {

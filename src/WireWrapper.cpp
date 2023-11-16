@@ -294,8 +294,7 @@ namespace OpenMagnetics {
         // }
     }
 
-    void create_packing_factor_interpolator(int numberConductors,
-                                            std::optional<int> grade,
+    void create_packing_factor_interpolator(std::optional<int> grade,
                                             std::optional<int> numberLayers,
                                             std::optional<double> thicknessLayers,
                                             std::optional<InsulationWireCoatingType> insulationWireCoatingType,
@@ -551,8 +550,7 @@ namespace OpenMagnetics {
         }
 
         if (!wirePackingFactorInterps.contains(key)) {
-            create_packing_factor_interpolator(numberConductors,
-                                 grade,
+            create_packing_factor_interpolator(grade,
                                  numberLayers,
                                  thicknessLayers,
                                  insulationWireCoatingType,
@@ -961,6 +959,12 @@ namespace OpenMagnetics {
         if (!current.get_processed()) {
             throw std::runtime_error("Current is not processed");
         }
+        if (!current.get_processed()->get_effective_frequency()) {
+            throw std::runtime_error("Current is missing effective frequency");
+        }
+        if (!current.get_processed()->get_rms()) {
+            throw std::runtime_error("Current is missing RMS");
+        }
         double effectiveFrequency = current.get_processed()->get_effective_frequency().value();
         double rms = current.get_processed()->get_rms().value();
         return calculate_effective_current_density(rms, effectiveFrequency, temperature);
@@ -1011,7 +1015,7 @@ namespace OpenMagnetics {
             dimensionWithTolerance.set_nominal(conductingArea);
             set_conducting_area(dimensionWithTolerance);
         }
-        double nonConductingArea;
+        [[maybe_unused]] double nonConductingArea;
         if (skinDepth < conductingSmallestDimension / 2) {
             switch (get_type()) {
                 case WireType::LITZ:
@@ -1029,6 +1033,8 @@ namespace OpenMagnetics {
                 case WireType::FOIL:
                     {
                         nonConductingArea = (resolve_dimensional_values(get_conducting_width().value()) - skinDepth * 2) * (resolve_dimensional_values(get_conducting_height().value()) - skinDepth * 2) * get_number_conductors().value();
+                        auto scaleDueToRoundCorners = conductingArea / (resolve_dimensional_values(get_conducting_width().value()) * resolve_dimensional_values(get_conducting_height().value()));
+                        nonConductingArea *= scaleDueToRoundCorners;
                         break;
                     }
                 default:
@@ -1039,6 +1045,10 @@ namespace OpenMagnetics {
         }
         else {
             effectiveConductingArea = conductingArea;
+        }
+
+        if (effectiveConductingArea < 0) {
+            throw std::runtime_error("effectiveConductingArea cannot be negative: " + std::to_string(conductingArea) + ", " + std::to_string(nonConductingArea));
         }
 
         return effectiveConductingArea;
@@ -1103,5 +1113,39 @@ namespace OpenMagnetics {
                 throw std::runtime_error("Unknow type of wire");
         }
     }
+
+    double WireWrapper::get_minimum_conducting_dimension() {
+        switch (get_type()) {
+            case WireType::LITZ:
+                {
+                    auto strand = resolve_strand();
+                    if (!strand.get_conducting_diameter()) {
+                        throw std::runtime_error("Missing conducting diameter in litz strand");
+                    }
+                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                }
+            case WireType::ROUND:
+                    return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::RECTANGULAR:
+                    return resolve_dimensional_values(get_conducting_width().value());
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_conducting_height().value());
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
+    void WireWrapper::cut_foil_wire_to_section(Section section) {
+        auto constants = Constants();
+        if (get_type() != WireType::FOIL) {
+            throw std::runtime_error("Method only valid for Foil wire");
+        }
+        DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_maximum(section.get_dimensions()[1] * (1 - constants.foilToSectionMargin));
+        set_conducting_height(dimensionWithTolerance);
+        set_outer_width(get_conducting_width());
+        set_outer_height(get_conducting_height());
+    }
+
 
 } // namespace OpenMagnetics

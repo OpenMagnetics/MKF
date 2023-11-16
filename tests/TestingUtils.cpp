@@ -1,4 +1,6 @@
+#include "Utils.h"
 #include "TestingUtils.h"
+#include <UnitTest++.h>
 
 #include <filesystem>
 #include <fstream>
@@ -8,10 +10,10 @@
 namespace OpenMagneticsTesting {
 
 
-OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
-                                                std::vector<uint64_t> numberParallels,
+OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
+                                                std::vector<int64_t> numberParallels,
                                                 std::string shapeName,
-                                                uint64_t interleavingLevel,
+                                                uint8_t interleavingLevel,
                                                 OpenMagnetics::WindingOrientation windingOrientation,
                                                 OpenMagnetics::WindingOrientation layersOrientation,
                                                 OpenMagnetics::CoilAlignment turnsAlignment,
@@ -21,7 +23,7 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
     json coilJson;
     coilJson["functionalDescription"] = json::array();
 
-    auto core = get_core(shapeName, json::parse("[]"), 1, "Dummy");
+    auto core = get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
     auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core, !useBobbin);
     json bobbinJson;
     OpenMagnetics::to_json(bobbinJson, bobbin);
@@ -47,12 +49,12 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
     return coil;
 }
 
-OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
-                                                std::vector<uint64_t> numberParallels,
+OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
+                                                std::vector<int64_t> numberParallels,
                                                 double bobbinHeight,
                                                 double bobbinWidth,
                                                 std::vector<double> bobbinCenterCoodinates,
-                                                uint64_t interleavingLevel,
+                                                uint8_t interleavingLevel,
                                                 OpenMagnetics::WindingOrientation windingOrientation,
                                                 OpenMagnetics::WindingOrientation layersOrientation,
                                                 OpenMagnetics::CoilAlignment turnsAlignment,
@@ -97,12 +99,12 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<uint64_t> numberTurns,
     return coil;
 }
 
-OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<uint64_t> numberTurns,
-                                                           std::vector<uint64_t> numberParallels,
+OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> numberTurns,
+                                                           std::vector<int64_t> numberParallels,
                                                            double bobbinHeight,
                                                            double bobbinWidth,
                                                            std::vector<double> bobbinCenterCoodinates,
-                                                           uint64_t interleavingLevel,
+                                                           uint8_t interleavingLevel,
                                                            OpenMagnetics::WindingOrientation windingOrientation,
                                                            OpenMagnetics::WindingOrientation layersOrientation,
                                                            OpenMagnetics::CoilAlignment turnsAlignment,
@@ -147,10 +149,10 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<uint64_t> numbe
     return coil;
 }
 
-OpenMagnetics::CoreWrapper get_core(std::string shapeName,
-                                    json basicGapping,
-                                    int numberStacks,
-                                    std::string materialName) {
+OpenMagnetics::CoreWrapper get_quick_core(std::string shapeName,
+                                          json basicGapping,
+                                          int numberStacks,
+                                          std::string materialName) {
     auto coreJson = json();
 
     std::string coreType;
@@ -172,6 +174,45 @@ OpenMagnetics::CoreWrapper get_core(std::string shapeName,
     OpenMagnetics::CoreWrapper core(coreJson);
 
     return core;
+}
+
+OpenMagnetics::MagneticWrapper get_quick_magnetic(std::string shapeName,
+                                                  json basicGapping,
+                                                  std::vector<int64_t> numberTurns,
+                                                  int numberStacks,
+                                                  std::string materialName) {
+    auto coreJson = json();
+
+    std::string coreType;
+    if (shapeName[0] == 'T') {
+        coreType = "toroidal";
+    }
+    else {
+        coreType = "two-piece set";
+    }
+
+    coreJson["functionalDescription"] = json();
+    coreJson["functionalDescription"]["name"] = "GapReluctanceTest";
+    coreJson["functionalDescription"]["type"] = coreType;
+    coreJson["functionalDescription"]["material"] = materialName;
+    coreJson["functionalDescription"]["shape"] = shapeName;
+    coreJson["functionalDescription"]["gapping"] = basicGapping;
+    coreJson["functionalDescription"]["numberStacks"] = numberStacks;
+
+    OpenMagnetics::CoreWrapper core(coreJson);
+    OpenMagnetics::CoilWrapper coil = get_quick_coil(numberTurns,
+                                                     std::vector<int64_t>(numberTurns.size(), 1),
+                                                     shapeName,
+                                                     1);
+
+    coil.set_sections_description(std::nullopt);
+    coil.set_layers_description(std::nullopt);
+    coil.set_turns_description(std::nullopt);
+    OpenMagnetics::MagneticWrapper magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    return magnetic;
 }
 
 OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::DimensionWithTolerance altitude,
@@ -281,15 +322,20 @@ void print(std::vector<double> data) {
     }
     std::cout << std::endl;
 }
+void print(std::vector<std::vector<double>> data) {
+    for (auto i : data) {
+        print(i);
+    }
+}
 
-void print(std::vector<uint64_t> data) {
+void print(std::vector<int64_t> data) {
     for (auto i : data) {
         std::cout << i << ' ';
     }
     std::cout << std::endl;
 }
 
-void print(std::vector<int64_t> data) {
+void print(std::vector<uint64_t> data) {
     for (auto i : data) {
         std::cout << i << ' ';
     }
@@ -303,13 +349,6 @@ void print(std::vector<std::string> data) {
     std::cout << std::endl;
 }
 
-void print(std::vector<SVG::Point> data) {
-    for (auto i : data) {
-        std::cout << '(' << i.first << ", " << i.second << "), ";
-    }
-    std::cout << std::endl;
-}
-
 void print(double data) {
     std::cout << data << std::endl;
 }
@@ -318,6 +357,151 @@ void print(std::string data) {
 }
 void print_json(json data) {
     std::cout << data << std::endl;
+}
+
+void check_sections_description(OpenMagnetics::CoilWrapper coil,
+                                std::vector<int64_t> numberTurns,
+                                std::vector<int64_t> numberParallels,
+                                uint8_t interleavingLevel,
+                                OpenMagnetics::WindingOrientation windingOrientation) {
+
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    auto bobbinArea = windingWindow.get_width().value() * windingWindow.get_height().value();
+    auto sectionsDescription = coil.get_sections_description().value();
+    std::vector<double> numberAssignedParallels(numberTurns.size(), 0);
+    std::vector<int64_t> numberAssignedPhysicalTurns(numberTurns.size(), 0);
+    std::map<std::string, std::vector<double>> dimensionsByName;
+    std::map<std::string, std::vector<double>> coordinatesByName;
+    double sectionsArea = 0;
+    size_t numberInsulationSections = 0;
+
+    for (auto& section : sectionsDescription){
+        if(section.get_type() == OpenMagnetics::ElectricalType::INSULATION) {
+            numberInsulationSections++;
+            sectionsArea += section.get_dimensions()[0] * section.get_dimensions()[1];
+        }
+        else {
+            for (auto& partialWinding : section.get_partial_windings()) {
+                auto currentIndividualWindingIndex = coil.get_winding_index_by_name(partialWinding.get_winding());
+                auto currentIndividualWinding = coil.get_winding_by_name(partialWinding.get_winding());
+                sectionsArea += section.get_dimensions()[0] * section.get_dimensions()[1];
+                dimensionsByName[section.get_name()] = section.get_dimensions();
+                coordinatesByName[section.get_name()] = section.get_coordinates();
+                CHECK(OpenMagnetics::roundFloat(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, 6) >= OpenMagnetics::roundFloat(windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2, 6));
+                CHECK(OpenMagnetics::roundFloat(section.get_coordinates()[0] + section.get_dimensions()[0] / 2, 6) <= OpenMagnetics::roundFloat(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2, 6));
+                CHECK(OpenMagnetics::roundFloat(section.get_coordinates()[1] - section.get_dimensions()[1] / 2, 6) >= OpenMagnetics::roundFloat(windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2, 6));
+                CHECK(OpenMagnetics::roundFloat(section.get_coordinates()[1] + section.get_dimensions()[1] / 2, 6) <= OpenMagnetics::roundFloat(windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2, 6));
+
+                for (auto& parallelProportion : partialWinding.get_parallels_proportion()) {
+                    numberAssignedParallels[currentIndividualWindingIndex] += parallelProportion;
+                    numberAssignedPhysicalTurns[currentIndividualWindingIndex] += round(parallelProportion * currentIndividualWinding.get_number_turns());
+                }
+            }
+            CHECK(section.get_filling_factor().value() > 0);
+        }
+    }
+    for (size_t i = 0; i < sectionsDescription.size() - 1; ++i){
+        if(sectionsDescription[i].get_type() == OpenMagnetics::ElectricalType::INSULATION) {
+        }
+        else {
+            if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                CHECK(sectionsDescription[i].get_coordinates()[0] < sectionsDescription[i + 1].get_coordinates()[0]);
+                CHECK(sectionsDescription[i].get_coordinates()[1] == sectionsDescription[i + 1].get_coordinates()[1]);
+                // CHECK(sectionsDescription[i].get_coordinates()[2] == sectionsDescription[i + 1].get_coordinates()[2]);
+            } 
+            else if (windingOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
+                CHECK(sectionsDescription[i].get_coordinates()[1] > sectionsDescription[i + 1].get_coordinates()[1]);
+                CHECK(sectionsDescription[i].get_coordinates()[0] == sectionsDescription[i + 1].get_coordinates()[0]);
+                // CHECK(sectionsDescription[i].get_coordinates()[2] == sectionsDescription[i + 1].get_coordinates()[2]);
+            }
+        }
+    }
+
+    CHECK(OpenMagnetics::roundFloat(bobbinArea, 6) == OpenMagnetics::roundFloat(sectionsArea, 6));
+    for (size_t i = 0; i < numberAssignedParallels.size() - 1; ++i){
+        CHECK(round(numberAssignedParallels[i]) == round(numberParallels[i]));
+        CHECK(round(numberAssignedPhysicalTurns[i]) == round(numberTurns[i] * numberParallels[i]));
+    }
+    CHECK(sectionsDescription.size() - numberInsulationSections == (interleavingLevel * numberTurns.size()));
+    CHECK(!OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName));
+}
+
+void check_layers_description(OpenMagnetics::CoilWrapper coil,
+                              OpenMagnetics::WindingOrientation layersOrientation) {
+    if (!coil.get_layers_description()) {
+        return;
+    }
+    auto sections = coil.get_sections_description().value();
+    std::map<std::string, std::vector<double>> dimensionsByName;
+    std::map<std::string, std::vector<double>> coordinatesByName;
+
+    for (auto& section : sections){
+        auto layers = coil.get_layers_by_section(section.get_name());
+        if(section.get_type() == OpenMagnetics::ElectricalType::INSULATION) {
+        }
+        else {
+            auto sectionParallelsProportionExpected = section.get_partial_windings()[0].get_parallels_proportion();
+            std::vector<double> sectionParallelsProportion(sectionParallelsProportionExpected.size(), 0);
+            for (auto& layer : layers){
+                for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
+                    sectionParallelsProportion[i] += layer.get_partial_windings()[0].get_parallels_proportion()[i];
+                }
+                CHECK(layer.get_filling_factor().value() > 0);
+
+                dimensionsByName[layer.get_name()] = layer.get_dimensions();
+                coordinatesByName[layer.get_name()] = layer.get_coordinates();
+            }
+            for (size_t i = 0; i < sectionParallelsProportion.size(); ++i){
+                CHECK(OpenMagnetics::roundFloat(sectionParallelsProportion[i], 9) == OpenMagnetics::roundFloat(sectionParallelsProportionExpected[i], 9));
+            }
+            for (size_t i = 0; i < layers.size() - 1; ++i){
+                if (layersOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
+                    CHECK(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
+                    CHECK(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);
+                    CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                } 
+                else if (layersOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                    CHECK(layers[i].get_coordinates()[1] > layers[i + 1].get_coordinates()[1]);
+                    CHECK(layers[i].get_coordinates()[0] == layers[i + 1].get_coordinates()[0]);
+                    CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
+                }
+            }
+        }
+
+    }
+
+    CHECK(!OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName));
+}
+
+
+void check_turns_description(OpenMagnetics::CoilWrapper coil) {
+    if (!coil.get_turns_description()) {
+        return;
+    }
+
+    std::vector<std::vector<double>> parallelProportion;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        parallelProportion.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
+    }
+
+    auto turns = coil.get_turns_description().value();
+    std::map<std::string, std::vector<double>> dimensionsByName;
+    std::map<std::string, std::vector<double>> coordinatesByName;
+
+    for (auto& turn : turns){
+        auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        parallelProportion[windingIndex][turn.get_parallel()] += 1.0 / coil.get_number_turns(windingIndex);
+        dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
+        coordinatesByName[turn.get_name()] = turn.get_coordinates();
+    }
+
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+            CHECK(OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1);
+        }
+    }
+    CHECK(!OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName));
 }
 
 } // namespace OpenMagneticsTesting

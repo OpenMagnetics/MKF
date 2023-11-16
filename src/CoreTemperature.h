@@ -1,5 +1,6 @@
 #pragma once
 #include "Constants.h"
+#include "Models.h"
 
 #include <CoreWrapper.h>
 #include <MAS.hpp>
@@ -15,13 +16,6 @@
 
 namespace OpenMagnetics {
 
-enum class CoreTemperatureModels : int {
-    KAZIMIERCZUK,
-    MANIKTALA,
-    TDK,
-    DIXON,
-    AMIDON
-};
 
 class CoreTemperatureModel {
   private:

@@ -58,6 +58,21 @@ enum class GappingType : int {
     DISTRIBUTED
 };
 
+enum class OrderedIsolationSide : int { 
+    PRIMARY,
+    SECONDARY,
+    TERTIARY,
+    QUATERNARY,
+    QUINARY,
+    SENARY,
+    SEPTENARY,
+    OCTONARY,
+    NONARY,
+    DENARY,
+    UNDENARY,
+    DUODENARY
+};
+
 double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 bool check_requirement(DimensionWithTolerance requirement, double value);
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
@@ -71,7 +86,7 @@ void load_databases(bool withAliases=true);
 void load_databases(json data, bool withAliases=true);
 
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
-std::vector<std::string> get_shape_names();
+std::vector<std::string> get_shape_names(bool includeToroidal = true);
 std::vector<std::string> get_wire_names();
 
 template<int decimals> double roundFloat(double value);
@@ -87,4 +102,6 @@ double try_get_duty_cycle(Waveform waveform, double frequency);
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
+IsolationSide get_isolation_side_from_index(size_t index);
+
 } // namespace OpenMagnetics

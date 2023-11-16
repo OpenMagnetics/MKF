@@ -21,6 +21,7 @@
 #include <vector>
 #include <list>
 
+
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -357,7 +358,7 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
             }
         }
         if (!found) {
-
+            throw std::invalid_argument("Error while sampling waveform");
         }
     }
 
@@ -374,6 +375,9 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
 SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance) {
     auto constants = Constants();
+    if (!excitation.get_current()->get_waveform()) {
+        throw std::runtime_error("Current waveform is missing");
+    }
     Waveform sourceWaveform = excitation.get_current()->get_waveform().value();
     std::vector<double> source = sourceWaveform.get_data();
     bool isWaveformSampled =
@@ -774,38 +778,38 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
     WaveformLabel label;
     label = try_guess_waveform_label(compressedWaveform);
 
-    try {
-        processed.set_label(label);
+    // try {
+    processed.set_label(label);
 
-        if (is_waveform_sampled(waveform)) {
-            processed.set_average(std::accumulate(std::begin(sampledWaveform.get_data()), std::end(sampledWaveform.get_data()), 0.0) /
-                             sampledWaveform.get_data().size());
-        }
-        else {
-            auto average = calculate_waveform_average(compressedWaveform);
-            processed.set_average(average);
-        }
-
-        double offset = calculate_offset(compressedWaveform, label);
-        processed.set_offset(offset);
-
-        processed.set_peak_to_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()) -
-                                   *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
-
-        if (label == WaveformLabel::FLYBACK_PRIMARY ||
-            label == WaveformLabel::FLYBACK_SECONDARY ||
-            label == WaveformLabel::UNIPOLAR_TRIANGULAR ||
-            label == WaveformLabel::UNIPOLAR_RECTANGULAR) {
-            processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
-        }
-
-        processed.set_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
-
-        processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
+    if (is_waveform_sampled(waveform)) {
+        processed.set_average(std::accumulate(std::begin(sampledWaveform.get_data()), std::end(sampledWaveform.get_data()), 0.0) /
+                         sampledWaveform.get_data().size());
     }
-    catch (...) {
-        throw std::invalid_argument("Unknown excitation label");
+    else {
+        auto average = calculate_waveform_average(compressedWaveform);
+        processed.set_average(average);
     }
+
+    double offset = calculate_offset(compressedWaveform, label);
+    processed.set_offset(offset);
+
+    processed.set_peak_to_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()) -
+                               *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
+
+    if (label == WaveformLabel::FLYBACK_PRIMARY ||
+        label == WaveformLabel::FLYBACK_SECONDARY ||
+        label == WaveformLabel::UNIPOLAR_TRIANGULAR ||
+        label == WaveformLabel::UNIPOLAR_RECTANGULAR) {
+        processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
+    }
+
+    processed.set_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
+
+    processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
+    // }
+    // catch (...) {
+    //     throw std::invalid_argument("Unknown excitation label: " + std::string{magic_enum::enum_name(label)});
+    // }
 
     return processed;
 }
@@ -937,8 +941,12 @@ Waveform InputsWrapper::compress_waveform(Waveform waveform) {
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform sampledWaveform,
                                                                 double magnetizingInductance,
-                                                                bool compress) {
+                                                                bool compress,
+                                                                double offset) {
     double dcCurrent = 0;
+    if (magnetizingInductance <= 0) {
+        throw std::runtime_error("magnetizingInductance cannot be zero or negative");
+    }
     if (excitation.get_current()) {
         if (!excitation.get_current()->get_processed()) {
             auto currentExcitation = excitation.get_current().value();
@@ -950,12 +958,16 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         }
         dcCurrent = excitation.get_current()->get_processed()->get_offset();
     }
-
+    else {
+        dcCurrent = offset;
+    }
+ 
     auto sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
     SignalDescriptor magnetizing_current_excitation;
 
     sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
     sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
+
 
     if (compress){
         magnetizing_current_excitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
@@ -963,6 +975,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     else {
         magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
     }
+
     magnetizing_current_excitation.set_harmonics(
         calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
     magnetizing_current_excitation.set_processed(
@@ -972,7 +985,8 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
 
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 double magnetizingInductance,
-                                                                bool compress) {
+                                                                bool compress,
+                                                                double offset) {
     if (!excitation.get_voltage()) {
         throw std::invalid_argument("Missing voltage signal");
     }
@@ -980,7 +994,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
     auto waveform = voltage_excitation.get_waveform().value();
     auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
-    return calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, compress);
+    return calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, compress, offset);
 }
 
 OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance) {
@@ -1006,7 +1020,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             voltage_excitation.set_processed(calculate_processed_data(voltage_excitation, sampledWaveform));
             excitation.set_voltage(voltage_excitation);
 
-            if (!excitation.get_magnetizing_current()) {
+            if (!excitation.get_magnetizing_current() && magnetizingInductance > 0) {
                 excitation.set_magnetizing_current(
                     calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
             }
@@ -1035,57 +1049,73 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
                                                           double dutyCycle,
                                                           double dcCurrent,
                                                           std::vector<double> turnsRatios) {
-    json inputsJson;
 
-    inputsJson["operatingPoints"] = json::array();
-    json operatingPointJson = json();
-    operatingPointJson["name"] = "Nominal";
-    operatingPointJson["conditions"] = json();
-    operatingPointJson["conditions"]["ambientTemperature"] = temperature;
+    InputsWrapper inputs;
 
-    json windingExcitation = json();
-    windingExcitation["winding"] = "primary";
-    windingExcitation["frequency"] = frequency;
-    windingExcitation["voltage"]["processed"]["dutyCycle"] = dutyCycle;
-    windingExcitation["voltage"]["processed"]["label"] = waveShape;
-    windingExcitation["voltage"]["processed"]["offset"] = 0;
-    windingExcitation["voltage"]["processed"]["peakToPeak"] = peakToPeak;
-    operatingPointJson["excitationsPerWinding"] = json::array();
-    operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
-    inputsJson["operatingPoints"].push_back(operatingPointJson);
+    DesignRequirements designRequirements;
+    DimensionWithTolerance magnetizingInductanceWithTolerance;
+    magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance * 0.8);
+    magnetizingInductanceWithTolerance.set_nominal(magnetizingInductance);
+    magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
 
-    inputsJson["designRequirements"] = json();
-    inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = magnetizingInductance * 0.8;
-    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
-    inputsJson["designRequirements"]["magnetizingInductance"]["maximum"] = magnetizingInductance * 1.2;
-    json turnsRatiosJson = json::array();
+    designRequirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
     for (auto& turnsRatio : turnsRatios) {
-        json turnsRatioJson = json();
-        turnsRatioJson["nominal"] = turnsRatio;
-        turnsRatiosJson.push_back(turnsRatioJson);
+        DimensionWithTolerance turnsRatiosWithTolerance;
+        turnsRatiosWithTolerance.set_nominal(turnsRatio);
+        designRequirements.get_mutable_turns_ratios().push_back(turnsRatiosWithTolerance);
     }
-    inputsJson["designRequirements"]["turnsRatios"] = turnsRatiosJson;
+    inputs.set_design_requirements(designRequirements);
 
-    InputsWrapper inputs(inputsJson);
-
-    auto voltage =
-        inputs.get_mutable_operating_points()[0].get_mutable_excitations_per_winding()[0].get_voltage().value();
-
-    auto operatingPoint = inputs.get_mutable_operating_points()[0];
-
-    std::vector<OperatingPointExcitation> excitationsWithDcCurrent;
-    for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-        auto magnetizingCurrentSignalDescriptor = calculate_magnetizing_current(excitation, magnetizingInductance);
-        excitation.set_current(
-            InputsWrapper::add_offset_to_excitation(magnetizingCurrentSignalDescriptor, dcCurrent, frequency));
-        excitation.set_magnetizing_current(
-            InputsWrapper::add_offset_to_excitation(magnetizingCurrentSignalDescriptor, dcCurrent, frequency));
-        excitationsWithDcCurrent.push_back(excitation);
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(temperature);
+    conditions.set_ambient_relative_humidity(std::nullopt);
+    conditions.set_cooling(std::nullopt);
+    conditions.set_name(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+    {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor voltage;
+        Processed processed;
+        processed.set_label(waveShape);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        // processed.set_offset(dcCurrent);
+        voltage.set_processed(processed);
+        voltage = standarize_waveform(voltage, frequency);
+        excitation.set_voltage(voltage);
+        if (magnetizingInductance > 0) {
+            auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
+            excitation.set_current(current);
+            excitation.set_magnetizing_current(current);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
-    operatingPoint.set_excitations_per_winding(excitationsWithDcCurrent);
-    inputs.set_operating_point_by_index(operatingPoint, 0);
+    for (auto& turnsRatio : turnsRatios) {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor voltage;
+        Processed processed;
+        processed.set_label(waveShape);
+        processed.set_peak_to_peak(peakToPeak * turnsRatio);
+        processed.set_duty_cycle(dutyCycle);
+        // processed.set_offset(dcCurrent);
+        voltage.set_processed(processed);
+        voltage = standarize_waveform(voltage, frequency);
+        excitation.set_voltage(voltage);
+        if (magnetizingInductance > 0) {
+            auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
+            excitation.set_current(current);
+            excitation.set_magnetizing_current(current);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
 
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    inputs.process_waveforms();
     return inputs;
+
 }
 InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double frequency,
                                                           double magnetizingInductance,
@@ -1095,38 +1125,69 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
                                                           double dutyCycle,
                                                           double dcCurrent,
                                                           std::vector<double> turnsRatios) {
-    json inputsJson;
 
-    inputsJson["operatingPoints"] = json::array();
-    json operatingPointJson = json();
-    operatingPointJson["name"] = "Nominal";
-    operatingPointJson["conditions"] = json();
-    operatingPointJson["conditions"]["ambientTemperature"] = temperature;
+    InputsWrapper inputs;
 
-    json windingExcitation = json();
-    windingExcitation["winding"] = "primary";
-    windingExcitation["frequency"] = frequency;
-    windingExcitation["current"]["processed"]["dutyCycle"] = dutyCycle;
-    windingExcitation["current"]["processed"]["label"] = waveShape;
-    windingExcitation["current"]["processed"]["offset"] = dcCurrent;
-    windingExcitation["current"]["processed"]["peakToPeak"] = peakToPeak;
-    operatingPointJson["excitationsPerWinding"] = json::array();
-    operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
-    inputsJson["operatingPoints"].push_back(operatingPointJson);
-
-    inputsJson["designRequirements"] = json();
-    inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = magnetizingInductance * 0.8;
-    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = magnetizingInductance;
-    inputsJson["designRequirements"]["magnetizingInductance"]["maximum"] = magnetizingInductance * 1.2;
-    json turnsRatiosJson = json::array();
+    DesignRequirements designRequirements;
+    DimensionWithTolerance magnetizingInductanceWithTolerance;
+    magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance * 0.8);
+    magnetizingInductanceWithTolerance.set_nominal(magnetizingInductance);
+    magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
+    designRequirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
     for (auto& turnsRatio : turnsRatios) {
-        json turnsRatioJson = json();
-        turnsRatioJson["nominal"] = turnsRatio;
-        turnsRatiosJson.push_back(turnsRatioJson);
+        DimensionWithTolerance turnsRatiosWithTolerance;
+        turnsRatiosWithTolerance.set_nominal(turnsRatio);
+        designRequirements.get_mutable_turns_ratios().push_back(turnsRatiosWithTolerance);
     }
-    inputsJson["designRequirements"]["turnsRatios"] = turnsRatiosJson;
+    inputs.set_design_requirements(designRequirements);
 
-    InputsWrapper inputs(inputsJson);
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(temperature);
+    conditions.set_ambient_relative_humidity(std::nullopt);
+    conditions.set_cooling(std::nullopt);
+    conditions.set_name(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+    {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor current;
+        Processed processed;
+        processed.set_label(waveShape);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(dcCurrent);
+        current.set_processed(processed);
+        current = standarize_waveform(current, frequency);
+        excitation.set_current(current);
+        if (magnetizingInductance > 0) {
+            auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
+            excitation.set_voltage(voltage);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+    for (auto& turnsRatio : turnsRatios) {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor current;
+        Processed processed;
+        processed.set_label(waveShape);
+        processed.set_peak_to_peak(peakToPeak * turnsRatio);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(dcCurrent);
+        current.set_processed(processed);
+        current = standarize_waveform(current, frequency);
+        excitation.set_current(current);
+        if (magnetizingInductance > 0) {
+            auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
+            excitation.set_voltage(voltage);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    inputs.process_waveforms();
+
     return inputs;
 }
 
@@ -1211,6 +1272,18 @@ double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPo
 
 double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
+    if (!excitation.get_voltage()) {
+        throw std::runtime_error("Voltage signal is missing");
+    }
+    if (!excitation.get_voltage()->get_waveform()) {
+        throw std::runtime_error("Voltage waveform is missing");
+    }
+    if (!excitation.get_current()) {
+        throw std::runtime_error("Current signal is missing");
+    }
+    if (!excitation.get_current()->get_waveform()) {
+        throw std::runtime_error("Current waveform is missing");
+    }
     Waveform voltageSampledWaveform = excitation.get_voltage()->get_waveform().value();
     Waveform currentSampledWaveform = excitation.get_current()->get_waveform().value();
 
@@ -1345,44 +1418,43 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-OperatingPoint InputsWrapper::scale_time_to_frequency(OperatingPoint operatingPoint, double newFrequency){
-    OperatingPoint scaledOperatingPoint;
-    for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-        scaledOperatingPoint.get_mutable_excitations_per_winding().push_back(scale_time_to_frequency(excitation, newFrequency));
-    }
-    return scaledOperatingPoint;
-}
+void InputsWrapper::scale_time_to_frequency(InputsWrapper& inputs, double newFrequency){
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, newFrequency);
+    }}
 
-OperatingPointExcitation InputsWrapper::scale_time_to_frequency(OperatingPointExcitation excitation, double newFrequency){
-    OperatingPointExcitation scaledExcitation(excitation);
-    scaledExcitation.set_frequency(newFrequency);
+void InputsWrapper::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency){
+    for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+        scale_time_to_frequency(excitation, newFrequency);
+    }}
+
+void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency){
+    excitation.set_frequency(newFrequency);
     if (excitation.get_current() && excitation.get_current()->get_waveform()) {
         auto current = excitation.get_current().value();
         current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));
-        scaledExcitation.set_current(current);
+        excitation.set_current(current);
     }
     if (excitation.get_voltage() && excitation.get_voltage()->get_waveform()) {
         auto voltage = excitation.get_voltage().value();
         voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
-        scaledExcitation.set_voltage(voltage);
+        excitation.set_voltage(voltage);
     }
     if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
         magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
-        scaledExcitation.set_magnetizing_current(magnetizingCurrent);
+        excitation.set_magnetizing_current(magnetizingCurrent);
     }
     if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
         magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
-        scaledExcitation.set_magnetic_flux_density(magneticFluxDensity);
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
     }
     if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
         auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
         magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
-        scaledExcitation.set_magnetic_field_strength(magneticFieldStrength);
+        excitation.set_magnetic_field_strength(magneticFieldStrength);
     }
-    return scaledExcitation;
-
 }
 Waveform InputsWrapper::scale_time_to_frequency(Waveform waveform, double newFrequency){
     std::vector<double> scaledTime;

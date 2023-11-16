@@ -1,4 +1,5 @@
 #include "CoreAdviser.h"
+#include "Utils.h"
 #include "InputsWrapper.h"
 
 #include <UnitTest++.h>
@@ -73,7 +74,6 @@ SUITE(CoreAdviser) {
         {
             CHECK(masMagnetics[i].second <= bestScoring);
         }
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 26 - Ungapped");
     }
@@ -103,10 +103,8 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 2);
 
         CHECK(masMagnetics.size() == 2);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 26 - Ungapped");
-        std::cout << masMagnetics[1].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
     }
@@ -136,10 +134,8 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks().value() << std::endl;
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
     }
 
@@ -168,7 +164,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 72/28/19 - Kool Mµ Hƒ 40 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
@@ -199,7 +194,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 14/3.5/5 - 3C97 - Gapped 0.27999999999999997 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
@@ -230,7 +224,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 13/6 - 3C94 - Gapped 0.2 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
@@ -261,7 +254,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 80/38/20 - 80 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
@@ -292,7 +284,6 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
 
         CHECK(masMagnetics.size() == 1);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 34/14/9 - Kool Mµ Hƒ 26 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
@@ -323,10 +314,8 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 2);
 
         CHECK(masMagnetics.size() == 2);
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 32/6/20 - 3C97 - Gapped 0.64 mm");
-        std::cout << masMagnetics[1].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
     }
@@ -371,7 +360,6 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 114/46/35 - Kool Mµ MAX 60 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
@@ -410,10 +398,8 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 65/32/27 - 95 - Distributed gapped 1.0399999999999998 mm");
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks().value() << std::endl;
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
         auto scorings = coreAdviser.get_scorings();
 
@@ -697,7 +683,6 @@ SUITE(CoreAdviser) {
 
         auto scorings = coreAdviser.get_scorings();
 
-        std::cout << masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
 
         CHECK(bool(masMagnetics[0].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
         CHECK(bool(masMagnetics[1].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));

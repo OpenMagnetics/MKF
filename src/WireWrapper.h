@@ -196,6 +196,9 @@ class WireWrapper : public Wire {
 
         double get_maximum_width();
         double get_maximum_height();
+        double get_minimum_conducting_dimension();
+
+        void cut_foil_wire_to_section(Section section);
 
 };
 } // namespace OpenMagnetics

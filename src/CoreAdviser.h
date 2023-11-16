@@ -21,7 +21,7 @@ class CoreAdviser {
             CORE_TEMPERATURE, 
             DIMENSIONS
         };
-    private:
+    protected:
         std::map<std::string, std::string> _models;
         bool _includeToroids;
         std::string _log;

@@ -1,0 +1,61 @@
+#pragma once
+#include <MAS.hpp>
+
+namespace OpenMagnetics {
+
+enum class MagneticFieldStrengthModels : int {
+    BINNS_LAWRENSON,
+    LAMMERANER,
+    ROSHEN
+};
+
+
+enum class ReluctanceModels : int {
+    ZHANG,
+    PARTRIDGE,
+    EFFECTIVE_AREA,
+    EFFECTIVE_LENGTH,
+    MUEHLETHALER,
+    STENGLEIN,
+    BALAKRISHNAN,
+    CLASSIC
+};
+
+
+enum class CoreLossesModels : int {
+    PROPRIETARY,
+    STEINMETZ,
+    IGSE,
+    BARG,
+    ROSHEN,
+    ALBACH,
+    NSE,
+    MSE
+};
+
+
+enum class CoreTemperatureModels : int {
+    KAZIMIERCZUK,
+    MANIKTALA,
+    TDK,
+    DIXON,
+    AMIDON
+};
+
+
+enum class WindingSkinEffectLossesModels : int {
+    DOWELL,
+    WOJDA,
+    ALBACH,
+    PAYNE,
+    // NAN,
+    KAZIMIERCZUK,
+    KUTKUT,
+    FERREIRA,
+    DIMITRAKAKIS,
+    WANG,
+    HOLGUIN,
+    PERRY
+};
+
+} // namespace OpenMagnetics
