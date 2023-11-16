@@ -161,7 +161,7 @@ void load_databases(json data, bool withAliases) {
             standardName = std::to_string(jf["standardName"].get<int>());
         }
         jf["standardName"] = standardName;
-        Wire wire(jf);
+        WireWrapper wire(jf);
         wireDatabase[jf["name"]] = wire;
     }
 
@@ -205,7 +205,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
     return materialNames;
 }
 
-std::vector<std::string> get_shape_names() {
+std::vector<std::string> get_shape_names(bool includeToroidal) {
     if (coreShapeDatabase.empty()) {
         load_databases(true);
     }
@@ -213,7 +213,9 @@ std::vector<std::string> get_shape_names() {
     std::vector<std::string> shapeNames;
 
     for (auto& datum : coreShapeDatabase) {
-        shapeNames.push_back(datum.first);
+        if (includeToroidal || (datum.second.get_family() != CoreShapeFamily::T)) {
+            shapeNames.push_back(datum.first);
+        }
     }
 
     return shapeNames;
@@ -425,5 +427,12 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
     auto bessel = sum * pow(0.5 * z, order);
     return bessel;
 }
+
+IsolationSide get_isolation_side_from_index(size_t index) {
+    auto orderedIsolationSide = magic_enum::enum_cast<OrderedIsolationSide>(index).value();
+    auto orderedIsolationSideString = std::string{magic_enum::enum_name(orderedIsolationSide)};
+    return magic_enum::enum_cast<IsolationSide>(orderedIsolationSideString).value();
+}
+
 
 } // namespace OpenMagnetics

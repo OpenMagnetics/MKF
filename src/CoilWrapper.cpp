@@ -525,6 +525,9 @@ bool CoilWrapper::wind_by_sections() {
 }
 
 bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding) {
+    if (_interleavingLevel <= 0) {
+        throw std::runtime_error("Interleaving levels must be greater than 0");
+    }
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
     auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), _interleavingLevel);
@@ -776,6 +779,7 @@ bool CoilWrapper::wind_by_layers() {
                     layerHeight = wireHeight;
                 }
             }
+
             if (maximumNumberLayersFittingInSection == 0) {
                 numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
             }
@@ -1456,7 +1460,6 @@ WireType CoilWrapper::get_wire_type(CoilFunctionalDescription coilFunctionalDesc
 WireType CoilWrapper::get_wire_type(size_t windingIndex) {
     return get_wire_type(get_functional_description()[windingIndex]);
 }
-
 
 BobbinWrapper CoilWrapper::resolve_bobbin(CoilWrapper coil) { 
     return coil.resolve_bobbin();

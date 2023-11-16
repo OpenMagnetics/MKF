@@ -42,7 +42,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoilWrapper windingAux(windingJson);
         winding = windingAux;
 
-        core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
+        core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
     TEST(Test_Inductance_Ferrite_Grinded) {
@@ -249,7 +249,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::MagnetizingInductance magnetizing_inductance(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
@@ -790,7 +790,7 @@ SUITE(MagnetizingInductance) {
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
 
-        core = OpenMagneticsTesting::get_core(coreShape, gapping, 2, coreMaterial);
+        core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, 2, coreMaterial);
         double magnetizingInductance2Stacks =
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
@@ -845,10 +845,6 @@ SUITE(MagnetizingInductance) {
         auto reluctanceCore = ea.get_reluctance_core().value().get_nominal().value();
         auto reluctanceGapping = ea.get_reluctance_gapping().value().get_nominal().value();
         auto reluctanceUngappedCore = ea.get_reluctance_ungapped_core().value().get_nominal().value();
-        std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-        std::cout << "reluctanceCore: " << reluctanceCore << std::endl;
-        std::cout << "reluctanceGapping: " << reluctanceGapping << std::endl;
-        std::cout << "reluctanceUngappedCore: " << reluctanceUngappedCore << std::endl;
     }
 
 }

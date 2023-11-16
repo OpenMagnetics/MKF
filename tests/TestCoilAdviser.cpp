@@ -1,6 +1,7 @@
-#include "CoilPainter.h"
+#include "Painter.h"
 #include "CoreAdviser.h"
 #include "CoilAdviser.h"
+#include "InputsWrapper.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>
@@ -8,48 +9,334 @@
 
 SUITE(CoilAdviser) {
 
-    TEST(Test_CoilAdviser) {
-        std::string inputsString = R"({"designRequirements": {"magnetizingInductance": {"nominal": 0.00001 }, "name": "My Design Requirements", "turnsRatios": [{"nominal": 1.69 } ] }, "operatingPoints": [{"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 100000, "current": {"waveform": {"ancillaryLabel": null, "data": [-5, 5, -5 ], "numberPeriods": null, "time": [0, 0.0000025, 0.00001 ] }, "processed": {"dutyCycle": 0.25, "peakToPeak": 10, "offset": 0, "label": "Triangular", "acEffectiveFrequency": 128062.87364573497, "effectiveFrequency": 128062.87364573497, "peak": 4.999999999999998, "rms": 2.887690890756071, "thd": 0.37655984422983674 }, "harmonics": {"amplitudes": [1.057834375650657e-14, 3.8218284740811654, 1.3520347077861394, 0.4253304394765621, 2.0451658656097295e-15, 0.15361202132455717, 0.1511952491356625, 0.07875264997066955, 9.147290176737562e-16, 0.04794839995573495, 0.055136232876625904, 0.03235759328251894, 5.942500669304174e-16, 0.023392967261331943, 0.028681570420819563, 0.017771008577657506, 4.480960813987701e-16, 0.014016396066471289, 0.017807158306087034, 0.011386475028370353, 4.0120207228235354e-16, 0.009474348163803114, 0.012316262725232938, 0.008041926341760212, 3.291294404519727e-16, 0.006942375707716075, 0.00917327900077013, 0.006081161484994139, 1.7279005517465273e-16, 0.005395200034140711, 0.00721789399528569, 0.00484110135817692, 2.1149402582199242e-16, 0.004388239086959991, 0.005929248667932675, 0.00401450896779898, 2.157255682812684e-16, 0.003703646967008042, 0.005045721135369252, 0.0034434847131706746, 1.6787221123065324e-16, 0.0032247860657256414, 0.004424650744237714, 0.0030404540187279378, 2.3125579070802604e-16, 0.0028849794948139283, 0.003983384372505707, 0.0027540516952747904, 1.4216315610418345e-16, 0.0026442785821521567, 0.0036719561660328304, 0.002552983887311765, 1.889676895636462e-16, 0.0024780582850305525, 0.0034594522045110314, 0.0024178496118518887, 3.358503416551359e-16, 0.002371081787894119, 0.003326834522131644, 0.0023367953000156096, 1.7281675154410565e-16, 0.0023143043115014237, 0.0032630646073169567, 0.002303167019442115 ], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-50, 150, 150, -50, -50 ], "numberPeriods": null, "time": [0, 0, 0.0000025, 0.0000025, 0.00001 ] }, "processed": {"dutyCycle": 0.25, "peakToPeak": 200, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 690362.0785055002, "effectiveFrequency": 690304.6703245764, "peak": 150, "rms": 85.69568250501305, "thd": 0.9507084995254547 }, "harmonics": {"amplitudes": [1.5625, 87.80384406149624, 63.61083632808501, 32.16599853986579, 3.125, 15.706136065629444, 21.067038766921875, 14.944573668584702, 3.125, 7.630570967787201, 12.475699324281534, 10.194569892183083, 3.125, 4.479174986035039, 8.733789914032773, 7.938163065763222, 3.125, 2.775314239450897, 6.607257367339512, 6.599645891113819, 3.125, 1.690972659766835, 5.213747517448476, 5.699220039546849, 3.125, 0.9278365788100666, 4.21357472964602, 5.041188705368538, 3.125, 0.35195777615212703, 3.447906174167149, 4.530638310205428, 3.125, 0.10589112602506914, 2.8323349031848397, 4.115816516803229, 3.125, 0.48523510298537215, 2.31765795710012, 3.765961136920719, 3.125, 0.8104260947136397, 1.8730529177560187, 3.461493202849704, 3.125, 1.0974348071750053, 1.4780149246603909, 3.1892051886001562, 3.125, 1.3573299899498004, 1.1181428791078956, 2.939697839713029, 3.125, 1.5981999401975164, 0.7827717505978411, 2.7059153712220487, 3.125, 1.8262878611736928, 0.4635499610573497, 2.4822502635575856, 3.125, 2.046710785770768, 0.15352140552963434, 2.2639539948393064 ], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000 ] } } }, {"current": {"harmonics": {"amplitudes": [0.0000010000000086798216, 3.057462779264932, 1.0816277662289124, 0.340264351581251, 3.235177989663906e-16, 0.12288961705964507, 0.12095619930853002, 0.06300211997653624, 7.443271677463824e-17, 0.038358719964587604, 0.04410898630130067, 0.025886074626015422, 6.706861128085135e-17, 0.01871437380906504, 0.02294525633665545, 0.014216806862126298, 9.370315647229418e-18, 0.011213116853176787, 0.014245726644869477, 0.009109180022696298, 5.802458286814979e-17, 0.007579478531042247, 0.00985301018018623, 0.00643354107340817, 3.536083211808343e-17, 0.0055539005661726535, 0.00733862320061603, 0.0048649291879953776, 4.285515757895786e-17, 0.0043161600273123575, 0.005774315196228369, 0.003872881086541724, 6.664589960562516e-17, 0.0035105912695678515, 0.004743398934346058, 0.0032116071742391296, 2.9732233307171886e-17, 0.0029629175736061754, 0.0040365769082953435, 0.0027547877705365515, 2.4648958998374908e-17, 0.0025798288525803945, 0.0035397205953900885, 0.002432363214982291, 2.0625222046266484e-17, 0.0023079835958510473, 0.0031867074980044072, 0.0022032413562199068, 6.460121660331215e-17, 0.0021154228657214117, 0.002937564932826176, 0.002042387109849363, 2.6640013990967443e-17, 0.001982446628024347, 0.002767561763608619, 0.00193427968948145, 3.493347315816926e-17, 0.0018968654303151706, 0.0026614676177051724, 0.0018694362400125345, 6.236864263645873e-17, 0.0018514434492009585, 0.0026104516858533877, 0.0018425336155535035 ], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000 ] }, "processed": {"acEffectiveFrequency": 128062.8736457349, "average": -1.7569279364693102e-14, "dutyCycle": 0.2499999999999996, "effectiveFrequency": 128062.87364572889, "label": "Triangular", "offset": -0.000001, "peak": 3.9999989999999945, "peakToPeak": 8, "rms": 2.3101527126050723, "thd": 0.3765598442298372 }, "waveform": {"ancillaryLabel": null, "data": [-4.000001, 3.999999, -4.000001 ], "numberPeriods": null, "time": [0, 0.0000024999999999999964, 0.00001 ] } }, "frequency": 100000, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "Primary winding excitation", "voltage": {"harmonics": {"amplitudes": [0.7812499999999593, 43.90192203074812, 31.805418164042504, 16.082999269932895, 1.5625, 7.853068032814722, 10.533519383460938, 7.472286834292351, 1.5625000000000002, 3.8152854838936006, 6.237849662140767, 5.097284946091541, 1.5625, 2.2395874930175195, 4.366894957016386, 3.969081532881611, 1.5625000000000002, 1.3876571197254486, 3.303628683669756, 3.2998229455569095, 1.5625, 0.8454863298834175, 2.606873758724238, 2.8496100197734244, 1.5625000000000002, 0.4639182894050333, 2.10678736482301, 2.520594352684269, 1.5625, 0.17597888807606352, 1.7239530870835744, 2.265319155102714, 1.5625000000000002, 0.05294556301253457, 1.4161674515924199, 2.0579082584016146, 1.5625, 0.24261755149268607, 1.15882897855006, 1.8829805684603595, 1.5625000000000002, 0.40521304735681984, 0.9365264588780093, 1.730746601424852, 1.5625, 0.5487174035875027, 0.7390074623301954, 1.5946025943000781, 1.5625000000000002, 0.6786649949749002, 0.5590714395539478, 1.4698489198565146, 1.5625, 0.7990999700987582, 0.39138587529892055, 1.3529576856110244, 1.5625000000000002, 0.9131439305868464, 0.23177498052867485, 1.2411251317787928, 1.5625, 1.023355392885384, 0.07676070276481717, 1.1319769974196532 ], "frequencies": [0, 100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000, 1500000, 1600000, 1700000, 1800000, 1900000, 2000000, 2100000, 2200000, 2300000, 2400000, 2500000, 2600000, 2700000, 2800000, 2900000, 3000000, 3100000, 3200000, 3300000, 3400000, 3500000, 3600000, 3700000, 3800000, 3900000, 4000000, 4100000, 4200000, 4300000, 4400000, 4500000, 4600000, 4700000, 4800000, 4900000, 5000000, 5100000, 5200000, 5300000, 5400000, 5500000, 5600000, 5700000, 5800000, 5900000, 6000000, 6100000, 6200000, 6300000 ] }, "processed": {"acEffectiveFrequency": 690362.0785055002, "average": -0.9245562130177545, "dutyCycle": 0.2499999999999996, "effectiveFrequency": 690304.6703245764, "label": "Rectangular", "offset": 0, "peak": 75.00000000000004, "peakToPeak": 100, "rms": 42.847841252506534, "thd": 0.9507084995254547 }, "waveform": {"ancillaryLabel": null, "data": [-24.99999999999996, 75.00000000000004, 75.00000000000004, -24.99999999999996, -24.99999999999996 ], "numberPeriods": null, "time": [0, 0, 0.0000024999999999999964, 0.0000024999999999999964, 0.00001 ] } } } ] } ] })";
-        std::string file_path = __FILE__;
-        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores_stock.ndjson");
 
-        std::string coresString = R"([{"name": "EP 20 - 3C91 - Gapped 0.605 mm", "manufacturerInfo": {"name": "Ferroxcube", "status": "production", "reference": "EP20-3C91-A160", "datasheetUrl": "https://ferroxcube.com/upload/media/product/file/Pr_ds/EP20.pdf"}, "distributorsInfo": [], "functionalDescription": {"type": "two-piece set", "material": "3C91", "shape": "EP 20", "gapping": [{"type": "subtractive", "length": 0.000605}, {"type": "residual", "length": 5e-06}, {"type": "residual", "length": 5e-06}], "numberStacks": 1}}])";
+    TEST(Test_CoilAdviser_Random) {
+        srand (time(NULL));
 
-        std::vector<OpenMagnetics::CoreWrapper> cores = json::parse(coresString);
+        int count = 10;
+        while (count > 0) {
+            std::vector<double> turnsRatios;
+            int64_t numberStacks = 1;
 
-        OpenMagnetics::load_databases(true);
+            std::vector<int64_t> numberTurns;
+            std::vector<int64_t> numberParallels;
+            int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+            // for (size_t windingIndex = 0; windingIndex < std::rand() % 2 + 1UL; ++windingIndex)
+            for (size_t windingIndex = 0; windingIndex < std::rand() % 4 + 1UL; ++windingIndex)
+            {
+                numberTurns.push_back(std::rand() % 100 + 1L);
+                numberParallels.push_back(1);
+                numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns.back() * numberParallels.back());
+            }
+            for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+                turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+            }
 
-        OpenMagnetics::InputsWrapper inputs(json::parse(inputsString));
+            double frequency = std::rand() % 1000000 + 10000L;
+            double magnetizingInductance = double(std::rand() % 10000) *  1e-6;
+            double temperature = 25;
+            OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+            double peakToPeak = std::rand() % 30 + 1L;
+            double dutyCycle = double(std::rand() % 100) / 100;
+            double dcCurrent = 0;
+            if (numberTurns.size() > 1) {
+                dcCurrent = std::rand() % 30;
+            }
+            int interleavingLevel = std::rand() % 5 + 1;
+            interleavingLevel = std::min(int(numberPhysicalTurns), interleavingLevel);
+            auto coreShapeNames = OpenMagnetics::get_shape_names(false);
+            std::string coreShapeName;
+            OpenMagnetics::MagneticWrapper magnetic;
 
-        OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &cores, 1);
-        std::cout << masMagnetics.size() << std::endl;
-        std::cout << masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
-        auto masMagnetic = masMagnetics[0].first;
+            double gapLength = 1;
+            double columnHeight = 1;
+            int numberGaps = 1;
+            int gappingTypeIndex = std::rand() % 4;
+            OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>(gappingTypeIndex).value();
+            if (gappingType == OpenMagnetics::GappingType::DISTRIBUTED) {
+                numberGaps = std::rand() % 3;
+                numberGaps *= 2;
+                numberGaps += 3;
+            }
 
-        OpenMagnetics::CoilAdviser coilAdviser;
-        std::cout << "masMagnetic.get_magnetic().get_coil().get_functional_description().size(): " << masMagnetic.get_magnetic().get_coil().get_functional_description().size() << std::endl;
-        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
-        // auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
-        // std::cout << masMagneticsWithCoil.size() << std::endl;
-        // std::cout << masMagneticWithCoil.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
-        // std::cout << "masMagneticWithCoil.get_magnetic().get_coil().get_functional_description().size(): " << masMagneticWithCoil.get_magnetic().get_coil().get_functional_description().size() << std::endl;
-        // std::cout << bool(masMagneticWithCoil.get_magnetic().get_coil().get_sections_description()) << std::endl;
-        // json mierda;
-        // to_json(mierda, masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().resolve_bobbin());
-        // std::cout << "mierda: "<< mierda << std::endl;
+            while (true) {
+                coreShapeName = coreShapeNames[rand() % coreShapeNames.size()];
+                auto shape = OpenMagnetics::find_core_shape_by_name(coreShapeName);
+                if (shape.get_family() == OpenMagnetics::CoreShapeFamily::PQI || 
+                    shape.get_family() == OpenMagnetics::CoreShapeFamily::UI || 
+                    shape.get_family() == OpenMagnetics::CoreShapeFamily::EI) {
+                    continue;
+                }
+
+                do {
+                    auto shape = OpenMagnetics::find_core_shape_by_name(coreShapeName);
+                    auto corePiece = OpenMagnetics::CorePiece::factory(shape);
+                    gapLength = double(rand() % 10000 + 1.0) / 1000000;
+                    columnHeight = corePiece->get_columns()[0].get_height();
+                }
+                while (columnHeight < (gapLength * numberGaps));
+
+                std::vector<OpenMagnetics::CoreGap> gapping;
+                switch (gappingType) {
+                    case OpenMagnetics::GappingType::GRINDED:
+                        gapping = OpenMagneticsTesting::get_grinded_gap(gapLength);
+                        break;
+                    case OpenMagnetics::GappingType::SPACER:
+                        gapping = OpenMagneticsTesting::get_spacer_gap(gapLength);
+                        break;
+                    case OpenMagnetics::GappingType::RESIDUAL:
+                        gapping = OpenMagneticsTesting::get_residual_gap();
+                        break;
+                    case OpenMagnetics::GappingType::DISTRIBUTED:
+                        gapping = OpenMagneticsTesting::get_distributed_gap(gapLength, numberGaps);
+                        break;
+                }
+                
+                magnetic = OpenMagneticsTesting::get_quick_magnetic(coreShapeName, gapping, numberTurns, numberStacks, "3C91");
+                break;
+            }
+
+            int turnsAlignmentIndex = std::rand() % 4;
+            int windingOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
+            int layersOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
+            OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(turnsAlignmentIndex).value();
+            OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(windingOrientationIndex).value();
+            OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(layersOrientationIndex).value();
 
 
-        // std::string filePath = __FILE__;
-        // auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        // auto outFile = outputFilePath;
-        // outFile.append("Test_CoilAdviser.svg");
-        // OpenMagnetics::CoilPainter coilPainter(outFile);
+            // for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            //     std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+            // }
+            // std::cout << "frequency: " << frequency << std::endl;
+            // std::cout << "peakToPeak: " << peakToPeak << std::endl;
+            // std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+            // std::cout << "dutyCycle: " << dutyCycle << std::endl;
+            // std::cout << "dcCurrent: " << dcCurrent << std::endl;
+            // std::cout << "interleavingLevel: " << interleavingLevel << std::endl;
+            // std::cout << "coreShapeName: " << coreShapeName << std::endl;
+            // std::cout << "gappingTypeIndex: " << gappingTypeIndex << std::endl;
+            // std::cout << "gapLength: " << gapLength << std::endl;
+            // std::cout << "numberGaps: " << numberGaps << std::endl;
+            // std::cout << "magnetic.get_mutable_core().get_shape_family(): " << magic_enum::enum_name(magnetic.get_mutable_core().get_shape_family()) << std::endl;
+            // std::cout << "turnsAlignmentIndex: " << turnsAlignmentIndex << std::endl;
+            // std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
+            // std::cout << "layersOrientationIndex: " << layersOrientationIndex << std::endl;
 
-        // coilPainter.paint_core(masMagneticWithCoil.get_magnetic());
-        // coilPainter.paint_bobbin(masMagneticWithCoil.get_magnetic());
-        // coilPainter.paint_winding_sections(masMagneticWithCoil.get_magnetic());
+            magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
+            magnetic.get_mutable_coil().set_winding_orientation(windingOrientation);
+            magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+
+            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                                  magnetizingInductance,
+                                                                                                  temperature,
+                                                                                                  waveShape,
+                                                                                                  peakToPeak,
+                                                                                                  dutyCycle,
+                                                                                                  dcCurrent,
+                                                                                                  turnsRatios);
+
+            OpenMagnetics::MasWrapper masMagnetic;
+            inputs.process_waveforms();
+            masMagnetic.set_inputs(inputs);
+            masMagnetic.set_magnetic(magnetic);
+
+            OpenMagnetics::CoilAdviser coilAdviser;
+            coilAdviser.set_interleaving_level(interleavingLevel);
+            auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+            if (masMagneticsWithCoil.size() > 0) {
+                auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+                OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+                std::string filePath = __FILE__;
+                auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+                auto outFile = outputFilePath;
+                std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
+                outFile.append(filename);
+                OpenMagnetics::Painter painter(outFile);
+
+                painter.paint_core(masMagneticWithCoil.get_magnetic());
+                painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                painter.export_svg();
+                count--;
+            }
+        }
 
     }
 
+    TEST(Test_CoilAdviser_Random_0) {
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
+        std::vector<double> turnsRatios;
+        int64_t numberStacks = 1;
+
+
+        double magnetizingInductance = 10e-6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        std::vector<int64_t> numberTurns = {82, 5};
+        std::vector<int64_t> numberParallels = {1, 1};
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+        double frequency = 675590;
+        double peakToPeak = 26;
+
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("EP 20", gapping, numberTurns, numberStacks, "3C91");
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        OpenMagnetics::CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+        if (masMagneticsWithCoil.size() > 0) {
+            auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+        }
+    }
+    TEST(Test_CoilAdviser_Random_1) {
+        std::vector<double> turnsRatios;
+        int64_t numberStacks = 1;
+
+
+        double magnetizingInductance = 10e-6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        std::vector<int64_t> numberTurns = {16, 34};
+        std::vector<int64_t> numberParallels = {1, 1};
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+        double frequency = 811022;
+        double peakToPeak = 1;
+        int interleavingLevel = 3;
+
+        OpenMagnetics::MagneticWrapper magnetic;
+        std::string coreShapeName  = "P 7.35X3.6";
+        double gapLength = 1;
+        double columnHeight = 1;
+        do {
+            auto shape = OpenMagnetics::find_core_shape_by_name(coreShapeName);
+            auto corePiece = OpenMagnetics::CorePiece::factory(shape);
+            gapLength = double(rand() % 10000 + 1.0) / 1000000;
+            columnHeight = corePiece->get_columns()[0].get_height();
+        }
+        while (columnHeight < gapLength);
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(gapLength);
+        magnetic = OpenMagneticsTesting::get_quick_magnetic(coreShapeName, gapping, numberTurns, numberStacks, "3C91");
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        OpenMagnetics::CoilAdviser coilAdviser;
+        coilAdviser.set_interleaving_level(interleavingLevel);
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+        if (masMagneticsWithCoil.size() > 0) {
+            auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagneticWithCoil.get_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_CoilAdviser_Random_2) {
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+        int64_t numberStacks = 1;
+
+        std::vector<int64_t> numberTurns = {24, 78, 76};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+
+        double frequency = 507026;
+        double magnetizingInductance = 10e-6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double peakToPeak = 10;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+        int interleavingLevel = 4;
+        auto coreShapeNames = OpenMagnetics::get_shape_names(false);
+        std::string coreShapeName;
+        OpenMagnetics::MagneticWrapper magnetic;
+
+        auto gapping = OpenMagneticsTesting::get_residual_gap();
+        magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 19", gapping, numberTurns, numberStacks, "3C91");
+
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        OpenMagnetics::CoilAdviser coilAdviser;
+        coilAdviser.set_interleaving_level(interleavingLevel);
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+        if (masMagneticsWithCoil.size() > 0) {
+            auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagneticWithCoil.get_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+            painter.export_svg();
+        }
+
+    }
 }

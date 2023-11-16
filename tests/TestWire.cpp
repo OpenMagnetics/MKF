@@ -355,7 +355,7 @@ SUITE(Wire_Effective_Current_Density) {
                                                                                          offset);
         auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(inputs.get_primary_excitation(), temperature);
-        double expectedEffectiveCurrentDensity = 5.283e6;
+        double expectedEffectiveCurrentDensity = 5.33e6;
 
         CHECK_CLOSE(expectedEffectiveCurrentDensity, effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity);
     }
@@ -418,7 +418,7 @@ SUITE(Wire_Effective_Current_Density) {
         double frequency = 1000000;
         auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("3.15x0.85 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
-        double expectedEffectiveCurrentDensity = 2.86e6;
+        double expectedEffectiveCurrentDensity = 2.09e6;
 
         CHECK_CLOSE(expectedEffectiveCurrentDensity, effectiveCurrentDensity, max_error * expectedEffectiveCurrentDensity);
     }
@@ -536,7 +536,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
         CHECK_EQUAL(expectedNumberParallels, numberParallels);
     }
 
-    TEST(Test_Number_Parallels_High_Frequency_Rectangular_3_Parallels) {
+    TEST(Test_Number_Parallels_High_Frequency_Rectangular_4_Parallels) {
         double frequency = 1000000;
 
         auto inputs = setup_inputs(frequency);

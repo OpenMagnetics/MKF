@@ -55,6 +55,7 @@ struct Constants {
     const double initialGapLengthForSearching = 0.001;
 
     const double roshenMagneticFieldStrengthStep = 0.1;
+    const double foilToSectionMargin = 0.05;
 };
 } // namespace OpenMagnetics
 

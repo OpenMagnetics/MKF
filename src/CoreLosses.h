@@ -1,5 +1,6 @@
 #pragma once
 #include "Constants.h"
+#include "Models.h"
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
@@ -15,17 +16,6 @@
 #include <vector>
 
 namespace OpenMagnetics {
-
-enum class CoreLossesModels : int {
-    PROPRIETARY,
-    STEINMETZ,
-    IGSE,
-    BARG,
-    ROSHEN,
-    ALBACH,
-    NSE,
-    MSE
-};
 
 class CoreLossesModel {
   private:

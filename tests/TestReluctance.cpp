@@ -45,7 +45,7 @@ SUITE(Reluctance) {
     double run_test_reluctance(OpenMagnetics::ReluctanceModels modelName, std::string shapeName, json basicGapping,
                                double expectedReluctance) {
         double maximumErrorReluctance = maximumErrorReluctances[modelName];
-        auto core = OpenMagneticsTesting::get_core(shapeName, basicGapping);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, basicGapping);
         auto gapping = core.get_functional_description().get_gapping();
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName);
 
@@ -68,7 +68,7 @@ SUITE(Reluctance) {
     double run_test_energy(OpenMagnetics::ReluctanceModels modelName, std::string shapeName, json basicGapping,
                            double expectedEnergy, int numberStacks = 1) {
         double maximumErrorEnergy = maximumErrorEnergies[modelName];
-        auto core = OpenMagneticsTesting::get_core(shapeName, basicGapping, numberStacks);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, basicGapping, numberStacks);
         auto gapping = core.get_functional_description().get_gapping();
         double calculatedEnergy = 0;
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName);
@@ -657,7 +657,7 @@ SUITE(ReluctanceUngappedCore) {
         OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
-        auto core = OpenMagneticsTesting::get_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(OpenMagnetics::ReluctanceModels::ZHANG);
 
         double calculatedReluctanceAt50 =

@@ -26,8 +26,8 @@ SUITE(WindingOhmicLosses) {
         return operatingPoint;
     }
 
-    OpenMagnetics::CoilWrapper get_coil(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels) {
-        uint64_t numberPhysicalTurns = std::numeric_limits<uint64_t>::max();
+    OpenMagnetics::CoilWrapper get_coil(std::vector<int64_t> numberTurns, std::vector<int64_t> numberParallels) {
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
         for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
         {
             numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
@@ -35,8 +35,8 @@ SUITE(WindingOhmicLosses) {
         double bobbinHeight = 0.01;
         double bobbinWidth = 0.01;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        uint64_t interleavingLevel = 1;
-        interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
+        uint8_t interleavingLevel = 1;
+        interleavingLevel = std::min(uint8_t(numberPhysicalTurns), interleavingLevel);
         auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
 
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
@@ -155,8 +155,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_One_Turn) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {1};
-        std::vector<uint64_t> numberParallels = {1};
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
 
         auto operatingPoint = get_operating_point_with_dc_current({1});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -169,8 +169,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_Two_Turns) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {2};
-        std::vector<uint64_t> numberParallels = {1};
+        std::vector<int64_t> numberTurns = {2};
+        std::vector<int64_t> numberParallels = {1};
 
         auto operatingPoint = get_operating_point_with_dc_current({1});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -183,8 +183,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_Two_Turns_Two_Parallels) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {2};
-        std::vector<uint64_t> numberParallels = {2};
+        std::vector<int64_t> numberTurns = {2};
+        std::vector<int64_t> numberParallels = {2};
 
         auto operatingPoint = get_operating_point_with_dc_current({1});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -197,8 +197,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_One_Turn_Double_Current) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {1};
-        std::vector<uint64_t> numberParallels = {1};
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
 
         auto operatingPoint = get_operating_point_with_dc_current({2});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -211,8 +211,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {1, 2};
-        std::vector<uint64_t> numberParallels = {1, 2};
+        std::vector<int64_t> numberTurns = {1, 2};
+        std::vector<int64_t> numberParallels = {1, 2};
 
         auto operatingPoint = get_operating_point_with_dc_current({1, 1});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -225,8 +225,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings_Double_Turns) {
         double temperature = 20;
-        std::vector<uint64_t> numberTurns = {2, 4};
-        std::vector<uint64_t> numberParallels = {1, 2};
+        std::vector<int64_t> numberTurns = {2, 4};
+        std::vector<int64_t> numberParallels = {1, 2};
 
         auto operatingPoint = get_operating_point_with_dc_current({1, 1});
         auto winding = get_coil(numberTurns, numberParallels);
@@ -239,8 +239,8 @@ SUITE(WindingOhmicLosses) {
 
     TEST(Test_Winding_Ohmic_Losses_Two_Windings_High_Temp) {
         double temperature = 120;
-        std::vector<uint64_t> numberTurns = {1, 2};
-        std::vector<uint64_t> numberParallels = {1, 2};
+        std::vector<int64_t> numberTurns = {1, 2};
+        std::vector<int64_t> numberParallels = {1, 2};
 
         auto operatingPoint = get_operating_point_with_dc_current({1, 1});
         auto winding = get_coil(numberTurns, numberParallels);

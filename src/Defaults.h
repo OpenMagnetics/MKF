@@ -2,9 +2,7 @@
 #    define DEFAULTS_H 1
 #    pragma once
 
-#    include "CoreLosses.h"
-#    include "CoreTemperature.h"
-#    include "Reluctance.h"
+#include "Models.h"
 
 namespace OpenMagnetics {
 struct Defaults {
@@ -13,6 +11,7 @@ struct Defaults {
     const OpenMagnetics::CoreTemperatureModels coreTemperatureModelDefault =
         OpenMagnetics::CoreTemperatureModels::MANIKTALA;
     const OpenMagnetics::ReluctanceModels reluctanceModelDefault = OpenMagnetics::ReluctanceModels::ZHANG;
+    const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
     const double coreAdviserMagneticFluxDensityReference = 0.5;
@@ -27,6 +26,7 @@ struct Defaults {
     const double magneticFluxDensitySaturation = 0.5;
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double windingLossesHarmonicAmplitudeThreshold = 0.05;
+    const double ambientTemperature = 25;
 };
 } // namespace OpenMagnetics
 

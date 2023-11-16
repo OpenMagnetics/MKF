@@ -1,6 +1,7 @@
 #pragma once
 #include "Constants.h"
 #include "InitialPermeability.h"
+#include "Models.h"
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
@@ -15,17 +16,6 @@
 #include <vector>
 
 namespace OpenMagnetics {
-
-enum class ReluctanceModels : int {
-    ZHANG,
-    PARTRIDGE,
-    EFFECTIVE_AREA,
-    EFFECTIVE_LENGTH,
-    MUEHLETHALER,
-    STENGLEIN,
-    BALAKRISHNAN,
-    CLASSIC
-};
 
 class ReluctanceModel {
   private:

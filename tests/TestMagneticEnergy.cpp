@@ -25,7 +25,7 @@ SUITE(MagneticEnergy) {
             frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL,
             peakToPeak, dutyCycle, dcCurrent);
 
-        core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
+        core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
     TEST(Test_Magnetic_Energy_Iron_Powder_Core) {
@@ -79,7 +79,7 @@ SUITE(MagneticEnergy) {
         std::string coreMaterial = "3C95";
         auto gapping = OpenMagneticsTesting::get_spacer_gap(0.003);
 
-        OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_core(coreShape, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         OpenMagnetics::MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));

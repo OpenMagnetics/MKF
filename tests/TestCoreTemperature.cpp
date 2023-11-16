@@ -24,7 +24,7 @@ double run_test_core_temperature(OpenMagnetics::CoreTemperatureModels modelName,
                                  double ambientTemperature,
                                  double expectedCoreTemperature) {
     double maximumAdmittedErrorTemperatureValue = maximumAdmittedErrorTemperature[modelName];
-    OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_core(shapeName, json::array(), 1, materialName);
+    OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
     auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(modelName);
 
     auto coreTemperature = coreTemperatureModel->get_core_temperature(core, coreLosses, ambientTemperature);

@@ -1,4 +1,6 @@
 #include "BobbinWrapper.h"
+#include "CoreLosses.h"
+#include "CoreTemperature.h"
 #include "CoreAdviser.h"
 #include "MagnetizingInductance.h"
 #include "WindingSkinEffectLosses.h"
@@ -1112,9 +1114,11 @@ void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWi
             (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().set_bobbin(BobbinWrapper::create_quick_bobbin((*masMagneticsWithScoring)[i].first.get_magnetic().get_core()));
         }
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
-            auto primary_winding = coil.get_functional_description()[0];
-            primary_winding.set_number_turns(numberTurnsCombination[windingIndex]);
-            (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description().push_back(primary_winding);
+            auto winding = coil.get_functional_description()[0];
+            winding.set_number_turns(numberTurnsCombination[windingIndex]);
+            winding.set_isolation_side(get_isolation_side_from_index(windingIndex));
+            winding.set_name(std::string{magic_enum::enum_name(get_isolation_side_from_index(windingIndex))});
+            (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description().push_back(winding);
         }
     }
 }

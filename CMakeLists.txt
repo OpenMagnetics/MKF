@@ -10,6 +10,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -gdwarf-3")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
@@ -46,6 +47,10 @@ FetchContent_Declare(magic-enum
         GIT_REPOSITORY https://github.com/Neargye/magic_enum
         GIT_TAG  tags/v0.9.3)
 
+FetchContent_Declare(matplotplusplus
+        GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
+        GIT_TAG origin/master) # or whatever tag you want
+
 if(INCLUDE_PYMKF)
         FetchContent_Declare(pybind11
                 GIT_REPOSITORY https://github.com/pybind/pybind11.git)
@@ -57,10 +62,13 @@ endif(INCLUDE_PYMKF)
 FetchContent_Declare(spline
         GIT_REPOSITORY https://github.com/ttk592/spline.git)
 
-FetchContent_Declare(svg
-        GIT_REPOSITORY https://github.com/AlfVII/svg)
+FetchContent_MakeAvailable(json magic-enum spline)
 
-FetchContent_MakeAvailable(json magic-enum spline svg)
+FetchContent_GetProperties(matplotplusplus)
+if(NOT matplotplusplus_POPULATED)
+    FetchContent_Populate(matplotplusplus)
+    add_subdirectory(${matplotplusplus_SOURCE_DIR} ${matplotplusplus_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
 
 if(INCLUDE_MKF_TESTS)
         FetchContent_MakeAvailable(UnitTest++)
@@ -70,9 +78,6 @@ if(INCLUDE_PYMKF)
         FetchContent_MakeAvailable( pybind11 pybind11_json)
         set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
 endif(INCLUDE_PYMKF)
-
-file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/CMakeLists.txt")
-file(REMOVE_RECURSE "${CMAKE_BINARY_DIR}/_deps/svg-src/tests")
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 
@@ -98,6 +103,7 @@ file(GLOB SOURCES
     "src/external*.cpp")
 
 add_library(MKF SHARED ${SOURCES})
+set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 
 add_custom_target(MASGeneration
@@ -122,12 +128,11 @@ if(INCLUDE_MKF_TESTS)
 endif(INCLUDE_MKF_TESTS)
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
-include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 include_directories("${MAS_DIRECTORY}/")
 
-target_link_libraries(MKF nlohmann_json::nlohmann_json)
+target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
 if(INCLUDE_MKF_TESTS)
         target_link_libraries(MKF UnitTest++)
 endif(INCLUDE_MKF_TESTS)

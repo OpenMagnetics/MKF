@@ -1,6 +1,8 @@
 #include "CoreWrapper.h"
 #include "WireWrapper.h"
 #include "Resistivity.h"
+#include "Reluctance.h"
+#include "InitialPermeability.h"
 #include "spline.h"
 
 #include "Defaults.h"
@@ -1830,7 +1832,7 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
         return piece;
     }
     else
-        throw std::runtime_error("Unknown shape family, available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
+        throw std::runtime_error("Unknown shape family: " + std::string{magic_enum::enum_name(family)} + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T}");
 }
 
@@ -2658,7 +2660,7 @@ double CoreWrapper::get_coercive_force(double temperature) {
 
 double CoreWrapper::get_initial_permeability(double temperature){
     auto coreMaterial =  get_material();
-    OpenMagnetics::InitialPermeability initialPermeability;
+    InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
     return initialPermeabilityValue;
 }
@@ -2677,7 +2679,7 @@ double CoreWrapper::get_effective_permeability(double temperature){
 
 double CoreWrapper::get_reluctance(double temperature){
     auto coreMaterial =  get_material();
-    OpenMagnetics::InitialPermeability initialPermeability;
+    InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double calculatedReluctance = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);
