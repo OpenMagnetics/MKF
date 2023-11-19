@@ -87,8 +87,7 @@ class WireAdviser {
                                                                                  std::vector<WireWrapper>* wires,
                                                                                  Section section,
                                                                                  SignalDescriptor current,
-                                                                                 double temperature,
-                                                                                 bool includeExtraParallels);
+                                                                                 double temperature);
         void expand_wires_dataset_with_parallels(std::vector<CoilFunctionalDescription>* coilFunctionalDescriptions);
     
 };

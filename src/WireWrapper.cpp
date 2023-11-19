@@ -562,9 +562,9 @@ namespace OpenMagnetics {
         }
         else {
 
-            long int wireNumberConductors = numberConductors;
-            wireNumberConductors = std::max(wireNumberConductors, minLitzWireNumberConductors[key]);
-            wireNumberConductors = std::min(wireNumberConductors, maxLitzWireNumberConductors[key]);
+            auto wireNumberConductors = numberConductors;
+            wireNumberConductors = std::max(wireNumberConductors, int(minLitzWireNumberConductors[key]));
+            wireNumberConductors = std::min(wireNumberConductors, int(maxLitzWireNumberConductors[key]));
             double packingFactor = wirePackingFactorInterps[key](wireNumberConductors);
             return packingFactor;
         }
@@ -814,7 +814,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled reactangular wires
-    double WireWrapper::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard, bool includeAirInCell) {
+    double WireWrapper::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard) {
         double realConductingArea = get_conducting_area_rectangular(conductingWidth, conductingHeight, standard);
         double outerWidth = get_outer_width_rectangular(conductingWidth, grade, standard);
         double outerHeight = get_outer_height_rectangular(conductingHeight, grade, standard);
@@ -1015,7 +1015,7 @@ namespace OpenMagnetics {
             dimensionWithTolerance.set_nominal(conductingArea);
             set_conducting_area(dimensionWithTolerance);
         }
-        [[maybe_unused]] double nonConductingArea;
+        double nonConductingArea = 0;
         if (skinDepth < conductingSmallestDimension / 2) {
             switch (get_type()) {
                 case WireType::LITZ:
@@ -1060,7 +1060,7 @@ namespace OpenMagnetics {
 
     int WireWrapper::calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper& wire, double maximumEffectiveCurrentDensity, size_t windingIndex) {
         int maximumNumberParallels = 0;
-        for (int operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
             double temperature = inputs.get_operating_points()[operatingPointIndex].get_conditions().get_ambient_temperature();
             auto excitation = inputs.get_winding_excitation(operatingPointIndex, windingIndex);
             auto effectiveCurrentDensity = wire.calculate_effective_current_density(excitation, temperature);
@@ -1088,27 +1088,65 @@ namespace OpenMagnetics {
         return numberParallels;
     }
 
-    double WireWrapper::get_maximum_width() {
+    double WireWrapper::get_maximum_outer_width() {
         switch (get_type()) {
             case WireType::LITZ:
             case WireType::ROUND:
+                if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
+                else 
+                    return resolve_dimensional_values(get_conducting_diameter().value());
             case WireType::RECTANGULAR:
             case WireType::FOIL:
+                if (get_outer_width())
                     return resolve_dimensional_values(get_outer_width().value());
+                else 
+                    return resolve_dimensional_values(get_conducting_width().value());
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
     }
 
-    double WireWrapper::get_maximum_height() {
+    double WireWrapper::get_maximum_outer_height() {
         switch (get_type()) {
             case WireType::LITZ:
             case WireType::ROUND:
+                if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
+                else 
+                    return resolve_dimensional_values(get_conducting_diameter().value());
             case WireType::RECTANGULAR:
             case WireType::FOIL:
+                if (get_outer_height())
                     return resolve_dimensional_values(get_outer_height().value());
+                else 
+                    return resolve_dimensional_values(get_conducting_height().value());
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
+    double WireWrapper::get_maximum_conducting_width() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+                return resolve_dimensional_values(get_conducting_width().value());
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
+    double WireWrapper::get_maximum_conducting_height() {
+        switch (get_type()) {
+            case WireType::LITZ:
+            case WireType::ROUND:
+                return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+                return resolve_dimensional_values(get_conducting_height().value());
             default:
                 throw std::runtime_error("Unknow type of wire");
         }

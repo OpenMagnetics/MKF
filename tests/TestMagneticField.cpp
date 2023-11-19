@@ -50,7 +50,7 @@ SUITE(MagneticField) {
 
         std::vector<OpenMagnetics::FieldPoint> points;
         OpenMagnetics::FieldPoint fieldPoint;
-        double maximumWidth = coil.resolve_wire(0).get_maximum_width();
+        double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
         points.push_back(fieldPoint);
 
@@ -81,8 +81,8 @@ SUITE(MagneticField) {
 
         std::vector<OpenMagnetics::FieldPoint> points;
         OpenMagnetics::FieldPoint fieldPoint;
-        double maximumWidth = coil.resolve_wire(0).get_maximum_width();
-        double maximumHeight = coil.resolve_wire(0).get_maximum_height();
+        double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
+        double maximumHeight = coil.resolve_wire(0).get_maximum_outer_height();
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
         points.push_back(fieldPoint);
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] + (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
@@ -218,12 +218,23 @@ SUITE(MagneticField) {
     TEST(Test_Magnetic_Image_Method) {
         gapping = OpenMagneticsTesting::get_residual_gap();
         coreShape = "P 9/5";
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
         setup();
 
         OpenMagnetics::WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0];
 
         double coreColumnWidth = core.get_columns()[0].get_width();
         double coreColumnHeight = core.get_columns()[0].get_height();
+
+        auto turn_0 = coil.get_turns_description().value()[0];
+        std::vector<OpenMagnetics::FieldPoint> points;
+        OpenMagnetics::FieldPoint fieldPoint;
+        // fieldPoint.set_point(std::vector<double>{coreColumnWidth / 2 + windingWindow.get_width().value(), 0});
+        fieldPoint.set_point(std::vector<double>{turn_0.get_coordinates()[0], coreColumnHeight / 2});
+        points.push_back(fieldPoint);
+
 
         OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("0.475 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
@@ -237,11 +248,24 @@ SUITE(MagneticField) {
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         magneticField.set_fringing_effect(false);
-        magneticField.set_mirroring_dimension(2);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic);
+        magneticField.set_mirroring_dimension(1);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
-
-        double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
+ 
+        auto outFile = outputFilePath;
+        outFile.append("Test_Magnetic_Image_Method.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
+        painter.set_logarithmic_scale(false);
+        painter.set_mirroring_dimension(1);
+        painter.set_fringing_effect(false);
+        painter.set_maximum_scale_value(std::nullopt);
+        painter.set_minimum_scale_value(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
         CHECK(field.get_data().size() == 1);
     }
 

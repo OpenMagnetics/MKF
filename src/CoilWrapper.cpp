@@ -769,12 +769,22 @@ bool CoilWrapper::wind_by_layers() {
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::VERTICAL) {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
+                    if (wirePerWinding[windingIndex].get_type() == WireType::FOIL) {
+                        maximumNumberPhysicalTurnsPerLayer = 1;
+                    }
+                    else {
+                        maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
+                    }
                     layerWidth = wireWidth;
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);
+                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR) {  // TODO: Fix for future PLANAR case
+                        maximumNumberPhysicalTurnsPerLayer = 1;
+                    }
+                    else {
+                        maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);
+                    }
                     layerWidth = sections[sectionIndex].get_dimensions()[0];
                     layerHeight = wireHeight;
                 }

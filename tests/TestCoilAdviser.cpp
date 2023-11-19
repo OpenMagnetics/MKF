@@ -152,12 +152,12 @@ SUITE(CoilAdviser) {
                 auto outFile = outputFilePath;
                 std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
                 outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
+                // OpenMagnetics::Painter painter(outFile);
 
-                painter.paint_core(masMagneticWithCoil.get_magnetic());
-                painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
-                painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
-                painter.export_svg();
+                // painter.paint_core(masMagneticWithCoil.get_magnetic());
+                // painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                // painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                // painter.export_svg();
                 count--;
             }
         }
@@ -266,12 +266,12 @@ SUITE(CoilAdviser) {
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            // OpenMagnetics::Painter painter(outFile);
 
-            painter.paint_core(masMagneticWithCoil.get_magnetic());
-            painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
-            painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
-            painter.export_svg();
+            // painter.paint_core(masMagneticWithCoil.get_magnetic());
+            // painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+            // painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+            // painter.export_svg();
         }
     }
 
@@ -330,12 +330,12 @@ SUITE(CoilAdviser) {
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            // OpenMagnetics::Painter painter(outFile);
 
-            painter.paint_core(masMagneticWithCoil.get_magnetic());
-            painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
-            painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
-            painter.export_svg();
+            // painter.paint_core(masMagneticWithCoil.get_magnetic());
+            // painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+            // painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+            // painter.export_svg();
         }
 
     }

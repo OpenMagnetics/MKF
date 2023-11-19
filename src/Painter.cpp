@@ -1,6 +1,6 @@
 #include "MagneticField.h"
 #include "Painter.h"
-#include "CoilBreaker.h"
+#include "CoilMesher.h"
 #include "MAS.hpp"
 #include "Utils.h"
 #include "json.hpp"

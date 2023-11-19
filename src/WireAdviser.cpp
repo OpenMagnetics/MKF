@@ -40,7 +40,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
         auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
-        if (wire.get_maximum_width() < section.get_dimensions()[0] && wire.get_maximum_height() < section.get_dimensions()[1]) {
+        if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1]) {
             double scoring = 0;
             newScoring.push_back(scoring);
         }
@@ -81,7 +81,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
         if (!CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
             throw std::runtime_error("Conducting area is missing");
         }
-        auto neededOuterAreaNoCompact = wire.get_maximum_width() * wire.get_maximum_height();
+        auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
 
         neededOuterAreaNoCompact *= (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() / numberSections;
 
@@ -213,7 +213,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
             wire.set_number_conductors(1);
         }
         double proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow(wire.get_number_conductors().value(), 2);
-        proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow((*unfilteredCoils)[coilIndex].first.get_number_parallels() / (std::max(wire.get_maximum_width(), wire.get_maximum_height())), 2);
+        proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow((*unfilteredCoils)[coilIndex].first.get_number_parallels() / (std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height())), 2);
 
         double scoring = proximityFactor;
         newScoring.push_back(scoring);
@@ -268,8 +268,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
                                                                                       std::vector<WireWrapper>* wires,
                                                                                       Section section,
                                                                                       SignalDescriptor current,
-                                                                                      double temperature,
-                                                                                      bool includeExtraParallels){
+                                                                                      double temperature){
     std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
 
     for (auto& wire : *wires){
@@ -313,7 +312,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
-    auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature, false);
+    auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature);
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
     coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections);
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);

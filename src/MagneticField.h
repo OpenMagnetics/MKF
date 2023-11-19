@@ -21,23 +21,31 @@ namespace OpenMagnetics {
 class MagneticFieldStrengthModel {
   public:
     virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt) = 0;
-    virtual ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, int64_t numberTurns, double magnetizingCurrentPeak, FieldPoint inducedFieldPoint) = 0;
+};
+
+class MagneticFieldStrengthFringingEffectModel {
+  public:
+    virtual FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap) = 0;
+    virtual ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint) = 0;
 };
 
 class MagneticField {
     private:
     protected:
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
+        MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
         std::shared_ptr<MagneticFieldStrengthModel>  _model;
-        std::shared_ptr<MagneticFieldStrengthModel>  _fringingEffectModel;
+        std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
         bool _includeFringing = true;
         int _mirroringDimension = 0;
     public:
 
-        MagneticField(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault) {
+        MagneticField(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault,
+                      MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault) {
             _magneticFieldStrengthModel = magneticFieldStrengthModel;
+            _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
             _model = factory(_magneticFieldStrengthModel);
-            _fringingEffectModel = factory(MagneticFieldStrengthModels::ROSHEN);
+            _fringingEffectModel = factory(_magneticFieldStrengthFringingEffectModel);
         }
 
         void set_fringing_effect(bool value) {
@@ -50,17 +58,15 @@ class MagneticField {
 
         static SignalDescriptor calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                         double MagneticField,
-                                                        double numberTurns,
-                                                        double frequency);
+                                                        double numberTurns);
         static SignalDescriptor calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
-                                                                double area,
-                                                                double frequency);
+                                                                double area);
         static SignalDescriptor calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
-                                                                    double initialPermeability,
-                                                                    double frequency);
+                                                                    double initialPermeability);
 
         WindingWindowMagneticStrengthFieldOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<std::vector<FieldPoint>> externalInducedFieldPoints = std::nullopt);
 
+        static std::shared_ptr<MagneticFieldStrengthFringingEffectModel> factory(MagneticFieldStrengthFringingEffectModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory(MagneticFieldStrengthModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory();
 };
@@ -72,9 +78,6 @@ class MagneticField {
 class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
   public:
     ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
-    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]]CoreGap gap, [[maybe_unused]]int64_t numberTurns, [[maybe_unused]]double magnetizingCurrentPeak, [[maybe_unused]] FieldPoint inducedFieldPoint) {
-        throw std::runtime_error("Fringing field not implemented for this model");
-    }
 };
 
 
@@ -83,9 +86,6 @@ class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthModel {
   public:
     ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
-    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]]CoreGap gap, [[maybe_unused]]int64_t numberTurns, [[maybe_unused]]double magnetizingCurrentPeak, [[maybe_unused]] FieldPoint inducedFieldPoint) {
-        throw std::runtime_error("Fringing field not implemented for this model");
-    }
 };
 
 
@@ -94,21 +94,31 @@ class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthMod
 class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
   public:
     ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
-    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]]CoreGap gap, [[maybe_unused]]int64_t numberTurns, [[maybe_unused]]double magnetizingCurrentPeak, [[maybe_unused]] FieldPoint inducedFieldPoint) {
-        throw std::runtime_error("Fringing field not implemented for this model");
-    }
 };
 
 
 // Based on Fringing Field Formulas and Winding Loss Due to an Air Gap by Waseem A. Roshen
 // https://sci-hub.wf/10.1109/tmag.2007.898908
 // https://sci-hub.st/10.1109/tmag.2008.2002302
-class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthModel {
+class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthFringingEffectModel {
   public:
-    ComplexFieldPoint get_magnetic_field_strength_between_two_points([[maybe_unused]]FieldPoint inducingFieldPoint, [[maybe_unused]]FieldPoint inducedFieldPoint, [[maybe_unused]]std::optional<WireWrapper> inducingWire = std::nullopt) {
-        throw std::runtime_error("Point to point not implemented for this model");
+    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint);
+    FieldPoint get_equivalent_inducing_point_for_gap([[maybe_unused]]CoreGap gap, [[maybe_unused]]double magneticFieldStrengthGap) {
+        throw std::runtime_error("Fringing field not implemented for this model");
     }
-    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, int64_t numberTurns, double magnetizingCurrentPeak, FieldPoint inducedFieldPoint);
 };
+
+
+// Based on Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften by Manfred Albach
+// https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
+// https://sci-hub.wf/10.1109/tpel.2011.2143729
+class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEffectModel {
+  public:
+    ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]]CoreGap gap, [[maybe_unused]]double magneticFieldStrengthGap, [[maybe_unused]]FieldPoint inducedFieldPoint) {
+        throw std::runtime_error("Fringing field not implemented for this model");
+    }
+    FieldPoint get_equivalent_inducing_point_for_gap(CoreGap gap, double magneticFieldStrengthGap);
+};
+
 
 } // namespace OpenMagnetics

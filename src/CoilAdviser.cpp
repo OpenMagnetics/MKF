@@ -26,7 +26,6 @@ namespace OpenMagnetics {
         return averagePowerPerWinding;
     }
 
-
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil(MasWrapper mas, size_t maximumNumberResults){
         std::string file_path = __FILE__;
         auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
@@ -46,6 +45,7 @@ namespace OpenMagnetics {
         return get_advised_coil(&wires, mas, maximumNumberResults);
 
     }
+
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil(std::vector<WireWrapper>* wires, MasWrapper mas, size_t maximumNumberResults){
         auto defaults = Defaults();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_inputs());
