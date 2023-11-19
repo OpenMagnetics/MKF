@@ -1,0 +1,372 @@
+#include "CoilMesher.h"
+#include "WindingOhmicLosses.h"
+#include "Defaults.h"
+
+#include <cmath>
+#include <complex>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <magic_enum.hpp>
+#include <numbers>
+#include <streambuf>
+#include <vector>
+#include <../tests/TestingUtils.h>
+
+namespace OpenMagnetics {
+
+std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels modelName){
+    if (modelName == CoilMesherModels::CENTER) {
+        return std::make_shared<CoilMesherCenterModel>();
+    }
+    else if (modelName == CoilMesherModels::WANG) {
+        return std::make_shared<CoilMesherWangModel>();
+    }
+    else
+        throw std::runtime_error("Unknown coil breaker mode, available options are: {WANG, CENTER}");
+}
+
+std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    auto defaults = Defaults();
+    auto coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        throw std::runtime_error("Winding does not have turns description");
+
+    }
+    auto wirePerWinding = coil.get_wires();
+    auto turns = coil.get_turns_description().value();
+
+
+    auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, defaults.ambientTemperature);
+    auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
+
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform() || 
+        operatingPoint.get_excitations_per_winding()[0].get_current()->get_waveform()->get_data().size() == 0)
+    {
+        throw std::runtime_error("Input has no waveform. TODO: get waveform from processed data");
+    }
+
+    std::vector<std::shared_ptr<CoilMesherModel>> breakdownModelPerWinding;
+
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex)
+    {
+        std::shared_ptr<CoilMesherModel> model;
+
+        switch(coil.get_wire_type(windingIndex)) {
+            case WireType::ROUND: {
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                break;
+            }
+            case WireType::LITZ: {
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                break;
+            }
+            case WireType::RECTANGULAR: {
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                break;
+            }
+            case WireType::FOIL: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown type of wire");
+        }
+
+        model->set_mirroring_dimension(_mirroringDimension);
+        breakdownModelPerWinding.push_back(model);
+    }
+
+
+
+    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
+        }
+    }
+
+    std::vector<Field> tempFieldPerHarmonic;
+    for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
+        Field field;
+        field.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+        tempFieldPerHarmonic.push_back(field);
+    }
+
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto turn = turns[turnIndex];
+        int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        auto wire = wirePerWinding[windingIndex];
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+
+        auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), magnetic.get_core());
+
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+                continue;
+            }
+
+            auto harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
+            auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
+            if (windingIndex > 0) {
+                harmonicCurrentPeakInTurn *= -1;
+            }
+            for (auto& fieldPoint : fieldPoints) {
+                FieldPoint fieldPointThisHarmonic(fieldPoint);
+                fieldPointThisHarmonic.set_value(fieldPoint.get_value() * harmonicCurrentPeakInTurn);
+                tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPointThisHarmonic);
+            }
+            // std::move(fieldPoints.begin(), fieldPoints.end(), std::back_inserter(tempFieldPerHarmonic[harmonicIndex].get_mutable_data()));
+        }
+    }
+    std::vector<Field> fieldPerHarmonic;
+    for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
+        if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
+            fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+        }
+    }
+
+    return fieldPerHarmonic;
+}
+
+std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    auto coil = magnetic.get_coil();
+    if (!coil.get_turns_description()) {
+        throw std::runtime_error("Winding does not have turns description");
+
+    }
+    auto wirePerWinding = coil.get_wires();
+    auto turns = coil.get_turns_description().value();
+
+    std::vector<std::shared_ptr<CoilMesherModel>> breakdownModelPerWinding;
+
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex)
+    {
+        std::shared_ptr<CoilMesherModel> model;
+
+        switch(coil.get_wire_type(windingIndex)) {
+            case WireType::ROUND: {
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                break;
+            }
+            case WireType::LITZ: {
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                break;
+            }
+            case WireType::RECTANGULAR: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                break;
+            }
+            case WireType::FOIL: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown type of wire");
+        }
+
+        model->set_mirroring_dimension(_mirroringDimension);
+        breakdownModelPerWinding.push_back(model);
+    }
+
+    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
+        }
+    }
+
+    std::vector<Field> tempFieldPerHarmonic;
+    for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
+        Field field;
+        field.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+        tempFieldPerHarmonic.push_back(field);
+    }
+
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto turn = turns[turnIndex];
+        int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        auto wire = wirePerWinding[windingIndex];
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+
+        auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex);
+
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+                continue;
+            }
+            for (auto& fieldPoint : fieldPoints) {
+                tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPoint);
+            }
+        }
+    }
+    std::vector<Field> fieldPerHarmonic;
+    for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
+        if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
+            fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+        }
+    }
+
+    return fieldPerHarmonic;
+}
+
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+    std::vector<FieldPoint> fieldPoints;
+
+    int M = _mirroringDimension;
+    int N = _mirroringDimension;
+
+    double corePermeability = core.get_initial_permeability(Defaults().ambientTemperature);
+
+    WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0]; // Hardcoded
+    double A = windingWindow.get_width().value();
+    double B = windingWindow.get_height().value();
+    double coreColumnWidth = core.get_columns()[0].get_width();
+
+    // double turn_a = turn.get_coordinates()[0];
+    // double turn_b = turn.get_coordinates()[1];
+    double turn_a = turn.get_coordinates()[0] - coreColumnWidth / 2;
+    double turn_b = turn.get_coordinates()[1] + B / 2;
+
+    for (int m = -M; m <= M; ++m)
+    {
+        for (int n = -N; n <= N; ++n)
+        {
+            // if (!(m ==0 && n == 0) && !(m == 0 && n > 0)) {
+            //     continue;
+            // }
+            FieldPoint mirroredFieldPoint;
+            double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
+            mirroredFieldPoint.set_value(currentMultiplier);  // Will be multplied later
+            if (turnLength) {
+                mirroredFieldPoint.set_turn_length(turnLength.value());
+            }
+            if (turnIndex) {
+                mirroredFieldPoint.set_turn_index(turnIndex.value());
+            }
+            double a;
+            double b;
+            if (m % 2 == 0) {
+                a = m * A + turn_a;
+            }
+            else {
+                a = m * A + A - turn_a;
+            }
+            if (n % 2 == 0) {
+                b = n * B + turn_b;
+            }
+            else {
+                b = n * B + B - turn_b;
+            }
+            mirroredFieldPoint.set_point(std::vector<double>{a + coreColumnWidth / 2, b - B / 2});
+            fieldPoints.push_back(mirroredFieldPoint);
+        }
+    }
+
+    return fieldPoints;
+}
+
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex) {
+    std::vector<FieldPoint> fieldPoints;
+    FieldPoint fieldPoint;
+    fieldPoint.set_point(turn.get_coordinates());
+
+    fieldPoint.set_value(0);
+    if (turnIndex) {
+        fieldPoint.set_turn_index(turnIndex.value());
+    }
+    fieldPoint.set_label("center");
+    fieldPoints.push_back(fieldPoint);
+
+    return fieldPoints;
+}
+
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex) {
+    std::vector<FieldPoint> fieldPoints;
+    FieldPoint fieldPoint;
+    fieldPoint.set_value(0);
+    if (turnIndex) {
+        fieldPoint.set_turn_index(turnIndex.value());
+    }
+
+    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width(), turn.get_coordinates()[1]});
+    fieldPoint.set_label("right");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width(), turn.get_coordinates()[1]});
+    fieldPoint.set_label("left");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height()});
+    fieldPoint.set_label("top");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height()});
+    fieldPoint.set_label("bottom");
+    fieldPoints.push_back(fieldPoint);
+
+    return fieldPoints;
+}
+
+
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+    std::vector<FieldPoint> fieldPoints;
+    FieldPoint fieldPoint;
+    fieldPoint.set_value(0.5);
+    double c;
+    double h;
+
+    if (wire.get_type() == WireType::FOIL) {
+        c = wire.get_maximum_conducting_height();
+        h = wire.get_maximum_conducting_width();
+    }
+    else {
+        c = wire.get_maximum_conducting_width();
+        h = wire.get_maximum_conducting_height();
+    }
+    double k = c / h;
+    double lambda = std::min(0.99, 0.01 * k + 0.66);
+    double w = lambda * h;
+
+    if (turnIndex) {
+        fieldPoint.set_turn_index(turnIndex.value());
+    }
+    if (turnLength) {
+        fieldPoint.set_turn_length(turnLength.value());
+    }
+
+    if (wire.get_type() == WireType::FOIL) {
+        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2 - w});
+        fieldPoints.push_back(fieldPoint);
+
+        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2 + w});
+        fieldPoints.push_back(fieldPoint);
+    }
+    else if (wire.get_type() == WireType::RECTANGULAR) {
+        fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2 - w, turn.get_coordinates()[1]});
+        fieldPoints.push_back(fieldPoint);
+
+        fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2 + w, turn.get_coordinates()[1]});
+        fieldPoints.push_back(fieldPoint);
+    }
+    else {
+        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2 - w});
+        fieldPoints.push_back(fieldPoint);
+
+        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2 + w});
+        fieldPoints.push_back(fieldPoint);
+
+        fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2 - w, turn.get_coordinates()[1]});
+        fieldPoints.push_back(fieldPoint);
+
+        fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2 + w, turn.get_coordinates()[1]});
+        fieldPoints.push_back(fieldPoint);
+    }
+
+    return fieldPoints;
+}
+
+} // namespace OpenMagnetics
+

@@ -20,6 +20,7 @@
 #include <valarray>
 #include <vector>
 #include <list>
+// #include "../tests/TestingUtils.h"
 
 
 using json = nlohmann::json;
@@ -184,6 +185,9 @@ std::vector<double> linear_spaced_array(double startingValue, double endingValue
 SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, double frequency) {
     SignalDescriptor standardized_signal(signal);
     if (!signal.get_waveform()) {
+        if (!signal.get_processed()) {
+            throw std::runtime_error("Signal is not processed");
+        }
         auto waveform = create_waveform(signal.get_processed().value(), frequency);
         standardized_signal.set_waveform(waveform);
     }
@@ -194,6 +198,9 @@ SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, dou
 Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
     Waveform waveform;
     double period = 1 / frequency;
+    if (!processed.get_peak_to_peak()) {
+        throw std::runtime_error("Signal is missing peak to peak");
+    }
 
     auto peakToPeak = processed.get_peak_to_peak().value();
     auto offset = processed.get_offset();
@@ -203,6 +210,7 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
     }
     std::vector<double> data;
     std::vector<double> time;
+
     switch (processed.get_label()) {
         case WaveformLabel::TRIANGULAR: {
             double max = peakToPeak / 2 + offset;
@@ -993,6 +1001,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     auto voltage_excitation = excitation.get_voltage().value();
     voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
     auto waveform = voltage_excitation.get_waveform().value();
+
     auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
     return calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, compress, offset);
 }
@@ -1081,9 +1090,10 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
         processed.set_label(waveShape);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
-        // processed.set_offset(dcCurrent);
+        processed.set_offset(0);
         voltage.set_processed(processed);
         voltage = standarize_waveform(voltage, frequency);
+
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
             auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
@@ -1100,7 +1110,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
         processed.set_label(waveShape);
         processed.set_peak_to_peak(peakToPeak * turnsRatio);
         processed.set_duty_cycle(dutyCycle);
-        // processed.set_offset(dcCurrent);
+        processed.set_offset(0);
         voltage.set_processed(processed);
         voltage = standarize_waveform(voltage, frequency);
         excitation.set_voltage(voltage);

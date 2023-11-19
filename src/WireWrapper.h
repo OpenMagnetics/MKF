@@ -140,7 +140,7 @@ class WireWrapper : public Wire {
         static double get_filling_factor_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
         static double get_outer_diameter_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
         // Thought for enamelled reactangular wires
-        static double get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
+        static double get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
         static double get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard = WireStandard::IEC_60317);
         static double get_outer_width_rectangular(double conductingWidth, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
         static double get_outer_height_rectangular(double conductingHeight, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
@@ -194,8 +194,10 @@ class WireWrapper : public Wire {
         static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
         static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
 
-        double get_maximum_width();
-        double get_maximum_height();
+        double get_maximum_outer_width();
+        double get_maximum_outer_height();
+        double get_maximum_conducting_width();
+        double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();
 
         void cut_foil_wire_to_section(Section section);

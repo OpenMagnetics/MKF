@@ -100,6 +100,12 @@ std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension
 
 double try_get_duty_cycle(Waveform waveform, double frequency);
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);
+std::complex<double> bessel_first_kind(double order, std::complex<double> z);
+double kelvin_function_real(double order, double x);
+double kelvin_function_imaginary(double order, double x);
+double derivative_kelvin_function_real(double order, double x);
+double derivative_kelvin_function_imaginary(double order, double x);
+
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
 IsolationSide get_isolation_side_from_index(size_t index);

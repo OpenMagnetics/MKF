@@ -84,4 +84,35 @@ SUITE(Utils) {
         OpenMagnetics::load_databases(masData, true);
     }
 
+    // TEST(Modified_Bessel) {
+    //     double calculatedValue = OpenMagnetics::modified_bessel_first_kind(0.0, std::complex<double>{1.0, 0.0}).real();
+    //     double expectedValue = 1.2660658777520084;
+    //     std::cout << "calculatedValue: " << calculatedValue << std::endl;
+    //     std::cout << "expectedValue: " << expectedValue << std::endl;
+    //     CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
+    // }
+
+
+    TEST(Bessel) {
+        double calculatedValue = OpenMagnetics::bessel_first_kind(0.0, std::complex<double>{1.0, 0.0}).real();
+        double expectedValue = 0.7651976865579666;
+        CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
+
+        double calculatedBerValue = OpenMagnetics::kelvin_function_real(0.0, 1.0);
+        double expectedBerValue = 0.98438178;
+        CHECK_CLOSE(expectedBerValue, calculatedBerValue, expectedBerValue * 0.001);
+
+        double calculatedBeiValue = OpenMagnetics::kelvin_function_imaginary(0.0, 1.0);
+        double expectedBeiValue = 0.24956604;
+        CHECK_CLOSE(expectedBeiValue, calculatedBeiValue, expectedBeiValue * 0.001);
+
+        double calculatedBerpValue = OpenMagnetics::derivative_kelvin_function_real(0.0, 1.0);
+        double expectedBerpValue = -0.06244575217903096;
+        CHECK_CLOSE(expectedBerpValue, calculatedBerpValue, fabs(expectedBerpValue) * 0.001);
+
+        double calculatedBeipValue = OpenMagnetics::derivative_kelvin_function_imaginary(0.0, 1.0);
+        double expectedBeipValue = 0.49739651146809727;
+        CHECK_CLOSE(expectedBeipValue, calculatedBeipValue, expectedBeipValue * 0.001);
+
+    }
 }

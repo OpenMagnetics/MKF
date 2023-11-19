@@ -20,24 +20,30 @@
 namespace OpenMagnetics {
 
 
-class WindingSkinEffectLosses {
-  private:
-  protected:
-  public:
-    static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
-    static double calculate_skin_depth(WireWrapper wire, double frequency, double temperature);
-    static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
-    static double calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
-
-};
-
 class WindingSkinEffectLossesModel {
   private:
   protected:
+    std::map<size_t, std::map<double, std::map<double, double>>> _skinFactorPerWirePerFrequencyPerTemperature;
+    std::optional<double> try_get_skin_factor(WireWrapper wire,  double frequency, double temperature);
+    void set_skin_factor(WireWrapper wire, double frequency, double temperature, double skinFactor);
+
   public:
     std::string method_name = "Default";
     virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature) = 0;
     static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
+};
+
+
+class WindingSkinEffectLosses {
+  private:
+  protected:
+  public:
+    static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType);
+    static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
+    static double calculate_skin_depth(WireWrapper wire, double frequency, double temperature);
+    static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider = 1);
+
 };
 
 // // Based on Effects of eddy currents in transformer windings by P.L. Dowell
@@ -61,6 +67,7 @@ class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 
 // Based on Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften by Manfred Albach
 // https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
+// https://sci-hub.wf/10.1109/tpel.2011.2143729
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
   public:
     double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);

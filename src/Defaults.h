@@ -12,6 +12,7 @@ struct Defaults {
         OpenMagnetics::CoreTemperatureModels::MANIKTALA;
     const OpenMagnetics::ReluctanceModels reluctanceModelDefault = OpenMagnetics::ReluctanceModels::ZHANG;
     const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
     const double coreAdviserMagneticFluxDensityReference = 0.5;
@@ -27,6 +28,7 @@ struct Defaults {
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double windingLossesHarmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
+    const double magneticFieldMirroringDimension = 1;
 };
 } // namespace OpenMagnetics
 

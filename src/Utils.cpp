@@ -428,6 +428,40 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
     return bessel;
 }
 
+std::complex<double> bessel_first_kind(double order, std::complex<double> z) {
+    std::complex<double> sum = 0;
+    size_t limitK = 1000;
+    for (size_t k = 0; k < limitK; ++k)
+    {
+        double divider = tgammal(k + 1) * tgammal(order + k + 1);
+        if (std::isinf(divider)) {
+            break;
+        }
+        sum += pow(-1, k) * pow(0.25 * pow(z, 2), k) / divider;
+        // if (std::isnan(sum.real())) {
+        //     break;
+        // }
+    }
+    auto bessel = sum * pow(0.5 * z, order);
+    return bessel;
+}
+
+double kelvin_function_real(double order, double x) {
+    return bessel_first_kind(order, x * exp(3.0 / 4 * std::numbers::pi * std::complex<double>{0.0, 1.0})).real();
+}
+
+double kelvin_function_imaginary(double order, double x) {
+    return bessel_first_kind(order, x * exp(3.0 / 4 * std::numbers::pi * std::complex<double>{0.0, 1.0})).imag();
+}
+
+double derivative_kelvin_function_real(double order, double x) {
+    return (kelvin_function_real(order + 1.0, x) + kelvin_function_imaginary(order + 1.0, x)) / sqrt(2) + order / x * kelvin_function_real(order, x);
+}
+
+double derivative_kelvin_function_imaginary(double order, double x) {
+    return (kelvin_function_imaginary(order + 1.0, x) - kelvin_function_real(order + 1.0, x)) / sqrt(2) + order / x * kelvin_function_imaginary(order, x);
+}
+
 IsolationSide get_isolation_side_from_index(size_t index) {
     auto orderedIsolationSide = magic_enum::enum_cast<OrderedIsolationSide>(index).value();
     auto orderedIsolationSideString = std::string{magic_enum::enum_name(orderedIsolationSide)};
