@@ -24,7 +24,7 @@ class WindingProximityEffectLossesModel {
   protected:
     std::map<size_t, std::map<double, std::map<double, double>>> _proximityFactorPerWirePerFrequencyPerTemperature;
   public:
-    std::string method_name = "Default";
+    std::string methodName = "Default";
     virtual double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
     std::optional<double> try_get_proximity_factor(WireWrapper wire, double frequency, double temperature);
     void set_proximity_factor(WireWrapper wire, double frequency, double temperature, double proximityFactor);
@@ -45,7 +45,7 @@ class WindingProximityEffectLosses {
 // https://sci-hub.wf/10.1109/tpel.2011.2143729
 class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffectLossesModel {
   public:
-    std::string method_name = "Rossmanith";
+    std::string methodName = "Rossmanith";
     double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 
@@ -55,7 +55,7 @@ class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffec
 // https://sci-hub.wf/10.1109/ECCE.2018.8558397
 class WindingProximityEffectLossesWangModel : public WindingProximityEffectLossesModel {
   public:
-    std::string method_name = "Wang";
+    std::string methodName = "Wang";
     double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
@@ -63,7 +63,7 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
 // https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9485268
 class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectLossesModel {
   public:
-    std::string method_name = "Ferreira";
+    std::string methodName = "Ferreira";
     double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
@@ -73,7 +73,7 @@ class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectL
 // https://libgen.rocks/get.php?md5=94b7f2906f53602f19892d7f1dabd929&key=YMKCEJOWB653PYLL
 class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLossesModel {
   public:
-    std::string method_name = "Albach";
+    std::string methodName = "Albach";
     double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
@@ -81,7 +81,7 @@ class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLos
 // https://archive.org/details/eddycurrents0000lamm
 class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffectLossesModel {
   public:
-    std::string method_name = "Lammeraner";
+    std::string methodName = "Lammeraner";
     double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };

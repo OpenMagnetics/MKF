@@ -1,4 +1,5 @@
 #include "Reluctance.h"
+#include "MagneticEnergy.h"
 #include "Defaults.h"
 
 #include <cmath>
@@ -30,78 +31,104 @@ double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, Operating
 
     double initialPermeabilityValue;
     if (operatingPoint != nullptr) {
-        double temperature =
-            operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+        double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
         auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(
-            coreMaterial, &temperature, nullptr, &frequency);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability( coreMaterial, &temperature, nullptr, &frequency);
     }
     else {
-        initialPermeabilityValue =
-            initialPermeability.get_initial_permeability(coreMaterial);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
     }
     return get_ungapped_core_reluctance(core, initialPermeabilityValue);
 }
 
 
-double ReluctanceModel::get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
-    auto coreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
+    auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
+    auto magnetizingInductanceOutput = get_gapping_reluctance(core);
 
-    if (std::isnan(coreReluctance)) {
+    if (std::isnan(ungappedCoreReluctance)) {
         throw std::runtime_error("Core Reluctance must be a number, not NaN");
     }
-    double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+    double calculatedReluctance = ungappedCoreReluctance + magnetizingInductanceOutput.get_gapping_reluctance().value();
     if (std::isnan(calculatedReluctance)) {
         throw std::runtime_error("Reluctance must be a number, not NaN");
     }
-    return calculatedReluctance;
+
+    if (operatingPoint != nullptr) {
+        magnetizingInductanceOutput.set_maximum_magnetic_energy_core(MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(core, operatingPoint));
+    }
+    magnetizingInductanceOutput.set_core_reluctance(calculatedReluctance);
+    magnetizingInductanceOutput.set_ungapped_core_reluctance(ungappedCoreReluctance);
+
+    return magnetizingInductanceOutput;
 }
 
-double ReluctanceModel::get_core_reluctance(CoreWrapper core, double initialPermeability) {
-    auto coreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, double initialPermeability) {
+    auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
 
-    double calculatedReluctance = coreReluctance + get_gapping_reluctance(core);
+    auto magnetizingInductanceOutput = get_gapping_reluctance(core);
+    double calculatedReluctance = ungappedCoreReluctance + magnetizingInductanceOutput.get_gapping_reluctance().value();
 
-    return calculatedReluctance;
+    magnetizingInductanceOutput.set_core_reluctance(calculatedReluctance);
+    magnetizingInductanceOutput.set_ungapped_core_reluctance(ungappedCoreReluctance);
+
+    return magnetizingInductanceOutput;
 }
 
-double ReluctanceModel::get_gapping_reluctance(CoreWrapper core) {
+MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(CoreWrapper core) {
     double calculatedReluctance = 0;
     double calculatedCentralReluctance = 0;
     double calculatedLateralReluctance = 0;
+    double maximumFringingFactor = 1;
+    double maximumStorableMagneticEnergyGapping = 0;
+    std::vector<AirGapReluctanceOutput> reluctancePerGap;
     auto gapping = core.get_functional_description().get_gapping();
-    if (gapping.size() == 0) {
-        return 0;
+    if (gapping.size() != 0) {
+        // We recompute all gaps in case some is missing coordinates
+        for (const auto& gap : gapping) {
+            if (!gap.get_coordinates()) {
+                core.process_gap();
+                gapping = core.get_functional_description().get_gapping();
+                break;
+            }
+        }
+
+
+        for (const auto& gap : gapping) {
+            auto gapReluctance = get_gap_reluctance(gap);
+            auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
+            reluctancePerGap.push_back(gapReluctance);
+            if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
+                calculatedLateralReluctance += 1 / gapReluctance.get_reluctance();
+            }
+            else {
+                calculatedCentralReluctance += gapReluctance.get_reluctance();
+            }
+            maximumFringingFactor = std::max(maximumFringingFactor, gapReluctance.get_fringing_factor());
+            maximumStorableMagneticEnergyGapping += gapReluctance.get_maximum_storable_magnetic_energy();
+            if (gapReluctance.get_fringing_factor() < 1) {
+                std::cout << "fringing_factor " << gapReluctance.get_fringing_factor() << std::endl;
+            }
+        }
+        calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
     }
 
-    // We recompute all gaps in case some is missing coordinates
-    for (const auto& gap : gapping) {
-        if (!gap.get_coordinates()) {
-            core.process_gap();
-            gapping = core.get_functional_description().get_gapping();
-            break;
-        }
-    }
-    for (const auto& gap : gapping) {
-        auto gapReluctance = get_gap_reluctance(gap);
-        auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
-        if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
-            calculatedLateralReluctance += 1 / gapReluctance["reluctance"];
-        }
-        else {
-            calculatedCentralReluctance += gapReluctance["reluctance"];
-        }
-        if (gapReluctance["fringing_factor"] < 1) {
-            std::cout << "fringing_factor " << gapReluctance["fringing_factor"] << std::endl;
-        }
-    }
-    calculatedReluctance = calculatedCentralReluctance + 1 / calculatedLateralReluctance;
-    return calculatedReluctance;
+    MagnetizingInductanceOutput magnetizingInductanceOutput;
+
+    magnetizingInductanceOutput.set_maximum_fringing_factor(maximumFringingFactor);
+    magnetizingInductanceOutput.set_maximum_storable_magnetic_energy_gapping(maximumStorableMagneticEnergyGapping);
+
+    magnetizingInductanceOutput.set_gapping_reluctance(calculatedReluctance);
+    magnetizingInductanceOutput.set_reluctance_per_gap(reluctancePerGap);
+    magnetizingInductanceOutput.set_method_used(methodName);
+    magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
+
+    return magnetizingInductanceOutput;
 }
 
-std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
     double perimeter = 0;
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -118,16 +145,16 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
         throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
     }
     auto gapArea = *(gapInfo.get_area());
-    auto gap_shape = *(gapInfo.get_shape());
+    auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
-    auto reluctance_internal = gapLength / (constants.vacuumPermeability * gapArea);
-    double reluctance_fringing = 0;
+    auto reluctanceInternal = gapLength / (constants.vacuumPermeability * gapArea);
+    double reluctanceFringing = 0;
     double fringingFactor = 1;
     auto gapSectionWidth = gapSectionDimensions[0];
     auto gapSectionDepth = gapSectionDimensions[1];
 
-    if (gap_shape == ColumnShape::ROUND) {
+    if (gapShape == ColumnShape::ROUND) {
         perimeter = std::numbers::pi * gapSectionWidth;
     }
     else { // TODO: Properly calculate perimeter for all shapes
@@ -135,38 +162,34 @@ std::map<std::string, double> ReluctanceZhangModel::get_gap_reluctance(CoreGap g
     }
 
     if (gapLength > 0) {
-        reluctance_fringing = std::numbers::pi / (constants.vacuumPermeability * perimeter *
+        reluctanceFringing = std::numbers::pi / (constants.vacuumPermeability * perimeter *
                                                   log((2 * distanceClosestNormalSurface + gapLength) / gapLength));
     }
 
-    if (std::isnan(reluctance_internal) || reluctance_internal == 0) {
-        throw std::runtime_error("reluctance_internal cannot be 0 or NaN");
+    if (std::isnan(reluctanceInternal) || reluctanceInternal == 0) {
+        throw std::runtime_error("reluctanceInternal cannot be 0 or NaN");
     }
 
-    if (std::isnan(reluctance_fringing) || reluctance_fringing == 0) {
-        throw std::runtime_error("reluctance_fringing cannot be 0 or NaN");
+    if (std::isnan(reluctanceFringing) || reluctanceFringing == 0) {
+        throw std::runtime_error("reluctanceFringing cannot be 0 or NaN");
     }
 
-    double reluctance = 1. / (1. / reluctance_internal + 1. / reluctance_fringing);
+    double reluctance = 1. / (1. / reluctanceInternal + 1. / reluctanceFringing);
 
     if (gapLength > 0) {
         fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Zhang");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_shape()) {
@@ -178,7 +201,7 @@ std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(Co
     if (!gapInfo.get_distance_closest_normal_surface()) {
         throw std::runtime_error("Gap Distance Closest Normal Surface is not set");
     }
-    auto gap_shape = *(gapInfo.get_shape());
+    auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
     double reluctance;
@@ -186,38 +209,34 @@ std::map<std::string, double> ReluctanceMuehlethalerModel::get_gap_reluctance(Co
     auto gapSectionWidth = gapSectionDimensions[0];
     auto gapSectionDepth = gapSectionDimensions[1];
 
-    if (gap_shape == ColumnShape::ROUND) {
-        double gamma_r = get_reluctance_type_1(gapLength / 2, gapSectionWidth / 2, distanceClosestNormalSurface) /
+    if (gapShape == ColumnShape::ROUND) {
+        double gammaR = get_reluctance_type_1(gapLength / 2, gapSectionWidth / 2, distanceClosestNormalSurface) /
                          (gapLength / constants.vacuumPermeability / (gapSectionWidth / 2));
-        reluctance = pow(gamma_r, 2) * gapLength /
+        reluctance = pow(gammaR, 2) * gapLength /
                      (constants.vacuumPermeability * std::numbers::pi * pow(gapSectionWidth / 2, 2));
-        fringingFactor = 1 / gamma_r;
+        fringingFactor = 1 / gammaR;
     }
     else {
-        double gamma_x = get_reluctance_type_1(gapLength / 2, gapSectionWidth, distanceClosestNormalSurface) /
+        double gammaX = get_reluctance_type_1(gapLength / 2, gapSectionWidth, distanceClosestNormalSurface) /
                          (gapLength / constants.vacuumPermeability / gapSectionWidth);
-        double gamma_y = get_reluctance_type_1(gapLength / 2, gapSectionDepth, distanceClosestNormalSurface) /
+        double gammaY = get_reluctance_type_1(gapLength / 2, gapSectionDepth, distanceClosestNormalSurface) /
                          (gapLength / constants.vacuumPermeability / gapSectionDepth);
-        double gamma = gamma_x * gamma_y;
+        double gamma = gammaX * gammaY;
         reluctance = gamma * gapLength / (constants.vacuumPermeability * gapSectionDepth * gapSectionWidth);
         fringingFactor = 1 / gamma;
     }
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Muehlethaler");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -230,7 +249,7 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
         throw std::runtime_error("Gap Section Dimensions are not set");
     }
     auto gapArea = *(gapInfo.get_area());
-    auto gap_shape = *(gapInfo.get_shape());
+    auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     double reluctance;
     double fringingFactor = 1;
@@ -238,7 +257,7 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
     auto gapSectionDepth = gapSectionDimensions[1];
 
     if (gapLength > 0) {
-        if (gap_shape == ColumnShape::ROUND) {
+        if (gapShape == ColumnShape::ROUND) {
             fringingFactor = pow(1 + gapLength / gapSectionWidth, 2);
         }
         else {
@@ -249,21 +268,17 @@ std::map<std::string, double> ReluctanceEffectiveAreaModel::get_gap_reluctance(C
 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("EffectiveArea");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -276,7 +291,7 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
         throw std::runtime_error("Gap Section Dimensions are not set");
     }
     auto gapArea = *(gapInfo.get_area());
-    auto gap_shape = *(gapInfo.get_shape());
+    auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     double reluctance;
     double fringingFactor = 1;
@@ -284,7 +299,7 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
     auto gapSectionDepth = gapSectionDimensions[1];
 
     if (gapLength > 0) {
-        if (gap_shape == ColumnShape::ROUND) {
+        if (gapShape == ColumnShape::ROUND) {
             fringingFactor = pow(1 + gapLength / gapSectionWidth, 2);
         }
         else {
@@ -294,21 +309,17 @@ std::map<std::string, double> ReluctanceEffectiveLengthModel::get_gap_reluctance
 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("EffectiveLength");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -332,21 +343,17 @@ std::map<std::string, double> ReluctancePartridgeModel::get_gap_reluctance(CoreG
 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Partridge");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -393,21 +400,17 @@ std::map<std::string, double> ReluctanceStengleinModel::get_gap_reluctance(CoreG
 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Stenglein");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -419,21 +422,17 @@ std::map<std::string, double> ReluctanceClassicModel::get_gap_reluctance(CoreGap
 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea);
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Classic");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
-std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -455,18 +454,14 @@ std::map<std::string, double> ReluctanceBalakrishnanModel::get_gap_reluctance(Co
         fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
 
-    std::map<std::string, double> result;
-    result["maximum_storable_energy"] = get_gap_maximum_storable_energy(gapInfo, fringingFactor);
-    result["reluctance"] = reluctance;
-    if (reluctance > 0) {
-        result["permeance"] = 1 / reluctance;
-    }
-    else {
-        result["permeance"] = std::numeric_limits<double>::infinity();
-    }
-    result["fringing_factor"] = fringingFactor;
+    AirGapReluctanceOutput airGapReluctanceOutput;
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_reluctance(reluctance);
+    airGapReluctanceOutput.set_method_used("Balakrishnan");
+    airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
+    airGapReluctanceOutput.set_fringing_factor(fringingFactor);
 
-    return result;
+    return airGapReluctanceOutput;
 };
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName) {

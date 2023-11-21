@@ -45,7 +45,7 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
         case WireType::RECTANGULAR: {
-            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::LAMMERANER);
         }
         case WireType::FOIL: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
@@ -128,7 +128,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         lossesModelPerWinding.push_back(model);
 
         WindingLossElement proximityEffectLosses;
-        proximityEffectLosses.set_method_used(model->method_name);
+        proximityEffectLosses.set_method_used(model->methodName);
         proximityEffectLosses.set_origin(ResultOrigin::SIMULATION);
         proximityEffectLosses.get_mutable_harmonic_frequencies().push_back(0);
         proximityEffectLosses.get_mutable_losses_per_harmonic().push_back(0);

@@ -140,6 +140,11 @@ void Painter::export_svg() {
     auto outFile = _filepath;
     matplot::save(outFile);
 }
+void Painter::export_png() {
+    auto outFile = _filepath;
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile),std::regex(".svg"), ".png"));
+    matplot::save(outFile);
+}
 
 
 void Painter::paint_core(MagneticWrapper magnetic) {

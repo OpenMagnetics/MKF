@@ -51,7 +51,7 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(
             magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
 
-        fringing_factor_value = reluctanceModel->get_gap_reluctance(gapInfo)["fringing_factor"];
+        fringing_factor_value = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
     }
 
     double energyStoredInGap = 0.5 / constants.vacuumPermeability * gap_length * gap_area * fringing_factor_value *

@@ -225,13 +225,11 @@ SUITE(MagneticField) {
 
         OpenMagnetics::WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0];
 
-        double coreColumnWidth = core.get_columns()[0].get_width();
         double coreColumnHeight = core.get_columns()[0].get_height();
 
         auto turn_0 = coil.get_turns_description().value()[0];
         std::vector<OpenMagnetics::FieldPoint> points;
         OpenMagnetics::FieldPoint fieldPoint;
-        // fieldPoint.set_point(std::vector<double>{coreColumnWidth / 2 + windingWindow.get_width().value(), 0});
         fieldPoint.set_point(std::vector<double>{turn_0.get_coordinates()[0], coreColumnHeight / 2});
         points.push_back(fieldPoint);
 

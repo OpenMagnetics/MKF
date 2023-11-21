@@ -104,23 +104,23 @@ SUITE(CoilAdviser) {
             OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(layersOrientationIndex).value();
 
 
-            // for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-            //     std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
-            // }
-            // std::cout << "frequency: " << frequency << std::endl;
-            // std::cout << "peakToPeak: " << peakToPeak << std::endl;
-            // std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-            // std::cout << "dutyCycle: " << dutyCycle << std::endl;
-            // std::cout << "dcCurrent: " << dcCurrent << std::endl;
-            // std::cout << "interleavingLevel: " << interleavingLevel << std::endl;
-            // std::cout << "coreShapeName: " << coreShapeName << std::endl;
-            // std::cout << "gappingTypeIndex: " << gappingTypeIndex << std::endl;
-            // std::cout << "gapLength: " << gapLength << std::endl;
-            // std::cout << "numberGaps: " << numberGaps << std::endl;
-            // std::cout << "magnetic.get_mutable_core().get_shape_family(): " << magic_enum::enum_name(magnetic.get_mutable_core().get_shape_family()) << std::endl;
-            // std::cout << "turnsAlignmentIndex: " << turnsAlignmentIndex << std::endl;
-            // std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
-            // std::cout << "layersOrientationIndex: " << layersOrientationIndex << std::endl;
+            for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+            }
+            std::cout << "frequency: " << frequency << std::endl;
+            std::cout << "peakToPeak: " << peakToPeak << std::endl;
+            std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+            std::cout << "dutyCycle: " << dutyCycle << std::endl;
+            std::cout << "dcCurrent: " << dcCurrent << std::endl;
+            std::cout << "interleavingLevel: " << interleavingLevel << std::endl;
+            std::cout << "coreShapeName: " << coreShapeName << std::endl;
+            std::cout << "gappingTypeIndex: " << gappingTypeIndex << std::endl;
+            std::cout << "gapLength: " << gapLength << std::endl;
+            std::cout << "numberGaps: " << numberGaps << std::endl;
+            std::cout << "magnetic.get_mutable_core().get_shape_family(): " << magic_enum::enum_name(magnetic.get_mutable_core().get_shape_family()) << std::endl;
+            std::cout << "turnsAlignmentIndex: " << turnsAlignmentIndex << std::endl;
+            std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
+            std::cout << "layersOrientationIndex: " << layersOrientationIndex << std::endl;
 
             magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
             magnetic.get_mutable_coil().set_winding_orientation(windingOrientation);
@@ -146,18 +146,81 @@ SUITE(CoilAdviser) {
 
             if (masMagneticsWithCoil.size() > 0) {
                 auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+                if (!masMagneticWithCoil.get_magnetic().get_coil().get_turns_description()) {
+                    continue;
+                }
                 OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
                 std::string filePath = __FILE__;
-                auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-                auto outFile = outputFilePath;
-                std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
-                outFile.append(filename);
-                // OpenMagnetics::Painter painter(outFile);
-
-                // painter.paint_core(masMagneticWithCoil.get_magnetic());
-                // painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
-                // painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
-                // painter.export_svg();
+                auto randNumber =  std::rand();
+                // auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+                // {
+                //     auto outFile = outputFilePath;
+                //     std::string filename = "Test_CoilAdviser" + std::to_string(randNumber) + "_Quiver.svg";
+                //     outFile.append(filename);
+                //     OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
+                //     painter.set_number_points_x(50);
+                //     painter.set_number_points_y(50);
+                //     painter.set_logarithmic_scale(false);
+                //     painter.set_fringing_effect(true);
+                //     painter.set_maximum_scale_value(std::nullopt);
+                //     painter.set_minimum_scale_value(std::nullopt);
+                //     painter.paint_magnetic_field(inputs.get_operating_point(0), masMagneticWithCoil.get_magnetic());
+                //     painter.paint_core(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                //     painter.export_svg();
+                // }
+                // {
+                //     auto outFile = outputFilePath;
+                //     std::string filename = "Test_CoilAdviser" + std::to_string(randNumber) + "_Quiver_Log.svg";
+                //     outFile.append(filename);
+                //     OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
+                //     painter.set_number_points_x(50);
+                //     painter.set_number_points_y(50);
+                //     painter.set_logarithmic_scale(true);
+                //     painter.set_fringing_effect(true);
+                //     painter.set_maximum_scale_value(std::nullopt);
+                //     painter.set_minimum_scale_value(std::nullopt);
+                //     painter.paint_magnetic_field(inputs.get_operating_point(0), masMagneticWithCoil.get_magnetic());
+                //     painter.paint_core(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                //     painter.export_svg();
+                // }
+                // {
+                //     auto outFile = outputFilePath;
+                //     std::string filename = "Test_CoilAdviser" + std::to_string(randNumber) + "_Contour.svg";
+                //     outFile.append(filename);
+                //     OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
+                //     painter.set_number_points_x(50);
+                //     painter.set_number_points_y(50);
+                //     painter.set_logarithmic_scale(false);
+                //     painter.set_fringing_effect(true);
+                //     painter.set_maximum_scale_value(std::nullopt);
+                //     painter.set_minimum_scale_value(std::nullopt);
+                //     painter.paint_magnetic_field(inputs.get_operating_point(0), masMagneticWithCoil.get_magnetic());
+                //     painter.paint_core(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                //     painter.export_svg();
+                // }
+                // {
+                //     auto outFile = outputFilePath;
+                //     std::string filename = "Test_CoilAdviser" + std::to_string(randNumber) + "_Contour_Log.svg";
+                //     outFile.append(filename);
+                //     OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
+                //     painter.set_number_points_x(50);
+                //     painter.set_number_points_y(50);
+                //     painter.set_logarithmic_scale(true);
+                //     painter.set_fringing_effect(true);
+                //     painter.set_maximum_scale_value(std::nullopt);
+                //     painter.set_minimum_scale_value(std::nullopt);
+                //     painter.paint_magnetic_field(inputs.get_operating_point(0), masMagneticWithCoil.get_magnetic());
+                //     painter.paint_core(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_bobbin(masMagneticWithCoil.get_magnetic());
+                //     painter.paint_coil_turns(masMagneticWithCoil.get_magnetic());
+                //     painter.export_svg();
+                // }
                 count--;
             }
         }

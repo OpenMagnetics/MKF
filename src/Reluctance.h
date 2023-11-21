@@ -20,9 +20,10 @@ namespace OpenMagnetics {
 class ReluctanceModel {
   private:
     double _magneticFluxDensitySaturation = 0.4;
+    std::string methodName = "Default";
   protected:
   public:
-    virtual std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo) = 0;
+    virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
 
     double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability);
 
@@ -98,9 +99,9 @@ class ReluctanceModel {
         internalLinks["Classic"] = "";
         return internalLinks;
     }
-    double get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
-    double get_core_reluctance(CoreWrapper core, double initialPermeability);
-    double get_gapping_reluctance(CoreWrapper core);
+    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
+    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, double initialPermeability);
+    MagnetizingInductanceOutput get_gapping_reluctance(CoreWrapper core);
     ReluctanceModel() = default;
     virtual ~ReluctanceModel() = default;
 
@@ -113,14 +114,16 @@ class ReluctanceModel {
 // https://sci-hub.wf/https://ieeexplore.ieee.org/document/9332553
 class ReluctanceZhangModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Zhang";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 // Based on A Novel Approach for 3D Air Gap Reluctance Calculations by Jonas Mühlethaler
 // https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/10_A_Novel_Approach_ECCEAsia2011_01.pdf
 class ReluctanceMuehlethalerModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Muehlethaler";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 
     double get_basic_reluctance(double l, double w, double h) {
         auto constants = Constants();
@@ -136,36 +139,42 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
 
 class ReluctanceEffectiveAreaModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "EffectiveArea";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctanceEffectiveLengthModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "EffectiveLength";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctancePartridgeModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Partridge";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctanceClassicModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Classic";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 // Based on Air-gap reluctance and inductance calculations for magnetic circuits using a Schwarz-Christoffel
 // transformation by A. Balakrishnan https://sci-hub.wf/https://ieeexplore.ieee.org/document/602560
 class ReluctanceBalakrishnanModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Balakrishnan";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 // Based on The Reluctance of Large Air Gaps in Ferrite Cores by Erika Stenglein
 // https://sci-hub.wf/10.1109/EPE.2016.7695271
 class ReluctanceStengleinModel : public ReluctanceModel {
   public:
-    std::map<std::string, double> get_gap_reluctance(CoreGap gapInfo);
+    std::string methodName = "Stenglein";
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 
     double u(double rx, double l1) { return 42.7 * rx / l1 - 50.2; }
 
