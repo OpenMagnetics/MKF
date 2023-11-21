@@ -138,7 +138,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     OpenMagnetics::InitialPermeability initial_permeability;
     double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_core().get_functional_description().get_material(), nullptr, nullptr, &frequency);
-    double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability);
+    double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability).get_core_reluctance();
     auto magneticFlux = MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
         reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());

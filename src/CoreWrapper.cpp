@@ -2682,7 +2682,9 @@ double CoreWrapper::get_reluctance(double temperature){
     InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-    double calculatedReluctance = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);
+
+    auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);
+    double calculatedReluctance = magnetizingInductanceOutput.get_core_reluctance();
     return calculatedReluctance;
 }
 

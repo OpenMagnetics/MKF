@@ -842,9 +842,9 @@ SUITE(MagnetizingInductance) {
         auto operatingPoint = inputs.get_operating_point(0);
         auto ea = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
         auto magnetizingInductance = ea.get_magnetizing_inductance().get_nominal().value();
-        auto reluctanceCore = ea.get_reluctance_core().value().get_nominal().value();
-        auto reluctanceGapping = ea.get_reluctance_gapping().value().get_nominal().value();
-        auto reluctanceUngappedCore = ea.get_reluctance_ungapped_core().value().get_nominal().value();
+        auto reluctanceCore = ea.get_core_reluctance();
+        auto reluctanceGapping = ea.get_gapping_reluctance().value();
+        auto reluctanceUngappedCore = ea.get_ungapped_core_reluctance().value();
     }
 
 }

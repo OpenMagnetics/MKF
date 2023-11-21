@@ -28,8 +28,8 @@ class WindingSkinEffectLossesModel {
     void set_skin_factor(WireWrapper wire, double frequency, double temperature, double skinFactor);
 
   public:
-    std::string method_name = "Default";
-    virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature) = 0;
+    std::string methodName = "Default";
+    virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0) = 0;
     static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
 };
 
@@ -58,10 +58,10 @@ class WindingSkinEffectLosses {
 // https://sci-hub.wf/https://ieeexplore.ieee.org/document/8329131
 class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
   public:
-    std::string method_name = "Wojda";
+    std::string methodName = "Wojda";
     double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
     double calculate_penetration_ratio(WireWrapper wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 
 };
 
@@ -71,14 +71,14 @@ class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
   public:
     double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // Based on The Ac Resistance Of Rectangular Conductors by Alan Payne
 // https://www.researchgate.net/publication/351307928_THE_AC_RESISTANCE_OF_RECTANGULAR_CONDUCTORS
 class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature);
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // // Based on An Improved Calculation of Proximity-Effect Loss in High-Frequency Windings of Round Conductors by Xi Nan
@@ -97,21 +97,27 @@ class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
 //     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
 // };
 
-// // Based on A Simple Technique to Evaluate Winding Losses Including Two-Dimensional Edge Effects by Nasser H. Kutkut
-// // https://sci-hub.wf/10.1109/63.712319
-// class WindingSkinEffectLossesKutkutModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
+// Based on A Simple Technique to Evaluate Winding Losses Including Two-Dimensional Edge Effects by Nasser H. Kutkut
+// https://sci-hub.wf/10.1109/63.712319
+class WindingSkinEffectLossesKutkutModel : public WindingSkinEffectLossesModel {
+  public:
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+};
 
-// // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
-// // https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9485268
-// class WindingSkinEffectLossesFerreiraModel : public WindingSkinEffectLossesModel {
-//   public:
-//     static double get_skin_effect_losses_per_meter(Turn turn);
-//     static std::map<std::string, double> get_skin_effect_losses_per_winding(Winding winding);
-// };
+// Based on Two-Dimensional Skin Effect in Power Foils for High-Frequency Applications by Ashraf W. Lotfi
+// https://sci-hub.wf/https://ieeexplore.ieee.org/document/364775
+class WindingSkinEffectLossesLotfiModel : public WindingSkinEffectLossesModel {
+  public:
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+};
+
+// Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
+// https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9485268
+class WindingSkinEffectLossesFerreiraModel : public WindingSkinEffectLossesModel {
+  public:
+    double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
+    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+};
 
 // // Based on A New Model for the Determination of Copper Losses in Transformer Windings with Arbitrary Conductor Distribution under High Frequency Sinusoidal Excitation by G. S. Dimitrakakis
 // // https://sci-hub.wf/10.1109/epe.2007.4417574

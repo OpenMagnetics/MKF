@@ -30,7 +30,7 @@ class MagneticEnergy {
             _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
         }
     }
-    double get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
+    static double get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
     double get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, double* frequency = nullptr);
     double get_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
     DimensionWithTolerance required_magnetic_energy(InputsWrapper inputs);

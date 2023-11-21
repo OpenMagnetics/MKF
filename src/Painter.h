@@ -76,6 +76,7 @@ class Painter{
     void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 0, std::optional<ComplexField> inputField = std::nullopt);
 
     void export_svg();
+    void export_png();
 
     void paint_core(MagneticWrapper magnetic);
     void paint_two_piece_set_core(CoreWrapper core);

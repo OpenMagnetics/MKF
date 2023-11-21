@@ -5,7 +5,8 @@ namespace OpenMagnetics {
 
 enum class MagneticFieldStrengthModels : int {
     BINNS_LAWRENSON,
-    LAMMERANER
+    LAMMERANER,
+    DOWELL
 };
 
 enum class MagneticFieldStrengthFringingEffectModels : int {
@@ -52,7 +53,7 @@ enum class WindingSkinEffectLossesModels : int {
     WOJDA,
     ALBACH,
     PAYNE,
-    // NAN,
+    LOTFI,
     KAZIMIERCZUK,
     KUTKUT,
     FERREIRA,
@@ -68,7 +69,8 @@ enum class WindingProximityEffectLossesModels : int {
     WANG,
     FERREIRA,
     LAMMERANER,
-    ALBACH
+    ALBACH,
+    DOWELL
 };
 
 } // namespace OpenMagnetics

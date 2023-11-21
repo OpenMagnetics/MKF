@@ -92,13 +92,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     }
 
+    MagnetizingInductanceOutput magnetizingInductanceOutput;
+
     do {
         currentMagnetizingInductance = modifiedMagnetizingInductance;
 
 
         do {
             currentInitialPermeability = modifiedInitialPermeability;
-            totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+            magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+            totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
             modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
 
             if (excitation.get_voltage()) {
@@ -142,21 +145,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, currentMagnetizingInductance));
     }
 
-    MagnetizingInductanceOutput magnetizingInductanceOutput;
     DimensionWithTolerance magnetizingInductanceWithTolerance;
     magnetizingInductanceWithTolerance.set_nominal(currentMagnetizingInductance);
     magnetizingInductanceOutput.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
-    magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
-    magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
-    DimensionWithTolerance totalReluctanceWithTolerance;
-    totalReluctanceWithTolerance.set_nominal(totalReluctance);
-    magnetizingInductanceOutput.set_reluctance_core(totalReluctanceWithTolerance);
-    DimensionWithTolerance gappingReluctanceWithTolerance;
-    gappingReluctanceWithTolerance.set_nominal(reluctanceModel->get_gapping_reluctance(core));
-    magnetizingInductanceOutput.set_reluctance_gapping(gappingReluctanceWithTolerance);
-    DimensionWithTolerance ungappedCoreReluctanceWithTolerance;
-    ungappedCoreReluctanceWithTolerance.set_nominal(reluctanceModel->get_ungapped_core_reluctance(core, currentInitialPermeability));
-    magnetizingInductanceOutput.set_reluctance_ungapped_core(ungappedCoreReluctanceWithTolerance);
 
     result.first = magnetizingInductanceOutput;
     return result;
@@ -194,7 +185,8 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     }
     while (true) {
 
-        totalReluctance = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+        auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+        totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
         numberTurnsPrimary = std::round(sqrt(desiredMagnetizingInductance * totalReluctance));
 
         auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
@@ -348,7 +340,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
             case GappingType::DISTRIBUTED:
                 while (numberDistributedGaps > 3) {
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
-                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0])["fringing_factor"];
+                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0]).get_fringing_factor();
                     if (fringingFactorOneGap < constants.minimumDistributedFringingFactor &&
                         numberDistributedGaps > 1) {
                         gapLength *= numberDistributedGaps;
@@ -361,7 +353,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 }
                 while (true) {
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
-                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0])["fringing_factor"];
+                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0]).get_fringing_factor();
                     if (fringingFactorOneGap > constants.maximumDistributedFringingFactor) {
                         gapLength *= numberDistributedGaps;
                         numberDistributedGaps += 2;
@@ -376,7 +368,8 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 throw std::runtime_error("Unknown type of gap, options are {GRINDED, SPACER, RESIDUAL, DISTRIBUTED}");
         }
 
-        reluctance = reluctanceModel->get_core_reluctance(gappedCore, currentInitialPermeability);
+        auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(gappedCore, currentInitialPermeability);
+        auto reluctance = magnetizingInductanceOutput.get_core_reluctance();
 
         if (fabs(neededTotalReluctance - reluctance) / neededTotalReluctance < 0.001 || timeout == 0) {
             break;

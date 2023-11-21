@@ -1,6 +1,7 @@
 #include "WindingSkinEffectLosses.h"
 #include "WindingOhmicLosses.h"
 #include "Defaults.h"
+#define __STDCPP_WANT_MATH_SPEC_FUNCS__ 1
 
 #include <cmath>
 #include <complex>
@@ -25,6 +26,15 @@ std::shared_ptr<WindingSkinEffectLossesModel>  WindingSkinEffectLossesModel::fac
     else if (modelName == WindingSkinEffectLossesModels::PAYNE) {
         return std::make_shared<WindingSkinEffectLossesPayneModel>();
     }
+    else if (modelName == WindingSkinEffectLossesModels::FERREIRA) {
+        return std::make_shared<WindingSkinEffectLossesFerreiraModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::LOTFI) {
+        return std::make_shared<WindingSkinEffectLossesLotfiModel>();
+    }
+    else if (modelName == WindingSkinEffectLossesModels::KUTKUT) {
+        return std::make_shared<WindingSkinEffectLossesKutkutModel>();
+    }
     else
         throw std::runtime_error("Unknown wire skin effect losses mode, available options are: {DOWELL, WOJDA, ALBACH, PAYNE, NAN, VANDELAC_ZIOGAS, KAZIMIERCZUK, KUTKUT, FERREIRA, DIMITRAKAKIS, WANG, HOLGUIN, PERRY}");
 }
@@ -35,13 +45,13 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
         }
         case WireType::LITZ: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::WOJDA);
+            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
         }
         case WireType::RECTANGULAR: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::PAYNE);
+            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
         }
         case WireType::FOIL: {
-            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::PAYNE);
+            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
         }
         default:
             throw std::runtime_error("Unknown type of wire");
@@ -101,7 +111,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
         auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDivider;
         auto dcLossPerMeterThisHarmonic = pow(harmonicRmsCurrentInTurn, 2) * dcResistancePerMeter;
 
-        auto turnLosses = model->calculate_turn_losses(wire, dcLossPerMeterThisHarmonic, harmonicFrequency, temperature);
+        auto turnLosses = model->calculate_turn_losses(wire, dcLossPerMeterThisHarmonic, harmonicFrequency, temperature, harmonicRmsCurrentInTurn);
         lossesPerHarmonic.push_back(std::pair<double, double>{turnLosses, harmonicFrequency});
         totalSkinEffectLossesPerMeter += turnLosses;
     }
@@ -133,7 +143,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
         lossesModelPerWinding.push_back(model);
 
         WindingLossElement skinEffectLosses;
-        skinEffectLosses.set_method_used(model->method_name);
+        skinEffectLosses.set_method_used(model->methodName);
         skinEffectLosses.set_origin(ResultOrigin::SIMULATION);
         skinEffectLosses.get_mutable_harmonic_frequencies().push_back(0);
         skinEffectLosses.get_mutable_losses_per_harmonic().push_back(0);
@@ -256,7 +266,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_skin_factor(WireWrapper wire
     return factor;
 }
 
-double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature) {
+double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
     double skinFactor;
     auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
 
@@ -282,9 +292,14 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(WireWrapper wir
         wireRadius = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value())) / 2;
         wireOuterRadius = std::min(resolve_dimensional_values(wire.get_outer_width().value()), resolve_dimensional_values(wire.get_outer_height().value())) / 2;
     }
-    else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+    else if (wire.get_type() == WireType::ROUND) {
         wireRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
         wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2;
+    }
+    else if (wire.get_type() == WireType::LITZ) {
+        auto strand = WireWrapper::resolve_strand(wire);
+        wireRadius = resolve_dimensional_values(strand.get_conducting_diameter().value()) / 2;
+        wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
     }
     else {
         throw std::runtime_error("Unknown type of wire");
@@ -298,7 +313,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(WireWrapper wir
 }
 
 
-double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature) {
+double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
     double skinFactor;
     auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
 
@@ -314,34 +329,133 @@ double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wir
     return turnLosses;
 }
 
-double WindingSkinEffectLossesPayneModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature) {
-        double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
-        double thinDimension;
-        double thickDimension;
+double WindingSkinEffectLossesPayneModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double thinDimension;
+    double thickDimension;
 
-        if (resolve_dimensional_values(wire.get_conducting_height().value()) > resolve_dimensional_values(wire.get_conducting_width().value())) {
-            thinDimension = resolve_dimensional_values(wire.get_conducting_width().value());
-            thickDimension = resolve_dimensional_values(wire.get_conducting_height().value());
-        }
-        else {
-            thinDimension = resolve_dimensional_values(wire.get_conducting_height().value());
-            thickDimension = resolve_dimensional_values(wire.get_conducting_width().value());
-        }
-        double A = resolve_dimensional_values(wire.get_conducting_width().value()) * resolve_dimensional_values(wire.get_conducting_height().value()) * 1000000;  // en mm2, shame on you Payne...
+    if (resolve_dimensional_values(wire.get_conducting_height().value()) > resolve_dimensional_values(wire.get_conducting_width().value())) {
+        thinDimension = resolve_dimensional_values(wire.get_conducting_width().value());
+        thickDimension = resolve_dimensional_values(wire.get_conducting_height().value());
+    }
+    else {
+        thinDimension = resolve_dimensional_values(wire.get_conducting_height().value());
+        thickDimension = resolve_dimensional_values(wire.get_conducting_width().value());
+    }
+    double A = resolve_dimensional_values(wire.get_conducting_width().value()) * resolve_dimensional_values(wire.get_conducting_height().value()) * 1000000;  // en mm2, shame on you Payne...
 
-        double p = pow(A, 0.5) / (1.26 * skinDepth * 1000);
-        double Ff = 1.0 - exp(-0.026 * p);
-        double Kc;
-        try {
-            Kc = 1.0 + Ff * (1.2 / exp(2.1 * thickDimension / thinDimension) + 1.2 / exp(2.1 * thinDimension / thickDimension));
-        }
-        catch (...) {
-            Kc = 1.0;
-        }
-        double x = (2.0 * skinDepth / thickDimension * (1.0 + thickDimension / thinDimension) + 8.0 * pow(skinDepth / thickDimension, 3) / (thinDimension / thickDimension)) / (pow(thinDimension / thickDimension, 0.33) * exp(-3.5 * thickDimension / skinDepth) + 1.0);
-        double acResistanceFactor =  (Kc / (1.0 - exp(-x))) - 1.0;
-        auto turnLosses = dcLossTurn * acResistanceFactor;
-        return turnLosses;
+    double p = pow(A, 0.5) / (1.26 * skinDepth * 1000);
+    double Ff = 1.0 - exp(-0.026 * p);
+    double Kc;
+    try {
+        Kc = 1.0 + Ff * (1.2 / exp(2.1 * thickDimension / thinDimension) + 1.2 / exp(2.1 * thinDimension / thickDimension));
+    }
+    catch (...) {
+        Kc = 1.0;
+    }
+    double x = (2.0 * skinDepth / thickDimension * (1.0 + thickDimension / thinDimension) + 8.0 * pow(skinDepth / thickDimension, 3) / (thinDimension / thickDimension)) / (pow(thinDimension / thickDimension, 0.33) * exp(-3.5 * thickDimension / skinDepth) + 1.0);
+    // double acResistanceFactor =  (Kc / (1.0 - exp(-x))) - 1.0;
+    double acResistanceFactor =  (Kc / (1.0 - exp(-x)));
+    auto turnLosses = dcLossTurn * acResistanceFactor;
+    return turnLosses;
+}
+
+
+
+double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(WireWrapper wire, double frequency, double temperature) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double wireHeight;
+
+    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        wireHeight = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value()));
+    }
+    else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        wireHeight = resolve_dimensional_values(wire.get_conducting_diameter().value());
+    }
+    else {
+        throw std::runtime_error("Unknown type of wire");
+    }
+
+    double xi = wireHeight / skinDepth;
+    double factor = xi / 4 * (sinh(xi) + sin(xi)) / (cosh(xi) - cos(xi));
+
+    return factor;
+}
+
+
+double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
+    double skinFactor;
+    auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
+
+    if (optionalSkinFactor) {
+        skinFactor = optionalSkinFactor.value();
+    }
+    else {
+        skinFactor = calculate_skin_factor(wire, frequency, temperature);
+        set_skin_factor(wire, frequency, temperature, skinFactor);
+    }
+
+    auto turnLosses = dcLossTurn * skinFactor;
+    return turnLosses;
+}
+
+double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double b, a;
+
+    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        double bPrima = std::max(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
+        double aPrima = std::min(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
+        b = 2 * bPrima / sqrt(std::numbers::pi);
+        a = aPrima * b / bPrima;
+    }
+    else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        b = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        a = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+    }
+    else {
+        throw std::runtime_error("Unknown type of wire");
+    }
+
+    double c = sqrt(pow(b, 2) - pow(a, 2));
+    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+
+    double acResistance = resistivity / (pow(std::numbers::pi, 2) * skinDepth * b) * std::comp_ellint_1(c / b) * (1 - exp(-2 * a / skinDepth));
+
+    auto turnLosses = acResistance * pow(currentRms / sqrt(2), 2);
+    return turnLosses;
+}
+
+
+double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms) {
+    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
+    double bPrima, aPrima;
+
+    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+        bPrima = std::max(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
+        aPrima = std::min(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
+    }
+    else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        bPrima = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+        aPrima = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+    }
+    else {
+        throw std::runtime_error("Unknown type of wire");
+    }
+    auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
+    auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
+
+    double fl = 3.22 * resistivity / (8 * Constants().vacuumPermeability * bPrima * aPrima);
+    double fh = pow(std::numbers::pi, 2) * resistivity / (4 * Constants().vacuumPermeability * pow(aPrima, 2)) * pow(std::comp_ellint_1(sqrt(1 - pow(aPrima, 2) / pow(bPrima, 2))), -2);
+    double gamma = 11;
+    double beta = 5.5;
+    double alpha = 2;
+
+    double acResistanceFactor = pow(1 + pow(frequency / fl, alpha) + pow(frequency / fh, beta), 1 / gamma);
+
+    auto turnLosses = (acResistanceFactor - 1) * dcLossTurn;
+    return turnLosses;
 }
 
 // double get_effective_current_density(Harmonics harmonics, WireWrapper wire, double temperature) {

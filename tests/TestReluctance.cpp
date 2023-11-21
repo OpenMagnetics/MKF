@@ -49,7 +49,7 @@ SUITE(Reluctance) {
         auto gapping = core.get_functional_description().get_gapping();
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(modelName);
 
-        double calculatedReluctance = reluctanceModel->get_core_reluctance(core);
+        double calculatedReluctance = reluctanceModel->get_core_reluctance(core).get_core_reluctance();
 
         auto error = abs(expectedReluctance - calculatedReluctance) / expectedReluctance;
         std::pair<json, double> aux;
@@ -75,10 +75,10 @@ SUITE(Reluctance) {
 
         for (const auto& gap : gapping) {
             auto result = reluctanceModel->get_gap_reluctance(gap);
-            calculatedEnergy += result["maximum_storable_energy"];
+            calculatedEnergy += result.get_maximum_storable_magnetic_energy();
 
-            CHECK(result["fringing_factor"] >= 1);
-            CHECK(result["maximum_storable_energy"] >= 0);
+            CHECK(result.get_fringing_factor() >= 1);
+            CHECK(result.get_maximum_storable_magnetic_energy() >= 0);
         }
 
         auto error = fabs(expectedEnergy - calculatedEnergy) / expectedEnergy;
