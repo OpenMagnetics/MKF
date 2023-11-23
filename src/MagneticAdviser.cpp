@@ -48,10 +48,17 @@ namespace OpenMagnetics {
         OpenMagnetics::CoilAdviser coilAdviser;
         coilAdviser.set_interleaving_level(1);  // TODO add more combinations
 
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, 1);
+        std::cout << "Mierda 1" << std::endl;
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, 5);
+        std::cout << "Mierda 2" << std::endl;
         if (masMagneticsWithCore.size() > 0) {
+             std::cout << "Mierda 3" << std::endl;
+
             for (auto& masMagneticWithCore : masMagneticsWithCore) {
+                std::cout << masMagneticWithCore.first.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
+                std::cout << "Mierda 3" << std::endl;
                 auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, 1);
+                std::cout << "Mierda 4" << std::endl;
                 std::move(masMagneticsWithCoreAndCoil.begin(), masMagneticsWithCoreAndCoil.end(), std::back_inserter(magnetics));
             }
         }

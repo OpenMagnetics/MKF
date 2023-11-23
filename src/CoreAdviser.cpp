@@ -493,7 +493,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(models);
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    OpenMagnetics::MagnetizingInductance magnetizingInductance(models["gapReluctance"]);
     auto windingOhmicLosses = OpenMagnetics::WindingOhmicLosses();
     size_t numberTimeouts = 0;
 
@@ -560,7 +560,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 // coil = CoilWrapper(coil);
                 coil.try_wind(true);
 
-                auto aux = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+                auto aux = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
                 auto magnetizingInductance = aux.first;
                 auto magneticFluxDensity = aux.second;
 
@@ -711,7 +711,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    OpenMagnetics::MagnetizingInductance magnetizingInductance(models["gapReluctance"]);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){
@@ -739,7 +739,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
             OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
             double coreLosses;
             if (!mas.get_outputs()[operatingPointIndex].get_core_losses()) {
-                auto magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+                auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
@@ -1088,7 +1088,7 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
 }
 
 void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsWithScoring, InputsWrapper inputs) {
-    MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+    MagnetizingInductance magnetizingInductance;
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i){
 
         CoreWrapper core = (*masMagneticsWithScoring)[i].first.get_magnetic().get_core();
@@ -1096,13 +1096,13 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
             core.process_data();
             core.process_gap();
         }
-        double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        double numberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
         (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(numberTurns);
     }
 }
 
 void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWithScoring, InputsWrapper inputs) {
-    MagnetizingInductance magnetizing_inductance(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+    MagnetizingInductance magnetizingInductance;
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i){
 
         CoilWrapper coil = CoilWrapper((*masMagneticsWithScoring)[i].first.get_magnetic().get_coil());

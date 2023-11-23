@@ -57,8 +57,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 23.3e-3;
 
@@ -103,8 +102,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
@@ -158,8 +156,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
@@ -175,8 +172,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
         auto operatingPoint = inputs.get_operating_point(0);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
     }
@@ -194,8 +190,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
@@ -220,8 +215,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
@@ -246,8 +240,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
@@ -271,8 +264,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 666;
 
@@ -296,8 +288,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 13;
 
@@ -321,8 +312,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 0.003;
 
@@ -347,8 +337,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 0.0066;
 
@@ -373,8 +362,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 0.0004;
 
@@ -400,8 +388,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 0.00039;
 
@@ -476,8 +463,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("CLASSIC");
         auto gapping =
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
 
@@ -524,8 +510,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("CLASSIC");
         auto gapping =
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
     }
@@ -542,8 +527,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedInductanceValue = 215e-6;
         double currentPeakToPeak = 20;
@@ -626,8 +610,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::InputsWrapper inputs(inputsData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "CLASSIC"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("CLASSIC");
         auto gapping =
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
         auto primaryExcitation = inputs.get_operating_point(0).get_mutable_excitations_per_winding()[0];
@@ -692,8 +675,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
         auto primaryExcitation = operatingPoint.get_mutable_excitations_per_winding()[0];
         double currentPeakToPeak = 10;
@@ -750,8 +732,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 6.6e-3;
 
@@ -776,8 +757,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedValue = 6.6e-3;
 
@@ -811,8 +791,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core = json::parse(R"({"name": "My Core", "functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": {"aliases": ["RM 14LP", "RM 14/ILP", "RM 14/LP"], "dimensions": {"A": {"minimum": 0.0408, "maximum": 0.0422 }, "B": {"minimum": 0.010150000000000001, "maximum": 0.01025 }, "C": {"minimum": 0.018400000000000003, "maximum": 0.019000000000000003 }, "D": {"minimum": 0.00555, "maximum": 0.00585 }, "E": {"minimum": 0.029, "maximum": 0.0302 }, "F": {"minimum": 0.014400000000000001, "maximum": 0.015000000000000001 }, "G": {"minimum": 0.017 }, "H": {"minimum": 0.0054, "maximum": 0.005600000000000001 }, "J": {"minimum": 0.0335, "maximum": 0.0347 }, "R": {"maximum": 0.00030000000000000003 } }, "family": "rm", "familySubtype": "3", "name": "RM 14/20", "type": "standard", "magneticCircuit": "open"}, "gapping": [{"type": "subtractive", "length": 0.001 }, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"} ], "numberStacks": 1 }, "geometricalDescription": null, "processedDescription": null })");
         OpenMagnetics::CoilWrapper winding; 
         OpenMagnetics::InputsWrapper inputs; 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);
@@ -833,8 +812,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding; 
         OpenMagnetics::InputsWrapper inputs; 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(
-            std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
                                 coreMaterial, core, winding, inputs);

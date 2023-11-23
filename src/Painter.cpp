@@ -16,6 +16,9 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
     double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
     double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
 
+    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    auto frequency = harmonics.get_frequencies()[harmonicIndex];
+
     std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, _numberPointsX);
     std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, _numberPointsY);
     std::vector<OpenMagnetics::FieldPoint> points;
@@ -27,13 +30,16 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
         }
     }
 
-    OpenMagnetics::MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
-    // OpenMagnetics::MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
+    Field inducedField;
+    inducedField.set_data(points);
+    inducedField.set_frequency(frequency);
+
+    OpenMagnetics::MagneticField magneticField;
     magneticField.set_fringing_effect(_includeFringing);
     magneticField.set_mirroring_dimension(_mirroringDimension);
-    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, points);
+    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
 
-    auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[harmonicIndex];
+    auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
     return field;
 }
 

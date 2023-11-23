@@ -11,7 +11,10 @@ class WindingLosses
 {
     private:
         bool _includeFringing = true;
+        bool _quickModeForManyTurns = true;
+        int64_t _quickModeForManyTurnsThreshold = 1000;
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
+        double _windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold;
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
         MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
 
@@ -23,12 +26,20 @@ class WindingLosses
             _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
         }
 
+        void set_quick_mode_for_many_turns(bool value) {
+            _quickModeForManyTurns = value;
+        }
+
         void set_fringing_effect(bool value) {
             _includeFringing = value;
         }
 
         void set_mirroring_dimension(int mirroringDimension) {
             _mirroringDimension = mirroringDimension;
+        }
+
+        void set_winding_losses_harmonic_amplitude_threshold(double windingLossesHarmonicAmplitudeThreshold) {
+            _windingLossesHarmonicAmplitudeThreshold = windingLossesHarmonicAmplitudeThreshold;
         }
 
         WindingLossesOutput calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature);

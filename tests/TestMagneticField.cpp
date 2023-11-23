@@ -45,23 +45,23 @@ SUITE(MagneticField) {
 
 
     TEST(Test_Magnetic_Field_Frequencies) {
-        setup();
-        auto turn = coil.get_turns_description().value()[0];
+        numberTurns = {2};
+        numberParallels = {1};
+        turnsRatios = {};
+        interleavingLevel = 2;
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
-        double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
-        fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
-        points.push_back(fieldPoint);
+        sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        setup();
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        // OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER);
         magneticField.set_fringing_effect(false);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        magneticField.set_winding_losses_harmonic_amplitude_threshold(0.01);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic);
         auto field_0 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         auto field_1 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1];
         auto field_2 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2];
@@ -91,6 +91,9 @@ SUITE(MagneticField) {
         points.push_back(fieldPoint);
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0], turn.get_coordinates()[1] + (maximumHeight / 2) * 1.0001});
         points.push_back(fieldPoint);
+        OpenMagnetics::Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -98,7 +101,7 @@ SUITE(MagneticField) {
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         magneticField.set_fringing_effect(false);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
@@ -130,6 +133,9 @@ SUITE(MagneticField) {
         OpenMagnetics::FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
+        OpenMagnetics::Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -138,7 +144,7 @@ SUITE(MagneticField) {
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         // OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER);
         magneticField.set_fringing_effect(false);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double expectedValue = 0;
@@ -164,6 +170,9 @@ SUITE(MagneticField) {
         OpenMagnetics::FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
+        OpenMagnetics::Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -171,7 +180,7 @@ SUITE(MagneticField) {
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         magneticField.set_fringing_effect(false);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
@@ -198,6 +207,10 @@ SUITE(MagneticField) {
         OpenMagnetics::FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
+        OpenMagnetics::Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
+
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -205,7 +218,7 @@ SUITE(MagneticField) {
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER);
         magneticField.set_fringing_effect(false);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
@@ -232,6 +245,9 @@ SUITE(MagneticField) {
         OpenMagnetics::FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{turn_0.get_coordinates()[0], coreColumnHeight / 2});
         points.push_back(fieldPoint);
+        OpenMagnetics::Field inducedField;
+        inducedField.set_data(points);
+        inducedField.set_frequency(frequency);
 
 
         OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("0.475 - Grade 1");
@@ -247,7 +263,7 @@ SUITE(MagneticField) {
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         magneticField.set_fringing_effect(false);
         magneticField.set_mirroring_dimension(1);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, points);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
  
         auto outFile = outputFilePath;

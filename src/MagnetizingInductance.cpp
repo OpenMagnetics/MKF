@@ -369,7 +369,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         }
 
         auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(gappedCore, currentInitialPermeability);
-        auto reluctance = magnetizingInductanceOutput.get_core_reluctance();
+        reluctance = magnetizingInductanceOutput.get_core_reluctance();
 
         if (fabs(neededTotalReluctance - reluctance) / neededTotalReluctance < 0.001 || timeout == 0) {
             break;
