@@ -14,6 +14,7 @@ class WireAdviser {
         bool _includeRound;
         double _maximumEffectiveCurrentDensity;
         int _maximumNumberParallels;
+        double _maximumOuterAreaProportion;
     public:
         WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels, bool includeRectangular=true, bool includeFoil=false) {
             _includeFoil = includeFoil;
@@ -49,6 +50,9 @@ class WireAdviser {
         }
         void enableRound(bool enable) {
             _includeRound = enable;
+        }
+        double get_maximum_area_proportion() {
+            return _maximumOuterAreaProportion;
         }
         std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(CoilFunctionalDescription coilFunctionalDescription,
                                                                                    Section section,
@@ -89,6 +93,7 @@ class WireAdviser {
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
         void expand_wires_dataset_with_parallels(std::vector<CoilFunctionalDescription>* coilFunctionalDescriptions);
+        void set_maximum_area_proportion(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     
 };
 

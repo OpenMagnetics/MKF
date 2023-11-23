@@ -142,18 +142,29 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     auto magneticFlux = MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
         reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
-    // std::cout << "magneticFluxDensity: " << magneticFluxDensity.get_processed()->get_peak().value() << std::endl;
-    // std::cout << "magneticFieldStrengthGap: " << magneticFluxDensity.get_processed()->get_peak().value() / Constants().vacuumPermeability << std::endl;
 
     double magneticFieldStrengthGap = magneticFluxDensity.get_processed()->get_peak().value() / Constants().vacuumPermeability;
     return magneticFieldStrengthGap;
 }
 
-WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<std::vector<FieldPoint>> externalInducedFieldPoints) {
+WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField) {
 
     CoilMesher coilMesher; 
     coilMesher.set_mirroring_dimension(_mirroringDimension);
-    auto inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0.01);
+    std::vector<Field> inducingFields;
+    if (externalInducedField){
+        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0);
+        // We only process the harmonic that comes from the external field
+        for (auto field : aux) {
+            if (field.get_frequency() == externalInducedField.value().get_frequency()) {
+                inducingFields.push_back(field);
+                break;
+            }
+        }
+    }
+    else {
+        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold);
+    }
 
     if (!magnetic.get_coil().get_turns_description()) {
         throw std::runtime_error("Missing turns description in coil");
@@ -169,16 +180,11 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
 
     std::vector<Field> inducedFields;
-    if (externalInducedFieldPoints) {
-        Field field;
-        field.set_data(externalInducedFieldPoints.value());
-        for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
-            field.set_frequency(inducingFields[harmonicIndex].get_frequency());
-            inducedFields.push_back(field);
-        }
+    if (externalInducedField) {
+        inducedFields.push_back(externalInducedField.value());
     }
     else {
-        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, 0.01);
+        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold);
     }
 
 
@@ -209,6 +215,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
+
 
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
             double totalInducedFieldX = 0;

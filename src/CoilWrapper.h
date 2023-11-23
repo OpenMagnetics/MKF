@@ -25,28 +25,7 @@ class CoilWrapper : public Coil {
         std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
         std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
         std::string coilLog;
-        bool are_sections_and_layers_fitting() {
-            bool windTurns = true;
-            if (!get_sections_description()) {
-                return false;
-            }
-            if (!get_layers_description()) {
-                return false;
-            }
-            auto sections = get_sections_description().value();
-            auto layers = get_layers_description().value();
-            for (auto& section: sections) {
-                if (section.get_filling_factor().value() > 1 || horizontalFillingFactor(section) > 1 || verticalFillingFactor(section) > 1) {
-                    windTurns = false;
-                }
-            }
-            for (auto& layer: layers) {
-                if (layer.get_filling_factor().value() > 1) {
-                    windTurns = false;
-                }
-            }
-            return windTurns;
-        }
+        bool are_sections_and_layers_fitting();
     public:
         uint8_t _interleavingLevel = 1;
         WindingOrientation _windingOrientation = WindingOrientation::HORIZONTAL;

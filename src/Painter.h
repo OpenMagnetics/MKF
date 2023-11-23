@@ -38,12 +38,14 @@ class Painter{
 
     public:
 
-        Painter(std::filesystem::path filepath, PainterModes mode = PainterModes::CONTOUR){
+        Painter(std::filesystem::path filepath, PainterModes mode = PainterModes::QUIVER){
             _filepath = filepath;
             _mode = mode;
             matplot::gcf()->quiet_mode(true);
             matplot::cla();
             matplot::hold(matplot::off);
+            matplot::xticks({});
+            matplot::yticks({});
         };
         virtual ~Painter() = default;
 
@@ -72,8 +74,8 @@ class Painter{
         _mirroringDimension = mirroringDimension;
     }
     
-    ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 0);
-    void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 0, std::optional<ComplexField> inputField = std::nullopt);
+    ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
+    void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
 
     void export_svg();
     void export_png();

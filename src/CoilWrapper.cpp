@@ -255,6 +255,29 @@ size_t CoilWrapper::get_winding_index_by_name(std::string name) {
     throw std::runtime_error("No such a winding name: " + name);
 }
 
+bool CoilWrapper::are_sections_and_layers_fitting() {
+    bool windTurns = true;
+    if (!get_sections_description()) {
+        return false;
+    }
+    if (!get_layers_description()) {
+        return false;
+    }
+    auto sections = get_sections_description().value();
+    auto layers = get_layers_description().value();
+    for (auto& section: sections) {
+        if (section.get_filling_factor().value() > 1 || horizontalFillingFactor(section) > 1 || verticalFillingFactor(section) > 1) {
+            windTurns = false;
+        }
+    }
+    for (auto& layer: layers) {
+        if (layer.get_filling_factor().value() > 1) {
+            windTurns = false;
+        }
+    }
+    return windTurns;
+}
+
 double CoilWrapper::horizontalFillingFactor(Section section) {
     auto layers = get_layers_by_section(section.get_name());
     double sectionWidth = section.get_dimensions()[0];

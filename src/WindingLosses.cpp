@@ -15,6 +15,16 @@ WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, Op
     MagneticField magneticField(_magneticFieldStrengthModel, OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
     magneticField.set_fringing_effect(_includeFringing);
     magneticField.set_mirroring_dimension(_mirroringDimension);
+    int64_t totalNumberPhysicalTurns = 0;
+    for (auto winding : magnetic.get_coil().get_functional_description()) {
+        totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
+    }
+    if (_quickModeForManyTurns && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
+        magneticField.set_winding_losses_harmonic_amplitude_threshold(_windingLossesHarmonicAmplitudeThreshold * 2);
+    }
+    else {
+        magneticField.set_winding_losses_harmonic_amplitude_threshold(_windingLossesHarmonicAmplitudeThreshold);
+    }
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
     windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput);

@@ -25,12 +25,12 @@ class MagnetizingInductance {
 
   protected:
   public:
-    MagnetizingInductance(std::map<std::string, std::string> models) {
-        auto defaults = OpenMagnetics::Defaults();
-        _models = models;
-        if (models.find("gapReluctance") == models.end()) {
-            _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
-        }
+    MagnetizingInductance() {
+        _models["gapReluctance"] = magic_enum::enum_name(Defaults().reluctanceModelDefault);
+    }
+
+    MagnetizingInductance(std::string model) {
+        _models["gapReluctance"] = model;
     }
     MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
                                                                                    CoilWrapper winding,
