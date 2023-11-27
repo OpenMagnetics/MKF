@@ -95,19 +95,19 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             X[i] = field.get_data()[i].get_point()[0];
             Y[i] = field.get_data()[i].get_point()[1];
             if (_logarithmicScale) {
-                V[i] = log(fabs(field.get_data()[i].get_real()));
+                U[i] = log(fabs(field.get_data()[i].get_real()));
                 if (field.get_data()[i].get_real() < 0) {
-                    V[i] = -V[i];
-                }
-                U[i] = log(fabs(field.get_data()[i].get_imaginary()));
-                if (field.get_data()[i].get_imaginary() < 0) {
                     U[i] = -U[i];
+                }
+                V[i] = log(fabs(field.get_data()[i].get_imaginary()));
+                if (field.get_data()[i].get_imaginary() < 0) {
+                    V[i] = -V[i];
                 }
                 M[i] = hypot(V[i], U[i]);
             }
             else {
-                V[i] = field.get_data()[i].get_real();
-                U[i] = field.get_data()[i].get_imaginary();
+                V[i] = field.get_data()[i].get_imaginary();
+                U[i] = field.get_data()[i].get_real();
                 M[i] = hypot(field.get_data()[i].get_real(), field.get_data()[i].get_imaginary());
             }
             minimumModule = std::min(minimumModule, M[i]);
@@ -132,6 +132,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         minimumModule = maximumModule - 1;
     }
     matplot::colormap(matplot::palette::jet());
+    matplot::colorbar().label("Magnetic Field Strength (A/m)");
     matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule});
     matplot::gcf()->size(bobbinWidth * _scale / 0.7, bobbinHeight * _scale);
     matplot::xlim({bobbinWidthStart, bobbinWidthStart + bobbinWidth});

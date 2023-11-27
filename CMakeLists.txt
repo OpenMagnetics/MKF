@@ -162,3 +162,7 @@ if(INCLUDE_PYMKF)
         target_compile_definitions(PyMKF
                                    PRIVATE VERSION_INFO=${EXAMPLE_VERSION_INFO})
 endif(INCLUDE_PYMKF)
+
+
+add_executable(magnetic_adviser "src/MagneticAdviser.cpp")
+target_link_libraries(magnetic_adviser MKF)

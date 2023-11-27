@@ -78,7 +78,7 @@ double WindingSkinEffectLosses::calculate_skin_depth(WireWrapper wire, double fr
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider, double windingLossesHarmonicAmplitudeThreshold) {
     auto defaults = Defaults();
 
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
@@ -102,7 +102,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 
     for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex)
     {
-        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequency * defaults.windingLossesHarmonicAmplitudeThreshold) {
+        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequency * windingLossesHarmonicAmplitudeThreshold) {
             continue;
         }
 
@@ -120,7 +120,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 }
 
 
-WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput) {
+WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold) {
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
     }
@@ -161,7 +161,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
 
         SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
 
-        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex]).second;
+        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], windingLossesHarmonicAmplitudeThreshold).second;
 
         for (auto& lossesPerMeter : lossesPerMeterPerHarmonic) {
             auto skinEffectLosses = windingLossesPerWinding[windingIndex].get_skin_effect_losses().value();

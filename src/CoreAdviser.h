@@ -25,6 +25,7 @@ class CoreAdviser {
         std::map<std::string, std::string> _models;
         bool _includeToroids;
         std::string _log;
+        bool _uniqueCoreShapes = false;
         std::map<CoreAdviserFilters, double> _weights;
 
         void logEntry(std::string entry) {
@@ -66,6 +67,10 @@ class CoreAdviser {
         }
 
         std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted);
+
+        void set_unique_core_shapes(bool value) {
+            _uniqueCoreShapes = value;
+        }
 
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, std::vector<CoreWrapper>* cores, size_t maximumNumberResults=1);

@@ -59,32 +59,7 @@ namespace OpenMagnetics {
         size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
         mas.get_mutable_magnetic().get_mutable_coil().set_interleaving_level(_interleavingLevel);
         mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions);
-        {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            auto outFile = outputFilePath;
-            std::string filename = "Debug_0.svg";
-            outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
-            painter.paint_core(mas.get_magnetic());
-            painter.paint_bobbin(mas.get_magnetic());
-            painter.paint_coil_sections(mas.get_magnetic());
-            painter.export_svg();
-        }
         mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
-        {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            auto outFile = outputFilePath;
-            std::string filename = "Debug_1.svg";
-            outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
-            painter.paint_core(mas.get_magnetic());
-            painter.paint_bobbin(mas.get_magnetic());
-            painter.paint_coil_sections(mas.get_magnetic());
-            painter.export_svg();
-        }
-
         OpenMagnetics::WireAdviser wireAdviser;
         std::vector<std::vector<std::pair<CoilFunctionalDescription, double>>> wireCoilPerWinding;
 
@@ -177,9 +152,9 @@ namespace OpenMagnetics {
         }
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
-        bool wound = false;
+        std::vector<std::pair<MasWrapper, double>> masMagneticsWithCoil;
 
-        while (!wound) {
+        while (true) {
 
             std::vector<CoilFunctionalDescription> coilFunctionalDescription;
 
@@ -188,11 +163,14 @@ namespace OpenMagnetics {
             }
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
-            wound = mas.get_mutable_magnetic().get_mutable_coil().wind();
+            bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind();
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
-                break;
+                masMagneticsWithCoil.push_back({mas, 1.0});
+                if (masMagneticsWithCoil.size() == maximumNumberResults) {
+                    break;
+                }
             }
             timeout--;
             if (timeout == 0) {
@@ -211,13 +189,7 @@ namespace OpenMagnetics {
             currentWireIndexPerWinding[lowestIndex]++;
         }
 
-        std::vector<std::pair<MasWrapper, double>> masMagneticsWithCoil; 
-
-        if (wound) {
-            return {{mas, 1.0}};
-        }
-
-        return {};
+        return masMagneticsWithCoil;
 
     }
 } // namespace OpenMagnetics

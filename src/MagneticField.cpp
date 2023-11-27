@@ -216,6 +216,9 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
 
+        if (inducedFields[harmonicIndex].get_data().size() == 0) {
+            throw std::runtime_error("Empty complexField");
+        }
 
         for (auto& inducedFieldPoint : inducedFields[harmonicIndex].get_data()) {
             double totalInducedFieldX = 0;
@@ -260,6 +263,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 }
 
                 auto complexFieldPoint = _model->get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint, inducingWire);
+
                 totalInducedFieldX += complexFieldPoint.get_real();
                 totalInducedFieldY += complexFieldPoint.get_imaginary();
             }
@@ -295,23 +299,55 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         auto wire = inducingWire.value();
         double a = resolve_dimensional_values(wire.get_conducting_width().value()) / 2;
         double b = resolve_dimensional_values(wire.get_conducting_height().value()) / 2;
-        double x = inducedFieldPoint.get_point()[0];
-        double y = inducedFieldPoint.get_point()[1];
-        auto bottomLeftPoint = std::vector<double>{inducingFieldPoint.get_point()[0] - a, inducingFieldPoint.get_point()[1] - b};
-        auto bottomRightPoint = std::vector<double>{inducingFieldPoint.get_point()[0] + a, inducingFieldPoint.get_point()[1] - b};
-        auto topLeftPoint = std::vector<double>{inducingFieldPoint.get_point()[0] - a, inducingFieldPoint.get_point()[1] + b};
-        auto topRightPoint = std::vector<double>{inducingFieldPoint.get_point()[0] + a, inducingFieldPoint.get_point()[1] + b};
-        double tetha4 = atan((x - topRightPoint[0]) / (y - topRightPoint[1]));
-        double tetha3 = atan((x - topLeftPoint[0]) / (y - topLeftPoint[1]));
-        double tetha1 = atan((x - bottomRightPoint[0]) / (y - bottomRightPoint[1]));
-        double tetha2 = atan((x - bottomLeftPoint[0]) / (y - bottomLeftPoint[1]));
-        double r4 = hypot(y - topRightPoint[1], x - topRightPoint[0]);
-        double r3 = hypot(y - topLeftPoint[1], x - topLeftPoint[0]);
-        double r1 = hypot(y - bottomRightPoint[1], x - bottomRightPoint[0]);
-        double r2 = hypot(y - bottomLeftPoint[1], x - bottomLeftPoint[0]);
+        double x = inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0];
+        double y = inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1];
+        double r1 = hypot(y + b, x - a);
+        double r2 = hypot(y + b, x + a);
+        double r3 = hypot(y - b, x + a);
+        double r4 = hypot(y - b, x - a);
+
+        double tetha1 = atan((y + b) / (x - a));
+        double tetha2 = atan((y + b) / (x + a));
+        double tetha3 = atan((y - b) / (x + a));
+        double tetha4 = atan((y - b) / (x - a));
+
+        if (x > a && -b < y && y < b) {
+
+        }
+        else {
+            if (x > a && y < -b) {
+                tetha1 += 2 * std::numbers::pi;
+            }
+            else if (x < a || y < -b) {
+                tetha1 += std::numbers::pi;
+            }
+
+            if (x > -a && y < -b) {
+                tetha2 += 2 * std::numbers::pi;
+            }
+            else if (x < -a || y < -b) {
+                tetha2 += std::numbers::pi;
+            }
+
+            if (x > -a && y < b) {
+                tetha3 += 2 * std::numbers::pi;
+            }
+            else if (x < -a || y < b) {
+                tetha3 += std::numbers::pi;
+            }
+
+            if (x > a && y < b) {
+                tetha4 += 2 * std::numbers::pi;
+            }
+            else if (x < a || y < b) {
+                tetha4 += std::numbers::pi;
+            }
+        }
+
         double common_part = inducingFieldPoint.get_value() / (8.0 * std::numbers::pi * a * b);
         Hx = common_part * ((y + b) * (tetha1 - tetha2) - (y - b) * (tetha4 - tetha3) + (x + a) * log(r2 / r3) - (x - a) * log(r1 / r4));
-        Hy = common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
+
+        Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
     }
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
@@ -333,7 +369,6 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         double turnLength = 1;
         if (inducingFieldPoint.get_turn_length()) {
             turnLength = inducingFieldPoint.get_turn_length().value();
-            // throw std::runtime_error("Missing length in turn");
         }
         double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
         double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);

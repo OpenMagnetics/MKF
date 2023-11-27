@@ -29,9 +29,11 @@ class CoilMesher {
   protected:
     double _windingLossesHarmonicAmplitudeThreshold;
     int _mirroringDimension = 0;
+    double _quickModeForManyHarmonicsThreshold = 1;
   public:
     std::vector<Field> generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
     std::vector<Field> generate_mesh_induced_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
+    std::vector<size_t> get_common_harmonic_indexes(CoilWrapper coil, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
 
     void set_mirroring_dimension(int mirroringDimension) {
         _mirroringDimension = mirroringDimension;

@@ -506,9 +506,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_LOSSES)) {
             if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
                 if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]) {
-                    if (magnetic.get_manufacturer_info().value().get_reference().value() == "ER 11/2.5/6 - 3C97 - Gapped 0.19 mm") {
-                        std::cout << "Reusing magnetic.get_manufacturer_info().value().get_reference().value() in core losses: " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
-                    }
                     newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
@@ -600,9 +597,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 }
 
                 if (!coil.get_turns_description()) {
-                    if (magnetic.get_manufacturer_info().value().get_reference().value() == "ER 11/2.5/6 - 3C97 - Gapped 0.19 mm") {
-                        std::cout << "turns description not found: " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
-                    }
                     newTotalLosses = coreLosses;
                     break;
                 }
@@ -1242,7 +1236,30 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     });
 
     if (masMagneticsWithScoring.size() > maximumNumberResults) {
-        masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        if (_uniqueCoreShapes) {
+            std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoringAndUniqueShapes;
+            std::vector<std::string> useShapes;
+            for (size_t masIndex = 0; masIndex < masMagneticsWithScoring.size(); ++masIndex){
+                MasWrapper mas = masMagneticsWithScoring[masIndex].first;
+                auto core = mas.get_magnetic().get_core();
+                if (std::find(useShapes.begin(), useShapes.end(), core.get_shape_name()) != useShapes.end()) {
+                    continue;
+                }
+                else {
+                    masMagneticsWithScoringAndUniqueShapes.push_back(masMagneticsWithScoring[masIndex]);
+                    useShapes.push_back(core.get_shape_name());
+                }
+
+                if (masMagneticsWithScoringAndUniqueShapes.size() == maximumNumberResults) {
+                    break;
+                }
+            }
+            masMagneticsWithScoring.clear();
+            masMagneticsWithScoring = masMagneticsWithScoringAndUniqueShapes;
+        }
+        else {
+            masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        }
     }
 
     correct_windings(&masMagneticsWithScoring, inputs);

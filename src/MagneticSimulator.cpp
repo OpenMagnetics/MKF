@@ -10,22 +10,15 @@ MasWrapper MagneticSimulator::simulate(MasWrapper mas){
 MasWrapper MagneticSimulator::simulate(InputsWrapper inputs, MagneticWrapper magnetic){
     std::vector<OutputsWrapper> outputs;
     std::vector<OperatingPoint> simulatedOperatingPoints;
-    std::cout << "Mierdon 1" << std::endl;
 
     for (auto& operatingPoint : inputs.get_mutable_operating_points()){
         OutputsWrapper output;
-    std::cout << "Mierdon 2" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
-    std::cout << "Mierdon 3" << std::endl;
         output.set_core_losses(calculate_core_loses(operatingPoint, magnetic));
-    std::cout << "Mierdon 4" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, output.get_core_losses().value().get_temperature()));
-    std::cout << "Mierdon 5" << std::endl;
         outputs.push_back(output);
-    std::cout << "Mierdon 6" << std::endl;
         simulatedOperatingPoints.push_back(operatingPoint);
     }
-    std::cout << "Mierdon 7" << std::endl;
     inputs.set_operating_points(simulatedOperatingPoints);
     MasWrapper mas;
     mas.set_inputs(inputs);
@@ -46,6 +39,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     }
     WindingLosses windingLosses;
     windingLosses.set_mirroring_dimension(0);
+    windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.05);
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }
 
