@@ -45,10 +45,13 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
         case WireType::RECTANGULAR: {
-            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::LAMMERANER);
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
         }
         case WireType::FOIL: {
+            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ROSSMANITH);
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
+            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
+            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::LAMMERANER);
         }
         default:
             throw std::runtime_error("Unknown type of wire");
@@ -105,6 +108,10 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         auto dataForThisTurn = complexField.get_data();
 
         auto turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
+
+        if (std::isnan(turnLosses)) {
+            throw std::runtime_error("NaN found in proximity effect losses per meter");
+        }
         lossesPerHarmonic.push_back(std::pair<double, double>{turnLosses, frequency});
         totalProximityEffectLossesPerMeter += turnLosses;
     }
@@ -156,7 +163,6 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                 }
             }
             
-            // std::vector<ComplexFieldPoint> data{fieldPerHarmonic.get_data()[turnIndex]};
             ComplexField complexField;
             complexField.set_data(data);
             complexField.set_frequency(fieldPerHarmonic.get_frequency());
@@ -168,13 +174,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         for (auto& lossesThisHarmonic : lossesPerHarmonic) {
             auto proximityEffectLosses = windingLossesPerWinding[windingIndex].get_proximity_effect_losses().value();
             proximityEffectLosses.get_mutable_harmonic_frequencies().push_back(lossesThisHarmonic.second);
+            if (std::isnan(lossesThisHarmonic.first)) {
+                throw std::runtime_error("NaN found in proximity effect losses");
+            }
             proximityEffectLosses.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
             totalProximityEffectLosses += lossesThisHarmonic.first * wireLength;
             windingLossesPerWinding[windingIndex].set_proximity_effect_losses(proximityEffectLosses);
         }
 
     }
-    // throw std::runtime_error("totalProximityEffectLosses: " + Convert.ToString(totalProximityEffectLosses));
     windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
@@ -384,6 +392,10 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(WireWrappe
     double turnLosses = c * resistivity * pow(He, 2) * (alpha * d * tanh(alpha * d / 2.0)).real();
 
     turnLosses *= wire.get_number_conductors().value();
+
+    if (std::isnan(turnLosses)) {
+        throw std::runtime_error("NaN found in Albach's model for proximity effect losses");
+    }
 
     return turnLosses;
 }

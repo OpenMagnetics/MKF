@@ -6,6 +6,7 @@
 #include "WireWrapper.h"
 #include "Utils.h"
 #include "Models.h"
+#include "Defaults.h"
 
 #include <cmath>
 #include <filesystem>
@@ -21,28 +22,28 @@ namespace OpenMagnetics {
 
 
 class WindingSkinEffectLossesModel {
-  private:
-  protected:
-    std::map<size_t, std::map<double, std::map<double, double>>> _skinFactorPerWirePerFrequencyPerTemperature;
-    std::optional<double> try_get_skin_factor(WireWrapper wire,  double frequency, double temperature);
-    void set_skin_factor(WireWrapper wire, double frequency, double temperature, double skinFactor);
+    private:
+    protected:
+        std::map<size_t, std::map<double, std::map<double, double>>> _skinFactorPerWirePerFrequencyPerTemperature;
+        std::optional<double> try_get_skin_factor(WireWrapper wire,  double frequency, double temperature);
+        void set_skin_factor(WireWrapper wire, double frequency, double temperature, double skinFactor);
 
-  public:
-    std::string methodName = "Default";
-    virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0) = 0;
-    static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
+    public:
+        std::string methodName = "Default";
+        virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0) = 0;
+        static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
 };
 
 
 class WindingSkinEffectLosses {
-  private:
-  protected:
-  public:
-    static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType);
-    static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
-    static double calculate_skin_depth(WireWrapper wire, double frequency, double temperature);
-    static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput);
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider = 1);
+    private:
+    protected:
+    public:
+      static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType);
+      static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
+      static double calculate_skin_depth(WireWrapper wire, double frequency, double temperature);
+      static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
+      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider = 1, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
 
 };
 

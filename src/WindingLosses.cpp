@@ -10,7 +10,7 @@ namespace OpenMagnetics {
 WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature)
 {
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput);
+    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, _windingLossesHarmonicAmplitudeThreshold);
 
     MagneticField magneticField(_magneticFieldStrengthModel, OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
     magneticField.set_fringing_effect(_includeFringing);

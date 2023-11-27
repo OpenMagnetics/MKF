@@ -26,6 +26,41 @@ std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels model
         throw std::runtime_error("Unknown coil breaker mode, available options are: {WANG, CENTER}");
 }
 
+
+std::vector<size_t> CoilMesher::get_common_harmonic_indexes(CoilWrapper coil, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(pow(harmonics.get_amplitudes()[harmonicIndex], 2) * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
+        }
+    }
+
+
+    std::vector<size_t> commonHarmonicIndexes;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+
+            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+                continue;
+            }
+            if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex) == commonHarmonicIndexes.end()) {
+                commonHarmonicIndexes.push_back(harmonicIndex);
+            }
+        }
+    }
+
+    if (commonHarmonicIndexes.size() > operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size() * _quickModeForManyHarmonicsThreshold) {
+        return get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
+    }
+    else {
+        return commonHarmonicIndexes;
+    }
+}
+
+
+
 std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
     auto defaults = Defaults();
     auto coil = magnetic.get_coil();
@@ -66,7 +101,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
                 break;
             }
             case WireType::FOIL: {
-                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
             default:
@@ -77,15 +112,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
         breakdownModelPerWinding.push_back(model);
     }
 
-
-
-    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
-        }
-    }
+    auto commonHarmonicIndexes = get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     std::vector<Field> tempFieldPerHarmonic;
     for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
@@ -102,11 +129,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), magnetic.get_core());
 
-        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
-                continue;
-            }
-
+        for (auto harmonicIndex : commonHarmonicIndexes) {
             auto harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
             auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
             if (windingIndex > 0) {
@@ -117,7 +140,6 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
                 fieldPointThisHarmonic.set_value(fieldPoint.get_value() * harmonicCurrentPeakInTurn);
                 tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPointThisHarmonic);
             }
-            // std::move(fieldPoints.begin(), fieldPoints.end(), std::back_inserter(tempFieldPerHarmonic[harmonicIndex].get_mutable_data()));
         }
     }
     std::vector<Field> fieldPerHarmonic;
@@ -170,13 +192,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
         breakdownModelPerWinding.push_back(model);
     }
 
-    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
-        }
-    }
+    auto commonHarmonicIndexes = get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     std::vector<Field> tempFieldPerHarmonic;
     for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
@@ -193,22 +209,19 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex);
 
-        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
-                continue;
-            }
+        for (auto harmonicIndex : commonHarmonicIndexes) {
             for (auto& fieldPoint : fieldPoints) {
                 tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPoint);
             }
         }
     }
+
     std::vector<Field> fieldPerHarmonic;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
         }
     }
-
     return fieldPerHarmonic;
 }
 
@@ -225,8 +238,6 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     double B = windingWindow.get_height().value();
     double coreColumnWidth = core.get_columns()[0].get_width();
 
-    // double turn_a = turn.get_coordinates()[0];
-    // double turn_b = turn.get_coordinates()[1];
     double turn_a = turn.get_coordinates()[0] - coreColumnWidth / 2;
     double turn_b = turn.get_coordinates()[1] + B / 2;
 
@@ -234,12 +245,9 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     {
         for (int n = -N; n <= N; ++n)
         {
-            // if (!(m ==0 && n == 0) && !(m == 0 && n > 0)) {
-            //     continue;
-            // }
             FieldPoint mirroredFieldPoint;
             double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
-            mirroredFieldPoint.set_value(currentMultiplier);  // Will be multplied later
+            mirroredFieldPoint.set_value(currentMultiplier);  // Will be multiplied later
             if (turnLength) {
                 mirroredFieldPoint.set_turn_length(turnLength.value());
             }
@@ -291,21 +299,58 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
         fieldPoint.set_turn_index(turnIndex.value());
     }
 
-    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width(), turn.get_coordinates()[1]});
-    fieldPoint.set_label("right");
+    // fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
+    // fieldPoint.set_label("right");
+    // fieldPoints.push_back(fieldPoint);
+
+    // fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
+    // fieldPoint.set_label("left");
+    // fieldPoints.push_back(fieldPoint);
+
+    // fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
+    // fieldPoint.set_label("top");
+    // fieldPoints.push_back(fieldPoint);
+
+    // fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
+    // fieldPoint.set_label("bottom");
+    // fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("top right");
     fieldPoints.push_back(fieldPoint);
 
-    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width(), turn.get_coordinates()[1]});
-    fieldPoint.set_label("left");
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("top center");
     fieldPoints.push_back(fieldPoint);
 
-    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height()});
-    fieldPoint.set_label("top");
+    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("top center");
     fieldPoints.push_back(fieldPoint);
 
-    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height()});
-    fieldPoint.set_label("bottom");
+    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
+    fieldPoint.set_label("center right");
     fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});
+    fieldPoint.set_label("center center");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
+    fieldPoint.set_label("center center");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("bottom right");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("bottom center");
+    fieldPoints.push_back(fieldPoint);
+
+    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("bottom center");
+    fieldPoints.push_back(fieldPoint);
+
 
     return fieldPoints;
 }

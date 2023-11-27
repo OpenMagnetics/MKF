@@ -45,11 +45,11 @@ SUITE(MagneticAdviser) {
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
         std::cout << masMagnetics.size() << std::endl;
-        std::cout << masMagnetics[0].first.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-        // std::cout << masMagnetics[0].first.get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
+        std::cout << masMagnetics[0].get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
+        // std::cout << masMagnetics[0].get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
 
         if (masMagnetics.size() > 0) {
-            auto masMagnetic = masMagnetics[0].first;
+            auto masMagnetic = masMagnetics[0];
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
@@ -85,12 +85,12 @@ SUITE(MagneticAdviser) {
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
         std::cout << masMagnetics.size() << std::endl;
-        // std::cout << masMagnetics[0].first.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-        // std::cout << masMagnetics[0].first.get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
+        // std::cout << masMagnetics[0].get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
+        // std::cout << masMagnetics[0].get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
 
         CHECK(masMagnetics.size() > 0);
         for (int i = 0; i < masMagnetics.size(); ++i) {
-            auto masMagnetic = masMagnetics[i].first;
+            auto masMagnetic = masMagnetics[i];
             std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
             std::string filePath = __FILE__;
@@ -136,12 +136,10 @@ SUITE(MagneticAdviser) {
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
         std::cout << masMagnetics.size() << std::endl;
-        // std::cout << masMagnetics[0].first.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-        // std::cout << masMagnetics[0].first.get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
 
         CHECK(masMagnetics.size() > 0);
         for (int i = 0; i < masMagnetics.size(); ++i) {
-            auto masMagnetic = masMagnetics[i].first;
+            auto masMagnetic = masMagnetics[i];
             std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
             std::string filePath = __FILE__;
