@@ -443,6 +443,18 @@ CoreLossesOutput CoreLossesNSEModel::get_core_losses(CoreWrapper core,
     return result;
 }
 
+double get_plateau_duty_cycle(std::vector<double> data) {
+    double maxValue = *std::max_element(data.begin(), data.end());
+    int numberPlateauPoints = 0;
+    for (auto datum : data) {
+        if (fabs(maxValue - datum) / maxValue < 0.05) {
+            numberPlateauPoints++;
+        }
+    }
+    auto onPoints = (data.size() / 2 - numberPlateauPoints) / data.size();
+    return onPoints;
+}
+
 CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
@@ -467,20 +479,20 @@ CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
-    double dutyCycle = 0.5;
+    double dutyCycle = get_plateau_duty_cycle(magneticFluxDensity.get_waveform().value().get_data());
     // double dutyCycle = magneticFluxDensity.get_processed().value().get_duty_cycle().value();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
     double lossesFrameT1 = std::numbers::pi / 4 * k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
     lossesFrameT1 = CoreLossesModel::apply_temperature_coefficients(lossesFrameT1, steinmetzDatum, temperature);
-    std::vector<double> dutyCycleValues = {0.1,  0.15, 0.2,  0.25, 0.3,  0.35, 0.4,  0.45, 0.5,
-                                           0.55, 0.6,  0.65, 0.7,  0.75, 0.8,  0.85, 0.9};
-    std::vector<double> factorValues = {1.45,  1.4,  1.35, 1.275, 1.25,  1.2,  1.15, 1.075, 1,
-                                        1.075, 1.15, 1.2,  1.25,  1.275, 1.35, 1.4,  1.45};
+    std::vector<double> plateauDutyCycleValues = {0.1,  0.15, 0.2,  0.25, 0.3,  0.35, 0.4,  0.45, 0.5};
+    std::vector<double> factorValues = {1.45,  1.4,  1.35, 1.275, 1.25,  1.2,  1.15, 1.075, 1};
 
-    tk::spline interp(dutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
+    tk::spline interp(plateauDutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
     double dutyCycleFactor = std::max(1., interp(dutyCycle));
+    std::cout << "dutyCycle: " << dutyCycle << std::endl;
+    std::cout << "dutyCycleFactor: " << dutyCycleFactor << std::endl;
 
     double volumetricLosses = dutyCycleFactor * lossesFrameT1;
 

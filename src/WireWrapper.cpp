@@ -1095,7 +1095,7 @@ namespace OpenMagnetics {
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else 
-                    return resolve_dimensional_values(get_conducting_diameter().value());
+                    return get_maximum_conducting_width();
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 if (get_outer_width())
@@ -1114,7 +1114,7 @@ namespace OpenMagnetics {
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else 
-                    return resolve_dimensional_values(get_conducting_diameter().value());
+                    return get_maximum_conducting_height();
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 if (get_outer_height())
@@ -1129,6 +1129,13 @@ namespace OpenMagnetics {
     double WireWrapper::get_maximum_conducting_width() {
         switch (get_type()) {
             case WireType::LITZ:
+                {
+                    auto strand = resolve_strand();
+                    if (!strand.get_conducting_diameter()) {
+                        throw std::runtime_error("Missing conducting diameter in litz strand");
+                    }
+                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
             case WireType::RECTANGULAR:
@@ -1142,6 +1149,13 @@ namespace OpenMagnetics {
     double WireWrapper::get_maximum_conducting_height() {
         switch (get_type()) {
             case WireType::LITZ:
+                {
+                    auto strand = resolve_strand();
+                    if (!strand.get_conducting_diameter()) {
+                        throw std::runtime_error("Missing conducting diameter in litz strand");
+                    }
+                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
             case WireType::RECTANGULAR:

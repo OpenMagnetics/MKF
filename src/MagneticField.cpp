@@ -290,10 +290,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire) {
     double Hx;
     double Hy;
-    if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ || inducingWire.value().get_type() == WireType::FOIL) {
+    if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {
         double divisor = 2 * std::numbers::pi * (pow(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], 2) + pow(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], 2));
-        Hx = inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0]) / divisor;
-        Hy = -inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1]) / divisor;
+        Hx = -inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1]) / divisor;
+        Hy = inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0]) / divisor;
     }
     else {
         auto wire = inducingWire.value();
