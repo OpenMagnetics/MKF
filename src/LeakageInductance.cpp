@@ -50,7 +50,7 @@ ComplexField LeakageInductance::calculate_magnetic_field(OperatingPoint operatin
     return field;
 }
 
-double LeakageInductance::calculate_leakage_inductance(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
         throw std::runtime_error("Bobbin is not processed");
@@ -77,10 +77,6 @@ double LeakageInductance::calculate_leakage_inductance(OperatingPoint operatingP
     double dx = coreWindingWindowWidth / _numberPointsX;
     double dy = coreWindingWindowHeight / _numberPointsY;
     double dA = dx * dy;
-    // std::cout << "dx: " << dx << std::endl;
-    // std::cout << "dy: " << dy << std::endl;
-    // std::cout << "dA: " << dA << std::endl;
-
     double vacuumPermeability = Constants().vacuumPermeability;
 
     double energy = 0;
@@ -93,22 +89,20 @@ double LeakageInductance::calculate_leakage_inductance(OperatingPoint operatingP
         else {
             length = 2 * std::numbers::pi * (datum.get_point()[0] - bobbinColumnWidth) + 2 * 2 * bobbinColumnWidth + 2 * 2 * bobbinColumnDepth;
         }
-        // std::cout << "round length: " << (2 * std::numbers::pi * datum.get_point()[0]) << std::endl;
-        // std::cout << "squared length: " << (2 * std::numbers::pi * (datum.get_point()[0] - bobbinColumnWidth) + 2 * 2 * bobbinColumnWidth + 2 * 2 * bobbinColumnDepth) << std::endl;
-        // std::cout << "length: " << length << std::endl;
-        // std::cout << "length: " << length << std::endl;
         double HeSquared = pow(datum.get_real(), 2) + pow(datum.get_imaginary(), 2);
         energy += 0.5 * vacuumPermeability * HeSquared * dA * length;
     }
-    // std::cout << "energy" << std::endl;
-    // std::cout << energy << std::endl;
-
-    // std::cout << "energy" << std::endl;
-    // std::cout << energy << std::endl;
 
     double leakageInductance = 2.0 / pow(currentRms, 2) * energy;
-    // leakageInductance = leakageInductance / pow(magnetic.get_coil().get_functional_description()[0].get_number_parallels(), 2);
-    return leakageInductance;
+    LeakageInductanceOutput leakageInductanceOutput;
+
+    leakageInductanceOutput.set_method_used("Energy");
+    leakageInductanceOutput.set_origin(ResultOrigin::SIMULATION);
+    DimensionWithTolerance dimensionWithTolerance;
+    dimensionWithTolerance.set_nominal(leakageInductance);
+    leakageInductanceOutput.set_leakage_inductance_per_winding({dimensionWithTolerance});
+
+    return leakageInductanceOutput;
 }
 
 } // namespace OpenMagnetics
