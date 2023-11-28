@@ -106,8 +106,8 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 M[i] = hypot(V[i], U[i]);
             }
             else {
-                V[i] = field.get_data()[i].get_imaginary();
                 U[i] = field.get_data()[i].get_real();
+                V[i] = field.get_data()[i].get_imaginary();
                 M[i] = hypot(field.get_data()[i].get_real(), field.get_data()[i].get_imaginary());
             }
             minimumModule = std::min(minimumModule, M[i]);
