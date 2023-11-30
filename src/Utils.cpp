@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cfloat>
 #include <limits>
 #include <magic_enum.hpp>
 #include <numbers>
@@ -466,6 +467,69 @@ IsolationSide get_isolation_side_from_index(size_t index) {
     auto orderedIsolationSide = magic_enum::enum_cast<OrderedIsolationSide>(index).value();
     auto orderedIsolationSideString = std::string{magic_enum::enum_name(orderedIsolationSide)};
     return magic_enum::enum_cast<IsolationSide>(orderedIsolationSideString).value();
+}
+
+double comp_ellint_1(double x) {
+    double k;      // modulus
+    double m;      // the parameter of the elliptic function m = modulus^2
+    double a;      // arithmetic mean
+    double g;      // geometric mean
+    double a_old;  // previous arithmetic mean
+    double g_old;  // previous geometric mean
+    double two_n;  // power of 2
+
+    if ( x == 0.0 ) { return M_PI_2;    }
+    k = fabs(x);
+    m = k * k;
+    if ( m == 1.0 ) { return std::numeric_limits<double>::quiet_NaN();    }
+
+    a = 1.0;
+    g = sqrt(1.0 - m);
+    two_n = 1.0;
+    for (int i=0;i<100;i++) 
+    {
+        g_old = g;
+        a_old = a;
+        a = 0.5 * (g_old + a_old);
+        g = g_old * a_old;
+        two_n += two_n;
+        if ( fabs(a_old - g_old) <= (a_old * DBL_EPSILON) ) break;
+        g = sqrt(g);
+    } 
+    return std::numbers::pi / 2 / a;
+}
+
+double comp_ellint_2(double x) {
+    double k;      // modulus
+    double m;      // the parameter of the elliptic function m = modulus^2
+    double a;      // arithmetic mean
+    double g;      // geometric mean
+    double a_old;  // previous arithmetic mean
+    double g_old;  // previous geometric mean
+    double two_n;  // power of 2
+    double sum;
+
+    if ( x == 0.0 ) { return M_PI_2;    }
+    k = fabs(x);
+    m = k * k;
+    if ( m == 1.0 ) { return 1.0;    }
+
+    a = 1.0;
+    g = sqrt(1.0 - m);
+    two_n = 1.0;
+    sum = 2.0 - m;
+    for (int i=0;i<100;i++) 
+    {
+        g_old = g;
+        a_old = a;
+        a = 0.5 * (g_old + a_old);
+        g = g_old * a_old;
+        two_n += two_n;
+        sum -= two_n * (a * a - g);
+        if ( fabs(a_old - g_old) <= (a_old * DBL_EPSILON) ) break;
+        g = sqrt(g);
+    } 
+    return (std::numbers::pi / 4 / a) * sum;
 }
 
 

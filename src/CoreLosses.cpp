@@ -447,7 +447,7 @@ double get_plateau_duty_cycle(std::vector<double> data) {
     double maxValue = *std::max_element(data.begin(), data.end());
     int numberPlateauPoints = 0;
     for (auto datum : data) {
-        if (fabs(maxValue - datum) / maxValue < 0.05) {
+        if (fabs(maxValue - datum) / maxValue < 0.02) {
             numberPlateauPoints++;
         }
     }
@@ -491,8 +491,6 @@ CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
 
     tk::spline interp(plateauDutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
     double dutyCycleFactor = std::max(1., interp(dutyCycle));
-    std::cout << "dutyCycle: " << dutyCycle << std::endl;
-    std::cout << "dutyCycleFactor: " << dutyCycleFactor << std::endl;
 
     double volumetricLosses = dutyCycleFactor * lossesFrameT1;
 

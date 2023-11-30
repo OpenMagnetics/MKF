@@ -36,6 +36,16 @@ class MagneticSimulator {
             _magnetizingInductanceModel = MagnetizingInductance(std::string(magic_enum::enum_name(_reluctanceModelName)));
         }
 
+        void set_core_losses_model_name(CoreLossesModels model) {
+            _coreLossesModelName = model;
+        }
+        void set_core_temperature_model_name(CoreTemperatureModels model) {
+            _coreTemperatureModelName = model;
+        }
+        void set_reluctance_model_name(ReluctanceModels model) {
+            _reluctanceModelName = model;
+        }
+
         MasWrapper simulate(MasWrapper mas);
         MasWrapper simulate(InputsWrapper inputs, MagneticWrapper magnetic);
         CoreLossesOutput calculate_core_loses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
