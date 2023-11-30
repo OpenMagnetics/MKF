@@ -70,8 +70,8 @@ SUITE(MagneticField) {
         CHECK_CLOSE(3* frequency, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_frequency(), maximumError);
         CHECK_CLOSE(5 * frequency, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_frequency(), maximumError);
 
-        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_data()[0].get_real() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_real());
-        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_data()[0].get_real() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_real());
+        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
+        CHECK(windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[2].get_data()[0].get_imaginary() <  windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0].get_data()[0].get_imaginary());
     }
 
     TEST(Test_Magnetic_Field_One_Turn_Round) {
@@ -188,14 +188,16 @@ SUITE(MagneticField) {
 
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         magneticField.set_fringing_effect(false);
+        magneticField.set_mirroring_dimension(0);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
         double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
-
-        CHECK((expectedValue - field.get_data()[0].get_real()) / expectedValue < maximumError);
+        std::cout << "expectedValue: " << expectedValue << std::endl;
+        std::cout << "field.get_data()[0].get_imaginary(): " << field.get_data()[0].get_imaginary() << std::endl;
+        CHECK((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
     }
 
     TEST(Test_Magnetic_Field_Two_Turns_Round_Opposite_Current_Lammeraner) {

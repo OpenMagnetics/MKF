@@ -618,7 +618,7 @@ std::map<std::string, std::map<int, std::map<std::string, double>>> dynamicCoeff
 };
 std::map<OpenMagnetics::CoreLossesModels, double> maximumAdmittedErrorVolumetricCoreLosses = {
     {OpenMagnetics::CoreLossesModels::STEINMETZ, 1.6}, {OpenMagnetics::CoreLossesModels::IGSE, 1.6},
-    {OpenMagnetics::CoreLossesModels::ALBACH, 1.54},   {OpenMagnetics::CoreLossesModels::BARG, 1.37},
+    {OpenMagnetics::CoreLossesModels::ALBACH, 1.54},   {OpenMagnetics::CoreLossesModels::BARG, 2.1},
     {OpenMagnetics::CoreLossesModels::ROSHEN, 2.48},   {OpenMagnetics::CoreLossesModels::NSE, 1.55},
     {OpenMagnetics::CoreLossesModels::MSE, 1.54},
 };

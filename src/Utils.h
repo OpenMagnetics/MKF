@@ -105,6 +105,8 @@ double kelvin_function_real(double order, double x);
 double kelvin_function_imaginary(double order, double x);
 double derivative_kelvin_function_real(double order, double x);
 double derivative_kelvin_function_imaginary(double order, double x);
+double comp_ellint_1(double x);
+double comp_ellint_2(double x);
 
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
