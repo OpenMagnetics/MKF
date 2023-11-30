@@ -421,7 +421,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire
     auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
-    double acResistance = resistivity / (pow(std::numbers::pi, 2) * skinDepth * b) * std::comp_ellint_1(c / b) * (1 - exp(-2 * a / skinDepth));
+    double acResistance = resistivity / (pow(std::numbers::pi, 2) * skinDepth * b) * comp_ellint_1(c / b) * (1 - exp(-2 * a / skinDepth));
 
     auto turnLosses = acResistance * pow(currentRms / sqrt(2), 2);
     return turnLosses;
@@ -447,7 +447,7 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wir
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
     double fl = 3.22 * resistivity / (8 * Constants().vacuumPermeability * bPrima * aPrima);
-    double fh = pow(std::numbers::pi, 2) * resistivity / (4 * Constants().vacuumPermeability * pow(aPrima, 2)) * pow(std::comp_ellint_1(sqrt(1 - pow(aPrima, 2) / pow(bPrima, 2))), -2);
+    double fh = pow(std::numbers::pi, 2) * resistivity / (4 * Constants().vacuumPermeability * pow(aPrima, 2)) * pow(comp_ellint_1(sqrt(1 - pow(aPrima, 2) / pow(bPrima, 2))), -2);
     double gamma = 11;
     double beta = 5.5;
     double alpha = 2;
