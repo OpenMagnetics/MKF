@@ -62,6 +62,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_loses(OperatingPoint& operati
 
         magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
         excitation.set_magnetic_flux_density(magneticFluxDensity);
+        operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
 
         coreLossesOutput = _coreLossesModel->get_core_losses(magnetic.get_core(), excitation, temperature);
 

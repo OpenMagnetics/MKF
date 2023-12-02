@@ -90,6 +90,21 @@ class InsulationIEC60664Model : public InsulationStandard {
             part5Table4 = jf["Table 4"];
         }
     }
+
+    InsulationIEC60664Model(json data) {
+        part1TableA2 = data["IEC_60664-1"]["A.2"];
+        part1TableF1 = data["IEC_60664-1"]["F.1"];
+        part1TableF2 = data["IEC_60664-1"]["F.2"];
+        part1TableF3 = data["IEC_60664-1"]["F.3"];
+        part1TableF5 = data["IEC_60664-1"]["F.5"];
+        part1TableF8 = data["IEC_60664-1"]["F.8"];
+
+        part4Table1 = data["IEC_60664-4"]["Table 1"];
+
+        part5Table2 = data["IEC_60664-5"]["Table 2"];
+        part5Table3 = data["IEC_60664-5"]["Table 3"];
+        part5Table4 = data["IEC_60664-5"]["Table 4"];
+    }
 };
 
 } // namespace OpenMagnetics
