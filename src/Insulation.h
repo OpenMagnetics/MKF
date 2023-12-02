@@ -100,6 +100,13 @@ class InsulationIEC60664Model : public InsulationStandard {
         part1TableF8 = data["IEC_60664-1"]["F.8"];
 
         part4Table1 = data["IEC_60664-4"]["Table 1"];
+        std::map<std::string, std::vector<std::pair<double, double>>> temp;
+        temp = data["IEC_60664-4"]["Table 2"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            part4Table2[standardFrequency] = voltageList;
+        }
 
         part5Table2 = data["IEC_60664-5"]["Table 2"];
         part5Table3 = data["IEC_60664-5"]["Table 3"];
