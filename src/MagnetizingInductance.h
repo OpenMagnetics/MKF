@@ -29,6 +29,10 @@ class MagnetizingInductance {
         _models["gapReluctance"] = magic_enum::enum_name(Defaults().reluctanceModelDefault);
     }
 
+    MagnetizingInductance(ReluctanceModels model) {
+        _models["gapReluctance"] = magic_enum::enum_name(model);
+    }
+
     MagnetizingInductance(std::string model) {
         _models["gapReluctance"] = model;
     }

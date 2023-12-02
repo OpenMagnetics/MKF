@@ -2103,7 +2103,7 @@ SUITE(CoreLossesFromWeb) {
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2145,7 +2145,7 @@ SUITE(CoreLossesFromWeb) {
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
                         "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2169,7 +2169,7 @@ SUITE(CoreLossesFromWeb) {
             json::parse(R"({"designRequirements": {"altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00034861070852064337}, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null, "turnsRatios": []}, "operatingPoints": [{"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"current": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [-8.0, 8.0, -8.0], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 1e-05]}}, "frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
         auto operatingPoint = inputs.get_operating_point(0);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2194,7 +2194,7 @@ SUITE(CoreLossesFromWeb) {
         auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [6.885, 6.885, -2.2949999999999995, -2.2949999999999995, 6.885], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2238,7 +2238,7 @@ SUITE(CoreLossesFromWeb) {
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
                         "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2263,7 +2263,7 @@ SUITE(CoreLossesFromWeb) {
             json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 3.8810245456770865e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 123000.0, "current": null, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point Alf sin", "voltage": {"harmonics": null, "processed": null, "waveform": {"data": [0.0, 0.0, 15.4, 15.4, 0.0, 0.0, -15.4, -15.4, 0.0, 0.0], "numberPeriods": null, "ancillaryLabel": "Bipolar Rectangular", "time": [0.0, 1.2601626016260166e-06, 1.2601626016260166e-06, 2.8048780487804875e-06, 2.8048780487804875e-06, 5.325203252032522e-06, 5.325203252032522e-06, 6.869918699186992e-06, 6.869918699186992e-06, 8.130081300813007e-06]}}}], "name": null}]})"));
 
         auto operatingPoint = inputs.get_operating_point(0);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2288,7 +2288,7 @@ SUITE(CoreLossesFromWeb) {
             json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 2e-05}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
         auto operatingPoint = inputs.get_operating_point(0);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2311,7 +2311,7 @@ SUITE(CoreLossesFromWeb) {
             json::parse(R"({"designRequirements": {"magnetizingInductance": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.0009443757859214556}, "turnsRatios": [], "altitude": null, "cti": null, "insulationType": null, "leakageInductance": null, "name": null, "operatingTemperature": null, "overvoltageCategory": null, "pollutionDegree": null}, "operatingPoints": [{"conditions": {"ambientTemperature": 25.0, "ambientRelativeHumidity": null, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "current": {"harmonics": null, "processed": null, "waveform": {"data": [-5.0, 5.0, -5.0], "numberPeriods": null, "ancillaryLabel": null, "time": [0.0, 2.5e-06, 1e-05]}}, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": null}], "name": null}]})"));
 
         auto operatingPoint = inputs.get_operating_point(0);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2351,7 +2351,7 @@ SUITE(CoreLossesFromWeb) {
         auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2378,7 +2378,7 @@ SUITE(CoreLossesFromWeb) {
         auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2424,7 +2424,7 @@ SUITE(CoreLossesFromWeb) {
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
                         "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2480,7 +2480,7 @@ SUITE(FrequencyFromCoreLosses) {
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 324578);
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
@@ -2530,7 +2530,7 @@ SUITE(FrequencyFromCoreLosses) {
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
             "[0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 324578);
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
@@ -2578,7 +2578,7 @@ SUITE(FrequencyFromCoreLosses) {
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
                         "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 215684);
 
@@ -2609,7 +2609,7 @@ SUITE(FrequencyFromCoreLosses) {
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 123987);
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
@@ -2733,7 +2733,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
                         "\"frequency\": 100000.0, \"magneticFieldStrength\": null, \"magneticFluxDensity\": null, "
                         "\"magnetizingCurrent\": null, \"name\": \"My Operating Point\"}], \"name\": null}"));
 
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 215684);
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
@@ -2763,7 +2763,7 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
             R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
         OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, 123987);
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance(models["gapReluctance"]);
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 

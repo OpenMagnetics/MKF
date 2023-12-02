@@ -155,13 +155,15 @@ void load_databases(json data, bool withAliases) {
     for (auto& element : data["wires"].items()) {
         json jf = element.value();
         std::string standardName;
-        if (jf["standardName"].is_string()){
-            standardName = jf["standardName"];
+        if (jf.contains("standardName")) {
+            if (jf["standardName"].is_string()){
+                standardName = jf["standardName"];
+            }
+            else {
+                standardName = std::to_string(jf["standardName"].get<int>());
+            }
+            jf["standardName"] = standardName;
         }
-        else {
-            standardName = std::to_string(jf["standardName"].get<int>());
-        }
-        jf["standardName"] = standardName;
         WireWrapper wire(jf);
         wireDatabase[jf["name"]] = wire;
     }
