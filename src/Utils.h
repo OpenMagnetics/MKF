@@ -94,6 +94,8 @@ template<int decimals> double roundFloat(double value);
 bool is_size_power_of_2(std::vector<double> data);
 
 double roundFloat(double value, size_t decimals);
+double ceilFloat(double value, size_t decimals);
+double floorFloat(double value, size_t decimals);
 
 CoreShape flatten_dimensions(CoreShape shape);
 std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions);

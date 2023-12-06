@@ -121,12 +121,13 @@ namespace OpenMagnetics {
                 // std::cout << "get_sections_description" << std::endl;
                 // std::cout << mierda << std::endl;
 
-                auto coilsWithScoring = wireAdviser.get_advised_wire(mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
-                                                                               mas.get_mutable_magnetic().get_coil().get_sections_description().value()[windingIndex],
-                                                                               maximumCurrent,
-                                                                               maximumTemperature,
-                                                                               mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),
-                                                                               1000);
+                auto coilsWithScoring = wireAdviser.get_advised_wire(wires,
+                                                                     mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
+                                                                     mas.get_mutable_magnetic().get_coil().get_sections_description().value()[windingIndex],
+                                                                     maximumCurrent,
+                                                                     maximumTemperature,
+                                                                     mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),
+                                                                     1000);
 
             // std::cout << "Mierdon 2" << std::endl;
             // std::cout << "coilsWithScoring.size(): " << coilsWithScoring.size() << std::endl;
