@@ -57,8 +57,8 @@ class CoilMesherModel {
 
 class CoilMesherCenterModel : public CoilMesherModel {
   public:
-    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core);
-    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt);
+    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, [[maybe_unused]]WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core);
+    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt);
 };
 
 // // Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
@@ -66,7 +66,7 @@ class CoilMesherCenterModel : public CoilMesherModel {
 class CoilMesherWangModel : public CoilMesherModel {
   public:
     std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt);
-    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core);
+    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]]CoreWrapper core);
 };
 
 

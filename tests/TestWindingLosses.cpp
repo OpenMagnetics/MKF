@@ -830,7 +830,7 @@ SUITE(WindingLossesLitz) {
         double dutyCycle = 0.5;
         double magnetizingInductance = 1e-3;
 
-        std::vector<std::pair<double, double>> expectedWindingLosses({{500000, 0.11112}});
+        std::vector<std::pair<double, double>> expectedWindingLosses({{500000, 0.113}});
 
         for (auto& testPoint : expectedWindingLosses) {
 

@@ -78,6 +78,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 }
                 minimumModule = std::min(minimumModule, M[j][i]);
                 maximumModule = std::max(maximumModule, M[j][i]);
+
             }
         }
         matplot::gcf()->quiet_mode(true);
@@ -131,6 +132,8 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     if (minimumModule == maximumModule) {
         minimumModule = maximumModule - 1;
     }
+    std::cout << "maximumModule: "  << maximumModule << std::endl;
+    std::cout << "minimumModule: "  << minimumModule << std::endl;
     matplot::colormap(matplot::palette::jet());
     matplot::colorbar().label("Magnetic Field Strength (A/m)");
     matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule});

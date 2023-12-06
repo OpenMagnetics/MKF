@@ -535,4 +535,15 @@ double comp_ellint_2(double x) {
 }
 
 
+double ceilFloat(double value, size_t decimals) {
+    return std::ceil(value * pow(10, decimals)) / pow(10, decimals);
+}
+
+
+double floorFloat(double value, size_t decimals) {
+    return std::floor(value * pow(10, decimals)) / pow(10, decimals);
+}
+
+
+
 } // namespace OpenMagnetics
