@@ -4,8 +4,6 @@
 #include "spline.h"
 #include "WindingSkinEffectLosses.h"
 #include <cfloat>
-#include "../tests/TestingUtils.h"
-#include "../tests/TestingUtils.cpp"
 
 
 namespace OpenMagnetics {
