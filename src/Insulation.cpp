@@ -18,8 +18,7 @@ double InsulationCoordinator::calculate_solid_insulation(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_606641: {
-                auto standardObj = OpenMagnetics::InsulationIEC60664Model();
-                solidInsulation = std::max(solidInsulation, standardObj.calculate_solid_insulation(inputs));
+                solidInsulation = std::max(solidInsulation, _insulationIEC60664Model.calculate_solid_insulation(inputs));
                 break;
             }
             case InsulationStandards::IEC_615581: {
@@ -27,8 +26,7 @@ double InsulationCoordinator::calculate_solid_insulation(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_623681: {
-                auto standardObj = OpenMagnetics::InsulationIEC62368Model();
-                solidInsulation = std::max(solidInsulation, standardObj.calculate_solid_insulation(inputs));
+                solidInsulation = std::max(solidInsulation, _insulationIEC62368Model.calculate_solid_insulation(inputs));
                 break;
             }
         }
