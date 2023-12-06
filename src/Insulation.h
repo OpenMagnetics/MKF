@@ -24,19 +24,6 @@ class InsulationStandard {
     // static std::shared_ptr<InsulationStandard> factory(Standard standard);
 };
 
-class InsulationCoordinator {
-  private:
-  protected:
-  public:
-    double calculate_solid_insulation(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
-
-    InsulationCoordinator() = default;
-    virtual ~InsulationCoordinator() = default;
-
-};
-
 class InsulationIEC60664Model : public InsulationStandard {
   public:
     double calculate_solid_insulation(InputsWrapper inputs);
@@ -208,6 +195,31 @@ class InsulationIEC62368Model : public InsulationStandard {
         tableG4 = data["Table G.4"];
         tableG13 = data["Table G.13"];
     }
+};
+
+
+class InsulationCoordinator {
+  private:
+  protected:
+    InsulationIEC60664Model _insulationIEC60664Model;
+    InsulationIEC62368Model _insulationIEC62368Model;
+
+  public:
+    double calculate_solid_insulation(InputsWrapper inputs);
+    double calculate_clearance(InputsWrapper inputs);
+    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+
+    InsulationCoordinator() {
+        _insulationIEC60664Model = InsulationIEC60664Model();
+        _insulationIEC62368Model = InsulationIEC62368Model();
+    }
+    InsulationCoordinator(json data) {
+        _insulationIEC60664Model = InsulationIEC60664Model(data);
+        _insulationIEC62368Model = InsulationIEC62368Model(data);
+    }
+
+    virtual ~InsulationCoordinator() = default;
+
 };
 
 } // namespace OpenMagnetics
