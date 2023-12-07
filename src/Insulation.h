@@ -180,20 +180,20 @@ class InsulationIEC62368Model : public InsulationStandard {
     }
 
     InsulationIEC62368Model(json data) {
-        table10 = data["Table 10"];
-        table11 = data["Table 11"];
-        table12 = data["Table 12"];
-        table14 = data["Table 14"];
-        table15 = data["Table 15"];
-        table16 = data["Table 16"];
-        table17 = data["Table 17"];
-        table18 = data["Table 18"];
-        table21 = data["Table 21"];
-        table25 = data["Table 25"];
-        table26 = data["Table 26"];
-        table27 = data["Table 27"];
-        tableG4 = data["Table G.4"];
-        tableG13 = data["Table G.13"];
+        table10 = data["IEC_62368-1"]["Table 10"];
+        table11 = data["IEC_62368-1"]["Table 11"];
+        table12 = data["IEC_62368-1"]["Table 12"];
+        table14 = data["IEC_62368-1"]["Table 14"];
+        table15 = data["IEC_62368-1"]["Table 15"];
+        table16 = data["IEC_62368-1"]["Table 16"];
+        table17 = data["IEC_62368-1"]["Table 17"];
+        table18 = data["IEC_62368-1"]["Table 18"];
+        table21 = data["IEC_62368-1"]["Table 21"];
+        table25 = data["IEC_62368-1"]["Table 25"];
+        table26 = data["IEC_62368-1"]["Table 26"];
+        table27 = data["IEC_62368-1"]["Table 27"];
+        tableG4 = data["IEC_62368-1"]["Table G.4"];
+        tableG13 = data["IEC_62368-1"]["Table G.13"];
     }
 };
 
@@ -201,8 +201,8 @@ class InsulationIEC62368Model : public InsulationStandard {
 class InsulationCoordinator {
   private:
   protected:
-    InsulationIEC60664Model _insulationIEC60664Model;
-    InsulationIEC62368Model _insulationIEC62368Model;
+    std::shared_ptr<InsulationIEC60664Model> _insulationIEC60664Model;
+    std::shared_ptr<InsulationIEC62368Model> _insulationIEC62368Model;
 
   public:
     double calculate_solid_insulation(InputsWrapper inputs);
@@ -210,12 +210,12 @@ class InsulationCoordinator {
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
 
     InsulationCoordinator() {
-        _insulationIEC60664Model = InsulationIEC60664Model();
-        _insulationIEC62368Model = InsulationIEC62368Model();
+        _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());
+        _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model());
     }
     InsulationCoordinator(json data) {
-        _insulationIEC60664Model = InsulationIEC60664Model(data);
-        _insulationIEC62368Model = InsulationIEC62368Model(data);
+        _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model(data));
+        _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model(data));
     }
 
     virtual ~InsulationCoordinator() = default;

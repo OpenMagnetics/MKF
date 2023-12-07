@@ -18,7 +18,7 @@ double InsulationCoordinator::calculate_solid_insulation(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_606641: {
-                solidInsulation = std::max(solidInsulation, _insulationIEC60664Model.calculate_solid_insulation(inputs));
+                solidInsulation = std::max(solidInsulation, _insulationIEC60664Model->calculate_solid_insulation(inputs));
                 break;
             }
             case InsulationStandards::IEC_615581: {
@@ -26,7 +26,7 @@ double InsulationCoordinator::calculate_solid_insulation(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_623681: {
-                solidInsulation = std::max(solidInsulation, _insulationIEC62368Model.calculate_solid_insulation(inputs));
+                solidInsulation = std::max(solidInsulation, _insulationIEC62368Model->calculate_solid_insulation(inputs));
                 break;
             }
         }
@@ -43,8 +43,7 @@ double InsulationCoordinator::calculate_clearance(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_606641: {
-                auto standardObj = OpenMagnetics::InsulationIEC60664Model();
-                clearance = std::max(clearance, standardObj.calculate_clearance(inputs));
+                clearance = std::max(clearance, _insulationIEC60664Model->calculate_clearance(inputs));
                 break;
             }
             case InsulationStandards::IEC_615581: {
@@ -52,8 +51,7 @@ double InsulationCoordinator::calculate_clearance(InputsWrapper inputs) {
                 break;
             }
             case InsulationStandards::IEC_623681: {
-                auto standardObj = OpenMagnetics::InsulationIEC62368Model();
-                clearance = std::max(clearance, standardObj.calculate_clearance(inputs));
+                clearance = std::max(clearance, _insulationIEC62368Model->calculate_clearance(inputs));
                 break;
             }
         }
@@ -70,8 +68,7 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper inputs, 
                 break;
             }
             case InsulationStandards::IEC_606641: {
-                auto standard = OpenMagnetics::InsulationIEC60664Model();
-                creepageDistance = std::max(creepageDistance, standard.calculate_creepage_distance(inputs, includeClearance));
+                creepageDistance = std::max(creepageDistance, _insulationIEC60664Model->calculate_creepage_distance(inputs, includeClearance));
                 break;
             }
             case InsulationStandards::IEC_615581: {
@@ -79,8 +76,7 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper inputs, 
                 break;
             }
             case InsulationStandards::IEC_623681: {
-                auto standard = OpenMagnetics::InsulationIEC62368Model();
-                creepageDistance = std::max(creepageDistance, standard.calculate_creepage_distance(inputs, includeClearance));
+                creepageDistance = std::max(creepageDistance, _insulationIEC62368Model->calculate_creepage_distance(inputs, includeClearance));
                 break;
             }
         }
