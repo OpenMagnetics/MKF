@@ -17,13 +17,15 @@ namespace OpenMagnetics {
 
 class InputsWrapper : public Inputs {
   public:
-    InputsWrapper(const json& j) {
+    InputsWrapper(const json& j, bool processWaveform = true) {
         from_json(j, *this);
         auto check_passed = check_integrity();
         if (!check_passed.first) {
             throw std::runtime_error("Missing inputs");
         }
-        process_waveforms();
+        if (processWaveform) {
+            process_waveforms();
+        }
     }
     InputsWrapper() = default;
     virtual ~InputsWrapper() = default;

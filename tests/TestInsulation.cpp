@@ -60,6 +60,17 @@ SUITE(Insulation) {
         CHECK_EQUAL(0.003, clearance);
     }
 
+    TEST(Test_Insulation_Web_0) {
+        std::string inputString = R"({"designRequirements":{"insulation":{"altitude":{"maximum":2000},"cti":"Group I","pollutionDegree":"P1","overvoltageCategory":"OVC-I","insulationType":"Basic","mainSupplyVoltage":{"maximum":400},"standards":["IEC 60664-1"]},"magnetizingInductance":{"nominal":0.00001},"name":"My Design Requirements","turnsRatios":[],"wiringTechnology":"Wound"},"operatingPoints":[{"conditions":{"ambientTemperature":25},"excitationsPerWinding":[{"frequency":30000,"voltage":{"processed":{"dutyCycle":0.5,"peak":800,"peakToPeak":1600,"rms":666,"offset":0,"label":"Rectangular"}}}]}]})";
+        OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper(json::parse(inputString), false);
+        double maximumVoltageRms = inputs.get_maximum_voltage_rms();
+
+        auto clearance = standardCoordinator.calculate_clearance(inputs);
+        auto creepageDistance = standardCoordinator.calculate_creepage_distance(inputs);
+        CHECK_EQUAL(0.003, clearance);
+        CHECK_EQUAL(0.0024, creepageDistance);
+    }
+
 
 }
 
