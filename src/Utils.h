@@ -110,6 +110,7 @@ double derivative_kelvin_function_imaginary(double order, double x);
 double comp_ellint_1(double x);
 double comp_ellint_2(double x);
 
+std::string to_title_case(std::string text);
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
 IsolationSide get_isolation_side_from_index(size_t index);
