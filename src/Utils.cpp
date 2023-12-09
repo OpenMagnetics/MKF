@@ -544,6 +544,52 @@ double floorFloat(double value, size_t decimals) {
     return std::floor(value * pow(10, decimals)) / pow(10, decimals);
 }
 
+std::string to_title_case(std::string text) {
+    
+    std::string titleText = "";
 
+    int pos = 0;
+    int pre_pos = 0;
+
+    pos = text.find(' ', pre_pos);
+
+    while (pos != std::string::npos)
+    {
+        std::string sub = "";
+
+        sub = text.substr(pre_pos, (pos - pre_pos));
+
+        if (pre_pos != pos)
+        {
+            sub = text.substr(pre_pos, (pos - pre_pos));
+        }
+        else 
+        {
+            sub = text.substr(pre_pos, 1);
+        }
+        
+        sub[0] = std::toupper(sub[0]);
+        titleText += sub + text[pos];
+
+        if (pos < (text.length() - 1))
+        {
+            pre_pos = (pos + 1);
+        }
+        else
+        {
+            pre_pos = pos;
+            break;
+        }
+
+        pos = text.find(' ', pre_pos);
+
+    }
+
+    std::string sub = text.substr(pre_pos, std::string::npos);
+    sub[0] = std::toupper(sub[0]);
+    titleText += sub;
+    
+    return titleText;
+}
 
 } // namespace OpenMagnetics

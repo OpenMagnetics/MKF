@@ -13,12 +13,14 @@ class InsulationStandard {
   private:
   protected:
   public:
-    virtual double calculate_solid_insulation(InputsWrapper inputs) = 0;
+    virtual double calculate_withstand_voltage(InputsWrapper inputs) = 0;
     virtual double calculate_clearance(InputsWrapper inputs) = 0;
     virtual double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false) = 0;
 
     InsulationStandard() = default;
     virtual ~InsulationStandard() = default;
+    double iec60664Part1MaximumFrequency = 30000;
+    double lowerAltitudeLimit = 2000;
 
 
     // static std::shared_ptr<InsulationStandard> factory(Standard standard);
@@ -26,7 +28,7 @@ class InsulationStandard {
 
 class InsulationIEC60664Model : public InsulationStandard {
   public:
-    double calculate_solid_insulation(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
     double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
@@ -117,7 +119,7 @@ class InsulationIEC60664Model : public InsulationStandard {
 
 class InsulationIEC62368Model : public InsulationStandard {
   public:
-    double calculate_solid_insulation(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
 
@@ -138,6 +140,7 @@ class InsulationIEC62368Model : public InsulationStandard {
     double get_mains_transient_voltage(double supplyVoltagePeak, OvervoltageCategory overvoltageCategory);
     double get_distance_table_G13(double workingVoltage, InsulationType insulationType);
 
+    double iec62368LowerFrequency = 30000;
     std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table10;
     std::map<std::string, std::vector<std::pair<double, double>>> table11;
     std::map<std::string, std::vector<std::pair<double, double>>> table12;
@@ -145,7 +148,7 @@ class InsulationIEC62368Model : public InsulationStandard {
     std::vector<std::pair<double, double>> table15;
     std::vector<std::pair<double, double>> table16;
     std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table17;
-    std::map<std::string, std::vector<std::pair<double, double>>> table18;
+    std::map<double, std::vector<std::pair<double, double>>> table18;
     std::map<std::string, std::vector<std::pair<double, double>>> table21;
     std::map<std::string, std::vector<std::pair<double, double>>> table22;
     std::map<std::string, std::vector<std::pair<double, double>>> table25;
@@ -168,7 +171,15 @@ class InsulationIEC62368Model : public InsulationStandard {
             table15 = jf["Table 15"];
             table16 = jf["Table 16"];
             table17 = jf["Table 17"];
-            table18 = jf["Table 18"];
+
+            std::map<std::string, std::vector<std::pair<double, double>>> temp;
+            temp = jf["Table 18"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table18[standardFrequency] = voltageList;
+            }
+
             table21 = jf["Table 21"];
             table22 = jf["Table 22"];
             table25 = jf["Table 25"];
@@ -187,8 +198,17 @@ class InsulationIEC62368Model : public InsulationStandard {
         table15 = data["IEC_62368-1"]["Table 15"];
         table16 = data["IEC_62368-1"]["Table 16"];
         table17 = data["IEC_62368-1"]["Table 17"];
-        table18 = data["IEC_62368-1"]["Table 18"];
+
+        std::map<std::string, std::vector<std::pair<double, double>>> temp;
+        temp = data["IEC_62368-1"]["Table 18"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table18[standardFrequency] = voltageList;
+        }
+
         table21 = data["IEC_62368-1"]["Table 21"];
+        table22 = data["IEC_62368-1"]["Table 22"];
         table25 = data["IEC_62368-1"]["Table 25"];
         table26 = data["IEC_62368-1"]["Table 26"];
         table27 = data["IEC_62368-1"]["Table 27"];
@@ -198,24 +218,178 @@ class InsulationIEC62368Model : public InsulationStandard {
 };
 
 
+class InsulationIEC61558Model : public InsulationStandard {
+  private:
+    json _data;
+  public:
+    double calculate_distance_through_insulation(InputsWrapper inputs, bool usingThinLayers = true);
+    double calculate_withstand_voltage(InputsWrapper inputs);
+    double calculate_clearance(InputsWrapper inputs);
+    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, InsulationType insulationType, double workingVoltage);
+    double get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
+    double get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
+    double get_distance_through_insulation_table_22(InsulationType insulationType, double workingVoltage, bool usingThinLayers = true);
+    double get_working_voltage_rms(InputsWrapper inputs);
+    double get_working_voltage_peak(InputsWrapper inputs);
+    double calculate_distance_through_insulation_over_30kHz(double workingVoltage);
+    double calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage);
+    double calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage);
+
+    double iec61558MinimumWorkingVoltage = 25;
+    double iec61558MaximumSupplyVoltage = 1100;
+    double iec61558MaximumStandardFrequency = 30000;
+    std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table14;
+    std::map<std::string, std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>>> table20;
+    std::map<std::string, std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>>> table21;
+    std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table22;
+    std::map<std::string, std::vector<std::pair<double, double>>> table23;
+    std::map<std::string, std::vector<std::pair<double, double>>> table102;
+    std::map<std::string, std::vector<std::pair<double, double>>> table103;
+    std::map<std::string, std::vector<std::pair<double, double>>> table104;
+    std::map<double, std::vector<std::pair<double, double>>> table105;
+    std::map<double, std::vector<std::pair<double, double>>> table106;
+    std::map<double, std::vector<std::pair<double, double>>> table107;
+    std::map<double, std::vector<std::pair<double, double>>> table108;
+    std::map<double, std::vector<std::pair<double, double>>> table109;
+    std::map<double, std::vector<std::pair<double, double>>> table110;
+
+
+    InsulationIEC61558Model() {
+        std::string filePath = __FILE__;
+        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        {
+            auto dataFilePath = masPath + "/data/insulation_standards/IEC_61558-1.json";
+            std::ifstream jsonFile(dataFilePath);
+            json jf = json::parse(jsonFile);
+            table14 = jf["Table 14"];
+            table20 = jf["Table 20"];
+            table21 = jf["Table 21"];
+            table22 = jf["Table 22"];
+            table23 = jf["Table 23"];
+        }
+        {
+            auto dataFilePath = masPath + "/data/insulation_standards/IEC_61558-2-16.json";
+            std::ifstream jsonFile(dataFilePath);
+            json jf = json::parse(jsonFile);
+            table102 = jf["Table 102"];
+            table103 = jf["Table 103"];
+            table104 = jf["Table 104"];
+
+
+            std::map<std::string, std::vector<std::pair<double, double>>> temp;
+            temp = jf["Table 105"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table105[standardFrequency] = voltageList;
+            }
+            temp = jf["Table 106"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table106[standardFrequency] = voltageList;
+            }
+            temp = jf["Table 107"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table107[standardFrequency] = voltageList;
+            }
+            temp = jf["Table 108"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table108[standardFrequency] = voltageList;
+            }
+            temp = jf["Table 109"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table109[standardFrequency] = voltageList;
+            }
+            temp = jf["Table 110"];
+            for (auto const& [standardFrequencyString, voltageList] : temp)
+            {
+                double standardFrequency = std::stod(standardFrequencyString);
+                table110[standardFrequency] = voltageList;
+            }
+        }
+    }
+
+    InsulationIEC61558Model(json data) {
+        _data = data;
+        table14 = data["IEC_61558-1"]["Table 14"];
+        table20 = data["IEC_61558-1"]["Table 20"];
+        table21 = data["IEC_61558-1"]["Table 21"];
+        table22 = data["IEC_61558-1"]["Table 22"];
+        table23 = data["IEC_61558-1"]["Table 23"];
+        table102 = data["IEC_61558-2-16"]["Table 102"];
+        table103 = data["IEC_61558-2-16"]["Table 103"];
+        table104 = data["IEC_61558-2-16"]["Table 104"];
+        std::map<std::string, std::vector<std::pair<double, double>>> temp;
+        temp = data["IEC_61558-2-16"]["Table 105"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table105[standardFrequency] = voltageList;
+        }
+        temp = data["IEC_61558-2-16"]["Table 106"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table106[standardFrequency] = voltageList;
+        }
+        temp = data["IEC_61558-2-16"]["Table 107"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table107[standardFrequency] = voltageList;
+        }
+        temp = data["IEC_61558-2-16"]["Table 108"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table108[standardFrequency] = voltageList;
+        }
+        temp = data["IEC_61558-2-16"]["Table 109"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table109[standardFrequency] = voltageList;
+        }
+        temp = data["IEC_61558-2-16"]["Table 110"];
+        for (auto const& [standardFrequencyString, voltageList] : temp)
+        {
+            double standardFrequency = std::stod(standardFrequencyString);
+            table110[standardFrequency] = voltageList;
+        }
+    }
+};
+
+
 class InsulationCoordinator {
   private:
   protected:
     std::shared_ptr<InsulationIEC60664Model> _insulationIEC60664Model;
     std::shared_ptr<InsulationIEC62368Model> _insulationIEC62368Model;
+    std::shared_ptr<InsulationIEC61558Model> _insulationIEC61558Model;
 
   public:
-    double calculate_solid_insulation(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper inputs);
 
     InsulationCoordinator() {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());
         _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model());
+        _insulationIEC61558Model = std::make_shared<InsulationIEC61558Model>(InsulationIEC61558Model());
     }
     InsulationCoordinator(json data) {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model(data));
         _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model(data));
+        _insulationIEC61558Model = std::make_shared<InsulationIEC61558Model>(InsulationIEC61558Model(data));
     }
 
     virtual ~InsulationCoordinator() = default;
