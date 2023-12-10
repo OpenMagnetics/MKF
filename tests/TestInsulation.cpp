@@ -823,6 +823,30 @@ SUITE(Clearance_IEC_60664) {
     }
 }
 
+SUITE(Distance_Through_Insulation_IEC_60664) {
+    auto standard = OpenMagnetics::InsulationIEC60664Model();
+    auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+    auto cti = OpenMagnetics::Cti::GROUP_I;
+    double maximumVoltageRms = 666;
+    double maximumVoltagePeak = 800;
+    double frequency = 30000;
+    OpenMagnetics::DimensionWithTolerance altitude;
+    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+
+    TEST(Distance_Through_Insulation_High_Frequency) {
+        frequency = 500000;
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(400);
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        auto dti = standard.calculate_distance_through_insulation(inputs);
+        CHECK_EQUAL(0.00025, dti);
+    }
+
+}
+
 SUITE(CreepageDistance_IEC_62368) {
 
     auto standard = OpenMagnetics::InsulationIEC62368Model();
@@ -2229,6 +2253,18 @@ SUITE(Distance_Through_Insulation_IEC_61558) {
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto dti = standard.calculate_distance_through_insulation(inputs);
         CHECK_EQUAL(0.00042, dti);
+    }
+
+    TEST(Distance_Through_Insulation_High_Frequency) {
+        frequency = 500000;
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(400);
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        auto dti = standard.calculate_distance_through_insulation(inputs);
+        CHECK_EQUAL(0.00025, dti);
     }
 
 }

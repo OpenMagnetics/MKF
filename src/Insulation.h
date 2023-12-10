@@ -28,6 +28,7 @@ class InsulationStandard {
 
 class InsulationIEC60664Model : public InsulationStandard {
   public:
+    double calculate_distance_through_insulation(InputsWrapper inputs);
     double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
@@ -42,6 +43,8 @@ class InsulationIEC60664Model : public InsulationStandard {
     std::optional<double> get_clearance_planar(double altitude, double ratedImpulseWithstandVoltage);
     double get_clearance_altitude_factor_correction(double frequency);
     double get_clearance_over_30kHz(double voltageRms, double frequency, double currentClearance);
+    double calculate_distance_through_insulation_over_30kHz(double workingVoltage);
+    bool electric_field_strenth_is_valid(double dti, double voltage);
 
     double iec60664Part1MaximumFrequency = 30000;
     std::vector<std::pair<double, double>> part1TableA2;
@@ -235,6 +238,7 @@ class InsulationIEC61558Model : public InsulationStandard {
     double calculate_distance_through_insulation_over_30kHz(double workingVoltage);
     double calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage);
     double calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage);
+    bool electric_field_strenth_is_valid(double dti, double voltage);
 
     double iec61558MinimumWorkingVoltage = 25;
     double iec61558MaximumSupplyVoltage = 1100;
