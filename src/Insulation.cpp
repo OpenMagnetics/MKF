@@ -114,6 +114,7 @@ double InsulationCoordinator::calculate_distance_through_insulation(InputsWrappe
                 break;
             }
             case InsulationStandards::IEC_606641: {
+                dti = std::max(dti, _insulationIEC60664Model->calculate_distance_through_insulation(inputs));
                 break;
             }
             case InsulationStandards::IEC_615581: {
@@ -125,6 +126,31 @@ double InsulationCoordinator::calculate_distance_through_insulation(InputsWrappe
             }
         }
     }
+    return dti;
+}
+
+bool InsulationIEC60664Model::electric_field_strenth_is_valid(double dti, double voltage) {
+    if (dti == 0) {
+        return false;
+    }
+    else if (dti < 30e-6) {
+        return (voltage / dti) < 10e6;
+    }
+    else if (dti > 0.00075) {
+        return (voltage / dti) < 2e6;
+    }
+    else {
+        return (voltage / dti) < (0.25 / (dti * 1000) + 1.667) * 1e6;
+    }
+}
+
+
+double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz(double workingVoltage) {
+    double dti = 0;
+    while (!electric_field_strenth_is_valid(dti, workingVoltage)) {
+        dti += 1e-6;
+    }
+
     return dti;
 }
 
@@ -302,6 +328,18 @@ double InsulationIEC60664Model::get_clearance_over_30kHz(double ratedVoltagePeak
         return linear_table_interpolation(part4Table1, ratedVoltagePeak);
     }
     return currentClearance;
+}
+
+
+double InsulationIEC60664Model::calculate_distance_through_insulation(InputsWrapper inputs) {
+    double maximumVoltageRms = inputs.get_maximum_voltage_rms();
+    double maximumFrequency = inputs.get_maximum_frequency();
+    double distanceThroughInsulation = 0;
+    if (maximumFrequency > iec60664Part1MaximumFrequency) {
+        distanceThroughInsulation = std::max(distanceThroughInsulation, calculate_distance_through_insulation_over_30kHz(maximumVoltageRms));
+    }
+
+    return ceilFloat(distanceThroughInsulation, 5);
 }
 
 double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper inputs) {
@@ -836,29 +874,28 @@ double InsulationIEC61558Model::get_distance_through_insulation_table_22(Insulat
     return dti;
 }
 
-bool electric_field_strenth_is_valid(double dti, double voltage) {
+bool InsulationIEC61558Model::electric_field_strenth_is_valid(double dti, double voltage) {
     if (dti == 0) {
         return false;
     }
     else if (dti < 30e-6) {
-        return (voltage / dti) < 10;
+        return (voltage / dti) < 10e6;
     }
     else if (dti > 0.00075) {
-        return (voltage / dti) < 2;
+        return (voltage / dti) < 2e6;
     }
     else {
-        return (voltage / dti) < (0.25 / (dti * 1000) + 1.667);
+        return (voltage / dti) < (0.25 / (dti * 1000) + 1.667) * 1e6;
     }
 }
 
 double InsulationIEC61558Model::calculate_distance_through_insulation_over_30kHz(double workingVoltage) {
     double dti = 0;
     while (!electric_field_strenth_is_valid(dti, workingVoltage)) {
-        dti += 1e6;
+        dti += 1e-6;
     }
 
     return dti;
-
 }
 
 double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage) {
@@ -871,7 +908,13 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     double clearance = DBL_MAX;
 
     {
-        std::vector<std::pair<double, double>> table = table103[insulationTypeString];
+        std::vector<std::pair<double, double>> table;
+        if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            table = table103["REINFORCED"];
+        }
+        else {
+            table = table103["BASIC"];
+        }
         for (size_t voltagesIndex = 0; voltagesIndex < table.size(); voltagesIndex++) {
             if (workingVoltage <= table[voltagesIndex].first) {
                 clearance = table[voltagesIndex].second;
@@ -880,7 +923,13 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
         }
     }
     {
-        std::vector<std::pair<double, double>> table = table104[insulationTypeString];
+        std::vector<std::pair<double, double>> table;
+        if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+            table = table104["REINFORCED"];
+        }
+        else {
+            table = table104["BASIC"];
+        }
         for (size_t voltagesIndex = 0; voltagesIndex < table.size(); voltagesIndex++) {
             if (workingVoltage <= table[voltagesIndex].first) {
                 clearance = std::max(clearance, table[voltagesIndex].second);
