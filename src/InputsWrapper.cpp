@@ -562,7 +562,7 @@ SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signal
     signalDescriptor.set_waveform(waveform);
     auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
     signalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, frequency));
-    signalDescriptor.set_processed(calculate_processed_data(signalDescriptor, sampledWaveform, true, true));
+    signalDescriptor.set_processed(calculate_processed_data(signalDescriptor, sampledWaveform, true, true, signalDescriptor.get_processed()));
     return signalDescriptor;
 }
 
@@ -730,11 +730,12 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
 
 Processed InputsWrapper::calculate_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
-                                            bool force = false,
-                                            bool includeAdvancedData = true) {
+                                            bool force,
+                                            bool includeAdvancedData,
+                                            std::optional<Processed> processed) {
 
     auto harmonics = excitation.get_harmonics().value();
-    return InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData);
+    return InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData, processed);
 }
 
 double calculate_offset(Waveform waveform, WaveformLabel label) {
@@ -784,9 +785,8 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
     }
 
     WaveformLabel label;
-    label = try_guess_waveform_label(compressedWaveform);
 
-    // try {
+    label = try_guess_waveform_label(compressedWaveform);
     processed.set_label(label);
 
     if (is_waveform_sampled(waveform)) {
@@ -824,9 +824,9 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
 
 Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
                                             Waveform waveform,
-                                            bool includeAdvancedData = true) {
+                                            bool includeAdvancedData,
+                                            std::optional<Processed> processed) {
     auto constants = Constants();
-    Processed processed;
     auto sampledDataToProcess = waveform;
 
     if (waveform.get_time() && waveform.get_data().size() < constants.numberPointsSamplesWaveforms) {
@@ -834,7 +834,13 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
         sampledDataToProcess = calculate_sampled_waveform(waveform, frequency);
     }
 
-    processed = calculate_basic_processed_data(sampledDataToProcess);
+    Processed processedResult;
+    if (processed) {
+        processedResult = processed.value();
+    }
+    else {
+        processedResult = calculate_basic_processed_data(sampledDataToProcess);
+    }
 
     if (includeAdvancedData) {
          {
@@ -852,7 +858,7 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
             if (sumDivisor > 0)
                 effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
 
-            processed.set_effective_frequency(effectiveFrequency);
+            processedResult.set_effective_frequency(effectiveFrequency);
         }
         {
             double effectiveFrequency = 0;
@@ -869,7 +875,7 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
             if (sumDivisor > 0)
                 effectiveFrequency = sqrt(std::reduce(dividend.begin(), dividend.end()) / sumDivisor);
 
-            processed.set_ac_effective_frequency(effectiveFrequency);
+            processedResult.set_ac_effective_frequency(effectiveFrequency);
         }
         {
             double rms = 0.0;
@@ -878,7 +884,7 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
             }
             rms /= sampledDataToProcess.get_data().size();
             rms = sqrt(rms);
-            processed.set_rms(rms);
+            processedResult.set_rms(rms);
         }
         {
             std::vector<double> dividend;
@@ -890,11 +896,11 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
 
             if (divisor > 0)
                 thd = sqrt(std::reduce(dividend.begin(), dividend.end())) / divisor;
-            processed.set_thd(thd);
+            processedResult.set_thd(thd);
         }
     }
 
-    return processed;
+    return processedResult;
 }
 
 Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double frequency) {
@@ -956,39 +962,59 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         throw std::runtime_error("magnetizingInductance cannot be zero or negative");
     }
     if (excitation.get_current()) {
+
         if (!excitation.get_current()->get_processed()) {
             auto currentExcitation = excitation.get_current().value();
             auto currentExcitationWaveform = currentExcitation.get_waveform().value();
             auto sampledCurrentWaveform = calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
             currentExcitation.set_harmonics(calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform));
+            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform, true, true, currentExcitation.get_processed()));
             excitation.set_current(currentExcitation);
         }
+
         dcCurrent = excitation.get_current()->get_processed()->get_offset();
     }
     else {
         dcCurrent = offset;
     }
- 
-    auto sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
-    SignalDescriptor magnetizing_current_excitation;
 
-    sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
-    sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
+    SignalDescriptor magnetizingCurrentExcitation;
+    Waveform sampledMagnetizingCurrentWaveform;
 
+    if (excitation.get_current() && 
+        (excitation.get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY || 
+        excitation.get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY || 
+        excitation.get_current()->get_processed()->get_label() == WaveformLabel::UNIPOLAR_TRIANGULAR)) {
 
-    if (compress){
-        magnetizing_current_excitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
+        double offset = excitation.get_current()->get_processed()->get_offset();
+        double peakToPeak = excitation.get_current()->get_processed()->get_peak_to_peak().value();
+        Processed triangularProcessed;
+        triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
+        triangularProcessed.set_offset(offset + peakToPeak / 2);
+        triangularProcessed.set_peak_to_peak(peakToPeak);
+        auto newWaveform = create_waveform(triangularProcessed, excitation.get_frequency());
+        sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());            
     }
     else {
-        magnetizing_current_excitation.set_waveform(sampledMagnetizingCurrentWaveform);
+        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
+        SignalDescriptor magnetizingCurrentExcitation;
+
+        sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
+        sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
+    }
+ 
+    if (compress){
+        magnetizingCurrentExcitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
+    }
+    else {
+        magnetizingCurrentExcitation.set_waveform(sampledMagnetizingCurrentWaveform);
     }
 
-    magnetizing_current_excitation.set_harmonics(
+    magnetizingCurrentExcitation.set_harmonics(
         calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
-    magnetizing_current_excitation.set_processed(
-        calculate_processed_data(magnetizing_current_excitation, sampledMagnetizingCurrentWaveform));
-    return magnetizing_current_excitation;
+    magnetizingCurrentExcitation.set_processed(
+        calculate_processed_data(magnetizingCurrentExcitation, sampledMagnetizingCurrentWaveform));
+    return magnetizingCurrentExcitation;
 }
 
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
@@ -1016,7 +1042,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             auto waveform = current_excitation.get_waveform().value();
             auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
             current_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform));
+            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform, false, true, current_excitation.get_processed()));
             excitation.set_current(current_excitation);
         }
         // Here we processed this excitation voltage
@@ -1231,7 +1257,7 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
             auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
             current.set_waveform(currentSampledWaveform);
             current.set_harmonics(calculate_harmonics_data(currentSampledWaveform, frequency));
-            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true));
+            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, true, current.get_processed()));
             operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
 
 
@@ -1556,6 +1582,84 @@ double InputsWrapper::get_maximum_current_peak() {
                 throw std::invalid_argument("Current has not been processed");
             maximumCurrentPeak = std::max(maximumCurrentPeak, excitation.get_current()->get_processed()->get_peak().value());
         }
+    }
+    return maximumCurrentPeak;
+}
+
+double InputsWrapper::get_maximum_voltage_peak(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumVoltage = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_voltage()) 
+            throw std::invalid_argument("Missing voltage in excitation");
+        if (!excitation.get_voltage()->get_processed()) 
+            throw std::invalid_argument("Voltage has not been processed");
+        maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_peak().value());
+    }
+
+    return maximumVoltage;
+}
+
+double InputsWrapper::get_maximum_voltage_rms(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumVoltage = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_voltage()) 
+            throw std::invalid_argument("Missing voltage in excitation");
+        if (!excitation.get_voltage()->get_processed()) 
+            throw std::invalid_argument("Voltage has not been processed");
+        maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_rms().value());
+    }
+
+    return maximumVoltage;
+}
+
+double InputsWrapper::get_maximum_current_rms(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentRms = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_current()) 
+            throw std::invalid_argument("Missing current in excitation");
+        if (!excitation.get_current()->get_processed()) 
+            throw std::invalid_argument("Current has not been processed");
+        maximumCurrentRms = std::max(maximumCurrentRms, excitation.get_current()->get_processed()->get_rms().value());
+    }
+    return maximumCurrentRms;
+}
+
+double InputsWrapper::get_maximum_current_peak(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentPeak = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_current()) 
+            throw std::invalid_argument("Missing current in excitation");
+        if (!excitation.get_current()->get_processed()) 
+            throw std::invalid_argument("Current has not been processed");
+        maximumCurrentPeak = std::max(maximumCurrentPeak, excitation.get_current()->get_processed()->get_peak().value());
     }
     return maximumCurrentPeak;
 }

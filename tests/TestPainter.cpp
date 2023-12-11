@@ -502,7 +502,7 @@ SUITE(FieldPainter) {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -643,7 +643,7 @@ SUITE(FieldPainter) {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -694,7 +694,7 @@ SUITE(FieldPainter) {
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -829,7 +829,7 @@ SUITE(CoilPainter) {
 
         painter.paint_core(magnetic);
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -856,7 +856,7 @@ SUITE(CoilPainter) {
         painter.paint_core(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -883,7 +883,7 @@ SUITE(CoilPainter) {
         painter.paint_core(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -910,7 +910,7 @@ SUITE(CoilPainter) {
         painter.paint_core(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -937,7 +937,7 @@ SUITE(CoilPainter) {
         painter.paint_core(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -965,7 +965,7 @@ SUITE(CoilPainter) {
         painter.paint_bobbin(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -993,7 +993,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1022,7 +1022,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1051,7 +1051,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1080,7 +1080,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1114,7 +1114,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1143,7 +1143,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1172,7 +1172,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1201,7 +1201,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1237,7 +1237,7 @@ SUITE(CoilPainter) {
             painter.paint_coil_sections(magnetic);
 
             painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
         }
     }
@@ -1267,7 +1267,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_layers(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1296,7 +1296,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1325,7 +1325,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1357,7 +1357,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1389,7 +1389,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1421,7 +1421,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1453,7 +1453,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1485,7 +1485,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_layers(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1517,7 +1517,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_layers(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1549,7 +1549,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1581,7 +1581,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1613,7 +1613,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1645,7 +1645,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1684,7 +1684,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1723,7 +1723,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1764,7 +1764,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1801,7 +1801,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1838,7 +1838,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1875,7 +1875,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1912,7 +1912,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1949,7 +1949,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -1986,7 +1986,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2023,7 +2023,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2060,7 +2060,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2097,7 +2097,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2134,7 +2134,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2171,7 +2171,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2208,7 +2208,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2248,7 +2248,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2288,7 +2288,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2324,7 +2324,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_layers(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2360,7 +2360,7 @@ SUITE(CoilPainter) {
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
     }
 
@@ -2406,16 +2406,74 @@ SUITE(CoilPainter) {
         {
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             CHECK(false);
         }
         catch (const std::exception &e)
         {
             painter.export_svg();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             CHECK(true);
             std::cerr << e.what() << std::endl;
         }
+    }
+
+    TEST(Test_Painter_Planar) {
+        std::vector<int64_t> numberTurns = {12, 6};
+        std::vector<int64_t> numberParallels = {1, 2};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "ER 18/3/10";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+
+        OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_conducting_height(0.000034);
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_outer_height(0.000134);
+        wire.set_nominal_value_outer_width(0.0011);
+        wire.set_material("copper");
+        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
+        auto bobbin = coil.resolve_bobbin();
+        auto processedDescription = bobbin.get_processed_description().value();
+        processedDescription.get_mutable_winding_windows()[0].set_height(processedDescription.get_mutable_winding_windows()[0].get_height().value() / 2);
+        bobbin.set_processed_description(processedDescription);
+        coil.set_bobbin(bobbin);
+
+
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.wind();
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Planar.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
+        painter.set_logarithmic_scale(false);
+        painter.set_fringing_effect(false);
+        painter.set_maximum_scale_value(std::nullopt);
+        painter.set_minimum_scale_value(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
     }
 
 }

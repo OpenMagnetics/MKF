@@ -34,7 +34,7 @@ double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper inputs) 
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
             case InsulationStandards::IEC_603351: {
-                throw std::invalid_argument("IEC_60335 not implemented yet");
+                solidInsulation = std::max(solidInsulation, _insulationIEC60335Model->calculate_withstand_voltage(inputs));
                 break;
             }
             case InsulationStandards::IEC_606641: {
@@ -59,7 +59,7 @@ double InsulationCoordinator::calculate_clearance(InputsWrapper inputs) {
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
             case InsulationStandards::IEC_603351: {
-                throw std::invalid_argument("IEC_60335 not implemented yet");
+                clearance = std::max(clearance, _insulationIEC60335Model->calculate_clearance(inputs));
                 break;
             }
             case InsulationStandards::IEC_606641: {
@@ -84,7 +84,7 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper inputs, 
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
             case InsulationStandards::IEC_603351: {
-                throw std::invalid_argument("IEC_60335 not implemented yet");
+                creepageDistance = std::max(creepageDistance, _insulationIEC60335Model->calculate_creepage_distance(inputs, includeClearance));
                 break;
             }
             case InsulationStandards::IEC_606641: {
@@ -104,13 +104,12 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper inputs, 
     return creepageDistance;
 }
 
-
 double InsulationCoordinator::calculate_distance_through_insulation(InputsWrapper inputs) {
     double dti = 0;
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
             case InsulationStandards::IEC_603351: {
-                throw std::invalid_argument("IEC_60335 not implemented yet");
+                dti = std::max(dti, _insulationIEC60335Model->calculate_distance_through_insulation(inputs));
                 break;
             }
             case InsulationStandards::IEC_606641: {
@@ -143,7 +142,6 @@ bool InsulationIEC60664Model::electric_field_strenth_is_valid(double dti, double
         return (voltage / dti) < (0.25 / (dti * 1000) + 1.667) * 1e6;
     }
 }
-
 
 double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz(double workingVoltage) {
     double dti = 0;
@@ -330,7 +328,6 @@ double InsulationIEC60664Model::get_clearance_over_30kHz(double ratedVoltagePeak
     return currentClearance;
 }
 
-
 double InsulationIEC60664Model::calculate_distance_through_insulation(InputsWrapper inputs) {
     double maximumVoltageRms = inputs.get_maximum_voltage_rms();
     double maximumFrequency = inputs.get_maximum_frequency();
@@ -492,7 +489,6 @@ double InsulationIEC62368Model::get_required_withstand_voltage(InputsWrapper inp
     return get_working_voltage(inputs);
 }
 
-
 double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages_procedure_1(double supplyVoltage){
     double voltageDueToTemporaryWithstandOvervoltages = supplyVoltage + 1200;
     if (supplyVoltage <= 250) {
@@ -582,7 +578,6 @@ double InsulationIEC62368Model::get_clearance_table_10(double supplyVoltagePeak,
     }
 }
 
-
 double InsulationIEC62368Model::get_clearance_table_14(double supplyVoltagePeak, InsulationType insulationType, PollutionDegree pollutionDegree){
     std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
     std::vector<std::pair<double, double>> table;
@@ -645,7 +640,6 @@ double InsulationIEC62368Model::get_distance_table_G13(double workingVoltage, In
     return ceilFloat(result, 4);
 }
 
-
 double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms, InsulationType insulationType, PollutionDegree pollutionDegree, Cti cti){
     std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
     std::string ctiString = std::string{magic_enum::enum_name(cti)};
@@ -660,7 +654,6 @@ double InsulationIEC62368Model::get_creepage_distance_table_17(double voltageRms
         return ceilFloat(valueBasic, 4);
     }
 }
-
 
 double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms, double frequency, PollutionDegree pollutionDegree, InsulationType insulationType){
     double previousStandardFrequency = iec62368LowerFrequency;
@@ -695,7 +688,6 @@ double InsulationIEC62368Model::get_creepage_distance_table_18(double voltageRms
     else {
         return ceilFloat(result, 5);
     }
-
 }
 
 double InsulationIEC62368Model::get_altitude_factor(double altitude){
@@ -806,7 +798,6 @@ double InsulationIEC62368Model::calculate_creepage_distance(InputsWrapper inputs
     // TODO: remove distance if FIW complies with conditions in table G.4
 }
 
-
 double InsulationIEC61558Model::get_working_voltage_peak(InputsWrapper inputs) {
     return inputs.get_maximum_voltage_peak();
 }
@@ -821,7 +812,6 @@ double InsulationIEC61558Model::get_withstand_voltage_table_14(OvervoltageCatego
     std::vector<std::pair<double, double>> table = table14[overvoltageCategoryString][insulationTypeString];
 
     return linear_table_interpolation(table, workingVoltage);
-
 }
 
 double InsulationIEC61558Model::get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage){
@@ -946,7 +936,6 @@ double InsulationIEC61558Model::calculate_clearance_over_30kHz(InsulationType in
     }
 }
 
-
 double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage) {
     std::map<double, std::vector<std::pair<double, double>>> table;
 
@@ -1001,7 +990,6 @@ double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(Insulatio
         previousTable = voltageList;
     }
     throw std::invalid_argument("Too much frequency for IEC 60664-4: " + std::to_string(frequency));
-
 }
 
 double InsulationIEC61558Model::calculate_distance_through_insulation(InputsWrapper inputs, bool usingThinLayers) {
@@ -1116,6 +1104,233 @@ double InsulationIEC61558Model::calculate_creepage_distance(InputsWrapper inputs
     }
 
     return ceilFloat(creepageDistance, 5);
+}
+
+double InsulationIEC60335Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage){
+    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    auto aux = table15[overvoltageCategoryString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (ratedVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
+}
+
+double InsulationIEC60335Model::get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, InsulationType insulationType, double ratedImpulseWithstandVoltage){
+    for (size_t voltagesIndex = 0; voltagesIndex < table16.size(); voltagesIndex++) {
+        if (ratedImpulseWithstandVoltage <= table16[voltagesIndex].first) {
+            double result = DBL_MAX;
+            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+                if (voltagesIndex < table16.size() - 1) {
+                    result =  table16[voltagesIndex + 1].second;
+                }
+                else {
+                    result =  table16[voltagesIndex].second;
+                }
+            }
+            else {
+                result =  table16[voltagesIndex].second;
+            }
+
+            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+                if (ratedImpulseWithstandVoltage <= 800 && pollutionDegree == PollutionDegree::P3) {
+                    result = 0.0008;
+                }
+                if (ratedImpulseWithstandVoltage <= 500 && (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) && wiringType == WiringTechnology::PRINTED){
+                    result = 0.0002;
+                }
+            }
+            else {
+                if (ratedImpulseWithstandVoltage <= 1500 && pollutionDegree == PollutionDegree::P3) {
+                    result = 0.0008;
+                }
+                if (ratedImpulseWithstandVoltage <= 800 && (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) && wiringType == WiringTechnology::PRINTED){
+                    result = 0.0002;
+                }
+            }
+            return result;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedImpulseWithstandVoltage));
+}
+
+double InsulationIEC60335Model::get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage){
+    std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
+    auto aux = table19[overvoltageCategoryString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (ratedVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
+}
+
+double InsulationIEC60335Model::get_withstand_voltage_table_7(InsulationType insulationType, double ratedVoltage){
+    std::string insulationTypeString = std::string{magic_enum::enum_name(insulationType)};
+    auto aux = table7[insulationTypeString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (ratedVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1: " + std::to_string(ratedVoltage));
+}
+
+double InsulationIEC60335Model::get_withstand_voltage_formula_table_7(InsulationType insulationType, double workingVoltage){
+    if (insulationType == InsulationType::BASIC) {
+        return 1.2 * workingVoltage + 950;
+    }
+    else if (insulationType == InsulationType::SUPPLEMENTARY) {
+        return 1.2 * workingVoltage + 1450;
+    }
+    else if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+        return 2.4 * workingVoltage + 2400;
+    }
+    return 0;
+}
+
+
+double InsulationIEC60335Model::get_creepage_distance_table_17(Cti cti, PollutionDegree pollutionDegree, double workingVoltage){
+    std::string ctiString = std::string{magic_enum::enum_name(cti)};
+    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    auto aux = table17[pollutionDegreeString][ctiString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (workingVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1 Table 17: " + std::to_string(workingVoltage));
+}
+
+double InsulationIEC60335Model::get_creepage_distance_table_18(Cti cti, PollutionDegree pollutionDegree, double workingVoltage){
+    std::string ctiString = std::string{magic_enum::enum_name(cti)};
+    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    auto aux = table18[pollutionDegreeString][ctiString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (workingVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60335-1 Table 18: " + std::to_string(workingVoltage));
+}
+
+
+double InsulationIEC60335Model::calculate_distance_through_insulation(InputsWrapper inputs) {
+    auto insulationType = inputs.get_insulation_type();
+    double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
+    double maximumPrimaryVoltageRms = inputs.get_maximum_voltage_rms(0);
+    auto ratedVoltage = std::max(mainSupplyVoltage, maximumPrimaryVoltageRms);
+    auto overvoltageCategory = inputs.get_overvoltage_category();
+
+    if (overvoltageCategory == OvervoltageCategory::OVC_IV) {
+        throw std::invalid_argument("Overvoltage Category IV not supported in standard IEC 60335-1");
+    }
+
+    double dti = 0;
+    if (insulationType == InsulationType::REINFORCED) {
+        dti = std::max(0.002, get_distance_through_insulation_table_19(overvoltageCategory, ratedVoltage));
+    }
+    else if (insulationType == InsulationType::SUPPLEMENTARY || insulationType == InsulationType::DOUBLE) {
+        dti = 0.001;
+    }
+ 
+    return dti;
+}
+
+double InsulationIEC60335Model::calculate_withstand_voltage(InputsWrapper inputs) {
+    auto insulationType = inputs.get_insulation_type();
+    double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
+    double maximumPrimaryVoltageRms = inputs.get_maximum_voltage_rms(0);
+    double maximumVoltagePeak = inputs.get_maximum_voltage_peak();
+    auto ratedVoltage = std::max(mainSupplyVoltage, maximumPrimaryVoltageRms);
+
+    if (insulationType == InsulationType::FUNCTIONAL) {
+        return 0;
+    }
+    else {
+        double withstandVoltage = get_withstand_voltage_table_7(insulationType, ratedVoltage);
+        withstandVoltage = std::max(withstandVoltage, get_withstand_voltage_formula_table_7(insulationType, maximumVoltagePeak));
+        return withstandVoltage;
+    }
+}
+
+double InsulationIEC60335Model::calculate_clearance(InputsWrapper inputs) {
+    auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology().value();
+    auto pollutionDegree = inputs.get_pollution_degree();
+    double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
+    double maximumPrimaryVoltageRms = inputs.get_maximum_voltage_rms(0);
+    double maximumVoltageRms = inputs.get_maximum_voltage_rms();
+    double maximumFrequency = inputs.get_maximum_frequency();
+    auto altitude = resolve_dimensional_values(inputs.get_altitude(), DimensionalValues::MAXIMUM);
+    auto ratedVoltage = std::max(mainSupplyVoltage, maximumPrimaryVoltageRms);
+    auto overvoltageCategory = inputs.get_overvoltage_category();
+    auto insulationType = inputs.get_insulation_type();
+
+    if (overvoltageCategory == OvervoltageCategory::OVC_IV) {
+        throw std::invalid_argument("Overvoltage Category IV not supported in standard IEC 60335-1");
+    }
+
+    double ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage);
+
+    double clearance = get_clearance_table_16(pollutionDegree, wiringTechnology, insulationType, ratedImpulseWithstandVoltage);
+
+    if (maximumVoltageRms > maximumPrimaryVoltageRms || // Boost case
+        altitude > lowerAltitudeLimit ||
+        maximumFrequency > ieC60335MaximumStandardFrequency) {
+        double clearanceIEC60664 = DBL_MAX;
+        if (_data.empty()) {
+            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model();
+            clearanceIEC60664 = insulationIEC60664Model.calculate_clearance(inputs);
+        }
+        else {
+            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model(_data);
+            clearanceIEC60664 = insulationIEC60664Model.calculate_clearance(inputs);
+        }
+        clearance = std::max(clearance, clearanceIEC60664);
+    }
+
+    return clearance;
+}
+
+double InsulationIEC60335Model::calculate_creepage_distance(InputsWrapper inputs, bool includeClearance) {
+    auto pollutionDegree = inputs.get_pollution_degree();
+    double maximumPrimaryVoltagePeak = inputs.get_maximum_voltage_peak(0);
+    double maximumFrequency = inputs.get_maximum_frequency();
+    auto cti = inputs.get_cti();
+    auto insulationType = inputs.get_insulation_type();
+
+    double creepageDistance = DBL_MAX;
+
+    if (maximumFrequency <= ieC60335MaximumStandardFrequency) {
+        if (insulationType == InsulationType::FUNCTIONAL) {
+            creepageDistance = get_creepage_distance_table_18(cti, pollutionDegree, maximumPrimaryVoltagePeak);
+        }
+        else {
+            creepageDistance = get_creepage_distance_table_17(cti, pollutionDegree, maximumPrimaryVoltagePeak);
+            if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
+                creepageDistance *= 2;
+            }
+        }
+    }
+    else {
+        double creepageDistanceIEC60664 = DBL_MAX;
+        if (_data.empty()) {
+            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model();
+            creepageDistanceIEC60664 = insulationIEC60664Model.calculate_creepage_distance(inputs);
+        }
+        else {
+            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model(_data);
+            creepageDistanceIEC60664 = insulationIEC60664Model.calculate_creepage_distance(inputs);
+        }
+        creepageDistance = creepageDistanceIEC60664;
+    }
+
+    if (includeClearance) {
+        creepageDistance = std::max(creepageDistance, calculate_clearance(inputs));
+    }
+
+    return roundFloat(creepageDistance, 5);
 }
 
 } // namespace OpenMagnetics
