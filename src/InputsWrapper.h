@@ -36,8 +36,8 @@ class InputsWrapper : public Inputs {
 
     static bool is_waveform_sampled(Waveform waveform);
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency = 0);
-    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force, bool includeAdvancedData);
-    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData);
+    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force = false, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
+    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
@@ -116,6 +116,10 @@ class InputsWrapper : public Inputs {
     double get_maximum_current_peak();
     double get_maximum_current_rms();
     double get_maximum_frequency();
+    double get_maximum_voltage_peak(size_t windingIndex);
+    double get_maximum_voltage_rms(size_t windingIndex);
+    double get_maximum_current_peak(size_t windingIndex);
+    double get_maximum_current_rms(size_t windingIndex);
 
     void from_json(const json& j, Inputs& x);
     void to_json(json& j, const Inputs& x);

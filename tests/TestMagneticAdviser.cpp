@@ -132,6 +132,13 @@ SUITE(MagneticAdviser) {
         OpenMagnetics::MasWrapper masMagnetic;
         // inputs.process_waveforms();
 
+        std::cout << bool(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()) << std::endl;
+        std::cout << magic_enum::enum_name(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label()) << std::endl;
+        std::cout << magic_enum::enum_name(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()->get_label()) << std::endl;
+
+        std::cout << inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_peak().value() << std::endl;
+        std::cout << inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()->get_peak().value() << std::endl;
+
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -141,6 +148,7 @@ SUITE(MagneticAdviser) {
         for (int i = 0; i < masMagnetics.size(); ++i) {
             auto masMagnetic = masMagnetics[i];
             std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
+            std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping()[0].get_length() << std::endl;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");

@@ -372,12 +372,67 @@ class InsulationIEC61558Model : public InsulationStandard {
 };
 
 
+
+class InsulationIEC60335Model : public InsulationStandard {
+  private:
+    json _data;
+  public:
+    double calculate_distance_through_insulation(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper inputs);
+    double calculate_clearance(InputsWrapper inputs);
+    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
+    double get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, InsulationType insulationType, double ratedImpulseWithstandVoltage);
+    double get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage);
+    double get_withstand_voltage_table_7(InsulationType insulationType, double ratedVoltage);
+    double get_withstand_voltage_formula_table_7(InsulationType insulationType, double workingVoltage);
+    double get_creepage_distance_table_17(Cti cti, PollutionDegree pollutionDegree, double workingVoltage);
+    double get_creepage_distance_table_18(Cti cti, PollutionDegree pollutionDegree, double workingVoltage);
+
+    double ieC60335MaximumStandardFrequency = 30000;
+    std::map<std::string, std::vector<std::pair<double, double>>> table7;
+    std::map<std::string, std::vector<std::pair<double, double>>> table15;
+    std::vector<std::pair<double, double>> table16;
+    std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table17;
+    std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> table18;
+    std::map<std::string, std::vector<std::pair<double, double>>> table19;
+
+
+    InsulationIEC60335Model() {
+        std::string filePath = __FILE__;
+        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        {
+            auto dataFilePath = masPath + "/data/insulation_standards/IEC_60335-1.json";
+            std::ifstream jsonFile(dataFilePath);
+            json jf = json::parse(jsonFile);
+            table7 = jf["Table 7"];
+            table15 = jf["Table 15"];
+            table16 = jf["Table 16"];
+            table17 = jf["Table 17"];
+            table18 = jf["Table 18"];
+            table19 = jf["Table 19"];
+        }
+    }
+
+    InsulationIEC60335Model(json data) {
+        _data = data;
+        table7 = data["IEC_60335-1"]["Table 7"];
+        table15 = data["IEC_60335-1"]["Table 15"];
+        table16 = data["IEC_60335-1"]["Table 16"];
+        table17 = data["IEC_60335-1"]["Table 17"];
+        table18 = data["IEC_60335-1"]["Table 18"];
+        table19 = data["IEC_60335-1"]["Table 19"];
+    }
+};
+
+
 class InsulationCoordinator {
   private:
   protected:
     std::shared_ptr<InsulationIEC60664Model> _insulationIEC60664Model;
     std::shared_ptr<InsulationIEC62368Model> _insulationIEC62368Model;
     std::shared_ptr<InsulationIEC61558Model> _insulationIEC61558Model;
+    std::shared_ptr<InsulationIEC60335Model> _insulationIEC60335Model;
 
   public:
     double calculate_withstand_voltage(InputsWrapper inputs);
@@ -389,11 +444,13 @@ class InsulationCoordinator {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());
         _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model());
         _insulationIEC61558Model = std::make_shared<InsulationIEC61558Model>(InsulationIEC61558Model());
+        _insulationIEC60335Model = std::make_shared<InsulationIEC60335Model>(InsulationIEC60335Model());
     }
     InsulationCoordinator(json data) {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model(data));
         _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model(data));
         _insulationIEC61558Model = std::make_shared<InsulationIEC61558Model>(InsulationIEC61558Model(data));
+        _insulationIEC60335Model = std::make_shared<InsulationIEC60335Model>(InsulationIEC60335Model(data));
     }
 
     virtual ~InsulationCoordinator() = default;
