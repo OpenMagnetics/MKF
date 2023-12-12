@@ -5,7 +5,6 @@
 #include "json.hpp"
 #include <matplot/matplot.h>
 #include <cfloat>
-#include <../tests/TestingUtils.h>
 
 namespace OpenMagnetics {
 

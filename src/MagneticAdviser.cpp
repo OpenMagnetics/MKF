@@ -3,7 +3,6 @@
 #include "MagneticSimulator.h"
 #include "Painter.h"
 #include "Defaults.h"
-#include "../tests/TestingUtils.h"
 
 
 namespace OpenMagnetics {
@@ -182,7 +181,7 @@ int main(int argc, char* argv[]) {
         std::ifstream f(inputFilepath);
         json masJson;
         std::string str;
-        if(f) {
+        if(static_cast<bool>(f)) {
             std::ostringstream ss;
             ss << f.rdbuf(); // reading data
             masJson = json::parse(ss.str());

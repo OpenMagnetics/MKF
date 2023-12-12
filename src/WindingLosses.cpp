@@ -37,7 +37,7 @@ double WindingLosses::calculate_losses_per_meter(WireWrapper wire, SignalDescrip
     return WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
 }
 
-double WindingLosses::calculate_effective_resistance_per_meter(WireWrapper wire, double effectiveFrequency, double temperature)
+double WindingLosses::calculate_effective_resistance_per_meter(const WireWrapper& wire, double effectiveFrequency, double temperature)
 {
     return WindingOhmicLosses::calculate_effective_resistance_per_meter(wire, effectiveFrequency, temperature);
 }

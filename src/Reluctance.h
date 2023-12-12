@@ -25,7 +25,7 @@ class ReluctanceModel {
   public:
     virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
 
-    double get_ungapped_core_reluctance(CoreWrapper core, double initialPermeability);
+    double get_ungapped_core_reluctance(const CoreWrapper& core, double initialPermeability);
 
     double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
     double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {

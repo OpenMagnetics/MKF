@@ -2,7 +2,6 @@
 #include "WireAdviser.h"
 #include "CoilAdviser.h"
 #include "Defaults.h"
-#include "../tests/TestingUtils.h"
 #include "Models.h"
 #include "Painter.h"
 

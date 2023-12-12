@@ -20,18 +20,15 @@ double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper cor
     double initialPermeabilityValue;
     if (operatingPoint != nullptr) {
         auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(
-            core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     }
     else {
-        initialPermeabilityValue =
-            initialPermeability.get_initial_permeability(core.get_functional_description().get_material());
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(core.get_functional_description().get_material());
     }
 
     double effective_volume = core.get_processed_description()->get_effective_parameters().get_effective_volume();
 
-    double energyStoredInCore = 0.5 / (constants.vacuumPermeability * initialPermeabilityValue) * effective_volume *
-                                  pow(magneticFluxDensitySaturation, 2);
+    double energyStoredInCore = 0.5 / (constants.vacuumPermeability * initialPermeabilityValue) * effective_volume * pow(magneticFluxDensitySaturation, 2);
 
     return energyStoredInCore;
 
@@ -39,13 +36,13 @@ double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper cor
 
 }
 
-double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, double* fringing_factor){
+double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, std::optional<double> fringing_factor){
     auto constants = Constants();
     auto gap_length = gapInfo.get_length();
     auto gap_area = *(gapInfo.get_area());
     double fringing_factor_value;
     if (fringing_factor) {
-        fringing_factor_value = *fringing_factor;
+        fringing_factor_value = fringing_factor.value();
     }
     else {
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(

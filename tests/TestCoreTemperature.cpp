@@ -17,9 +17,9 @@ std::map<OpenMagnetics::CoreTemperatureModels, double> maximumAdmittedErrorTempe
 std::map<OpenMagnetics::CoreTemperatureModels, std::vector<double>> testCoreTemperatureAverageErrors = {};
 std::map<OpenMagnetics::CoreTemperatureModels, double> testCoreTemperatureMaximumErrors = {};
 
-double run_test_core_temperature(OpenMagnetics::CoreTemperatureModels modelName,
-                                 std::string shapeName,
-                                 std::string materialName,
+double run_test_core_temperature(const OpenMagnetics::CoreTemperatureModels& modelName,
+                                 const std::string& shapeName,
+                                 const std::string& materialName,
                                  double coreLosses,
                                  double ambientTemperature,
                                  double expectedCoreTemperature) {

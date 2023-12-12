@@ -19,7 +19,7 @@ std::map<std::string, int64_t> minLitzWireNumberConductors;
 std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 namespace OpenMagnetics {
-    std::optional<InsulationWireCoating> WireWrapper::resolve_coating(WireWrapper wire) {
+    std::optional<InsulationWireCoating> WireWrapper::resolve_coating(const WireWrapper& wire) {
         // If the coating is a string, we have to load its data from the database
         if (!wire.get_coating()) {
             return std::nullopt;
@@ -46,7 +46,7 @@ namespace OpenMagnetics {
 
     }
 
-    WireWrapper WireWrapper::resolve_strand(WireWrapper wire) { 
+    WireWrapper WireWrapper::resolve_strand(const WireWrapper& wire) { 
         if (!wire.get_strand())
             throw std::runtime_error("Litz wire is missing strand information");
 

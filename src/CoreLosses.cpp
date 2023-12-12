@@ -621,8 +621,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     double b2 = majorLoopParameters["b2"];
 
     std::vector<double> magneticFieldStrengthPoints;
-    for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength;
-         i += constants.roshenMagneticFieldStrengthStep) {
+    for (double i = -saturationMagneticFieldStrength; i <= saturationMagneticFieldStrength; i += constants.roshenMagneticFieldStrengthStep) {
         magneticFieldStrengthPoints.push_back(i);
     }
 

@@ -522,7 +522,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
             auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
 
             if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
-                throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(bool(windingWindows[0].get_width())) +
+                throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
                                          " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
                                          " shapeName: " + shapeName
                                          );

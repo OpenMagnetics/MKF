@@ -60,8 +60,8 @@ class WindingSkinEffectLosses {
 class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
   public:
     std::string methodName = "Wojda";
-    double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
-    double calculate_penetration_ratio(WireWrapper wire, double frequency, double temperature);
+    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
+    double calculate_penetration_ratio(const WireWrapper& wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 
 };
@@ -71,7 +71,7 @@ class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 // https://sci-hub.wf/10.1109/tpel.2011.2143729
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
+    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
@@ -116,7 +116,7 @@ class WindingSkinEffectLossesLotfiModel : public WindingSkinEffectLossesModel {
 // https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9485268
 class WindingSkinEffectLossesFerreiraModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_skin_factor(WireWrapper wire, double frequency, double temperature);
+    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
     double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
