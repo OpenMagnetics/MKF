@@ -633,9 +633,9 @@ std::map<OpenMagnetics::CoreLossesModels, double> testMaximumErrors = {
     {OpenMagnetics::CoreLossesModels::ALBACH, 0.0},
 };
 
-double run_test_core_losses(OpenMagnetics::CoreLossesModels modelName,
-                            std::string shapeName,
-                            std::string materialName,
+double run_test_core_losses(const OpenMagnetics::CoreLossesModels& modelName,
+                            const std::string& shapeName,
+                            const std::string& materialName,
                             double frequency,
                             double magneticFluxDensityPeak,
                             double magneticFluxDensityDutyCycle,

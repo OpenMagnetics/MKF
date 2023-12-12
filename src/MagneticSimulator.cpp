@@ -7,11 +7,13 @@ namespace OpenMagnetics {
 MasWrapper MagneticSimulator::simulate(MasWrapper mas){
     return simulate(mas.get_mutable_inputs(), mas.get_mutable_magnetic());
 }
-MasWrapper MagneticSimulator::simulate(InputsWrapper inputs, MagneticWrapper magnetic){
+MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic){
+    MasWrapper mas;
     std::vector<OutputsWrapper> outputs;
     std::vector<OperatingPoint> simulatedOperatingPoints;
+    mas.set_inputs(inputs);
 
-    for (auto& operatingPoint : inputs.get_mutable_operating_points()){
+    for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         OutputsWrapper output;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
         output.set_core_losses(calculate_core_loses(operatingPoint, magnetic));
@@ -19,9 +21,7 @@ MasWrapper MagneticSimulator::simulate(InputsWrapper inputs, MagneticWrapper mag
         outputs.push_back(output);
         simulatedOperatingPoints.push_back(operatingPoint);
     }
-    inputs.set_operating_points(simulatedOperatingPoints);
-    MasWrapper mas;
-    mas.set_inputs(inputs);
+    mas.get_mutable_inputs().set_operating_points(simulatedOperatingPoints);
     mas.set_magnetic(magnetic);
     mas.set_outputs(outputs);
     return mas;

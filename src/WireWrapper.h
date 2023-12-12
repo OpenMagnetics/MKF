@@ -120,9 +120,9 @@ class WireWrapper : public Wire {
         WireWrapper() = default;
         virtual ~WireWrapper() = default;
 
-        static std::optional<InsulationWireCoating> resolve_coating(WireWrapper wire);
+        static std::optional<InsulationWireCoating> resolve_coating(const WireWrapper& wire);
         std::optional<InsulationWireCoating> resolve_coating();
-        static WireWrapper resolve_strand(WireWrapper wire);
+        static WireWrapper resolve_strand(const WireWrapper& wire);
         WireWrapper resolve_strand();
         static WireMaterial resolve_material(WireWrapper wire);
         WireMaterial resolve_material();

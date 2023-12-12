@@ -13,12 +13,12 @@
 
 namespace OpenMagnetics {
 
-double WindingOhmicLosses::calculate_dc_resistance(Turn turn, WireWrapper wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const WireWrapper& wire, double temperature) {
     double wireLength = turn.get_length();
     return calculate_dc_resistance(wireLength, wire, temperature);
 }
 
-double WindingOhmicLosses::calculate_dc_resistance(double wireLength, WireWrapper wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const WireWrapper& wire, double temperature) {
     return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
 }
 

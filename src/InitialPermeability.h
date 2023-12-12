@@ -15,13 +15,13 @@
 namespace OpenMagnetics {
 
 class InitialPermeability {
-  private:
-  protected:
-  public:
-    double get_initial_permeability(CoreMaterialDataOrNameUnion material,
-                                    double* temperature = nullptr,
-                                    double* magneticFieldDcBias = nullptr,
-                                    double* frequency = nullptr);
+    private:
+    protected:
+    public:
+        double get_initial_permeability(CoreMaterialDataOrNameUnion material,
+                                        std::optional<double> temperature = std::nullopt,
+                                        std::optional<double> magneticFieldDcBias = std::nullopt,
+                                        std::optional<double> frequency = std::nullopt);
 };
 
 } // namespace OpenMagnetics

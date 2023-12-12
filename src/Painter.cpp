@@ -6,7 +6,6 @@
 #include "json.hpp"
 #include <matplot/matplot.h>
 #include <cfloat>
-#include <../tests/TestingUtils.h>
 
 namespace OpenMagnetics {
 
@@ -155,22 +154,20 @@ void Painter::export_png() {
 }
 
 
-void Painter::paint_core(MagneticWrapper magnetic) {
-    CoreWrapper core = magnetic.get_core();
-    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+void Painter::paint_core(const MagneticWrapper& magnetic) {
+    CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
             throw std::runtime_error("T shapes not implemented yet");
             break;
         default:
-            return paint_two_piece_set_core(core);
+            return paint_two_piece_set_core(magnetic.get_core());
             break;
     }
 }
 
-void Painter::paint_bobbin(MagneticWrapper magnetic) {
-    CoreWrapper core = magnetic.get_core();
-    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+void Painter::paint_bobbin(const MagneticWrapper& magnetic) {
+    CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
             throw std::runtime_error("T shapes does not have bobbins");
@@ -181,7 +178,7 @@ void Painter::paint_bobbin(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_sections(MagneticWrapper magnetic) {
+void Painter::paint_coil_sections(const MagneticWrapper& magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -195,7 +192,7 @@ void Painter::paint_coil_sections(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_layers(MagneticWrapper magnetic) {
+void Painter::paint_coil_layers(const MagneticWrapper& magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -209,7 +206,7 @@ void Painter::paint_coil_layers(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_turns(MagneticWrapper magnetic) {
+void Painter::paint_coil_turns(const MagneticWrapper& magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -408,10 +405,8 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
     matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorBobbin));
 }
 
-void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
+void Painter::paint_two_piece_set_winding_sections(const MagneticWrapper& magnetic) {
     auto constants = Constants();
-    CoilWrapper winding = magnetic.get_coil();
-    CoreWrapper core = magnetic.get_core();
 
     if (!magnetic.get_coil().get_sections_description()) {
         throw std::runtime_error("Winding sections not created");
@@ -441,7 +436,7 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
+void Painter::paint_two_piece_set_winding_layers(const MagneticWrapper& magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
@@ -479,10 +474,9 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
+void Painter::paint_two_piece_set_winding_turns(const MagneticWrapper& magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
-    CoreWrapper core = magnetic.get_core();
     auto wirePerWinding = winding.get_wires();
 
     if (!winding.get_turns_description()) {

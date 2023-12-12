@@ -11,7 +11,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
-#include <../tests/TestingUtils.h>
+
 
 namespace OpenMagnetics {
 

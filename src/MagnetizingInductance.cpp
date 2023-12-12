@@ -49,7 +49,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     double frequency = operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
-    OpenMagnetics::InitialPermeability initial_permeability;
+    OpenMagnetics::InitialPermeability initialPermeability;
     double currentInitialPermeability;
     double modifiedInitialPermeability;
     size_t timeout = 10;
@@ -82,7 +82,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         }
     }
 
-    modifiedInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
+    modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
         set_current_as_magnetizing_current(operatingPoint);
         auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
@@ -131,7 +131,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             result.second = magneticFluxDensity;
             auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
 
-            modifiedInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, &magneticFieldStrength.get_processed().value().get_mutable_offset(), &frequency);
+            modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
 
             timeout--;
             if (timeout == 0) {
@@ -169,7 +169,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     double frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
-    OpenMagnetics::InitialPermeability initial_permeability;
+    OpenMagnetics::InitialPermeability initialPermeability;
     int numberTurnsPrimary;
     size_t timeout = 10;
     double currentInitialPermeability;
@@ -178,7 +178,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
     double totalReluctance;
 
-    currentInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
+    currentInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
         set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
@@ -193,7 +193,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
 
-        modifiedInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, &magneticFieldStrength.get_processed().value().get_mutable_offset(), &frequency);
+        modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
 
         if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
             break;
@@ -280,7 +280,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
     double frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
-    OpenMagnetics::InitialPermeability initial_permeability;
+    OpenMagnetics::InitialPermeability initialPermeability;
     size_t timeout = 10;
     double modifiedInitialPermeability;
     double currentInitialPermeability;
@@ -288,7 +288,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
     double neededTotalReluctance = pow(numberTurnsPrimary, 2) / desiredMagnetizingInductance;
 
-    currentInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, nullptr, &frequency);
+    currentInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
         set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
@@ -299,7 +299,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
 
-        modifiedInitialPermeability = initial_permeability.get_initial_permeability(core.get_functional_description().get_material(), &temperature, &magneticFieldStrength.get_processed().value().get_mutable_offset(), &frequency);
+        modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
 
         if (fabs(currentInitialPermeability - modifiedInitialPermeability) < 1 || timeout == 0) {
             break;

@@ -2661,7 +2661,7 @@ double CoreWrapper::get_coercive_force(double temperature) {
 double CoreWrapper::get_initial_permeability(double temperature){
     auto coreMaterial =  get_material();
     InitialPermeability initialPermeability;
-    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
+    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     return initialPermeabilityValue;
 }
 
@@ -2680,7 +2680,7 @@ double CoreWrapper::get_effective_permeability(double temperature){
 double CoreWrapper::get_reluctance(double temperature){
     auto coreMaterial =  get_material();
     InitialPermeability initialPermeability;
-    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, &temperature, nullptr, nullptr);
+    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
 
     auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);

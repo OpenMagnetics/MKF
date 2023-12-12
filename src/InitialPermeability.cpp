@@ -15,9 +15,9 @@
 namespace OpenMagnetics {
 
 double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion material,
-                                                     double* temperature,
-                                                     double* magneticFieldDcBias,
-                                                     double* frequency) {
+                                                     std::optional<double> temperature,
+                                                     std::optional<double> magneticFieldDcBias,
+                                                     std::optional<double> frequency) {
     CoreMaterial material_data;
     // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(material)) {
@@ -41,19 +41,19 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
                 auto temperature_factor = modifiers.get_temperature_factor();
                 if (temperature && temperature_factor) {
                     double permeability_variation_due_to_temperature =
-                        temperature_factor.value().get_a() + temperature_factor.value().get_b().value() * (*temperature) +
-                        temperature_factor.value().get_c().value() * pow(*temperature, 2) +
-                        temperature_factor.value().get_d().value() * pow(*temperature, 3) +
-                        temperature_factor.value().get_e().value() * pow(*temperature, 4);
+                        temperature_factor->get_a() + temperature_factor->get_b().value() * (temperature.value()) +
+                        temperature_factor->get_c().value() * pow(temperature.value(), 2) +
+                        temperature_factor->get_d().value() * pow(temperature.value(), 3) +
+                        temperature_factor->get_e().value() * pow(temperature.value(), 4);
                     initial_permeability_value *= (1 + permeability_variation_due_to_temperature);
                 }
 
                 auto frequency_factor = modifiers.get_frequency_factor();
                 if (frequency && frequency_factor) {
                     double permeability_variation_due_to_frequency =
-                        frequency_factor.value().get_a() + frequency_factor.value().get_b() * (*frequency) +
-                        frequency_factor.value().get_c() * pow(*frequency, 2) + frequency_factor.value().get_d() * pow(*frequency, 3) +
-                        frequency_factor.value().get_e().value() * pow(*frequency, 4);
+                        frequency_factor->get_a() + frequency_factor->get_b() * (frequency.value()) +
+                        frequency_factor->get_c() * pow(frequency.value(), 2) + frequency_factor->get_d() * pow(frequency.value(), 3) +
+                        frequency_factor->get_e().value() * pow(frequency.value(), 4);
 
                     initial_permeability_value *= (1 + permeability_variation_due_to_frequency);
                 }
@@ -63,7 +63,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
                     double permeability_variation_due_to_magnetic_field_dc_bias =
                         0.01 / (magnetic_field_dc_bias_factor.get_a() +
                                 magnetic_field_dc_bias_factor.get_b() *
-                                    pow(roundFloat(fabs(*magneticFieldDcBias), 3), magnetic_field_dc_bias_factor.get_c()));
+                                    pow(roundFloat(fabs(magneticFieldDcBias.value()), 3), magnetic_field_dc_bias_factor.get_c()));
 
                     initial_permeability_value *= permeability_variation_due_to_magnetic_field_dc_bias;
                 }
@@ -72,7 +72,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
     }
     else {
         auto permeability_points = std::get<std::vector<PermeabilityPoint>>(initial_permeability_data);
-        bool has_temperature_requirement = temperature;
+        bool has_temperature_requirement = temperature.has_value();
         bool has_temperature_dependency = permeability_points[0].get_temperature().has_value();
 
         if (has_temperature_dependency) {
@@ -83,7 +83,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
             if (!has_temperature_requirement)
                 temperature_point = 25;
             else
-                temperature_point = *temperature;
+                temperature_point = temperature.value();
 
             for (int i = 0; i < n; i++) {
                 if (x.size() == 0 || (*permeability_points[i].get_temperature()) != x.back()) {
@@ -101,7 +101,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
     }
 
     if (material_data.get_curie_temperature() && temperature) {
-        if ((*temperature) > (*material_data.get_curie_temperature())) {
+        if ((temperature.value()) > (*material_data.get_curie_temperature())) {
             initial_permeability_value = 1;
         }
     }

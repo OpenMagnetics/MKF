@@ -20,19 +20,19 @@ SUITE(InitialPermeability) {
         CHECK(initialPermeabilityValue == 60);
         double temperature = 89;
         double initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
         double expected = 60 * 1.0073;
         CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, 0.01 * expected);
 
         double magneticFieldDcBias = 3978.873577;
         double initialPermeabilityValueWithMagneticFieldDcBias =
-            initialPermeability.get_initial_permeability(materialData, nullptr, &magneticFieldDcBias, nullptr);
+            initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
         expected = 60 * 0.9601;
         CHECK_CLOSE(initialPermeabilityValueWithMagneticFieldDcBias, expected, 0.01 * expected);
 
         double frequency = 1250000;
         double initialPermeabilityValueWithFrequency =
-            initialPermeability.get_initial_permeability(materialData, nullptr, nullptr, &frequency);
+            initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequency);
         expected = 60 * 0.968;
         CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, 0.01 * expected);
     }
@@ -49,14 +49,14 @@ SUITE(InitialPermeability) {
 
         double temperature = 80;
         double initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
         expected = 3200;
         manufacturerTolerance = 0.25;
         CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
 
         temperature = 200;
         initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
 
         expected = 4500;
         manufacturerTolerance = 0.25;
@@ -64,7 +64,7 @@ SUITE(InitialPermeability) {
 
         temperature = 300;
         initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
 
         expected = 1;
         manufacturerTolerance = 0.25;
@@ -83,14 +83,14 @@ SUITE(InitialPermeability) {
 
         double temperature = 80;
         double initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
         expected = 4300;
         manufacturerTolerance = 0.25;
         CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
 
         temperature = 200;
         initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
 
         expected = 1;
         manufacturerTolerance = 0.25;
@@ -98,7 +98,7 @@ SUITE(InitialPermeability) {
 
         temperature = 300;
         initialPermeabilityValueWithTemperature =
-            initialPermeability.get_initial_permeability(materialData, &temperature, nullptr, nullptr);
+            initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
 
         expected = 1;
         manufacturerTolerance = 0.25;
