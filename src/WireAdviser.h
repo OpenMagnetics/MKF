@@ -6,6 +6,28 @@
 
 namespace OpenMagnetics {
 
+class WireSolidInsulationRequirements {
+    public:
+    WireSolidInsulationRequirements() = default;
+    virtual ~WireSolidInsulationRequirements() = default;
+
+    private:
+    std::optional<int64_t> minimumNumberLayers;
+    std::optional<int64_t> minimumGrade;
+    double minimumBreakdownVoltage = 0;
+
+    public:
+
+    std::optional<int64_t> get_minimum_number_layers() const { return minimumNumberLayers; }
+    void set_minimum_number_layers(const int64_t & value) { this->minimumNumberLayers = value; }
+
+    std::optional<int64_t> get_minimum_grade() const { return minimumGrade; }
+    void set_minimum_grade(const int64_t & value) { this->minimumGrade = value; }
+
+    double get_minimum_breakdown_voltage() const { return minimumBreakdownVoltage; }
+    void set_minimum_breakdown_voltage(const double & value) { this->minimumBreakdownVoltage = value; }
+};
+
 class WireAdviser {
     protected:
         bool _includeFoil;
@@ -13,9 +35,11 @@ class WireAdviser {
         bool _includeLitz;
         bool _includeRound;
         double _maximumEffectiveCurrentDensity;
+        std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
     public:
+
         WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels, bool includeRectangular=true, bool includeFoil=false) {
             _includeFoil = includeFoil;
             _includeRectangular = includeRectangular;
@@ -35,6 +59,9 @@ class WireAdviser {
 
         void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;
+        }
+        void set_wire_solid_insulation_requirements(WireSolidInsulationRequirements wireSolidInsulationRequirements) {
+            _wireSolidInsulationRequirements = wireSolidInsulationRequirements;
         }
         void set_maximum_number_parallels(int maximumNumberParallels) {
             _maximumNumberParallels = maximumNumberParallels;
@@ -86,6 +113,9 @@ class WireAdviser {
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_proximity_factor(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
                                                                                                  double temperature);
+
+        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_solid_insulation_requirements(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+                                                                                                 WireSolidInsulationRequirements wireSolidInsulationRequirements);
 
         std::vector<std::pair<CoilFunctionalDescription, double>> create_dataset(CoilFunctionalDescription coilFunctionalDescription,
                                                                                  std::vector<WireWrapper>* wires,

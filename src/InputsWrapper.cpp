@@ -1092,6 +1092,26 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
     magnetizingInductanceWithTolerance.set_nominal(magnetizingInductance);
     magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
 
+    OpenMagnetics::InsulationRequirements insulationRequirements;
+    auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
+    auto cti = OpenMagnetics::Cti::GROUP_I;
+    OpenMagnetics::DimensionWithTolerance altitude;
+    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+    auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+    auto standards = std::vector<OpenMagnetics::InsulationStandards>{};
+    altitude.set_maximum(2000);
+    mainSupplyVoltage.set_nominal(400);
+    auto insulationType = OpenMagnetics::InsulationType::BASIC;
+
+    insulationRequirements.set_altitude(altitude);
+    insulationRequirements.set_cti(cti);
+    insulationRequirements.set_insulation_type(insulationType);
+    insulationRequirements.set_main_supply_voltage(mainSupplyVoltage);
+    insulationRequirements.set_overvoltage_category(overvoltageCategory);
+    insulationRequirements.set_pollution_degree(pollutionDegree);
+    insulationRequirements.set_standards(standards);
+    designRequirements.set_insulation(insulationRequirements);
+
     designRequirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
     for (auto& turnsRatio : turnsRatios) {
         DimensionWithTolerance turnsRatiosWithTolerance;
@@ -1168,6 +1188,26 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
     magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance * 0.8);
     magnetizingInductanceWithTolerance.set_nominal(magnetizingInductance);
     magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
+    OpenMagnetics::InsulationRequirements insulationRequirements;
+
+    auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
+    auto cti = OpenMagnetics::Cti::GROUP_I;
+    OpenMagnetics::DimensionWithTolerance altitude;
+    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+    auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+    auto standards = std::vector<OpenMagnetics::InsulationStandards>{};
+    altitude.set_maximum(2000);
+    mainSupplyVoltage.set_nominal(400);
+    auto insulationType = OpenMagnetics::InsulationType::BASIC;
+
+    insulationRequirements.set_altitude(altitude);
+    insulationRequirements.set_cti(cti);
+    insulationRequirements.set_insulation_type(insulationType);
+    insulationRequirements.set_main_supply_voltage(mainSupplyVoltage);
+    insulationRequirements.set_overvoltage_category(overvoltageCategory);
+    insulationRequirements.set_pollution_degree(pollutionDegree);
+    insulationRequirements.set_standards(standards);
+    designRequirements.set_insulation(insulationRequirements);
     designRequirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
     for (auto& turnsRatio : turnsRatios) {
         DimensionWithTolerance turnsRatiosWithTolerance;

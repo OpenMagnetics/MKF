@@ -2362,9 +2362,13 @@ bool CoreWrapper::distribute_and_process_gap() {
         }
 
         if (numberGaps == numberColumns) {
-            centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
-            distanceClosestNormalSurface =
-                roundFloat<6>(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
+            if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
+                centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
+            }
+            else {
+                centralColumnGapsHeightOffset = 0;
+            }
+            distanceClosestNormalSurface = roundFloat<6>(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
         }
         else {
             coreChunkSizePlusGap = roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
@@ -2377,7 +2381,7 @@ bool CoreWrapper::distribute_and_process_gap() {
             gap.set_type(nonResidualGaps[i].get_type());
             gap.set_length(nonResidualGaps[i].get_length());
             gap.set_coordinates(std::vector<double>({windingColumn.get_coordinates()[0],
-                                      windingColumn.get_coordinates()[0] + centralColumnGapsHeightOffset,
+                                      windingColumn.get_coordinates()[1] + centralColumnGapsHeightOffset,
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
             if (distanceClosestNormalSurface < 0) {
@@ -2472,16 +2476,6 @@ bool CoreWrapper::process_gap() {
     if (family != CoreShapeFamily::T) {
         if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_missaligned()) {
             return distribute_and_process_gap();
-        }
-
-        std::vector<int> numberGapsPerColumn;
-        for (size_t i = 0; i < columns.size(); ++i) {
-            numberGapsPerColumn.push_back(0);
-        }
-
-        for (size_t i = 0; i < gapping.size(); ++i) {
-            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
-            numberGapsPerColumn[columnIndex]++;
         }
 
         for (size_t i = 0; i < gapping.size(); ++i) {

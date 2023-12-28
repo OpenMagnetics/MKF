@@ -231,40 +231,4 @@ SUITE(WireAdviser) {
             CHECK(OpenMagnetics::WireType::RECTANGULAR == OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_type());
         }
     }
-
-
-
-    // TEST(Test_WireAdviser_Sweep) {
-    //     numberTurns = 10;
-    //     currentRms = 20;
-    //     currentEffectiveFrequency = 1613456;
-    //     for (int i = 10000; i < 2000000; i+=10000)
-    //     {
-    //         currentEffectiveFrequency = i;
-    //         /* code */
-    //         setup();
-    //         OpenMagnetics::WireAdviser wireAdviser;
-    //         wireAdviser.set_maximum_number_parallels(10);
-    //         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription,
-    //                                                                  section,
-    //                                                                  current,
-    //                                                                  temperature,
-    //                                                                  numberSections,
-    //                                                                  maximumNumberResults);
-    //         CHECK(masMagneticsWithCoil.size() > 0);
-    //         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
-    //         std::cout << currentEffectiveFrequency << std::endl;      
-    //         std::cout << magic_enum::enum_name(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_type()) << std::endl;      
-    //         std::cout << OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_number_conductors().value() << std::endl;      
-    //         std::cout << OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_minimum_conducting_dimension() << std::endl;      
-    //         std::cout << OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).calculate_effective_conducting_area(currentEffectiveFrequency, temperature) << std::endl;      
-    //         std::cout << masMagneticWithCoil.get_number_parallels() << std::endl;      
-    //         // std::cout << masMagneticsWithCoil[0].second << std::endl;      
-
-    //         // calcualtar reduccion de rea proporcioal por efecto skin para rectnagulares porque ahora mismo sale negativa a 2MHz
-
-    //     }
-    // }
-
-
 }

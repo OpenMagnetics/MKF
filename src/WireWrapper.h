@@ -122,9 +122,10 @@ class WireWrapper : public Wire {
 
         static std::optional<InsulationWireCoating> resolve_coating(const WireWrapper& wire);
         std::optional<InsulationWireCoating> resolve_coating();
-        static WireWrapper resolve_strand(const WireWrapper& wire);
-        WireWrapper resolve_strand();
+        static WireRound resolve_strand(const WireWrapper& wire);
+        WireRound resolve_strand();
         static WireMaterial resolve_material(WireWrapper wire);
+        static WireMaterial resolve_material(WireRound wire);
         WireMaterial resolve_material();
 
         // Thought for enamelled round wires

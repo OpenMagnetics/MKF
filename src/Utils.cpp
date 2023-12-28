@@ -286,7 +286,7 @@ OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
     }
 }
 
-OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string name) {
+OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name) {
     if (insulationMaterialDatabase.empty()) {
         load_databases();
     }
@@ -398,30 +398,22 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
     return false;
 }
 
-// double modified_bessel_first_kind(double order, std::complex<double> x) {
-//     std::complex<double> integral = 0;
-//     std::cout << order << std::endl;
-//     std::cout << x << std::endl;
-//     double dtetha = 0.000001;
-//     for (double tetha = 0; tetha < std::numbers::pi; tetha+=dtetha)
-//     {
-//         integral += exp(x * cos(tetha)) * cos(order * tetha) * dtetha;
-//     }
-
-//     auto bessel = integral / std::numbers::pi;
-//     return bessel.real();
-// }
-
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> z) {
     std::complex<double> sum = 0;
+    std::complex<double> inc = 0;
+    std::complex<double> aux = 0.25 * pow(z, 2);
     size_t limitK = 1000;
     for (size_t k = 0; k < limitK; ++k)
     {
-        double divider = tgammal(k + 1) * tgammal(order + k + 1);
+        double divider = tgammaf(k + 1) * tgammaf(order + k + 1);
         if (std::isinf(divider)) {
             break;
         }
-        sum += pow(0.25 * pow(z, 2), k) / divider;
+        inc = pow(aux, k) / divider;
+        sum += inc;
+        if (std::abs(inc) < std::abs(sum) * 0.0001){
+            break;
+        }
         // if (std::isnan(sum.real())) {
         //     break;
         // }
@@ -433,14 +425,20 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
 
 std::complex<double> bessel_first_kind(double order, std::complex<double> z) {
     std::complex<double> sum = 0;
+    std::complex<double> inc = 0;
+    std::complex<double> aux = 0.25 * pow(z, 2);
     size_t limitK = 1000;
     for (size_t k = 0; k < limitK; ++k)
     {
-        double divider = tgammal(k + 1) * tgammal(order + k + 1);
+        double divider = tgammaf(k + 1) * tgammaf(order + k + 1);
         if (std::isinf(divider)) {
             break;
         }
-        sum += pow(-1, k) * pow(0.25 * pow(z, 2), k) / divider;
+        inc = pow(-1, k) * pow(aux, k) / divider;
+        sum += inc;
+        if (std::abs(inc) < std::abs(sum) * 0.0001){
+            break;
+        }
         // if (std::isnan(sum.real())) {
         //     break;
         // }
@@ -548,8 +546,8 @@ std::string to_title_case(std::string text) {
     
     std::string titleText = "";
 
-    int pos = 0;
-    int pre_pos = 0;
+    size_t pos = 0;
+    size_t pre_pos = 0;
 
     pos = text.find(' ', pre_pos);
 

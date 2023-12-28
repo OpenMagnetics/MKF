@@ -65,8 +65,8 @@ class CoilMesherCenterModel : public CoilMesherModel {
 // // https://sci-hub.wf/10.1109/ECCE.2018.8558397
 class CoilMesherWangModel : public CoilMesherModel {
   public:
-    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt);
-    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]]CoreWrapper core);
+    std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, [[maybe_unused]]WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt);
+    std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, [[maybe_unused]]WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]]CoreWrapper core);
 };
 
 
