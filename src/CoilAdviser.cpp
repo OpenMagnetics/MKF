@@ -3,6 +3,7 @@
 #include "CoilAdviser.h"
 #include "Defaults.h"
 #include "Models.h"
+#include "Insulation.h"
 #include "Painter.h"
 
 
@@ -32,6 +33,64 @@ namespace OpenMagnetics {
         return proportions;
     }
 
+    std::vector<IsolationSide> get_isolation_sides(InputsWrapper& inputs) {
+        if (!inputs.get_design_requirements().get_isolation_sides()) {
+            std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+            for (size_t windingIndex = 1; windingIndex < inputs.get_mutable_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
+                // isolationSides.push_back(IsolationSide::SECONDARY);
+                isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+            }
+            inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        }
+
+        std::vector<IsolationSide> isolationSidesUsed;
+        std::vector<IsolationSide> isolationSidesFromRequirements = inputs.get_design_requirements().get_isolation_sides().value();
+        for (auto isolationSide : isolationSidesFromRequirements) {
+            if (std::find(isolationSidesUsed.begin(), isolationSidesUsed.end(), isolationSide) == isolationSidesUsed.end()) {
+                isolationSidesUsed.push_back(isolationSide);
+            }
+        }
+
+        return isolationSidesUsed;
+    }
+
+    std::vector<std::vector<size_t>> get_patterns(InputsWrapper& inputs) {
+        auto isolationSidesRequired = get_isolation_sides(inputs);
+
+        if (!inputs.get_design_requirements().get_isolation_sides()) {
+            throw std::runtime_error("Missing isolation sides requirement");
+        }
+
+        auto isolationSidesRequirement = inputs.get_design_requirements().get_isolation_sides().value();
+
+        std::vector<std::vector<size_t>> sectionPatterns;
+        for(unsigned i = 0; i < tgamma(isolationSidesRequired.size() + 1) / 2; ++i) {
+            std::vector<size_t> sectionPattern;
+            for (auto isolationSide : isolationSidesRequired) {
+                for (size_t windingIndex = 0; windingIndex < inputs.get_mutable_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
+                    if (isolationSidesRequirement[windingIndex] == isolationSide) {
+                        sectionPattern.push_back(windingIndex);
+                    }
+                }
+            }
+            sectionPatterns.push_back(sectionPattern);
+
+            std::next_permutation(isolationSidesRequired.begin(), isolationSidesRequired.end());
+        }
+
+        return sectionPatterns;
+    }
+
+
+    std::vector<size_t> get_repetitions(InputsWrapper& inputs) {
+        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+            return {1};  // hardcoded
+        }
+        return {1, 2};  // hardcoded
+        
+    }
+
+
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil(MasWrapper mas, size_t maximumNumberResults){
         std::string file_path = __FILE__;
         auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
@@ -49,15 +108,138 @@ namespace OpenMagnetics {
             }
         }
         return get_advised_coil(&wires, mas, maximumNumberResults);
-
     }
 
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil(std::vector<WireWrapper>* wires, MasWrapper mas, size_t maximumNumberResults){
+        auto inputs = mas.get_mutable_inputs();
+        auto patterns = get_patterns(inputs);
+        auto repetitions = get_repetitions(inputs);
+        mas.set_inputs(inputs);
+
+        size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
+
+        auto combinationsWithstandVoltageForWires = get_solid_insulation_requirements_for_wires(mas.get_inputs());
+        std::vector<std::pair<MasWrapper, double>> masMagneticsWithCoil;
+        for (auto repetition : repetitions) {
+            for (auto pattern : patterns) {
+                for (auto& withstandVoltageForWires : combinationsWithstandVoltageForWires) {
+                    auto resultsPerPattern = get_advised_coil_for_pattern(wires, mas, pattern, repetition, withstandVoltageForWires, maximumNumberResultsPerPattern);
+                    std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masMagneticsWithCoil));
+                }
+            }
+        }
+
+        return masMagneticsWithCoil;
+    }
+
+    WireSolidInsulationRequirements get_requirements_for_functional() {
+        WireSolidInsulationRequirements wireSolidInsulationRequirements;
+        wireSolidInsulationRequirements.set_minimum_grade(1);
+        wireSolidInsulationRequirements.set_minimum_number_layers(1);
+        wireSolidInsulationRequirements.set_minimum_breakdown_voltage(0);
+        return wireSolidInsulationRequirements;
+    }
+
+    WireSolidInsulationRequirements get_requirements_for_basic(double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+        WireSolidInsulationRequirements wireSolidInsulationRequirements;
+        if (canFullyInsulatedWireBeUsed) {
+            wireSolidInsulationRequirements.set_minimum_grade(3);
+        }
+        wireSolidInsulationRequirements.set_minimum_number_layers(1);
+        wireSolidInsulationRequirements.set_minimum_breakdown_voltage(withstandVoltage);
+        return wireSolidInsulationRequirements;
+    }
+
+    WireSolidInsulationRequirements get_requirements_for_reinforced(double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+        WireSolidInsulationRequirements wireSolidInsulationRequirements;
+        if (canFullyInsulatedWireBeUsed) {
+            wireSolidInsulationRequirements.set_minimum_grade(3);
+        }
+        wireSolidInsulationRequirements.set_minimum_number_layers(3);
+        wireSolidInsulationRequirements.set_minimum_breakdown_voltage(withstandVoltage);
+        return wireSolidInsulationRequirements;
+    }
+
+    std::vector<std::vector<WireSolidInsulationRequirements>> CoilAdviser::get_solid_insulation_requirements_for_wires(InputsWrapper inputs) {
+        auto isolationSidesRequired = get_isolation_sides(inputs);
+        auto withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+        size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
+        auto insulationType = inputs.get_insulation_type();
+        bool canFullyInsulatedWireBeUsed = InsulationCoordinator::can_fully_insulated_wire_be_used(inputs);
+        std::vector<std::vector<WireSolidInsulationRequirements>> combinationsWithstandVoltageForWires;
+        auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
+
+        // We always add the option of the wires not complying with anything
+        {
+            std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+            for(unsigned windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                solidInsulationForWires.push_back(get_requirements_for_functional());
+            }
+            combinationsWithstandVoltageForWires.push_back(solidInsulationForWires);
+        }
+        if (insulationType != InsulationType::FUNCTIONAL) {
+
+            if ((insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE)) {
+                // Reinforced or single winding inductors must have all the isolation needed in one later or coating
+                for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
+                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                    for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                        if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
+                            solidInsulationForWires.push_back(get_requirements_for_functional());
+                        }
+                        else {
+                            solidInsulationForWires.push_back(get_requirements_for_reinforced(withstandVoltage, canFullyInsulatedWireBeUsed));
+                        }
+                    }
+                    combinationsWithstandVoltageForWires.push_back(solidInsulationForWires);
+                }
+            }
+
+            if (insulationType != InsulationType::REINFORCED) {
+                // If insulation is Double, we need to get the withstand voltage for basic, not double
+                if (insulationType == InsulationType::DOUBLE) {
+                    auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
+                    insulation.set_insulation_type(InsulationType::BASIC);
+                    inputs.get_mutable_design_requirements().set_insulation(insulation);
+                    withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+                }
+
+                if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {
+                    // Additionally, Double can be composed of several steps or parts, as long as each reachs Basic and Supplementary insulation.
+
+                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                    for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                        solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                    }
+                    combinationsWithstandVoltageForWires.push_back(solidInsulationForWires);
+                }
+
+                if (isolationSidesRequired.size() > 1) {
+                    for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
+                        std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                        for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                            if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
+                                solidInsulationForWires.push_back(get_requirements_for_functional());
+                            }
+                            else {
+                                solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                            }
+                        }
+                        combinationsWithstandVoltageForWires.push_back(solidInsulationForWires);
+                    }
+                }
+            }
+        }
+
+        return combinationsWithstandVoltageForWires;
+    }
+
+    std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil_for_pattern(std::vector<WireWrapper>* wires, MasWrapper mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> withstandVoltageForWires, size_t maximumNumberResults){
         auto defaults = Defaults();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_inputs());
         size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
-        mas.get_mutable_magnetic().get_mutable_coil().set_interleaving_level(_interleavingLevel);
-        mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions);
+
+        mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions, pattern, repetitions);
         mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
         OpenMagnetics::WireAdviser wireAdviser;
         std::vector<std::vector<std::pair<CoilFunctionalDescription, double>>> wireCoilPerWinding;
@@ -74,6 +256,7 @@ namespace OpenMagnetics {
 
         int timeout = 1 - numberWindings;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            wireAdviser.set_wire_solid_insulation_requirements(withstandVoltageForWires[windingIndex]);
 
             SignalDescriptor maximumCurrent;
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
@@ -105,22 +288,11 @@ namespace OpenMagnetics {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
             };
 
-            // std::cout << "windingIndex: "<< windingIndex << std::endl;
-            // std::cout << "Mierdon 1" << std::endl;
             for (auto& wireConfiguration : wireConfigurations) {
                 wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
-                // std::cout << "maximumEffectiveCurrentDensity: "<< wireConfiguration["maximumEffectiveCurrentDensity"] << std::endl;
-                // std::cout << "maximumNumberParallels: "<< wireConfiguration["maximumNumberParallels"] << std::endl;
-                // json mierda;
-                // to_json(mierda, mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex]);
-                // std::cout << "get_functional_description" << std::endl;
-                // std::cout << mierda << std::endl;
-                // to_json(mierda, mas.get_mutable_magnetic().get_coil().get_sections_description().value()[windingIndex]);
-                // std::cout << "get_sections_description" << std::endl;
-                // std::cout << mierda << std::endl;
 
-                auto coilsWithScoring = wireAdviser.get_advised_wire(wires,
+                auto wiresWithScoring = wireAdviser.get_advised_wire(wires,
                                                                      mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
                                                                      mas.get_mutable_magnetic().get_coil().get_sections_description().value()[windingIndex],
                                                                      maximumCurrent,
@@ -128,15 +300,9 @@ namespace OpenMagnetics {
                                                                      mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),
                                                                      1000);
 
-            // std::cout << "Mierdon 2" << std::endl;
-            // std::cout << "coilsWithScoring.size(): " << coilsWithScoring.size() << std::endl;
-            // std::cout << "wireAdviser.get_maximum_area_proportion(): " << wireAdviser.get_maximum_area_proportion() << std::endl;
-            // std::cout << "sectionProportions[windingIndex]: " << sectionProportions[windingIndex] << std::endl;
-                if (coilsWithScoring.size() != 0) {
-            // std::cout << "Mierdon 3" << std::endl;
-            // std::cout << "maximumNumberParallels: "<< coilsWithScoring[0][0] << std::endl;
-                    timeout += coilsWithScoring.size();
-                    wireCoilPerWinding.push_back(coilsWithScoring);
+                if (wiresWithScoring.size() != 0) {
+                    timeout += wiresWithScoring.size();
+                    wireCoilPerWinding.push_back(wiresWithScoring);
                     break;
                 }
             }
@@ -163,7 +329,7 @@ namespace OpenMagnetics {
             }
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
-            bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind();
+            bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
@@ -174,7 +340,6 @@ namespace OpenMagnetics {
             }
             timeout--;
             if (timeout == 0) {
-                // std::cout << "timeout!!!!!!" << std::endl;
                 break;
             }
             auto lowestIndex = std::distance(std::begin(currentWireIndexPerWinding), std::min_element(std::begin(currentWireIndexPerWinding), std::end(currentWireIndexPerWinding)));

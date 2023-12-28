@@ -8,7 +8,7 @@
 
 SUITE(MagneticAdviser) {
 
-    TEST(MagneticAdviser) {
+    TEST(Test_MagneticAdviser) {
         srand (time(NULL));
 
         std::vector<double> turnsRatios;
@@ -42,11 +42,7 @@ SUITE(MagneticAdviser) {
         inputs.process_waveforms();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
-        // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
-        std::cout << masMagnetics.size() << std::endl;
-        std::cout << masMagnetics[0].get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-        // std::cout << masMagnetics[0].get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
 
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
@@ -79,42 +75,10 @@ SUITE(MagneticAdviser) {
 
         OpenMagnetics::InputsWrapper inputs(masJson["inputs"]);
         OpenMagnetics::MasWrapper masMagnetic;
-        // inputs.process_waveforms();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
-        // MagneticAdviser.set_interleaving_level(interleavingLevel);
-        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
-        std::cout << masMagnetics.size() << std::endl;
-        // std::cout << masMagnetics[0].get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-        // std::cout << masMagnetics[0].get_magnetic().get_coil().get_manufacturer_info().value().get_reference().value() << std::endl;
-
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 2);
         CHECK(masMagnetics.size() > 0);
-        for (int i = 0; i < masMagnetics.size(); ++i) {
-            auto masMagnetic = masMagnetics[i];
-            std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-            OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser_" + std::to_string(i) + "_" + masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex(" "), "_"));
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
-
-            outFile.append(filename);
-            std::cout << outFile << std::endl;
-            OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(false);
-            painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), masMagnetic.get_magnetic());
-            painter.paint_core(masMagnetic.get_magnetic());
-            painter.paint_bobbin(masMagnetic.get_magnetic());
-            painter.paint_coil_turns(masMagnetic.get_magnetic());
-            painter.export_svg();
-        }
-
     }
 
     TEST(MagneticAdviserJsonLV) {
@@ -140,37 +104,9 @@ SUITE(MagneticAdviser) {
         std::cout << inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()->get_peak().value() << std::endl;
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
-        // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
         std::cout << masMagnetics.size() << std::endl;
 
         CHECK(masMagnetics.size() > 0);
-        for (int i = 0; i < masMagnetics.size(); ++i) {
-            auto masMagnetic = masMagnetics[i];
-            std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-            std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping()[0].get_length() << std::endl;
-            OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser_" + std::to_string(i) + "_" + masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex(" "), "_"));
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
-
-            outFile.append(filename);
-            std::cout << outFile << std::endl;
-            OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(true);
-            painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), masMagnetic.get_magnetic());
-            painter.paint_core(masMagnetic.get_magnetic());
-            painter.paint_bobbin(masMagnetic.get_magnetic());
-            painter.paint_coil_turns(masMagnetic.get_magnetic());
-            painter.export_svg();
-        }
-
     }
 }

@@ -123,7 +123,6 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        std::cout << "Test_Painter_Contour_Many_Turns_No_Fringing" << std::endl;
         OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
         painter.set_logarithmic_scale(false);
         painter.set_fringing_effect(false);
@@ -2444,11 +2443,11 @@ SUITE(CoilPainter) {
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
-        auto bobbin = coil.resolve_bobbin();
-        auto processedDescription = bobbin.get_processed_description().value();
-        processedDescription.get_mutable_winding_windows()[0].set_height(processedDescription.get_mutable_winding_windows()[0].get_height().value() / 2);
-        bobbin.set_processed_description(processedDescription);
-        coil.set_bobbin(bobbin);
+        // auto bobbin = coil.resolve_bobbin();
+        // auto processedDescription = bobbin.get_processed_description().value();
+        // processedDescription.get_mutable_winding_windows()[0].set_height(processedDescription.get_mutable_winding_windows()[0].get_height().value() / 2);
+        // bobbin.set_processed_description(processedDescription);
+        // coil.set_bobbin(bobbin);
 
 
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);

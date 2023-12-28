@@ -17,7 +17,6 @@ SUITE(Utils) {
     TEST(LoadDatabaseJson) {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/")).append("/masData.json");
-        std::cout << masPath << std::endl;
 
         std::ifstream ifs(masPath);
         json masData = json::parse(ifs);
@@ -71,6 +70,7 @@ SUITE(Utils) {
     TEST(Test_Complete_Ellipitical_1_2) {
         double calculatedValue = OpenMagnetics::comp_ellint_1(std::sin(std::numbers::pi / 18 / 2));
         double expectedValue = std::comp_ellint_1(std::sin(std::numbers::pi / 18 / 2));
+        CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
     }
 
     TEST(Test_Complete_Ellipitical_2_0) {

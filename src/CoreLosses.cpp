@@ -900,7 +900,7 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
 
 double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,
                                                                     SignalDescriptor magneticFluxDensity,
-                                                                    double temperature,
+                                                                    [[maybe_unused]]double temperature,
                                                                     double coreLosses) {
 
     double frequency = -1;

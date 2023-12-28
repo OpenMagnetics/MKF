@@ -1,6 +1,8 @@
 #pragma once
 #include <MAS.hpp>
 #include "InputsWrapper.h"
+#include "WireWrapper.h"
+#include "InsulationMaterialWrapper.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -8,6 +10,33 @@
 
 namespace OpenMagnetics {
 
+
+class CoilSectionInterface {
+    public:
+    enum class LayerPurpose : int { MECHANICAL, INSULATING };
+    CoilSectionInterface() = default;
+    virtual ~CoilSectionInterface() = default;
+
+    private:
+    double totalMarginTapeDistance;
+    double solidInsulationThickness;
+    size_t numberLayersInsulation;
+    LayerPurpose layerPurpose;
+
+    public:
+
+    double get_total_margin_tape_distance() const { return totalMarginTapeDistance; }
+    void set_total_margin_tape_distance(const double & value) { this->totalMarginTapeDistance = value; }
+
+    double get_solid_insulation_thickness() const { return solidInsulationThickness; }
+    void set_solid_insulation_thickness(const double & value) { this->solidInsulationThickness = value; }
+
+    size_t get_number_layers_insulation() const { return numberLayersInsulation; }
+    void set_number_layers_insulation(const size_t & value) { this->numberLayersInsulation = value; }
+
+    LayerPurpose get_layer_purpose() const { return layerPurpose; }
+    void set_layer_purpose(LayerPurpose value) { this->layerPurpose = value; }
+};
 
 class InsulationStandard {
   private:
@@ -32,13 +61,13 @@ class InsulationIEC60664Model : public InsulationStandard {
     double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
-    double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
+    double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType);
     double get_rated_insulation_voltage(double mainSupplyVoltage);
     double get_creepage_distance(PollutionDegree pollutionDegree, Cti cti, double voltageRms, WiringTechnology wiringType = WiringTechnology::WOUND);
     double get_creepage_distance_over_30kHz(double voltageRms, double frequency);
     std::optional<double> get_creepage_distance_planar(PollutionDegree pollutionDegree, Cti cti, double voltageRms);
 
-    double get_clearance_table_f2(PollutionDegree pollutionDegree, InsulationType insulationType, double ratedImpulseWithstandVoltage);
+    double get_clearance_table_f2(PollutionDegree pollutionDegree, double ratedImpulseWithstandVoltage);
     double get_clearance_table_f8(double ratedImpulseWithstandVoltage);
     std::optional<double> get_clearance_planar(double altitude, double ratedImpulseWithstandVoltage);
     double get_clearance_altitude_factor_correction(double frequency);
@@ -125,7 +154,9 @@ class InsulationIEC62368Model : public InsulationStandard {
     double calculate_withstand_voltage(InputsWrapper inputs);
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper inputs);
 
+    double get_es2_voltage_limit(double frequency);
     double get_working_voltage(InputsWrapper inputs);
     double get_working_voltage_rms(InputsWrapper inputs);
     double get_required_withstand_voltage(InputsWrapper inputs);
@@ -219,7 +250,6 @@ class InsulationIEC62368Model : public InsulationStandard {
         tableG13 = data["IEC_62368-1"]["Table G.13"];
     }
 };
-
 
 class InsulationIEC61558Model : public InsulationStandard {
   private:
@@ -371,8 +401,6 @@ class InsulationIEC61558Model : public InsulationStandard {
     }
 };
 
-
-
 class InsulationIEC60335Model : public InsulationStandard {
   private:
     json _data;
@@ -425,7 +453,6 @@ class InsulationIEC60335Model : public InsulationStandard {
     }
 };
 
-
 class InsulationCoordinator {
   private:
   protected:
@@ -439,6 +466,9 @@ class InsulationCoordinator {
     double calculate_clearance(InputsWrapper inputs);
     double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
     double calculate_distance_through_insulation(InputsWrapper inputs);
+    InsulationCoordinationOutput calculate_insulation_coordination(InputsWrapper inputs);
+    CoilSectionInterface calculate_coil_section_interface_layers(InputsWrapper inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial);
+    static bool can_fully_insulated_wire_be_used(InputsWrapper inputs);
 
     InsulationCoordinator() {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());
@@ -454,7 +484,6 @@ class InsulationCoordinator {
     }
 
     virtual ~InsulationCoordinator() = default;
-
 };
 
 } // namespace OpenMagnetics

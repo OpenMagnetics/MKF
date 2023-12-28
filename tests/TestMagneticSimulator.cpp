@@ -46,49 +46,6 @@ SUITE(MagneticSimulator) {
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        for (size_t i = 0; i < masMagnetics.size(); ++i){
-            auto masMagnetic = masMagnetics[i];
-            std::cout << masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[0].get_number_parallels() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[1].get_number_turns() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[1].get_number_parallels() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[2].get_number_turns() << std::endl;
-            std::cout << masMagnetic.get_magnetic().get_coil().get_functional_description()[2].get_number_parallels() << std::endl;
-            std::cout << OpenMagnetics::CoilWrapper::resolve_wire(masMagnetic.get_magnetic().get_coil().get_functional_description()[0]).get_name().value() << std::endl;
-
-            OpenMagnetics::MagneticSimulator magneticSimulator;
-            // MagneticSimulator.set_interleaving_level(interleavingLevel);
-            auto simulatedMas = magneticSimulator.simulate(masMagnetic);
-
-            std::cout << "simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value() << std::endl;
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            auto outFile = outputFilePath;
-            std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + masMagnetic.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex(" "), "_"));
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
-
-            outFile.append(filename);
-            std::cout << outFile << std::endl;
-            OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(false);
-            painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), masMagnetic.get_magnetic());
-            painter.paint_core(masMagnetic.get_magnetic());
-            painter.paint_bobbin(masMagnetic.get_magnetic());
-            painter.paint_coil_turns(masMagnetic.get_magnetic());
-            painter.export_svg();
-        }
-
     }
 
     TEST(MagneticSimulatorJsonHV) {
@@ -112,12 +69,6 @@ SUITE(MagneticSimulator) {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i];
-            std::cout << "simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value() << std::endl;
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
             auto outFile = outputFilePath;
@@ -126,7 +77,6 @@ SUITE(MagneticSimulator) {
             filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
 
             outFile.append(filename);
-            std::cout << outFile << std::endl;
             OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
 
             painter.set_number_points_x(20);
@@ -164,12 +114,6 @@ SUITE(MagneticSimulator) {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i];
-            std::cout << "simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_core_losses().value().get_core_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_winding_losses().value().get_winding_losses() << std::endl;
-            std::cout << "simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value()" << std::endl;
-            std::cout << simulatedMas.get_outputs()[0].get_magnetizing_inductance().value().get_magnetizing_inductance().get_nominal().value() << std::endl;
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
             auto outFile = outputFilePath;
@@ -178,7 +122,6 @@ SUITE(MagneticSimulator) {
             filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
 
             outFile.append(filename);
-            std::cout << outFile << std::endl;
             OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
 
             painter.set_number_points_x(20);

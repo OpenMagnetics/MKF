@@ -29,7 +29,7 @@ class Painter{
 
         std::string _colorFerrite = "0x8F7b7c7d";
         std::string _colorBobbin = "0x8F1b1b1b";
-        std::string _colorCopper = "0x8Fb87333";
+        std::string _colorCopper = "0x00b87333";
         std::string _colorInsulation = "0x18E37E00";
  
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;

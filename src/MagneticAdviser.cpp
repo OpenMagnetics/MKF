@@ -49,29 +49,17 @@ namespace OpenMagnetics {
         coreAdviser.set_unique_core_shapes(true);
         CoilAdviser coilAdviser;
         MagneticSimulator magneticSimulator;
+        size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
-        std::vector<int> interleavingCombinations = {1, 2};
-        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
-            interleavingCombinations = {1};
-        }
-
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, maximumNumberResults * 2);
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, std::max(1.0, floor(float(maximumNumberResults) / numberWindings)));
         for (auto& masMagneticWithCore : masMagneticsWithCore) {
-            std::cout << masMagneticWithCore.first.get_mutable_magnetic().get_mutable_core().get_shape_name() << std::endl;
-            for (auto interleavingCombination : interleavingCombinations) {
-                coilAdviser.set_interleaving_level(interleavingCombination);
-                auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, int(maximumNumberResults / 2));
-        std::cout << "masMagneticsWithCoreAndCoil.size()" << std::endl;
-        std::cout << masMagneticsWithCoreAndCoil.size() << std::endl;
-                for (auto masMagnetic : masMagneticsWithCoreAndCoil) {
 
-                    masMagnetic.first = magneticSimulator.simulate(masMagnetic.first);
+            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, std::max(2.0, ceil(float(maximumNumberResults) / masMagneticsWithCore.size())));
+            for (auto masMagnetic : masMagneticsWithCoreAndCoil) {
 
-                    masData.push_back(masMagnetic.first);
-                    if (masData.size() == maximumNumberResults) {
-                        break;
-                    }
-                }
+                masMagnetic.first = magneticSimulator.simulate(masMagnetic.first);
+
+                masData.push_back(masMagnetic.first);
                 if (masData.size() == maximumNumberResults) {
                     break;
                 }
@@ -80,23 +68,16 @@ namespace OpenMagnetics {
                 break;
             }
         }
-        std::cout << "masData.size()" << std::endl;
-        std::cout << masData.size() << std::endl;
 
         sort(masData.begin(), masData.end(), [](MasWrapper& b1, MasWrapper& b2) {
             return b1.get_outputs()[0].get_core_losses().value().get_core_losses() + b1.get_outputs()[0].get_winding_losses().value().get_winding_losses() <
              b2.get_outputs()[0].get_core_losses().value().get_core_losses() + b2.get_outputs()[0].get_winding_losses().value().get_winding_losses();
         });
 
-        for (auto masMagnetic : masData) {
 
-            std::cout << "losses" << std::endl;
-            std::cout << (masMagnetic.get_outputs()[0].get_core_losses().value().get_core_losses() + masMagnetic.get_outputs()[0].get_winding_losses().value().get_winding_losses()) << std::endl;
-        }
-
-        if (masData.size() > maximumNumberResults) {
-            masData = std::vector<MasWrapper>(masData.begin(), masData.end() - (masData.size() - maximumNumberResults));
-        }
+        // if (masData.size() > maximumNumberResults) {
+        //     masData = std::vector<MasWrapper>(masData.begin(), masData.end() - (masData.size() - maximumNumberResults));
+        // }
 
         return masData;
 
@@ -143,7 +124,6 @@ void preview_magnetic(MasWrapper mas) {
             text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
         }
     }
-    std::cout << text << std::endl;
 }
 
 } // namespace OpenMagnetics
@@ -198,11 +178,6 @@ int main(int argc, char* argv[]) {
 
         auto outputFolder = inputFilepath.parent_path();
 
-        std::cout << "numberMagnetics: " << numberMagnetics << std::endl; 
-        std::cout << "inputFilepath: " << inputFilepath << std::endl;
-        std::cout << "outputFilepath: " << outputFilepath << std::endl; 
-        std::cout << "filename(): " << inputFilepath.filename() << std::endl; 
-        // std::cout << "str: " << str << std::endl; 
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, numberMagnetics);
@@ -211,9 +186,7 @@ int main(int argc, char* argv[]) {
 
             std::filesystem::path outputFilename = outputFilepath;
             outputFilename += inputFilepath.filename();
-            std::cout << "outputFilename: " << outputFilename << std::endl; 
             outputFilename += "_design_" + std::to_string(i) + ".json";
-            std::cout << "outputFilename: " << outputFilename << std::endl; 
             std::ofstream outputFile(outputFilename);
             
             json output;

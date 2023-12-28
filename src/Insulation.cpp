@@ -29,6 +29,310 @@ double linear_table_interpolation(std::vector<std::pair<double, double>> table, 
     return DBL_MAX;
 }
 
+InsulationCoordinationOutput InsulationCoordinator::calculate_insulation_coordination(InputsWrapper inputs) {
+    InsulationCoordinationOutput insulationCoordinationOutput;
+    insulationCoordinationOutput.set_clearance(calculate_clearance(inputs));
+    insulationCoordinationOutput.set_creepage_distance(calculate_creepage_distance(inputs, true));
+    insulationCoordinationOutput.set_withstand_voltage(calculate_withstand_voltage(inputs));
+    insulationCoordinationOutput.set_distance_through_insulation(calculate_distance_through_insulation(inputs));
+
+    return insulationCoordinationOutput;
+}
+
+
+bool InsulationCoordinator::can_fully_insulated_wire_be_used(InputsWrapper inputs) {
+    auto standards = inputs.get_standards();
+    for (auto standard : standards) {
+        if (standard == InsulationStandards::IEC_603351 || standard == InsulationStandards::IEC_606641) {
+            return false;
+        }
+    }
+    return true;
+}
+
+size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWrapper rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+    size_t times = 0;
+    {
+        auto coating = leftWire.resolve_coating().value();
+
+        if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
+            auto strand = leftWire.resolve_strand();
+            coating = WireWrapper::resolve_coating(strand).value();
+        }
+
+        if (!coating.get_breakdown_voltage()) {
+            throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
+        }
+        if (coating.get_breakdown_voltage().value() > withstandVoltage) {
+            if (coating.get_number_layers()) {
+                times += coating.get_number_layers().value();
+            }
+            else if (coating.get_grade() && canFullyInsulatedWireBeUsed) {
+                if (coating.get_grade().value() > 3) 
+                times += 3;
+            }
+            else {
+                times++;
+            }
+        }
+        std::cout << "leftWire: " << leftWire.get_name().value() << std::endl;
+        std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+        std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
+        std::cout << "times: " << times << std::endl;
+    }
+    {
+        auto coating = rightWire.resolve_coating().value();
+
+        if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
+            auto strand = rightWire.resolve_strand();
+            coating = WireWrapper::resolve_coating(strand).value();
+        }
+
+        if (!coating.get_breakdown_voltage()) {
+            throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
+        }
+
+        if (coating.get_breakdown_voltage().value() > withstandVoltage) {
+            if (coating.get_number_layers()) {
+                times += coating.get_number_layers().value();
+            }
+            else if (coating.get_grade() && canFullyInsulatedWireBeUsed) {
+                if (coating.get_grade().value() > 3) 
+                times += 3;
+            }
+            else {
+                times++;
+            }
+        }
+        std::cout << "rightWire: " << rightWire.get_name().value() << std::endl;
+        std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+        std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
+        std::cout << "times: " << times << std::endl;
+    }
+
+    return times;
+}
+
+double insulation_distance_provided_by_wires(WireWrapper leftWire, WireWrapper rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+    double distance = 0;
+    {
+        auto coating = leftWire.resolve_coating().value();
+
+        if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
+            auto strand = leftWire.resolve_strand();
+            coating = WireWrapper::resolve_coating(strand).value();
+        }
+
+        if (!coating.get_breakdown_voltage()) {
+            throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
+        }
+
+        if (coating.get_breakdown_voltage().value() > withstandVoltage) {
+            if (coating.get_number_layers() || (coating.get_grade() && canFullyInsulatedWireBeUsed)) {
+                if (coating.get_thickness()) {
+                    distance += resolve_dimensional_values(coating.get_thickness().value());
+                }
+                else {
+                    distance += std::min(leftWire.get_maximum_outer_width() - leftWire.get_maximum_conducting_width(), leftWire.get_maximum_outer_height() - leftWire.get_maximum_conducting_height()) / 2;
+                }
+            }
+        }
+    }
+    {
+        auto coating = rightWire.resolve_coating().value();
+
+        if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
+            auto strand = rightWire.resolve_strand();
+            coating = WireWrapper::resolve_coating(strand).value();
+        }
+
+        if (!coating.get_breakdown_voltage()) {
+            throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
+        }
+
+        if (coating.get_breakdown_voltage().value() > withstandVoltage) {
+            if (coating.get_number_layers() || (coating.get_grade() && canFullyInsulatedWireBeUsed)) {
+                if (coating.get_thickness()) {
+                    distance += resolve_dimensional_values(coating.get_thickness().value());
+                }
+                else {
+                    distance += std::min(rightWire.get_maximum_outer_width() - rightWire.get_maximum_conducting_width(), rightWire.get_maximum_outer_height() - rightWire.get_maximum_conducting_height()) / 2;
+                }
+            }
+        }
+    }
+
+    return distance;
+}
+
+CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_layers(InputsWrapper inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial) {
+    CoilSectionInterface coilSectionInterface;
+    size_t numberInsulationLayers = 0;
+    double tapeThickness = 0;
+    double tapeDielectricStrength = 0;
+    auto insulationType = inputs.get_insulation_type();
+    auto canFullyInsulatedWireBeUsed = can_fully_insulated_wire_be_used(inputs);
+
+    {
+        auto aux = insulationMaterial.get_thicker_tape();
+        tapeThickness = aux.first;
+        tapeDielectricStrength = aux.second;
+    }
+
+    coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::INSULATING);
+    auto insulationCoordination = calculate_insulation_coordination(inputs);
+    auto withstandVoltage = insulationCoordination.get_withstand_voltage();
+    auto clearanceAndCreepageDistance = insulationCoordination.get_creepage_distance();
+    double minimumDistanceThroughInsulation = insulationCoordination.get_distance_through_insulation();
+    std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+    std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
+    std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+
+    switch (insulationType) {
+        case InsulationType::FUNCTIONAL: {
+                auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
+                if (timesVoltageIsCovered > 0) {
+                    if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
+                        numberInsulationLayers = 1;
+                        coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
+                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else {
+                        numberInsulationLayers = 1;
+                    }
+                }
+                else {
+                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+                break;
+            }
+        case InsulationType::BASIC: {
+                auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
+                if (timesVoltageIsCovered > 0) {
+                    if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
+                        numberInsulationLayers = 1;
+                        coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
+                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else {
+                        numberInsulationLayers = 1;
+                    }
+                }
+                else {
+                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+                std::cout << "*************************************************************: " << std::endl;
+                std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+                std::cout << "timesVoltageIsCovered: " << timesVoltageIsCovered << std::endl;
+                std::cout << "tapeDielectricStrength: " << tapeDielectricStrength << std::endl;
+                std::cout << "tapeThickness: " << tapeThickness << std::endl;
+                std::cout << "withstandVoltage / tapeDielectricStrength: " << (withstandVoltage / tapeDielectricStrength) << std::endl;
+                std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << (withstandVoltage / tapeDielectricStrength / tapeThickness) << std::endl;
+                std::cout << "*************************************************************: " << std::endl;
+
+                break;
+            }
+        case InsulationType::SUPPLEMENTARY: {
+                auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
+                if (timesVoltageIsCovered > 0) {
+                    if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
+                        numberInsulationLayers = 1;
+                        coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
+                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        clearanceAndCreepageDistance = 0;
+                    }
+                    else {
+                        numberInsulationLayers = 1;
+                    }
+                }
+                else {
+                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+                break;
+            }
+        case InsulationType::DOUBLE: {
+                size_t numberInsulationLayersTogether;
+                size_t numberInsulationLayersSeparated;
+
+                auto timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
+                if (timesWithstandVoltageIsCoveredByWires >= 3) {
+                    numberInsulationLayersTogether = 1;
+                    coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                    clearanceAndCreepageDistance = 0;
+                }
+                else if (clearanceAndCreepageDistance > 0 && timesWithstandVoltageIsCoveredByWires == 2) {
+                    numberInsulationLayersTogether = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    clearanceAndCreepageDistance = 0;
+                }
+                else {
+                    numberInsulationLayersTogether = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+
+                auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
+                insulation.set_insulation_type(InsulationType::BASIC);
+                inputs.get_mutable_design_requirements().set_insulation(insulation);
+                auto withstandVoltageBasic = calculate_withstand_voltage(inputs);
+                insulation.set_insulation_type(InsulationType::SUPPLEMENTARY);
+                inputs.get_mutable_design_requirements().set_insulation(insulation);
+                auto withstandVoltageSupplementary = calculate_withstand_voltage(inputs);
+                double withstandVoltageSeparated = std::max(withstandVoltageBasic, withstandVoltageSupplementary);
+                timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltageSeparated, canFullyInsulatedWireBeUsed);
+                if (timesWithstandVoltageIsCoveredByWires >= 3) {
+                    numberInsulationLayersSeparated = 1;
+                    coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                    clearanceAndCreepageDistance = 0;
+                }
+                else if (clearanceAndCreepageDistance > 0 && timesWithstandVoltageIsCoveredByWires == 2) {
+                    numberInsulationLayersSeparated = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    clearanceAndCreepageDistance = 0;
+                }
+                else {
+                    numberInsulationLayersSeparated = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+
+                numberInsulationLayers = std::min(numberInsulationLayersTogether, numberInsulationLayersSeparated);
+
+                break;
+            }
+        case InsulationType::REINFORCED: {
+                auto timesWithstandVoltageIsCoveredByWires = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
+                if (timesWithstandVoltageIsCoveredByWires >= 3) {
+                    numberInsulationLayers = 1;
+                    coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+                    clearanceAndCreepageDistance = 0;
+                }
+                else {
+                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                }
+                break;
+            }
+    }
+    if (tapeThickness * numberInsulationLayers <= minimumDistanceThroughInsulation) {
+        numberInsulationLayers = ceil(minimumDistanceThroughInsulation / tapeThickness);
+    }
+    std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
+    std::cout << "tapeThickness * numberInsulationLayers: " << (tapeThickness * numberInsulationLayers) << std::endl;
+    std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
+
+    coilSectionInterface.set_number_layers_insulation(numberInsulationLayers);
+    coilSectionInterface.set_solid_insulation_thickness(tapeThickness * numberInsulationLayers);
+    std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+    coilSectionInterface.set_total_margin_tape_distance(clearanceAndCreepageDistance);
+    return coilSectionInterface;
+}
+
 double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper inputs) {
     double solidInsulation = 0;
     for (auto standard : inputs.get_standards()) {
@@ -121,6 +425,7 @@ double InsulationCoordinator::calculate_distance_through_insulation(InputsWrappe
                 break;
             }
             case InsulationStandards::IEC_623681: {
+                dti = std::max(dti, _insulationIEC62368Model->calculate_distance_through_insulation(inputs));
                 break;
             }
         }
@@ -152,22 +457,11 @@ double InsulationIEC60664Model::calculate_distance_through_insulation_over_30kHz
     return dti;
 }
 
-double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage){
+double InsulationIEC60664Model::get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType){
     std::string overvoltageCategoryString = std::string{magic_enum::enum_name(overvoltageCategory)};
     auto aux = part1TableF1[overvoltageCategoryString];
     for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
         if (ratedVoltage <= aux[voltagesIndex].first) {
-            return aux[voltagesIndex].second;
-        }
-    }
-    throw std::invalid_argument("Too much voltage for IEC 60664-1: " + std::to_string(ratedVoltage));
-}
-
-double InsulationIEC60664Model::get_clearance_table_f2(PollutionDegree pollutionDegree, InsulationType insulationType, double ratedImpulseWithstandVoltage){
-    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
-    auto aux = part1TableF2["inhomogeneusField"][pollutionDegreeString];
-    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
-        if (ratedImpulseWithstandVoltage <= aux[voltagesIndex].first) {
             if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
                 if (voltagesIndex < aux.size() - 1) {
                     return aux[voltagesIndex + 1].second;
@@ -179,6 +473,17 @@ double InsulationIEC60664Model::get_clearance_table_f2(PollutionDegree pollution
             else {
                 return aux[voltagesIndex].second;
             }
+        }
+    }
+    throw std::invalid_argument("Too much voltage for IEC 60664-1: " + std::to_string(ratedVoltage));
+}
+
+double InsulationIEC60664Model::get_clearance_table_f2(PollutionDegree pollutionDegree, double ratedImpulseWithstandVoltage){
+    std::string pollutionDegreeString = std::string{magic_enum::enum_name(pollutionDegree)};
+    auto aux = part1TableF2["inhomogeneusField"][pollutionDegreeString];
+    for (size_t voltagesIndex = 0; voltagesIndex < aux.size(); voltagesIndex++) {
+        if (ratedImpulseWithstandVoltage <= aux[voltagesIndex].first) {
+            return aux[voltagesIndex].second;
         }
     }
     throw std::invalid_argument("Too much voltage for IEC 60664-1: " + std::to_string(ratedImpulseWithstandVoltage));
@@ -344,7 +649,7 @@ double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper inputs
     auto overvoltageCategory = inputs.get_overvoltage_category();
     auto insulationType = inputs.get_insulation_type();
 
-    double voltageDueToTransientOvervoltages = get_rated_impulse_withstand_voltage(overvoltageCategory, maximumVoltageRms);
+    double voltageDueToTransientOvervoltages = get_rated_impulse_withstand_voltage(overvoltageCategory, maximumVoltageRms, insulationType);
     double voltageDueToTemporaryWithstandOvervoltages = maximumVoltageRms + 1200;
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
         voltageDueToTemporaryWithstandOvervoltages *= 2;
@@ -357,8 +662,11 @@ double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper inputs
         voltageDueToRecurringPeakVoltages *= F3;
     }
     double voltageDueToSteadyStateVoltages = inputs.get_maximum_voltage_peak();
+    std::cout << "voltageDueToTransientOvervoltages: " << voltageDueToTransientOvervoltages << std::endl;
+    std::cout << "voltageDueToTemporaryWithstandOvervoltages: " << voltageDueToTemporaryWithstandOvervoltages << std::endl;
+    std::cout << "voltageDueToRecurringPeakVoltages: " << voltageDueToRecurringPeakVoltages << std::endl;
+    std::cout << "voltageDueToSteadyStateVoltages: " << voltageDueToSteadyStateVoltages << std::endl;
 
-    // TODO take into account greater than 30kHz case
     return std::max(voltageDueToTransientOvervoltages, std::max(voltageDueToTemporaryWithstandOvervoltages, std::max(voltageDueToRecurringPeakVoltages, voltageDueToSteadyStateVoltages)));
 }
 
@@ -370,7 +678,7 @@ double InsulationIEC60664Model::calculate_clearance(InputsWrapper inputs) {
     auto overvoltageCategory = inputs.get_overvoltage_category();
     auto altitude = resolve_dimensional_values(inputs.get_altitude(), DimensionalValues::MAXIMUM);
     auto insulationType = inputs.get_insulation_type();
-    double ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage);
+    double ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage, insulationType);
     double steadyStatePeakVoltage = inputs.get_maximum_voltage_peak();
 
     if (insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE) {
@@ -386,7 +694,7 @@ double InsulationIEC60664Model::calculate_clearance(InputsWrapper inputs) {
         }
     }
     if (wiringTechnology == WiringTechnology::WOUND || !clearanceToWithstandTransientOvervoltagesPlanar) {
-        clearanceToWithstandTransientOvervoltages = get_clearance_table_f2(pollutionDegree, insulationType, ratedImpulseWithstandVoltage);
+        clearanceToWithstandTransientOvervoltages = get_clearance_table_f2(pollutionDegree, ratedImpulseWithstandVoltage);
     }
 
     double clearanceToWithstandSteadyStatePeakVoltages;
@@ -463,8 +771,8 @@ double InsulationIEC60664Model::calculate_creepage_distance(InputsWrapper inputs
     bool allowSmallerCreepageDistanceThanClearance = false;
     if (pollutionDegree == PollutionDegree::P1 || pollutionDegree == PollutionDegree::P2) {
         auto overvoltageCategory = inputs.get_overvoltage_category();
-        auto ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage);
-        auto clearanceToWithstandTransientOvervoltages = get_clearance_table_f2(pollutionDegree, insulationType, ratedImpulseWithstandVoltage);
+        auto ratedImpulseWithstandVoltage = get_rated_impulse_withstand_voltage(overvoltageCategory, ratedVoltage, insulationType);
+        auto clearanceToWithstandTransientOvervoltages = get_clearance_table_f2(pollutionDegree, ratedImpulseWithstandVoltage);
         if (clearanceToWithstandTransientOvervoltages < creepageDistance) {
             allowSmallerCreepageDistanceThanClearance = true;
         }
@@ -507,12 +815,7 @@ double InsulationIEC62368Model::get_voltage_due_to_transient_overvoltages(double
     else {
         table = table25["BASIC"];
     }
-    for (auto& voltagePair : table) {
-        if (requiredWithstandVoltage < voltagePair.first) {
-            return voltagePair.second;
-        }
-    }
-    throw std::invalid_argument("Too much voltage for IEC 62368-1 in table 25: " + std::to_string(requiredWithstandVoltage));
+    return linear_table_interpolation(table, requiredWithstandVoltage);
 }
 
 double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(double workingVoltage, InsulationType insulationType){
@@ -523,12 +826,7 @@ double InsulationIEC62368Model::get_voltage_due_to_recurring_peak_voltages(doubl
     else {
         table = table26["BASIC"];
     }
-    for (auto& voltagePair : table) {
-        if (workingVoltage < voltagePair.first) {
-            return voltagePair.second;
-        }
-    }
-    throw std::invalid_argument("Too much voltage for IEC 62368-1 in table 26: " + std::to_string(workingVoltage));
+    return linear_table_interpolation(table, workingVoltage);
 }
 
 double InsulationIEC62368Model::get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, InsulationType insulationType){
@@ -706,6 +1004,21 @@ double InsulationIEC62368Model::get_mains_transient_voltage(double supplyVoltage
     throw std::invalid_argument("Too much voltage for IEC 62368-1 in table 12: " + std::to_string(supplyVoltagePeak));
 }
 
+double InsulationIEC62368Model::get_es2_voltage_limit(double frequency){
+    if (frequency < 1) {
+        return 120;
+    }
+    else if (frequency < 1000) {
+        return 50;
+    }
+    else if (frequency < 100000) {
+        return 50 + 0.9 * (frequency / 1000);
+    }
+    else {
+        return 140;
+    }
+}
+
 double InsulationIEC62368Model::calculate_withstand_voltage(InputsWrapper inputs) {
     // double maximumFrequency = inputs.get_maximum_frequency();
     double workingVoltage = get_working_voltage(inputs);
@@ -728,7 +1041,30 @@ double InsulationIEC62368Model::calculate_withstand_voltage(InputsWrapper inputs
     double voltageDueToRecurringPeakVoltages = get_voltage_due_to_recurring_peak_voltages(requiredWithstandVoltage, insulationType);
     double voltageDueToTemporaryOvervoltages = get_voltage_due_to_temporary_overvoltages(mainSupplyVoltage, insulationType);
 
+    // std::cout << "voltageDueToTransientOvervoltages: " << voltageDueToTransientOvervoltages << std::endl;
+    // std::cout << "voltageDueToRecurringPeakVoltages: " << voltageDueToRecurringPeakVoltages << std::endl;
+    // std::cout << "voltageDueToTemporaryOvervoltages: " << voltageDueToTemporaryOvervoltages << std::endl;
+
     return std::max(voltageDueToTransientOvervoltages, std::max(voltageDueToRecurringPeakVoltages, voltageDueToTemporaryOvervoltages));
+}
+
+double InsulationIEC62368Model::calculate_distance_through_insulation(InputsWrapper inputs) {
+    double maximumFrequency = inputs.get_maximum_frequency();
+    double es2VoltageLimit = get_es2_voltage_limit(maximumFrequency);
+    double workingVoltageRms = get_working_voltage_rms(inputs);
+    auto insulationType = inputs.get_insulation_type();
+
+    if (workingVoltageRms <= es2VoltageLimit) {
+        return 0;
+    }
+    else {
+        if (insulationType == InsulationType::FUNCTIONAL || insulationType == InsulationType::BASIC) {
+            return 0;
+        }
+        else {
+            return 0.0004;
+        }
+    }
 }
 
 double InsulationIEC62368Model::calculate_clearance(InputsWrapper inputs) {

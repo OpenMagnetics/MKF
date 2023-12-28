@@ -122,6 +122,7 @@ SUITE(MagneticField) {
         CHECK_CLOSE(field.get_data()[0].get_imaginary(), -field.get_data()[2].get_real(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[0].get_real(), field.get_data()[3].get_imaginary(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[0].get_imaginary(), field.get_data()[3].get_real(), expectedValue * maximumError);
+ 
     }
 
     TEST(Test_Magnetic_Field_Two_Turns_Round_Same_Current) {
@@ -195,8 +196,6 @@ SUITE(MagneticField) {
         double harmonicAmplitude = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
         double distanceCenterPoint = fieldPoint.get_point()[0] - turn_0.get_coordinates()[0];
         double expectedValue = -2 * harmonicAmplitude / (2 * std::numbers::pi * distanceCenterPoint);
-        std::cout << "expectedValue: " << expectedValue << std::endl;
-        std::cout << "field.get_data()[0].get_imaginary(): " << field.get_data()[0].get_imaginary() << std::endl;
         CHECK((expectedValue - field.get_data()[0].get_imaginary()) / expectedValue < maximumError);
     }
 
@@ -362,6 +361,20 @@ SUITE(MagneticField) {
 
         CHECK_CLOSE(field.get_data()[4].get_real(), -field.get_data()[5].get_real(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[4].get_imaginary(), field.get_data()[5].get_imaginary(), expectedValue * maximumError);
+        auto outFile = outputFilePath;
+        outFile.append("Test_Magnetic_Image_Method.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
+        painter.set_logarithmic_scale(false);
+        painter.set_mirroring_dimension(1);
+        painter.set_fringing_effect(false);
+        painter.set_maximum_scale_value(std::nullopt);
+        painter.set_minimum_scale_value(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
     }
 
 

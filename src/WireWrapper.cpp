@@ -46,7 +46,33 @@ namespace OpenMagnetics {
 
     }
 
-    WireWrapper WireWrapper::resolve_strand(const WireWrapper& wire) { 
+    WireRound wire_to_wire_round(const WireWrapper& wire) {
+        WireRound wireRound;
+        wireRound.set_type(wire.get_type());
+        if (wire.get_coating())
+            wireRound.set_coating(wire.get_coating().value());
+        wireRound.set_conducting_diameter(wire.get_conducting_diameter().value());
+        if (wire.get_manufacturer_info())
+            wireRound.set_manufacturer_info(wire.get_manufacturer_info().value());
+        if (wire.get_material())
+            wireRound.set_material(wire.get_material().value());
+        if (wire.get_name())
+            wireRound.set_name(wire.get_name().value());
+        if (wire.get_number_conductors())
+            wireRound.set_number_conductors(wire.get_number_conductors().value());
+        if (wire.get_outer_diameter())
+            wireRound.set_outer_diameter(wire.get_outer_diameter().value());
+        if (wire.get_standard())
+            wireRound.set_standard(wire.get_standard().value());
+        if (wire.get_standard_name())
+            wireRound.set_standard_name(wire.get_standard_name().value());
+        if (wire.get_conducting_area())
+            wireRound.set_conducting_area(wire.get_conducting_area().value());
+
+        return wireRound;
+    }
+
+    WireRound WireWrapper::resolve_strand(const WireWrapper& wire) {
         if (!wire.get_strand())
             throw std::runtime_error("Litz wire is missing strand information");
 
@@ -54,15 +80,15 @@ namespace OpenMagnetics {
         if (std::holds_alternative<std::string>(wire.get_strand().value())) {
             auto strand = find_wire_by_name(std::get<std::string>(wire.get_strand().value()));
 
-            return strand;
+            return wire_to_wire_round(strand);
         }
         else {
-            return WireWrapper(std::get<WireRound>(wire.get_strand().value()));
+            return std::get<WireRound>(wire.get_strand().value());
         }
 
     }
 
-    WireWrapper WireWrapper::resolve_strand() { 
+    WireRound WireWrapper::resolve_strand() {
         if (!get_strand())
             throw std::runtime_error("Litz wire is missing strand information");
 
@@ -70,10 +96,10 @@ namespace OpenMagnetics {
         if (std::holds_alternative<std::string>(get_strand().value())) {
             auto strand = find_wire_by_name(std::get<std::string>(get_strand().value()));
 
-            return strand;
+            return wire_to_wire_round(strand);
         }
         else {
-            return WireWrapper(std::get<WireRound>(get_strand().value()));
+            return std::get<WireRound>(get_strand().value());
         }
 
     }
@@ -81,7 +107,7 @@ namespace OpenMagnetics {
     WireMaterial WireWrapper::resolve_material() { 
         if (get_type() == WireType::LITZ) {
             auto strand = resolve_strand();
-            return strand.resolve_material();
+            return resolve_material(strand);
         }
 
         if (!get_material())
@@ -102,8 +128,25 @@ namespace OpenMagnetics {
     WireMaterial WireWrapper::resolve_material(WireWrapper wire) { 
         if (wire.get_type() == WireType::LITZ) {
             auto strand = wire.resolve_strand();
-            return strand.resolve_material();
+            return resolve_material(strand);
         }
+        if (!wire.get_material())
+            throw std::runtime_error("Wire is missing material information");
+
+        auto material = wire.get_material().value();
+        // If the material is a string, we have to load its data from the database
+        if (std::holds_alternative<std::string>(material)) {
+            auto materialData = find_wire_material_by_name(std::get<std::string>(material));
+
+            return materialData;
+        }
+        else {
+            return std::get<WireMaterial>(material);
+        }
+    }
+
+
+    WireMaterial WireWrapper::resolve_material(WireRound wire) { 
         if (!wire.get_material())
             throw std::runtime_error("Wire is missing material information");
 
@@ -206,7 +249,7 @@ namespace OpenMagnetics {
                     double wirePackingFactor;
                     if (wireType == WireType::LITZ) {
                         auto strandWire = WireWrapper::resolve_strand(datum.second);
-                        wireConductingDimension = resolve_dimensional_values(strandWire.get_conducting_diameter().value());
+                        wireConductingDimension = resolve_dimensional_values(strandWire.get_conducting_diameter());
 
                         auto outerStrandDiameter = resolve_dimensional_values(strandWire.get_outer_diameter().value());
                         if (wireConductingDimension != conductingDiameter.value())
@@ -905,10 +948,7 @@ namespace OpenMagnetics {
             case WireType::LITZ:
                 {
                     auto strand = resolve_strand();
-                    if (!strand.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in litz strand");
-                    }
-                    auto conductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter().value());
+                    auto conductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
                     return std::numbers::pi * pow(conductingDiameter / 2, 2) * get_number_conductors().value();
                 }
             case WireType::ROUND:
@@ -979,10 +1019,7 @@ namespace OpenMagnetics {
             case WireType::LITZ: 
                 {
                     auto strand = resolve_strand();
-                    if (!strand.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in litz strand");
-                    }
-                    conductingSmallestDimension = resolve_dimensional_values(strand.get_conducting_diameter().value());
+                    conductingSmallestDimension = resolve_dimensional_values(strand.get_conducting_diameter());
                     break;
                 }
             case WireType::ROUND: 
@@ -1021,7 +1058,7 @@ namespace OpenMagnetics {
                 case WireType::LITZ:
                     {
                         auto strand = resolve_strand();
-                        nonConductingArea = std::numbers::pi * pow(resolve_dimensional_values(strand.get_conducting_diameter().value()) / 2 - skinDepth, 2) * get_number_conductors().value();
+                        nonConductingArea = std::numbers::pi * pow(resolve_dimensional_values(strand.get_conducting_diameter()) / 2 - skinDepth, 2) * get_number_conductors().value();
                         break;
                     }
                 case WireType::ROUND:
@@ -1131,10 +1168,7 @@ namespace OpenMagnetics {
             case WireType::LITZ:
                 {
                     auto strand = resolve_strand();
-                    if (!strand.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in litz strand");
-                    }
-                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                    return resolve_dimensional_values(strand.get_conducting_diameter());
                 }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
@@ -1151,10 +1185,7 @@ namespace OpenMagnetics {
             case WireType::LITZ:
                 {
                     auto strand = resolve_strand();
-                    if (!strand.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in litz strand");
-                    }
-                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                    return resolve_dimensional_values(strand.get_conducting_diameter());
                 }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
@@ -1171,10 +1202,7 @@ namespace OpenMagnetics {
             case WireType::LITZ:
                 {
                     auto strand = resolve_strand();
-                    if (!strand.get_conducting_diameter()) {
-                        throw std::runtime_error("Missing conducting diameter in litz strand");
-                    }
-                    return resolve_dimensional_values(strand.get_conducting_diameter().value());
+                    return resolve_dimensional_values(strand.get_conducting_diameter());
                 }
             case WireType::ROUND:
                     return resolve_dimensional_values(get_conducting_diameter().value());

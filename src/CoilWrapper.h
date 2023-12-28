@@ -44,11 +44,18 @@ class CoilWrapper : public Coil {
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
         bool try_wind(bool delimitAndCompact);
+        bool wind();
+        bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
+        bool wind(std::vector<size_t> pattern, size_t repetitions=1);
 
-        std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, uint8_t numberSlots);
+        std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
+        std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
+        std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         bool wind_by_sections();
         bool wind_by_sections(std::vector<double> proportionPerWinding);
+        bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);
+        bool wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_layers();
         bool wind_by_turns();
         bool calculate_insulation();
@@ -94,7 +101,6 @@ class CoilWrapper : public Coil {
             return _sectionAlignment;
         }
 
-        bool wind();
 
         uint64_t get_number_turns(size_t windingIndex) {
             return get_functional_description()[windingIndex].get_number_turns();

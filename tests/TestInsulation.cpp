@@ -1,6 +1,7 @@
 #include "Insulation.h"
 #include <UnitTest++.h>
 #include "TestingUtils.h"
+#include "Utils.h"
 
 
 SUITE(Insulation) {
@@ -77,6 +78,215 @@ SUITE(Insulation) {
         auto creepageDistance = standardCoordinator.calculate_creepage_distance(inputs);
         CHECK_EQUAL(0.003, clearance);
         CHECK_EQUAL(0.0024, creepageDistance);
+    }
+}
+
+SUITE(CoilSectionsInterface) {
+    auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+    auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+    auto cti = OpenMagnetics::Cti::GROUP_I;
+    double maximumVoltageRms = 1000;
+    double maximumVoltagePeak = 1800;
+    double frequency = 30000;
+    OpenMagnetics::DimensionWithTolerance altitude;
+    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+    auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+
+    TEST(Test_Basic_SIW_SIW_OVC_I_Kapton) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("Kapton HN");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Reinforced_SIW_SIW_OVC_I_Tecroll_10B) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::REINFORCED;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("Tecroll 10B");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
+        CHECK_EQUAL(2, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Reinforced_SIW_SIW_OVC_IV_Kapton) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_IV;
+        auto insulationType = OpenMagnetics::InsulationType::REINFORCED;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("Kapton HN");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_SIW_SIW_OVC_IV_Kapton) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_IV;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("Kapton HN");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_SIW_SIW_OVC_IV_ETFE) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_IV;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
+        CHECK_EQUAL(3, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_DIW_SIW_OVC_I_ETFE) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        auto leftWire = OpenMagnetics::find_wire_by_name("SXXL20/34FX-3(MWXX)");
+        auto rightWire = OpenMagnetics::find_wire_by_name("DXXL07/28TXX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_DIW_Enammeled_Wire_OVC_I_ETFE) {
+        standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        auto leftWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
+        auto rightWire = OpenMagnetics::find_wire_by_name("DXXL07/28TXX-3(MWXX)");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_TIW_OVC_I_ETFE) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(800);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        auto leftWire = OpenMagnetics::find_wire_by_name("T28A01TXXX-1.5");
+        auto rightWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
+    }
+
+    TEST(Test_Basic_FIW_OVC_I_ETFE) {
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_623681};
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(400);
+        overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto insulationType = OpenMagnetics::InsulationType::BASIC;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(1);
+        inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
+        auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        auto leftWire = OpenMagnetics::find_wire_by_name("0.071 - FIW 9");
+        auto rightWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
+
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
+        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
     }
 }
 
@@ -536,7 +746,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.00006, clearance);
+        CHECK_EQUAL(0.0001, clearance);
     }
 
     TEST(Clearance_Basic_P2_OVC_I_Low_Altitude_Low_Frequency) {
@@ -602,7 +812,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.00015, clearance);
+        CHECK_EQUAL(0.0005, clearance);
     }
 
     TEST(Clearance_Basic_P2_OVC_II_Low_Altitude_Low_Frequency) {
@@ -624,7 +834,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P2;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.0002, clearance);
+        CHECK_EQUAL(0.0005, clearance);
     }
 
     TEST(Clearance_Basic_P3_OVC_II_Low_Altitude_Low_Frequency) {
@@ -668,7 +878,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.001, clearance);
+        CHECK_EQUAL(0.0015, clearance);
     }
 
     TEST(Clearance_Basic_P2_OVC_III_Low_Altitude_Low_Frequency) {
@@ -690,7 +900,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P2;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.001, clearance);
+        CHECK_EQUAL(0.0015, clearance);
     }
 
     TEST(Clearance_Basic_P3_OVC_III_Low_Altitude_Low_Frequency) {
@@ -712,7 +922,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P3;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.001, clearance);
+        CHECK_EQUAL(0.0015, clearance);
     }
 
     TEST(Clearance_Basic_P1_OVC_IV_Low_Altitude_Low_Frequency) {
@@ -734,7 +944,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.002, clearance);
+        CHECK_EQUAL(0.003, clearance);
     }
 
     TEST(Clearance_Basic_P2_OVC_IV_Low_Altitude_Low_Frequency) {
@@ -756,7 +966,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P2;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.002, clearance);
+        CHECK_EQUAL(0.003, clearance);
     }
 
     TEST(Clearance_Basic_P3_OVC_IV_Low_Altitude_Low_Frequency) {
@@ -778,7 +988,7 @@ SUITE(Clearance_IEC_60664) {
         auto pollutionDegree = OpenMagnetics::PollutionDegree::P3;
         OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
         auto clearance = standard.calculate_clearance(inputs);
-        CHECK_EQUAL(0.002, clearance);
+        CHECK_EQUAL(0.003, clearance);
     }
 
     TEST(Clearance_Basic_P1_OVC_I_High_Altitude_Low_Frequency) {

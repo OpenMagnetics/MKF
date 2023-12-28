@@ -266,6 +266,23 @@ SUITE(CoilSectionsDescription) {
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, sectionOrientation);
     }
+
+    TEST(Wind_By_Section_Pattern) {
+        std::vector<int64_t> numberTurns = {21, 21};
+        std::vector<int64_t> numberParallels = {2, 2};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 2;
+
+        std::vector<size_t> pattern = {0, 1};
+        size_t repetitions = 2;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
+
+        coil.wind_by_sections(pattern, repetitions);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
+    }
 }
 
 SUITE(CoilLayersDescription) {

@@ -48,10 +48,7 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
         }
         case WireType::FOIL: {
-            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ROSSMANITH);
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
-            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
-            // return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::LAMMERANER);
         }
         default:
             throw std::runtime_error("Unknown type of wire");
@@ -210,7 +207,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
     else if (wire.get_type() == WireType::LITZ) {
         double wireRadius;
         auto strand = wire.resolve_strand();
-        wireRadius = resolve_dimensional_values(strand.get_conducting_diameter().value()) / 2;
+        wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         alpha *= wireRadius / skinDepth;
         factor = 2 * std::numbers::pi * (alpha * modified_bessel_first_kind(1, alpha) / modified_bessel_first_kind(0, alpha)).real();
     }
@@ -325,7 +322,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
         }
         else {
             auto strand = wire.resolve_strand();
-            wireDiameter = resolve_dimensional_values(strand.get_conducting_diameter().value());
+            wireDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
         }
         double gamma = wireDiameter / (skinDepth * sqrt(2));
         factor = - 2 * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
@@ -413,7 +410,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     }
     else if (wire.get_type() == WireType::LITZ) {
         auto strand = wire.resolve_strand();
-        wireConductingDimension = resolve_dimensional_values(strand.get_conducting_diameter().value()) / 2;
+        wireConductingDimension = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
     }
     else {
         throw std::runtime_error("Unknown type of wire");

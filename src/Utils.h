@@ -79,7 +79,7 @@ OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireWrapper find_wire_by_name(std::string name);
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name);
-OpenMagnetics::InsulationMaterial find_insulation_material_by_name(std::string name);
+OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name);
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
 
 void load_databases(bool withAliases=true);

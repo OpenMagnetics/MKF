@@ -433,7 +433,6 @@ SUITE(LeakageInductance) {
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
     }
 
-
     TEST(Test_Leakage_Inductance_Parallels_Interleaving) {
 
         double temperature = 20;
@@ -516,7 +515,6 @@ SUITE(LeakageInductance) {
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
     }
-
 
     TEST(Test_Leakage_Inductance_ETD_0) {
 
@@ -685,7 +683,6 @@ SUITE(LeakageInductance) {
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
     }
 
-
     TEST(Test_Leakage_Inductance_PQ_40_Horizontal) {
 
         double temperature = 20;
@@ -760,7 +757,6 @@ SUITE(LeakageInductance) {
                                                                                               dutyCycle,
                                                                                               offset,
                                                                                               turnsRatios);
-
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
