@@ -102,31 +102,30 @@ class CoreLossesModel {
             materialData = std::get<OpenMagnetics::CoreMaterial>(material);
         }
 
-        std::vector<std::string> methods;
+        std::vector<SteinmetzCoreLossesMethodDataMethod> methods;
         auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
         for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
             auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
             for (auto& volumetricLossesMethod : volumetricLossesMethods) {
                 if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
                     auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                    std::string methodDataName = methodData.get_method();
-                    methods.push_back(methodDataName);
+                    methods.push_back(methodData.get_method());
                 }
             }
         }
 
         std::vector<std::string> models;
-        if (std::count(methods.begin(), methods.end(), "steinmetz")) {
+        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ)) {
             models.push_back("Steinmetz");
             models.push_back("iGSE");
             models.push_back("Barg");
             models.push_back("Albach");
             models.push_back("MSE");
         }
-        if (std::count(methods.begin(), methods.end(), "roshen")) {
+        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::ROSHEN)) {
             models.push_back("Roshen");
         }
-        if (std::count(methods.begin(), methods.end(), "magnetics") || std::count(methods.begin(), methods.end(), "micrometals")) {
+        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::MAGNETICS) || std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::MICROMETALS)) {
             models.push_back("Proprietary");
         }
         return models;
