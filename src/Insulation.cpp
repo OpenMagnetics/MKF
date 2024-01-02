@@ -75,10 +75,10 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
                 times++;
             }
         }
-        std::cout << "leftWire: " << leftWire.get_name().value() << std::endl;
-        std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
-        std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
-        std::cout << "times: " << times << std::endl;
+        // std::cout << "leftWire: " << leftWire.get_name().value() << std::endl;
+        // std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+        // std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
+        // std::cout << "times: " << times << std::endl;
     }
     {
         auto coating = rightWire.resolve_coating().value();
@@ -104,10 +104,10 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
                 times++;
             }
         }
-        std::cout << "rightWire: " << rightWire.get_name().value() << std::endl;
-        std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
-        std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
-        std::cout << "times: " << times << std::endl;
+        // std::cout << "rightWire: " << rightWire.get_name().value() << std::endl;
+        // std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+        // std::cout << "coating.get_breakdown_voltage().value(): " << coating.get_breakdown_voltage().value() << std::endl;
+        // std::cout << "times: " << times << std::endl;
     }
 
     return times;
@@ -198,7 +198,7 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                         clearanceAndCreepageDistance = 0;
                     }
                     else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
-                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                         coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
                         clearanceAndCreepageDistance = 0;
                     }
@@ -207,11 +207,12 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     }
                 }
                 else {
-                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
                 break;
             }
         case InsulationType::BASIC: {
+                std::cout << "before before numberInsulationLayers: " << numberInsulationLayers << std::endl;
                 auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesVoltageIsCovered > 0) {
                     if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
@@ -220,7 +221,7 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                         clearanceAndCreepageDistance = 0;
                     }
                     else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
-                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                         clearanceAndCreepageDistance = 0;
                     }
                     else {
@@ -228,15 +229,18 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     }
                 }
                 else {
-                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
                 std::cout << "*************************************************************: " << std::endl;
                 std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
                 std::cout << "timesVoltageIsCovered: " << timesVoltageIsCovered << std::endl;
                 std::cout << "tapeDielectricStrength: " << tapeDielectricStrength << std::endl;
                 std::cout << "tapeThickness: " << tapeThickness << std::endl;
+                std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
                 std::cout << "withstandVoltage / tapeDielectricStrength: " << (withstandVoltage / tapeDielectricStrength) << std::endl;
                 std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << (withstandVoltage / tapeDielectricStrength / tapeThickness) << std::endl;
+                std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)) << std::endl;
+                std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
                 std::cout << "*************************************************************: " << std::endl;
 
                 break;
@@ -250,7 +254,7 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                         clearanceAndCreepageDistance = 0;
                     }
                     else if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered == 2) {
-                        numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                        numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                         clearanceAndCreepageDistance = 0;
                     }
                     else {
@@ -258,7 +262,7 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     }
                 }
                 else {
-                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
                 break;
             }
@@ -273,11 +277,11 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     clearanceAndCreepageDistance = 0;
                 }
                 else if (clearanceAndCreepageDistance > 0 && timesWithstandVoltageIsCoveredByWires == 2) {
-                    numberInsulationLayersTogether = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayersTogether = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                     clearanceAndCreepageDistance = 0;
                 }
                 else {
-                    numberInsulationLayersTogether = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayersTogether = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
 
                 auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
@@ -295,11 +299,11 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     clearanceAndCreepageDistance = 0;
                 }
                 else if (clearanceAndCreepageDistance > 0 && timesWithstandVoltageIsCoveredByWires == 2) {
-                    numberInsulationLayersSeparated = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                     clearanceAndCreepageDistance = 0;
                 }
                 else {
-                    numberInsulationLayersSeparated = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayersSeparated = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
 
                 numberInsulationLayers = std::min(numberInsulationLayersTogether, numberInsulationLayersSeparated);
@@ -314,21 +318,23 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                     clearanceAndCreepageDistance = 0;
                 }
                 else {
-                    numberInsulationLayers = ceil(withstandVoltage / tapeDielectricStrength / tapeThickness);
+                    numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
                 break;
             }
     }
+    std::cout << "before numberInsulationLayers: " << numberInsulationLayers << std::endl;
     if (tapeThickness * numberInsulationLayers <= minimumDistanceThroughInsulation) {
-        numberInsulationLayers = ceil(minimumDistanceThroughInsulation / tapeThickness);
+        numberInsulationLayers = ceil(roundFloat(minimumDistanceThroughInsulation / tapeThickness, 1));
     }
+    std::cout << "after numberInsulationLayers: " << numberInsulationLayers << std::endl;
     std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
     std::cout << "tapeThickness * numberInsulationLayers: " << (tapeThickness * numberInsulationLayers) << std::endl;
     std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
 
     coilSectionInterface.set_number_layers_insulation(numberInsulationLayers);
     coilSectionInterface.set_solid_insulation_thickness(tapeThickness * numberInsulationLayers);
-    std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+    // std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
     coilSectionInterface.set_total_margin_tape_distance(clearanceAndCreepageDistance);
     return coilSectionInterface;
 }
@@ -662,10 +668,10 @@ double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper inputs
         voltageDueToRecurringPeakVoltages *= F3;
     }
     double voltageDueToSteadyStateVoltages = inputs.get_maximum_voltage_peak();
-    std::cout << "voltageDueToTransientOvervoltages: " << voltageDueToTransientOvervoltages << std::endl;
-    std::cout << "voltageDueToTemporaryWithstandOvervoltages: " << voltageDueToTemporaryWithstandOvervoltages << std::endl;
-    std::cout << "voltageDueToRecurringPeakVoltages: " << voltageDueToRecurringPeakVoltages << std::endl;
-    std::cout << "voltageDueToSteadyStateVoltages: " << voltageDueToSteadyStateVoltages << std::endl;
+    // std::cout << "voltageDueToTransientOvervoltages: " << voltageDueToTransientOvervoltages << std::endl;
+    // std::cout << "voltageDueToTemporaryWithstandOvervoltages: " << voltageDueToTemporaryWithstandOvervoltages << std::endl;
+    // std::cout << "voltageDueToRecurringPeakVoltages: " << voltageDueToRecurringPeakVoltages << std::endl;
+    // std::cout << "voltageDueToSteadyStateVoltages: " << voltageDueToSteadyStateVoltages << std::endl;
 
     return std::max(voltageDueToTransientOvervoltages, std::max(voltageDueToTemporaryWithstandOvervoltages, std::max(voltageDueToRecurringPeakVoltages, voltageDueToSteadyStateVoltages)));
 }

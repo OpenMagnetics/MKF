@@ -109,7 +109,8 @@ class CoreLossesModel {
             for (auto& volumetricLossesMethod : volumetricLossesMethods) {
                 if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
                     auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                    methods.push_back(methodData.get_method());
+                    std::string methodDataName = methodData.get_method();
+                    methods.push_back(methodDataName);
                 }
             }
         }
