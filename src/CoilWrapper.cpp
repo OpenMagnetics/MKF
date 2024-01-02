@@ -424,6 +424,7 @@ bool CoilWrapper::calculate_insulation() {
             coilSectionInterface.set_solid_insulation_thickness(DBL_MAX);
             InsulationMaterialWrapper chosenInsulationMaterial;
 
+
             for (auto& insulationMaterial : insulationMaterialDatabase) {
                 auto auxCoilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, wireLeftTopWinding, wireRightBottomWinding, insulationMaterial.second);
                 if (auxCoilSectionInterface.get_solid_insulation_thickness() < coilSectionInterface.get_solid_insulation_thickness()) {
@@ -936,6 +937,9 @@ bool CoilWrapper::wind_by_layers() {
             }
 
             auto insulationLayers = _insulationLayers[windingsMapKey];
+            if (insulationLayers.size() == 0) {
+                throw std::runtime_error("There must be at least one insulation layer between layers");
+            }
 
             double layerWidth = insulationLayers[0].get_dimensions()[0];
             double layerHeight = insulationLayers[0].get_dimensions()[1];
