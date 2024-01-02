@@ -37,7 +37,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterialDataOrNameUnion
 
         if (permeability_point.get_modifiers()) {
             InitialPermeabilitModifier modifiers = (*permeability_point.get_modifiers())["default"];
-            if ((*modifiers.get_method()) == "magnetics") {
+            if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MAGNETICS) {
                 auto temperature_factor = modifiers.get_temperature_factor();
                 if (temperature && temperature_factor) {
                     double permeability_variation_due_to_temperature =

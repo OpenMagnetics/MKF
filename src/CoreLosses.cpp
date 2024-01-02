@@ -62,13 +62,14 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
 }
 
 CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string method) {
+    SteinmetzCoreLossesMethodDataMethod methodEnum = magic_enum::enum_cast<SteinmetzCoreLossesMethodDataMethod>(method).value();
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
                 auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                if (methodData.get_method() == method) {
+                if (methodData.get_method() == methodEnum) {
                     return methodData;
                 }
             }

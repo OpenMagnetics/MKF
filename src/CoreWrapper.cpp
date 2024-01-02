@@ -2727,8 +2727,9 @@ std::vector<std::string> CoreWrapper::get_available_core_losses_methods(){
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
                 auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                if (std::find(methods.begin(), methods.end(), methodData.get_method()) == methods.end()) {
-                    methods.push_back(methodData.get_method());
+                std::string methodDataNameString = std::string{magic_enum::enum_name(methodData.get_method())};
+                if (std::find(methods.begin(), methods.end(), methodDataNameString) == methods.end()) {
+                    methods.push_back(methodDataNameString);
                 }
             }
         }
