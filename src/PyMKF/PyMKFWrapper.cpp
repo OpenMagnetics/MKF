@@ -99,8 +99,15 @@ json calculate_inductance_from_number_turns_and_gapping(json coreData,
     OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
 
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+    
+    auto reluctanceModelName = OpenMagnetics::Defaults().reluctanceModelDefault;
+    if (models.find("reluctance") != models.end()) {
+        std::string modelNameStringUpper = models["reluctance"];
+        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
+        reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper).value();
+    }
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(reluctanceModelName);
     auto magnetizingInductance = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
 
     return magnetizingInductance;
@@ -115,7 +122,13 @@ double calculate_number_turns_from_gapping_and_inductance(json coreData,
 
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    auto reluctanceModelName = OpenMagnetics::Defaults().reluctanceModelDefault;
+    if (models.find("reluctance") != models.end()) {
+        std::string modelNameStringUpper = models["reluctance"];
+        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
+        reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper).value();
+    }
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(reluctanceModelName);
     double numberTurns = magnetizing_inductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs);
 
     return numberTurns;
@@ -134,7 +147,13 @@ py::list calculate_gapping_from_number_turns_and_inductance(json coreData,
     std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
     OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>(gappingTypeString).value();
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    auto reluctanceModelName = OpenMagnetics::Defaults().reluctanceModelDefault;
+    if (models.find("reluctance") != models.end()) {
+        std::string modelNameStringUpper = models["reluctance"];
+        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
+        reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper).value();
+    }
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(reluctanceModelName);
     std::vector<OpenMagnetics::CoreGap> gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core,
                                                                                                                       coil,
                                                                                                                       &inputs,
@@ -191,10 +210,17 @@ json get_core_losses(json magneticData,
         coreTemperatureModelName = magic_enum::enum_cast<OpenMagnetics::CoreTemperatureModels>(models["coreTemperature"]).value();
     }
 
+    auto reluctanceModelName = defaults.reluctanceModelDefault;
+    if (models.find("reluctance") != models.end()) {
+        std::string modelNameStringUpper = models["reluctance"];
+        std::transform(modelNameStringUpper.begin(), modelNameStringUpper.end(), modelNameStringUpper.begin(), ::toupper);
+        reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameStringUpper).value();
+    }
+
     auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
     auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(coreTemperatureModelName);
 
-    OpenMagnetics::MagnetizingInductance magnetizing_inductance(models);
+    OpenMagnetics::MagnetizingInductance magnetizing_inductance(reluctanceModelName);
 
     double temperature = operatingPoint.get_conditions().get_ambient_temperature();
     double temperatureAfterLosses = temperature;
