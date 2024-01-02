@@ -184,9 +184,9 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
     auto withstandVoltage = insulationCoordination.get_withstand_voltage();
     auto clearanceAndCreepageDistance = insulationCoordination.get_creepage_distance();
     double minimumDistanceThroughInsulation = insulationCoordination.get_distance_through_insulation();
-    std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
-    std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
-    std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+    // std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+    // std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
+    // std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
 
     switch (insulationType) {
         case InsulationType::FUNCTIONAL: {
@@ -212,7 +212,7 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                 break;
             }
         case InsulationType::BASIC: {
-                std::cout << "before before numberInsulationLayers: " << numberInsulationLayers << std::endl;
+                // std::cout << "before before numberInsulationLayers: " << numberInsulationLayers << std::endl;
                 auto timesVoltageIsCovered = times_withstand_voltage_is_covered_by_wires(leftWire, rightWire, withstandVoltage, canFullyInsulatedWireBeUsed);
                 if (timesVoltageIsCovered > 0) {
                     if (clearanceAndCreepageDistance > 0 && timesVoltageIsCovered >= 3) {
@@ -231,17 +231,17 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                 else {
                     numberInsulationLayers = std::max(1.0, ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)));
                 }
-                std::cout << "*************************************************************: " << std::endl;
-                std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
-                std::cout << "timesVoltageIsCovered: " << timesVoltageIsCovered << std::endl;
-                std::cout << "tapeDielectricStrength: " << tapeDielectricStrength << std::endl;
-                std::cout << "tapeThickness: " << tapeThickness << std::endl;
-                std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
-                std::cout << "withstandVoltage / tapeDielectricStrength: " << (withstandVoltage / tapeDielectricStrength) << std::endl;
-                std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << (withstandVoltage / tapeDielectricStrength / tapeThickness) << std::endl;
-                std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)) << std::endl;
-                std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
-                std::cout << "*************************************************************: " << std::endl;
+                // std::cout << "*************************************************************: " << std::endl;
+                // std::cout << "clearanceAndCreepageDistance: " << clearanceAndCreepageDistance << std::endl;
+                // std::cout << "timesVoltageIsCovered: " << timesVoltageIsCovered << std::endl;
+                // std::cout << "tapeDielectricStrength: " << tapeDielectricStrength << std::endl;
+                // std::cout << "tapeThickness: " << tapeThickness << std::endl;
+                // std::cout << "withstandVoltage: " << withstandVoltage << std::endl;
+                // std::cout << "withstandVoltage / tapeDielectricStrength: " << (withstandVoltage / tapeDielectricStrength) << std::endl;
+                // std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << (withstandVoltage / tapeDielectricStrength / tapeThickness) << std::endl;
+                // std::cout << "withstandVoltage / tapeDielectricStrength / tapeThickness: " << ceil(roundFloat(withstandVoltage / tapeDielectricStrength / tapeThickness, 1)) << std::endl;
+                // std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
+                // std::cout << "*************************************************************: " << std::endl;
 
                 break;
             }
@@ -323,14 +323,14 @@ CoilSectionInterface InsulationCoordinator::calculate_coil_section_interface_lay
                 break;
             }
     }
-    std::cout << "before numberInsulationLayers: " << numberInsulationLayers << std::endl;
+    // std::cout << "before numberInsulationLayers: " << numberInsulationLayers << std::endl;
     if (tapeThickness * numberInsulationLayers <= minimumDistanceThroughInsulation) {
         numberInsulationLayers = ceil(roundFloat(minimumDistanceThroughInsulation / tapeThickness, 1));
     }
-    std::cout << "after numberInsulationLayers: " << numberInsulationLayers << std::endl;
-    std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
-    std::cout << "tapeThickness * numberInsulationLayers: " << (tapeThickness * numberInsulationLayers) << std::endl;
-    std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
+    // std::cout << "after numberInsulationLayers: " << numberInsulationLayers << std::endl;
+    // std::cout << "minimumDistanceThroughInsulation: " << minimumDistanceThroughInsulation << std::endl;
+    // std::cout << "tapeThickness * numberInsulationLayers: " << (tapeThickness * numberInsulationLayers) << std::endl;
+    // std::cout << "numberInsulationLayers: " << numberInsulationLayers << std::endl;
 
     coilSectionInterface.set_number_layers_insulation(numberInsulationLayers);
     coilSectionInterface.set_solid_insulation_thickness(tapeThickness * numberInsulationLayers);
