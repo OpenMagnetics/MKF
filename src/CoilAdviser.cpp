@@ -239,6 +239,7 @@ namespace OpenMagnetics {
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_inputs());
         size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
 
+        // mas.get_mutable_magnetic().get_mutable_coil().set_inputs(mas.get_inputs());
         mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions, pattern, repetitions);
         mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
         OpenMagnetics::WireAdviser wireAdviser;

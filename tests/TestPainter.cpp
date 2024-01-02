@@ -2385,12 +2385,6 @@ SUITE(CoilPainter) {
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        double voltagePeakToPeak = 20000;
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        winding.set_inputs(inputs);
-        winding.wind();
-        winding.delimit_and_compact();
-
         auto outFile = outputFilePath;
         outFile.append("Test_Turns_Not_Fitting.svg");
         std::filesystem::remove(outFile);

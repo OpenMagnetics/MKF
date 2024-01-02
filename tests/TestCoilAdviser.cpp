@@ -480,75 +480,10 @@ SUITE(SolidInsulationRequirements) {
         CHECK(withstandVoltageForWires[5][0].get_minimum_grade().value() == 3);
         CHECK(withstandVoltageForWires[5][1].get_minimum_grade());
     }
-
-    // TEST(Test_CoilAdviser_Wires_Withstand_Voltage_Different_Isolation_Sides_Reinforced) {
-    //     auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
-    //     auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
-    //     auto cti = OpenMagnetics::Cti::GROUP_I;
-    //     double maximumVoltageRms = 666;
-    //     double maximumVoltagePeak = 800;
-    //     double frequency = 30000;
-    //     OpenMagnetics::DimensionWithTolerance altitude;
-    //     OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
-
-    //     auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
-    //     altitude.set_maximum(2000);
-    //     mainSupplyVoltage.set_nominal(400);
-    //     auto insulationType = OpenMagnetics::InsulationType::REINFORCED;
-    //     auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
-    //     OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
-    //     OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
-    //     dimensionWithTolerance.set_nominal(1);
-    //     inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
-    //     inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::SECONDARY});
-
-    //     OpenMagnetics::CoilAdviser coilAdviser;
-    //     auto withstandVoltageForWires = coilAdviser.get_withstand_voltage_for_wires(inputs);
-    //     CHECK_EQUAL(1, withstandVoltageForWires.size());
-    //     CHECK_EQUAL(2, withstandVoltageForWires[0].size());
-    //     CHECK(withstandVoltageForWires[0][0] > 0);
-    //     CHECK(withstandVoltageForWires[0][1] > 0);
-    //     std::cout << withstandVoltageForWires[0][1] << std::endl;
-    // }
-
-    // TEST(Test_CoilAdviser_Wires_Withstand_Voltage_Three_Different_Isolation_Sides) {
-    //     auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
-    //     auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
-    //     auto cti = OpenMagnetics::Cti::GROUP_I;
-    //     double maximumVoltageRms = 666;
-    //     double maximumVoltagePeak = 800;
-    //     double frequency = 30000;
-    //     OpenMagnetics::DimensionWithTolerance altitude;
-    //     OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
-
-    //     auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
-    //     altitude.set_maximum(2000);
-    //     mainSupplyVoltage.set_nominal(400);
-    //     auto insulationType = OpenMagnetics::InsulationType::BASIC;
-    //     auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
-    //     OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
-    //     OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
-    //     dimensionWithTolerance.set_nominal(1);
-    //     inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance, dimensionWithTolerance});
-    //     inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::SECONDARY, OpenMagnetics::IsolationSide::TERTIARY});
-
-    //     OpenMagnetics::CoilAdviser coilAdviser;
-    //     auto withstandVoltageForWires = coilAdviser.get_withstand_voltage_for_wires(inputs);
-    //     CHECK_EQUAL(3, withstandVoltageForWires.size());
-    //     CHECK_EQUAL(3, withstandVoltageForWires[0].size());
-    //     CHECK(withstandVoltageForWires[0][0] == 0);
-    //     CHECK(withstandVoltageForWires[0][1] > 0);
-    //     CHECK(withstandVoltageForWires[0][2] > 0);
-    //     CHECK(withstandVoltageForWires[1][0] > 0);
-    //     CHECK(withstandVoltageForWires[1][1] == 0);
-    //     CHECK(withstandVoltageForWires[1][2] > 0);
-    //     CHECK(withstandVoltageForWires[2][0] > 0);
-    //     CHECK(withstandVoltageForWires[2][1] > 0);
-    //     CHECK(withstandVoltageForWires[2][2] == 0);
-    // }
 }
 
 SUITE(CoilAdviser) {
+
     TEST(Test_CoilAdviser_Random) {
         srand (time(NULL));
 
