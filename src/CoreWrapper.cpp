@@ -2719,17 +2719,16 @@ std::string CoreWrapper::get_material_name() {
     return get_material().get_name();
 }
 
-std::vector<std::string> CoreWrapper::get_available_core_losses_methods(){
-    std::vector<std::string> methods;
+std::vector<SteinmetzCoreLossesMethodDataMethod> CoreWrapper::get_available_core_losses_methods(){
+    std::vector<SteinmetzCoreLossesMethodDataMethod> methods;
     auto volumetricLossesMethodsVariants = get_material().get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
                 auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                std::string methodDataNameString = std::string{magic_enum::enum_name(methodData.get_method())};
-                if (std::find(methods.begin(), methods.end(), methodDataNameString) == methods.end()) {
-                    methods.push_back(methodDataNameString);
+                if (std::find(methods.begin(), methods.end(), methodData.get_method()) == methods.end()) {
+                    methods.push_back(methodData.get_method());
                 }
             }
         }

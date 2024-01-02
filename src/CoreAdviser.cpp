@@ -226,13 +226,16 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
+
+
                     double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
                     auto aux = coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                     magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
                 }
                 else {
                     double referenceCoreLosses = coreLossesModelProprietary->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
+
                     auto aux = coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                     magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
                 }
@@ -580,7 +583,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
 
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
                     coreLossesOutput = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
                     coreLosses = coreLossesOutput.get_core_losses();
                 }
@@ -736,7 +739,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
                 auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), "steinmetz") != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
                     coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature).get_core_losses();
                 }
                 else {

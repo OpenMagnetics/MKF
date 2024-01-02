@@ -122,10 +122,10 @@ SUITE(MagnetizingInductance) {
             "materialComposition": "powder", "name": "High Flux 26", "permeability": {"amplitude":
             null, "initial": {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak":
             null, "modifiers": {"EQ/LP": {"frequencyFactor": null, "magneticFieldDcBiasFactor": {"a": 0.01,
-            "b": 1.58277e-17, "c": 3.243}, "method": "Magnetics", "temperatureFactor": null}, "default":
+            "b": 1.58277e-17, "c": 3.243}, "method": "magnetics", "temperatureFactor": null}, "default":
             {"frequencyFactor": {"a": 0.0, "b": -2.56e-08, "c": 3.4300000000000005e-15, "d": -7.34e-22,
             "e": 3.99e-29}, "magneticFieldDcBiasFactor": {"a": 0.01, "b": 1.02934e-13, "c": 2.426},
-            "method": "Magnetics", "temperatureFactor": {"a": -0.0033, "b": 0.000129, "c":
+            "method": "magnetics", "temperatureFactor": {"a": -0.0033, "b": 0.000129, "c":
             3.799999999999999e-08, "d": 0.0, "e": 0.0}}}, "temperature": null, "tolerance": null, "value":
             26.0}}, "saturation": [{"magneticField": 7957.0, "magneticFluxDensity": 0.9, "temperature":
             100.0}], "type": "commercial", "volumetricLosses": {"EQ/LP": [{"coerciveForce": null,
