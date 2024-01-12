@@ -59,6 +59,14 @@ OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::Dimensio
                                                          double frequency,
                                                          OpenMagnetics::WiringTechnology wiringTechnology = OpenMagnetics::WiringTechnology::WOUND);
 
+OpenMagnetics::InsulationRequirements get_quick_insulation_requirements(OpenMagnetics::DimensionWithTolerance altitude,
+                                                                        OpenMagnetics::Cti cti,
+                                                                        OpenMagnetics::InsulationType insulation_type,
+                                                                        OpenMagnetics::DimensionWithTolerance main_supply_voltage,
+                                                                        OpenMagnetics::OvervoltageCategory overvoltage_category,
+                                                                        OpenMagnetics::PollutionDegree pollution_degree,
+                                                                        std::vector<OpenMagnetics::InsulationStandards> standards);
+
 OpenMagnetics::CoreWrapper get_quick_core(std::string shapeName,
                                           json basicGapping,
                                           int numberStacks = 1,

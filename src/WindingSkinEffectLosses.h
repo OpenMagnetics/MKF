@@ -109,7 +109,7 @@ class WindingSkinEffectLossesKutkutModel : public WindingSkinEffectLossesModel {
 // https://sci-hub.wf/https://ieeexplore.ieee.org/document/364775
 class WindingSkinEffectLossesLotfiModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_turn_losses(WireWrapper wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira

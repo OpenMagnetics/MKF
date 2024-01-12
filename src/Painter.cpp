@@ -154,7 +154,7 @@ void Painter::export_png() {
 }
 
 
-void Painter::paint_core(const MagneticWrapper& magnetic) {
+void Painter::paint_core(MagneticWrapper magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
@@ -166,7 +166,7 @@ void Painter::paint_core(const MagneticWrapper& magnetic) {
     }
 }
 
-void Painter::paint_bobbin(const MagneticWrapper& magnetic) {
+void Painter::paint_bobbin(MagneticWrapper magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
@@ -178,7 +178,7 @@ void Painter::paint_bobbin(const MagneticWrapper& magnetic) {
     }
 }
 
-void Painter::paint_coil_sections(const MagneticWrapper& magnetic) {
+void Painter::paint_coil_sections(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -192,7 +192,7 @@ void Painter::paint_coil_sections(const MagneticWrapper& magnetic) {
     }
 }
 
-void Painter::paint_coil_layers(const MagneticWrapper& magnetic) {
+void Painter::paint_coil_layers(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -206,7 +206,7 @@ void Painter::paint_coil_layers(const MagneticWrapper& magnetic) {
     }
 }
 
-void Painter::paint_coil_turns(const MagneticWrapper& magnetic) {
+void Painter::paint_coil_turns(MagneticWrapper magnetic) {
     CoreWrapper core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
@@ -405,7 +405,7 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
     matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorBobbin));
 }
 
-void Painter::paint_two_piece_set_winding_sections(const MagneticWrapper& magnetic) {
+void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
     auto constants = Constants();
 
     if (!magnetic.get_coil().get_sections_description()) {
@@ -416,27 +416,96 @@ void Painter::paint_two_piece_set_winding_sections(const MagneticWrapper& magnet
 
     for (size_t i = 0; i < sections.size(); ++i){
 
-        std::vector<std::vector<double>> sectionPoints = {};
-        sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
-        sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
-        sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
-        sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+        {
+            std::vector<std::vector<double>> sectionPoints = {};
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
 
-        std::vector<double> x, y;
-        for (auto& point : sectionPoints) {
-            x.push_back(point[0]);
-            y.push_back(point[1]);
+            std::vector<double> x, y;
+            for (auto& point : sectionPoints) {
+                x.push_back(point[0]);
+                y.push_back(point[1]);
+            }
+            if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+            }
+            else {
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+            }
         }
-        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
-        }
-        else {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+
+        if (sections[i].get_margin()) {
+            auto margins = sections[i].get_margin().value();
+            if (margins[0] > 0) {
+                auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+                auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+                std::vector<double> bobbinCoordinates = std::vector<double>({0, 0, 0});
+                if (bobbinProcessedDescription.get_coordinates()) {
+                    bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
+                }
+                auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
+                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
+                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
+                std::vector<std::vector<double>> marginPoints = {};
+                if (sectionsOrientation == WindingOrientation::HORIZONTAL) {
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2 - margins[0]}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2 - margins[0]}));
+                }
+                else if (sectionsOrientation == WindingOrientation::VERTICAL) {
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2 + margins[0], sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2 + margins[0], sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+                }
+
+                std::vector<double> x, y;
+                for (auto& point : marginPoints) {
+                    x.push_back(point[0]);
+                    y.push_back(point[1]);
+                }
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorMargin));
+            }
+            if (margins[1] > 0) {
+                auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+                auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+                std::vector<double> bobbinCoordinates = std::vector<double>({0, 0, 0});
+                if (bobbinProcessedDescription.get_coordinates()) {
+                    bobbinCoordinates = bobbinProcessedDescription.get_coordinates().value();
+                }
+                auto margins = sections[i].get_margin().value();
+                auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
+                auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
+                auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
+                std::vector<std::vector<double>> marginPoints = {};
+                if (sectionsOrientation == WindingOrientation::HORIZONTAL) {
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2 + margins[1]}));
+                    marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2 + margins[1]}));
+                }
+                else if (sectionsOrientation == WindingOrientation::VERTICAL) {
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2 - margins[1], sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+                    marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2 - margins[1], sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+                }
+
+                std::vector<double> x, y;
+                for (auto& point : marginPoints) {
+                    x.push_back(point[0]);
+                    y.push_back(point[1]);
+                }
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorMargin));
+            }
         }
     }
 }
 
-void Painter::paint_two_piece_set_winding_layers(const MagneticWrapper& magnetic) {
+void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
@@ -474,7 +543,7 @@ void Painter::paint_two_piece_set_winding_layers(const MagneticWrapper& magnetic
     }
 }
 
-void Painter::paint_two_piece_set_winding_turns(const MagneticWrapper& magnetic) {
+void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();

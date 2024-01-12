@@ -46,7 +46,7 @@ SUITE(MagneticAdviser) {
 
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
-            OpenMagneticsTesting::check_turns_description(masMagnetic.get_magnetic().get_coil());
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
             auto outFile = outputFilePath;
@@ -54,9 +54,9 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
-            painter.paint_core(masMagnetic.get_magnetic());
-            painter.paint_bobbin(masMagnetic.get_magnetic());
-            painter.paint_coil_turns(masMagnetic.get_magnetic());
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
             painter.export_svg();
         }
 

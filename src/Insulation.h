@@ -42,9 +42,9 @@ class InsulationStandard {
   private:
   protected:
   public:
-    virtual double calculate_withstand_voltage(InputsWrapper inputs) = 0;
-    virtual double calculate_clearance(InputsWrapper inputs) = 0;
-    virtual double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false) = 0;
+    virtual double calculate_withstand_voltage(InputsWrapper& inputs) = 0;
+    virtual double calculate_clearance(InputsWrapper& inputs) = 0;
+    virtual double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false) = 0;
 
     InsulationStandard() = default;
     virtual ~InsulationStandard() = default;
@@ -57,10 +57,10 @@ class InsulationStandard {
 
 class InsulationIEC60664Model : public InsulationStandard {
   public:
-    double calculate_distance_through_insulation(InputsWrapper inputs);
-    double calculate_withstand_voltage(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper& inputs);
+    double calculate_withstand_voltage(InputsWrapper& inputs);
+    double calculate_clearance(InputsWrapper& inputs);
+    double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false);
     double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage, InsulationType insulationType);
     double get_rated_insulation_voltage(double mainSupplyVoltage);
     double get_creepage_distance(PollutionDegree pollutionDegree, Cti cti, double voltageRms, WiringTechnology wiringType = WiringTechnology::WOUND);
@@ -151,15 +151,15 @@ class InsulationIEC60664Model : public InsulationStandard {
 
 class InsulationIEC62368Model : public InsulationStandard {
   public:
-    double calculate_withstand_voltage(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
-    double calculate_distance_through_insulation(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper& inputs);
+    double calculate_clearance(InputsWrapper& inputs);
+    double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper& inputs);
 
     double get_es2_voltage_limit(double frequency);
-    double get_working_voltage(InputsWrapper inputs);
-    double get_working_voltage_rms(InputsWrapper inputs);
-    double get_required_withstand_voltage(InputsWrapper inputs);
+    double get_working_voltage(InputsWrapper& inputs);
+    double get_working_voltage_rms(InputsWrapper& inputs);
+    double get_required_withstand_voltage(InputsWrapper& inputs);
     double get_voltage_due_to_transient_overvoltages(double requiredWithstandVoltage, InsulationType insulationType);
     double get_voltage_due_to_recurring_peak_voltages(double workingVoltage, InsulationType insulationType);
     double get_voltage_due_to_temporary_overvoltages(double supplyVoltageRms, InsulationType insulationType);
@@ -255,16 +255,16 @@ class InsulationIEC61558Model : public InsulationStandard {
   private:
     json _data;
   public:
-    double calculate_distance_through_insulation(InputsWrapper inputs, bool usingThinLayers = true);
-    double calculate_withstand_voltage(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper& inputs, bool usingThinLayers = true);
+    double calculate_withstand_voltage(InputsWrapper& inputs);
+    double calculate_clearance(InputsWrapper& inputs);
+    double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false);
     double get_withstand_voltage_table_14(OvervoltageCategory overvoltageCategory, InsulationType insulationType, double workingVoltage);
     double get_clearance_table_20(OvervoltageCategory overvoltageCategory, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
     double get_creepage_distance_table_21(Cti cti, PollutionDegree pollutionDegree, InsulationType insulationType, double workingVoltage);
     double get_distance_through_insulation_table_22(InsulationType insulationType, double workingVoltage, bool usingThinLayers = true);
-    double get_working_voltage_rms(InputsWrapper inputs);
-    double get_working_voltage_peak(InputsWrapper inputs);
+    double get_working_voltage_rms(InputsWrapper& inputs);
+    double get_working_voltage_peak(InputsWrapper& inputs);
     double calculate_distance_through_insulation_over_30kHz(double workingVoltage);
     double calculate_clearance_over_30kHz(InsulationType insulationType, double workingVoltage);
     double calculate_creepage_distance_over_30kHz(InsulationType insulationType, PollutionDegree pollutionDegree, double frequency, double workingVoltage);
@@ -405,10 +405,10 @@ class InsulationIEC60335Model : public InsulationStandard {
   private:
     json _data;
   public:
-    double calculate_distance_through_insulation(InputsWrapper inputs);
-    double calculate_withstand_voltage(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper& inputs);
+    double calculate_withstand_voltage(InputsWrapper& inputs);
+    double calculate_clearance(InputsWrapper& inputs);
+    double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false);
     double get_rated_impulse_withstand_voltage(OvervoltageCategory overvoltageCategory, double ratedVoltage);
     double get_clearance_table_16(PollutionDegree pollutionDegree, WiringTechnology wiringType, InsulationType insulationType, double ratedImpulseWithstandVoltage);
     double get_distance_through_insulation_table_19(OvervoltageCategory overvoltageCategory, double ratedVoltage);
@@ -462,13 +462,13 @@ class InsulationCoordinator {
     std::shared_ptr<InsulationIEC60335Model> _insulationIEC60335Model;
 
   public:
-    double calculate_withstand_voltage(InputsWrapper inputs);
-    double calculate_clearance(InputsWrapper inputs);
-    double calculate_creepage_distance(InputsWrapper inputs, bool includeClearance = false);
-    double calculate_distance_through_insulation(InputsWrapper inputs);
-    InsulationCoordinationOutput calculate_insulation_coordination(InputsWrapper inputs);
-    CoilSectionInterface calculate_coil_section_interface_layers(InputsWrapper inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial);
-    static bool can_fully_insulated_wire_be_used(InputsWrapper inputs);
+    double calculate_withstand_voltage(InputsWrapper& inputs);
+    double calculate_clearance(InputsWrapper& inputs);
+    double calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance = false);
+    double calculate_distance_through_insulation(InputsWrapper& inputs);
+    InsulationCoordinationOutput calculate_insulation_coordination(InputsWrapper& inputs);
+    std::optional<CoilSectionInterface> calculate_coil_section_interface_layers(InputsWrapper& inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial);
+    static bool can_fully_insulated_wire_be_used(InputsWrapper& inputs);
 
     InsulationCoordinator() {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());

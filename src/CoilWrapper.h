@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Insulation.h"
 #include "InputsWrapper.h"
 #include "WireWrapper.h"
 #include "BobbinWrapper.h"
@@ -22,10 +23,15 @@ class CoilWrapper : public Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
         std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationLayers;
+        std::map<std::pair<size_t, size_t>, CoilSectionInterface> _coilSectionInterfaces;
         std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
         std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
+        std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> _sectionInfoWithInsulation;
+        std::vector<std::vector<double>> _marginsPerSection;
         std::string coilLog;
         bool are_sections_and_layers_fitting();
+        InsulationCoordinator _standardCoordinator = InsulationCoordinator();
+
     public:
         uint8_t _interleavingLevel = 1;
         WindingOrientation _windingOrientation = WindingOrientation::HORIZONTAL;
@@ -72,6 +78,7 @@ class CoilWrapper : public Coil {
         }
         void set_interleaving_level(uint8_t interleavingLevel) {
             _interleavingLevel = interleavingLevel;
+            _marginsPerSection = std::vector<std::vector<double>>(interleavingLevel, {0, 0});
         }
         void set_winding_orientation(WindingOrientation windingOrientation) {
             _windingOrientation = windingOrientation;
@@ -139,7 +146,10 @@ class CoilWrapper : public Coil {
         std::vector<uint64_t> get_number_turns();
         void set_number_turns(std::vector<uint64_t> numberTurns);
 
+        const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
+
         std::vector<Layer> get_layers_by_section(std::string sectionName);
+        const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;
 
         std::vector<Turn> get_turns_by_layer(std::string layerName);
 
@@ -156,16 +166,18 @@ class CoilWrapper : public Coil {
         WireWrapper resolve_wire(size_t windingIndex);
         static WireWrapper resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
 
-        double horizontalFillingFactor(Section section);
+        double horizontal_filling_factor(Section section);
 
-        double verticalFillingFactor(Section section);
+        double vertical_filling_factor(Section section);
 
-        double horizontalFillingFactor(Layer layer);
+        double horizontal_filling_factor(Layer layer);
 
-        double verticalFillingFactor(Layer layer);
+        double vertical_filling_factor(Layer layer);
 
         static BobbinWrapper resolve_bobbin(CoilWrapper coil);
         BobbinWrapper resolve_bobbin();
+
+        void add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins);
 
 };
 } // namespace OpenMagnetics

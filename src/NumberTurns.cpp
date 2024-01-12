@@ -28,8 +28,6 @@ void NumberTurns::increment_number_turns() {
         _currentNumberTurns.push_back(primaryNumberTurns);
         for (auto& turnsRatioRequirement : _turnsRatios){
             auto turnsRatio = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::NOMINAL);
-            auto turnsRatioMinimum = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::MINIMUM);
-            auto turnsRatioMaximum = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::MAXIMUM);
             uint64_t numberTurns = round(primaryNumberTurns / turnsRatio);
 
             if (check_requirement(turnsRatioRequirement, double(primaryNumberTurns) / numberTurns)) {

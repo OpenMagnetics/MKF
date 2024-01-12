@@ -31,6 +31,7 @@ class Painter{
         std::string _colorBobbin = "0x8F1b1b1b";
         std::string _colorCopper = "0x00b87333";
         std::string _colorInsulation = "0x18E37E00";
+        std::string _colorMargin = "0x8Ffff05b";
  
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
 
@@ -80,16 +81,16 @@ class Painter{
     void export_svg();
     void export_png();
 
-    void paint_core(const MagneticWrapper& magnetic);
+    void paint_core(MagneticWrapper magnetic);
     void paint_two_piece_set_core(CoreWrapper core);
-    void paint_bobbin(const MagneticWrapper& magnetic);
+    void paint_bobbin(MagneticWrapper magnetic);
     void paint_two_piece_set_bobbin(MagneticWrapper magnetic);
-    void paint_coil_sections(const MagneticWrapper& magnetic);
-    void paint_two_piece_set_winding_sections(const MagneticWrapper& magnetic);
-    void paint_coil_layers(const MagneticWrapper& magnetic);
-    void paint_two_piece_set_winding_layers(const MagneticWrapper& magnetic);
-    void paint_coil_turns(const MagneticWrapper& magnetic);
-    void paint_two_piece_set_winding_turns(const MagneticWrapper& magnetic);
+    void paint_coil_sections(MagneticWrapper magnetic);
+    void paint_two_piece_set_winding_sections(MagneticWrapper magnetic);
+    void paint_coil_layers(MagneticWrapper magnetic);
+    void paint_two_piece_set_winding_layers(MagneticWrapper magnetic);
+    void paint_coil_turns(MagneticWrapper magnetic);
+    void paint_two_piece_set_winding_turns(MagneticWrapper magnetic);
 
 
 };

@@ -254,6 +254,26 @@ OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::Dimensio
     return inputs;
 }
 
+
+OpenMagnetics::InsulationRequirements get_quick_insulation_requirements(OpenMagnetics::DimensionWithTolerance altitude,
+                                                                        OpenMagnetics::Cti cti,
+                                                                        OpenMagnetics::InsulationType insulationType,
+                                                                        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage,
+                                                                        OpenMagnetics::OvervoltageCategory overvoltageCategory,
+                                                                        OpenMagnetics::PollutionDegree pollutionDegree,
+                                                                        std::vector<OpenMagnetics::InsulationStandards> standards){
+    OpenMagnetics::InsulationRequirements insulationRequirements;
+
+    insulationRequirements.set_altitude(altitude);
+    insulationRequirements.set_cti(cti);
+    insulationRequirements.set_insulation_type(insulationType);
+    insulationRequirements.set_main_supply_voltage(mainSupplyVoltage);
+    insulationRequirements.set_overvoltage_category(overvoltageCategory);
+    insulationRequirements.set_pollution_degree(pollutionDegree);
+    insulationRequirements.set_standards(standards);
+    return insulationRequirements;
+}
+
 json get_grinded_gap(double gapLength) {
     auto constants = OpenMagnetics::Constants();
     auto basicGapping = json::array();

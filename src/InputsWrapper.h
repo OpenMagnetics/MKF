@@ -36,7 +36,7 @@ class InputsWrapper : public Inputs {
 
     static bool is_waveform_sampled(Waveform waveform);
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency = 0);
-    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool force = false, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
+    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);

@@ -75,8 +75,8 @@ SUITE(Bobbin) {
 
         double expectedWidthValue = 0.00985;
         double expectedHeightValue = 0.0239;
-        double width = windingWindowDimensions.first;
-        double height = windingWindowDimensions.second;
+        double width = windingWindowDimensions[0];
+        double height = windingWindowDimensions[1];
 
         CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
         CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
@@ -87,8 +87,8 @@ SUITE(Bobbin) {
 
         double expectedWidthValue = 0.0005;
         double expectedHeightValue = 0.001;
-        double width = windingWindowDimensions.first;
-        double height = windingWindowDimensions.second;
+        double width = windingWindowDimensions[0];
+        double height = windingWindowDimensions[1];
 
         CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
         CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
@@ -99,8 +99,8 @@ SUITE(Bobbin) {
 
         double expectedWidthValue = 0.09575;
         double expectedHeightValue = 0.0943;
-        double width = windingWindowDimensions.first;
-        double height = windingWindowDimensions.second;
+        double width = windingWindowDimensions[0];
+        double height = windingWindowDimensions[1];
 
         CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
         CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);

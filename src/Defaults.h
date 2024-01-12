@@ -29,6 +29,8 @@ struct Defaults {
     const double windingLossesHarmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
     const double magneticFieldMirroringDimension = 1;
+    const double maximumCoilPattern = 6;
+    const WindingOrientation defaultSectionsOrientation = WindingOrientation::HORIZONTAL;
 };
 } // namespace OpenMagnetics
 

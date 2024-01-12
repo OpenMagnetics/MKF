@@ -396,7 +396,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(WireWrapper w
     return turnLosses;
 }
 
-double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double b, a;
 
@@ -426,7 +426,6 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire
 
 
 double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
-    double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double bPrima, aPrima;
 
     if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {

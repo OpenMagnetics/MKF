@@ -841,7 +841,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.001, 9);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -850,7 +850,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
 
@@ -868,7 +868,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -877,7 +877,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
 
@@ -895,7 +895,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.001, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -904,7 +904,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
 
@@ -922,7 +922,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -931,7 +931,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
 
@@ -949,7 +949,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -958,7 +958,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -977,7 +977,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -986,7 +986,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_coil_sections(magnetic);
@@ -997,16 +997,19 @@ SUITE(CoilPainter) {
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_And_Section) {
-        std::vector<int64_t> numberTurns = {42};
-        std::vector<int64_t> numberParallels = {3};
-        uint8_t interleavingLevel = 2;
+        std::vector<int64_t> numberTurns = {54};
+        std::vector<int64_t> numberParallels = {2};
+        uint8_t interleavingLevel = 1;
         int64_t numberStacks = 1;
         std::string coreShape = "PQ 40/40";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
+        double margin = 0.002;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+
+        std::cout << coil.get_sections_description().value().size() << std::endl;
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_And_Section.svg");
@@ -1014,7 +1017,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1025,7 +1028,7 @@ SUITE(CoilPainter) {
         CHECK(std::filesystem::exists(outFile));
     }
 
-    TEST(Test_Painter_Pq_Core_Bobbin_And_Sections) {
+    TEST(Test_Painter_Pq_Core_Bobbin_And_Two_Sections) {
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 2;
@@ -1034,7 +1037,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1043,7 +1046,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1063,7 +1066,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1072,7 +1075,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1097,7 +1100,7 @@ SUITE(CoilPainter) {
         gapping.push_back(basicSpacerGap);
         gapping.push_back(basicSpacerGap);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1106,7 +1109,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1126,7 +1129,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1135,7 +1138,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1155,7 +1158,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1164,7 +1167,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1184,7 +1187,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1193,7 +1196,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1218,7 +1221,7 @@ SUITE(CoilPainter) {
             std::string coreMaterial = "3C97";
             auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-            auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
             auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
@@ -1229,7 +1232,7 @@ SUITE(CoilPainter) {
             OpenMagnetics::Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
-            magnetic.set_coil(winding);
+            magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
@@ -1250,7 +1253,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1259,7 +1262,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1279,7 +1282,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1288,7 +1291,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1308,7 +1311,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1317,7 +1320,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1340,7 +1343,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1349,7 +1352,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1372,7 +1375,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1381,7 +1384,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1404,7 +1407,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1413,7 +1416,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1436,7 +1439,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1445,7 +1448,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1468,7 +1471,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1477,7 +1480,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1500,7 +1503,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1509,7 +1512,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1532,7 +1535,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1541,7 +1544,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1564,7 +1567,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1573,7 +1576,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1596,7 +1599,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1605,7 +1608,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1628,7 +1631,7 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1637,7 +1640,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1667,7 +1670,7 @@ SUITE(CoilPainter) {
         wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1676,7 +1679,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1706,7 +1709,7 @@ SUITE(CoilPainter) {
         wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1715,7 +1718,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1747,7 +1750,7 @@ SUITE(CoilPainter) {
         wire.set_type(OpenMagnetics::WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -1756,7 +1759,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1780,10 +1783,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Centered.svg");
@@ -1791,7 +1794,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1817,10 +1820,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Centered.svg");
@@ -1828,7 +1831,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1854,10 +1857,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Top.svg");
@@ -1865,7 +1868,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1891,10 +1894,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Inner.svg");
@@ -1902,7 +1905,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1928,10 +1931,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Outer.svg");
@@ -1939,7 +1942,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -1965,10 +1968,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Bottom.svg");
@@ -1976,7 +1979,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2002,10 +2005,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread.svg");
@@ -2013,7 +2016,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2039,10 +2042,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_Two_Sections.svg");
@@ -2050,7 +2053,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2076,10 +2079,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Vertical_Spread_One_Section.svg");
@@ -2087,7 +2090,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2113,10 +2116,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread.svg");
@@ -2124,7 +2127,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2150,10 +2153,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_Two_Sections.svg");
@@ -2161,7 +2164,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2187,10 +2190,10 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        winding.delimit_and_compact();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_One_Section.svg");
@@ -2198,7 +2201,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2225,14 +2228,14 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        winding.set_inputs(inputs);
-        winding.wind();
-        winding.delimit_and_compact();
+        coil.set_inputs(inputs);
+        coil.wind();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Vertical_Sections_And_Insulation.svg");
@@ -2240,7 +2243,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2265,14 +2268,14 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        winding.set_inputs(inputs);
-        winding.wind();
-        winding.delimit_and_compact();
+        coil.set_inputs(inputs);
+        coil.wind();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Horizontal_Sections_And_Insulation.svg");
@@ -2280,7 +2283,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2301,14 +2304,14 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        winding.set_inputs(inputs);
-        winding.wind();
-        winding.delimit_and_compact();
+        coil.set_inputs(inputs);
+        coil.wind();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Layers_And_Insulation.svg");
@@ -2316,7 +2319,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2337,14 +2340,14 @@ SUITE(CoilPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         double voltagePeakToPeak = 20000;
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        winding.set_inputs(inputs);
-        winding.wind();
-        winding.delimit_and_compact();
+        coil.set_inputs(inputs);
+        coil.wind();
+        coil.delimit_and_compact();
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation.svg");
@@ -2352,7 +2355,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -2382,7 +2385,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
         auto outFile = outputFilePath;
@@ -2391,7 +2394,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Painter painter(outFile);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
-        magnetic.set_coil(winding);
+        magnetic.set_coil(coil);
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);

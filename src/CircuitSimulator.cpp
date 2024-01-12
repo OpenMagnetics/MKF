@@ -66,7 +66,7 @@ struct MNACell
     void updatePre()
     {
         lu = prelu;
-        for(int i = 0; i < gdyn.size(); ++i)
+        for(size_t i = 0; i < gdyn.size(); ++i)
         {
             lu += 0[gdyn[i]];
         }
@@ -108,7 +108,7 @@ struct MNASystem
 
     double      time;
 
-    void setSize(int n)
+    void setSize(size_t n)
     {
         A.resize(n);
         b.resize(n);
@@ -171,19 +171,19 @@ struct IComponent
     virtual void stamp(MNASystem & m) = 0;
 
     // this is for allocating state variables
-    virtual void setupStates(int & states) {}
+    virtual void setupStates([[maybe_unused]] int & states) {}
 
     // update state variables, only tagged nodes
     // this is intended for fixed-time compatible
     // testing to make sure we can code-gen stuff
-    virtual void update(MNASystem & m) {}
+    virtual void update([[maybe_unused]] MNASystem & m) {}
 
     // return true if we're done - will keep iterating
     // until all the components are happy
-    virtual bool newton(MNASystem & m) { return true; }
+    virtual bool newton([[maybe_unused]] MNASystem & m) { return true; }
 
     // time-step change, for caps to fix their state-variables
-    virtual void scaleTime(double told_per_new) {}
+    virtual void scaleTime([[maybe_unused]] double told_per_new) {}
 };
 
 template <int nPins = 0, int nInternalNets = 0>
@@ -404,7 +404,7 @@ struct Probe : Component<2, 1>
         m.nodes[nets[2]].name = "v:probe";
     }
 
-    void update(MNASystem & m)
+    void update([[maybe_unused]] MNASystem & m)
     {
         // we could do output here :)
     }
@@ -787,7 +787,7 @@ struct NetList
     void buildSystem()
     {
         system.setSize(nets);
-        for(int i = 0; i < components.size(); ++i)
+        for(size_t i = 0; i < components.size(); ++i)
         {
             components[i]->stamp(system);
         }
@@ -815,7 +815,7 @@ struct NetList
 
 
         char buf[1024];
-        for(unsigned i = 0; i < nets; ++i)
+        for(int i = 0; i < nets; ++i)
         {
             int off = sprintf(buf, "%2d: | ", i);
             for(int j = 0; j < nets; ++j)
@@ -837,7 +837,7 @@ struct NetList
 
     void setTimeStep(double tStepSize)
     {
-        for(int i = 0; i < components.size(); ++i)
+        for(size_t i = 0; i < components.size(); ++i)
         {
             components[i]->scaleTime(tStep / tStepSize);
         }
@@ -850,7 +850,7 @@ struct NetList
 
     void simulateTick()
     {
-        int iter;
+        size_t iter;
         for(iter = 0; iter < maxIter; ++iter)
         {
             // restore matrix state and add dynamic values
@@ -876,7 +876,7 @@ struct NetList
                 if(system.A[i][j].lu != 0) ++fillPost;
             }
         }
-        printf("\t %d iters, LU density: %.1f%%\n",
+        printf("\t %lu iters, LU density: %.1f%%\n",
             iter, 100 * fillPost / ((nets-1.f)*(nets-1.f)));
     }
 
@@ -903,7 +903,7 @@ protected:
 
     void update()
     {
-        for(int i = 0; i < components.size(); ++i)
+        for(size_t i = 0; i < components.size(); ++i)
         {
             components[i]->update(system);
         }
@@ -913,7 +913,7 @@ protected:
     bool newton()
     {
         bool done = 1;
-        for(int i = 0; i < components.size(); ++i)
+        for(size_t i = 0; i < components.size(); ++i)
         {
             done &= components[i]->newton(system);
         }
