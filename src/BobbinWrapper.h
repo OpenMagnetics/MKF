@@ -44,7 +44,10 @@ class BobbinWrapper : public Bobbin {
     virtual ~BobbinWrapper() = default;
     
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
-    static std::pair<double, double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
+    static std::vector<double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
+    std::vector<double> get_winding_window_dimensions(size_t windingWindowIndex = 0);
+    std::vector<double> get_winding_window_coordinates(size_t windingWindowIndex = 0);
+    WindingOrientation get_winding_window_sections_orientation(size_t windingWindowIndex = 0);
     static BobbinWrapper create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
     static BobbinWrapper create_quick_bobbin(CoreWrapper core, bool nullDimensions=false);
 

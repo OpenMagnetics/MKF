@@ -1,4 +1,5 @@
 #include "Utils.h"
+#include "Defaults.h"
 #include "BobbinWrapper.h"
 #include <cmath>
 #include <filesystem>
@@ -368,7 +369,7 @@ double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windi
     return (fillingFactorWidth + fillingFactorHeight) / 2;
 }
 
-std::pair<double, double> BobbinWrapper::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
+std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
 
     load_interpolators();
     double bobbinWindingWindowWidth;
@@ -397,7 +398,7 @@ std::pair<double, double> BobbinWrapper::get_winding_window_dimensions(double co
         bobbinWindingWindowHeight = bobbinWindingWindowInterpHeight(coreWindingWindowHeight);
     }
 
-    return std::pair<double, double>({bobbinWindingWindowWidth, bobbinWindingWindowHeight});
+    return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
 }
 
 BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
@@ -406,6 +407,7 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, dou
 
     windingWindowElement.set_height(windingWindowHeight);
     windingWindowElement.set_width(windingWindowWidth);
+
     windingWindowElement.set_coordinates(std::vector<double>({windingWindowWidth, 0, 0}));
     coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
     coreBobbinProcessedDescription.set_wall_thickness(0.001);
@@ -430,7 +432,7 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
 
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
     auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
-    std::pair<double, double> bobbinWindingWindow({coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value()});
+    std::vector<double> bobbinWindingWindow({coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value()});
 
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     WindingWindowElement windingWindowElement;
@@ -440,11 +442,11 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
 
     if (!nullDimensions) {
         bobbinWindingWindow = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
-        bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindow.first;
-        bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindow.second) / 2;
+        bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindow[0];
+        bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindow[1]) / 2;
     }
 
-    if ((bobbinWindingWindow.first < 0) || (bobbinWindingWindow.first > 1) || (bobbinWindingWindow.second < 0) || (bobbinWindingWindow.second > 1)) {
+    if ((bobbinWindingWindow[0] < 0) || (bobbinWindingWindow[0] > 1) || (bobbinWindingWindow[1] < 0) || (bobbinWindingWindow[1] > 1)) {
         windingWindowElement.set_width(coreWindingWindow.get_width().value());
         windingWindowElement.set_height(coreWindingWindow.get_height().value());
         windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2, 0, 0}));
@@ -452,9 +454,9 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
         coreBobbinProcessedDescription.set_column_thickness(0);
     }
     else {
-        windingWindowElement.set_width(bobbinWindingWindow.first);
-        windingWindowElement.set_height(bobbinWindingWindow.second);
-        windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + bobbinWindingWindow.first / 2, 0, 0}));
+        windingWindowElement.set_width(bobbinWindingWindow[0]);
+        windingWindowElement.set_height(bobbinWindingWindow[1]);
+        windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + bobbinWindingWindow[0] / 2, 0, 0}));
         coreBobbinProcessedDescription.set_wall_thickness(bobbinWallThickness);
         coreBobbinProcessedDescription.set_column_thickness(bobbinColumnThickness);
     }
@@ -465,14 +467,34 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
 
     if ((windingWindowElement.get_width().value() < 0) || (windingWindowElement.get_width().value() > 1)) {
-        throw std::runtime_error("Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindow.first));
+        throw std::runtime_error("Something wrong happened in section bobbin first : " + std::to_string(bobbinWindingWindow[0]));
     }
     if ((windingWindowElement.get_height().value() < 0) || (windingWindowElement.get_height().value() > 1)) {
-        throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindow.second));
+        throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindow[1]));
     }
     BobbinWrapper bobbin;
     bobbin.set_processed_description(coreBobbinProcessedDescription);
+    auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
     return bobbin;
 }
+
+std::vector<double> BobbinWrapper::get_winding_window_dimensions(size_t windingWindowIndex) {
+    double width = get_processed_description()->get_winding_windows()[windingWindowIndex].get_width().value();
+    double height = get_processed_description()->get_winding_windows()[windingWindowIndex].get_height().value();
+    return {width, height};
+}
+
+
+std::vector<double> BobbinWrapper::get_winding_window_coordinates(size_t windingWindowIndex) {
+    return get_processed_description()->get_winding_windows()[windingWindowIndex].get_coordinates().value();
+}
+
+WindingOrientation BobbinWrapper::get_winding_window_sections_orientation(size_t windingWindowIndex) {
+    if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation()) {
+        return Defaults().defaultSectionsOrientation;
+    }
+    return get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation().value();
+}
+
 
 } // namespace OpenMagnetics

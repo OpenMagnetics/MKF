@@ -29,7 +29,7 @@ namespace OpenMagnetics {
             }
         }
         {
-            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores_stock.ndjson");
+            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
             std::ifstream ndjsonFile(inventory_path);
             std::string jsonLine;
             while (std::getline(ndjsonFile, jsonLine)) {
@@ -202,10 +202,10 @@ int main(int argc, char* argv[]) {
             painter.set_number_points_y(20);
             painter.set_fringing_effect(false);
             painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(masMagnetics[i].get_mutable_inputs().get_operating_point(0), masMagnetics[i].get_magnetic());
-            painter.paint_core(masMagnetics[i].get_magnetic());
-            painter.paint_bobbin(masMagnetics[i].get_magnetic());
-            painter.paint_coil_turns(masMagnetics[i].get_magnetic());
+            painter.paint_magnetic_field(masMagnetics[i].get_mutable_inputs().get_operating_point(0), masMagnetics[i].get_mutable_magnetic());
+            painter.paint_core(masMagnetics[i].get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetics[i].get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetics[i].get_mutable_magnetic());
             painter.export_svg();
         }
 

@@ -225,7 +225,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
     return fieldPerHarmonic;
 }
 
-std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
     std::vector<FieldPoint> fieldPoints;
 
     int M = _mirroringDimension;
@@ -276,7 +276,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     return fieldPoints;
 }
 
-std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex) {
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_point(turn.get_coordinates());
@@ -356,7 +356,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
 }
 
 
-std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]] CoreWrapper core) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_value(0.5);

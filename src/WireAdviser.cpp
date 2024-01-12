@@ -361,6 +361,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
             wire.cut_foil_wire_to_section(section);
         }
 
+
         if (wire.get_type() == WireType::RECTANGULAR) {
             numberParallelsNeeded = 1;
         }
@@ -375,7 +376,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
         coilFunctionalDescription.set_wire(wire);
         coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
         if (numberParallelsNeeded < _maximumNumberParallels) {
-            coilFunctionalDescription.set_number_parallels(numberParallelsNeeded);
+            coilFunctionalDescription.set_number_parallels(numberParallelsNeeded + 1);
             coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
         }
     }
@@ -411,7 +412,9 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
     auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature);
+
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
+
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
     }

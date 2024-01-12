@@ -83,10 +83,10 @@ SUITE(MagneticSimulator) {
             painter.set_number_points_y(20);
             painter.set_fringing_effect(false);
             painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_magnetic());
-            painter.paint_core(simulatedMas.get_magnetic());
-            painter.paint_bobbin(simulatedMas.get_magnetic());
-            painter.paint_coil_turns(simulatedMas.get_magnetic());
+            painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_mutable_magnetic());
+            painter.paint_core(simulatedMas.get_mutable_magnetic());
+            painter.paint_bobbin(simulatedMas.get_mutable_magnetic());
+            painter.paint_coil_turns(simulatedMas.get_mutable_magnetic());
             painter.export_svg();
         }
 
@@ -128,10 +128,10 @@ SUITE(MagneticSimulator) {
             painter.set_number_points_y(20);
             painter.set_fringing_effect(false);
             painter.set_mirroring_dimension(0);
-            painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_magnetic());
-            painter.paint_core(simulatedMas.get_magnetic());
-            painter.paint_bobbin(simulatedMas.get_magnetic());
-            painter.paint_coil_turns(simulatedMas.get_magnetic());
+            painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_mutable_magnetic());
+            painter.paint_core(simulatedMas.get_mutable_magnetic());
+            painter.paint_bobbin(simulatedMas.get_mutable_magnetic());
+            painter.paint_coil_turns(simulatedMas.get_mutable_magnetic());
             painter.export_svg();
         }
 

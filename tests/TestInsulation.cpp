@@ -82,17 +82,26 @@ SUITE(Insulation) {
 }
 
 SUITE(CoilSectionsInterface) {
-    auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
-    auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
-    auto cti = OpenMagnetics::Cti::GROUP_I;
-    double maximumVoltageRms = 1000;
-    double maximumVoltagePeak = 1800;
-    double frequency = 30000;
-    OpenMagnetics::DimensionWithTolerance altitude;
-    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
-    auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+    // auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+    // auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+    // auto cti = OpenMagnetics::Cti::GROUP_I;
+    // double maximumVoltageRms = 1000;
+    // double maximumVoltagePeak = 1800;
+    // double frequency = 30000;
+    // OpenMagnetics::DimensionWithTolerance altitude;
+    // OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+    // auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
 
     TEST(Test_Basic_SIW_SIW_OVC_I_Kapton) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -107,13 +116,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Reinforced_SIW_SIW_OVC_I_Tecroll_10B) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -128,13 +146,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
-        CHECK_EQUAL(2, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(2UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Reinforced_SIW_SIW_OVC_IV_Kapton) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -149,13 +176,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_SIW_SIW_OVC_IV_Kapton) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -170,13 +206,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_SIW_SIW_OVC_IV_ETFE) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -191,13 +236,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("SXXL825/44FX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() > 0);
-        CHECK_EQUAL(3, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(3UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_DIW_SIW_OVC_I_ETFE) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -212,13 +266,17 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("SXXL20/34FX-3(MWXX)");
         auto rightWire = OpenMagnetics::find_wire_by_name("DXXL07/28TXX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_DIW_Enammeled_Wire_OVC_I_ETFE) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
         standardCoordinator = OpenMagnetics::InsulationCoordinator();
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
@@ -239,13 +297,20 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
         auto rightWire = OpenMagnetics::find_wire_by_name("DXXL07/28TXX-3(MWXX)");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::INSULATING == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_TIW_OVC_I_ETFE) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(800);
@@ -262,13 +327,22 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("T28A01TXXX-1.5");
         auto rightWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
     }
 
     TEST(Test_Basic_FIW_OVC_I_ETFE) {
+        auto standardCoordinator = OpenMagnetics::InsulationCoordinator();
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_I;
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        double maximumVoltageRms = 1000;
+        double maximumVoltagePeak = 1800;
+        double frequency = 30000;
+        OpenMagnetics::DimensionWithTolerance altitude;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
         auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_623681};
         altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(400);
@@ -283,9 +357,9 @@ SUITE(CoilSectionsInterface) {
         auto leftWire = OpenMagnetics::find_wire_by_name("0.071 - FIW 9");
         auto rightWire = OpenMagnetics::find_wire_by_name("0.016 - Grade 1");
 
-        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial);
+        auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();
         CHECK(coilSectionInterface.get_total_margin_tape_distance() == 0);
-        CHECK_EQUAL(1, coilSectionInterface.get_number_layers_insulation());
+        CHECK_EQUAL(1UL, coilSectionInterface.get_number_layers_insulation());
         CHECK(OpenMagnetics::CoilSectionInterface::LayerPurpose::MECHANICAL == coilSectionInterface.get_layer_purpose());
     }
 }

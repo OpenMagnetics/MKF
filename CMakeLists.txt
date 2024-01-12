@@ -14,6 +14,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
+# set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch")
 
 option(BUILD_TESTS      "Build tests"    OFF)
@@ -78,8 +79,6 @@ if(INCLUDE_PYMKF)
         FetchContent_MakeAvailable( pybind11 pybind11_json)
         set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
 endif(INCLUDE_PYMKF)
-
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 
 find_program(NAMES quicktype REQUIRED)
 find_program(NAMES libgtest-dev REQUIRED)

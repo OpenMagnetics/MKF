@@ -244,6 +244,13 @@ OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
         return coreShapeDatabase[name];
     }
     else {
+        for (const auto& [key, value] : coreShapeDatabase) {
+            std::string dbName = key;
+            dbName.erase(remove(dbName.begin(), dbName.end(), ' '), dbName.end());
+            if (name == dbName) {
+                return value;
+            }
+        }
         throw std::runtime_error("Core shape not found: " + name);
     }
 }

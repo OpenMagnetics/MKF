@@ -1,3 +1,5 @@
+#include "Settings.h"
+#include "Painter.h"
 #include "CoilWrapper.h"
 #include "json.hpp"
 #include "Utils.h"
@@ -41,7 +43,6 @@ SUITE(CoilSectionsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-
     }
 
     TEST(Wind_By_Section_Wind_By_Full_Turns) {
@@ -55,7 +56,6 @@ SUITE(CoilSectionsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-
     }
 
     TEST(Wind_By_Section_Wind_By_Full_Parallels) {
@@ -69,7 +69,6 @@ SUITE(CoilSectionsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-
     }
 
     TEST(Wind_By_Section_Wind_By_Full_Parallels_Multiwinding) {
@@ -83,7 +82,6 @@ SUITE(CoilSectionsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-
     }
 
     TEST(Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced_Vertical) {
@@ -97,7 +95,6 @@ SUITE(CoilSectionsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
 
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
-
     }
 
     TEST(Wind_By_Section_Random_0) {
@@ -287,7 +284,6 @@ SUITE(CoilSectionsDescription) {
 
 SUITE(CoilLayersDescription) {
 
-
     TEST(Wind_By_Layer_Wind_One_Section_One_Layer) {
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
@@ -319,6 +315,7 @@ SUITE(CoilLayersDescription) {
         auto layersDescription = coil.get_layers_description().value();
         OpenMagneticsTesting::check_layers_description(coil);
     }
+
     TEST(Wind_By_Layer_Wind_One_Section_One_Layer_Two_Parallels) {
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
@@ -350,6 +347,7 @@ SUITE(CoilLayersDescription) {
         auto layersDescription = coil.get_layers_description().value();
         OpenMagneticsTesting::check_layers_description(coil);
     }
+
     TEST(Wind_By_Layer_Wind_Two_Sections_Two_Layers_Two_Parallels) {
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
@@ -568,8 +566,6 @@ SUITE(CoilLayersDescription) {
 }
 
 SUITE(CoilTurnsDescription) {
-
-
 
     TEST(Wind_By_Turn_Wind_One_Section_One_Layer) {
         std::vector<int64_t> numberTurns = {7};

@@ -444,7 +444,7 @@ SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitati
     auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
     voltageSignalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
     voltageSignalDescriptor.set_processed(
-        calculate_processed_data(voltageSignalDescriptor, sampledWaveform, true, true));
+        calculate_processed_data(voltageSignalDescriptor, sampledWaveform, true));
 
     resultWaveform.set_data(derivative);
     return voltageSignalDescriptor;
@@ -561,7 +561,7 @@ SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signal
     signalDescriptor.set_waveform(waveform);
     auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
     signalDescriptor.set_harmonics(calculate_harmonics_data(sampledWaveform, frequency));
-    signalDescriptor.set_processed(calculate_processed_data(signalDescriptor, sampledWaveform, true, true, signalDescriptor.get_processed()));
+    signalDescriptor.set_processed(calculate_processed_data(signalDescriptor, sampledWaveform, true, signalDescriptor.get_processed()));
     return signalDescriptor;
 }
 
@@ -729,7 +729,6 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
 
 Processed InputsWrapper::calculate_processed_data(SignalDescriptor excitation,
                                             Waveform sampledWaveform,
-                                            bool force,
                                             bool includeAdvancedData,
                                             std::optional<Processed> processed) {
 
@@ -967,7 +966,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
             auto currentExcitationWaveform = currentExcitation.get_waveform().value();
             auto sampledCurrentWaveform = calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
             currentExcitation.set_harmonics(calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform, true, true, currentExcitation.get_processed()));
+            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform, true, currentExcitation.get_processed()));
             excitation.set_current(currentExcitation);
         }
 
@@ -1041,7 +1040,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             auto waveform = current_excitation.get_waveform().value();
             auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
             current_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform, false, true, current_excitation.get_processed()));
+            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform, true, current_excitation.get_processed()));
             excitation.set_current(current_excitation);
         }
         // Here we processed this excitation voltage
@@ -1296,7 +1295,7 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
             auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
             current.set_waveform(currentSampledWaveform);
             current.set_harmonics(calculate_harmonics_data(currentSampledWaveform, frequency));
-            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, true, current.get_processed()));
+            current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, current.get_processed()));
             operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
 
 

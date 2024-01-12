@@ -3,6 +3,8 @@
 #include <MAS.hpp>
 #include "CoreWrapper.h"
 #include "CoilWrapper.h"
+#include "WireWrapper.h"
+#include "BobbinWrapper.h"
 
 namespace OpenMagnetics {
 
@@ -41,6 +43,11 @@ class MagneticWrapper : public Magnetic {
                 set_manufacturer_info(magnetic.get_manufacturer_info());
             }
         }
+
+
+        BobbinWrapper get_bobbin();
+        std::vector<WireWrapper> get_wires();
+        WireWrapper get_wire(size_t windingIndex=0);
 };
 
 void from_json(const json & j, MagneticWrapper & x);
