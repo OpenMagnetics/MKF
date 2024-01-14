@@ -1213,6 +1213,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
         turnsRatiosWithTolerance.set_nominal(turnsRatio);
         designRequirements.get_mutable_turns_ratios().push_back(turnsRatiosWithTolerance);
     }
+    designRequirements.set_wiring_technology(WiringTechnology::WOUND);
     inputs.set_design_requirements(designRequirements);
 
     OperatingPoint operatingPoint;

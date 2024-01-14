@@ -575,19 +575,19 @@ SUITE(CoilAdviser) {
             CHECK(numberMaximumLayers >= 3 || maximumGrade >= 3);
             CHECK((bobbinWindingWindowHeight - primarySectionHeight) < std::max(creepageDistance, clearance));
 
-            // std::string filePath = __FILE__;
-            // auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            // auto outFile = outputFilePath;
-            // std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
-            // currentIndex++;
-            // outFile.append(filename);
-            // OpenMagnetics::Painter painter(outFile);
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
+            currentIndex++;
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
 
-            // painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.export_svg();
+            painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
+            painter.export_svg();
         }
     }
 
@@ -682,19 +682,19 @@ SUITE(CoilAdviser) {
             CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[0], std::max(creepageDistance, clearance) / 2, 0.00001);
             CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[1], std::max(creepageDistance, clearance) / 2, 0.00001);
 
-            // std::string filePath = __FILE__;
-            // auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-            // auto outFile = outputFilePath;
-            // std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
-            // currentIndex++;
-            // outFile.append(filename);
-            // OpenMagnetics::Painter painter(outFile);
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
+            currentIndex++;
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
 
-            // painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
-            // painter.export_svg();
+            painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
+            painter.export_svg();
         }
     }
 
@@ -1163,7 +1163,7 @@ SUITE(CoilAdviser) {
 
         std::vector<int64_t> numberTurns = {15, 36, 87, 60};
         std::vector<int64_t> numberParallels = {1, 1, 1, 1};
-        std::vector<double> turnsRatios = {1, 15. / 36, 15. / 87, 15. / 60};
+        std::vector<double> turnsRatios = {15. / 36, 15. / 87, 15. / 60};
         std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::DENARY,
                                                                     OpenMagnetics::IsolationSide::NONARY,
                                                                     OpenMagnetics::IsolationSide::QUATERNARY,
@@ -1185,6 +1185,141 @@ SUITE(CoilAdviser) {
         OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003175, 1);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("E 114/46/26", gapping, numberTurns, numberStacks, "3C91");
+
+        magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
+        magnetic.get_mutable_coil().set_winding_orientation(windingOrientation);
+        magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        OpenMagnetics::CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+        if (masMagneticsWithCoil.size() > 0) {
+            auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_CoilAdviser_Random_6) {
+        srand (time(NULL));
+
+        int64_t numberStacks = 1;
+
+        std::vector<int64_t> numberTurns = {11, 82};
+        std::vector<int64_t> numberParallels = {3, 3};
+        std::vector<double> turnsRatios = {11. / 82};
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::DENARY,
+                                                                    OpenMagnetics::IsolationSide::NONARY};
+
+        double frequency = 617645;
+        double magnetizingInductance = 0.009088;
+        double temperature = 23;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double peakToPeak = 26;
+        double dutyCycle = 0.38;
+        double dcCurrent = 16;
+        auto coreShapeNames = OpenMagnetics::get_shape_names(false);
+        std::string coreShapeName;
+        OpenMagnetics::MagneticWrapper magnetic;
+
+        OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(1).value();
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001227);
+        magnetic = OpenMagneticsTesting::get_quick_magnetic("E 72/28/19", gapping, numberTurns, numberStacks, "3C91");
+
+        magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
+        magnetic.get_mutable_coil().set_winding_orientation(windingOrientation);
+        magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        OpenMagnetics::CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+
+        if (masMagneticsWithCoil.size() > 0) {
+            auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_CoilAdviser_Random_7) {
+        srand (time(NULL));
+
+        int64_t numberStacks = 1;
+
+        std::vector<int64_t> numberTurns = {60, 18, 10};
+        std::vector<int64_t> numberParallels = {1, 3, 3};
+        std::vector<double> turnsRatios = {60. / 18, 60. / 10};
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::SECONDARY,
+                                                                    OpenMagnetics::IsolationSide::NONARY,
+                                                                    OpenMagnetics::IsolationSide::TERTIARY};
+
+        double frequency = 95989;
+        double magnetizingInductance = 0.009266;
+        double temperature = 23;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double peakToPeak = 9;
+        double dutyCycle = 0.57;
+        double dcCurrent = 1;
+        auto coreShapeNames = OpenMagnetics::get_shape_names(false);
+        std::string coreShapeName;
+        OpenMagnetics::MagneticWrapper magnetic;
+
+        OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(1).value();
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.007023);
+        magnetic = OpenMagneticsTesting::get_quick_magnetic("E 35", gapping, numberTurns, numberStacks, "3C91");
 
         magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
         magnetic.get_mutable_coil().set_winding_orientation(windingOrientation);

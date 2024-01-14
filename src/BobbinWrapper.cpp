@@ -490,6 +490,9 @@ std::vector<double> BobbinWrapper::get_winding_window_coordinates(size_t winding
 }
 
 WindingOrientation BobbinWrapper::get_winding_window_sections_orientation(size_t windingWindowIndex) {
+    if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
+        throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
+    }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation()) {
         return Defaults().defaultSectionsOrientation;
     }

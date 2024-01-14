@@ -29,7 +29,7 @@ class Painter{
 
         std::string _colorFerrite = "0x8F7b7c7d";
         std::string _colorBobbin = "0x8F1b1b1b";
-        std::string _colorCopper = "0x00b87333";
+        std::string _colorCopper = "0x8Fb87333";
         std::string _colorInsulation = "0x18E37E00";
         std::string _colorMargin = "0x8Ffff05b";
  
@@ -91,6 +91,7 @@ class Painter{
     void paint_two_piece_set_winding_layers(MagneticWrapper magnetic);
     void paint_coil_turns(MagneticWrapper magnetic);
     void paint_two_piece_set_winding_turns(MagneticWrapper magnetic);
+    void paint_two_piece_set_margin(MagneticWrapper magnetic);
 
 
 };

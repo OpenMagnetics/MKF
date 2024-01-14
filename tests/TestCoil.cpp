@@ -17,6 +17,5305 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 
+SUITE(CoilSectionsDescriptionMargins) {
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.001;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill[0], marginAfterMarginNoFill[0], 0.0001);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_2[1], sectionDimensionsAfterMarginNoFill_2[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_0[0], marginAfterMarginNoFill_0[0], 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_2[0], marginAfterMarginNoFill_2[0], 0.0001);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_2[1] > marginAfterMarginNoFill_2[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(sectionDimensionsBeforeMargin_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsBeforeMargin_2[1], sectionDimensionsAfterMarginNoFill_2[1], 0.0001);
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill[1], marginAfterMarginNoFill[1], 0.0001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_2[1], sectionDimensionsAfterMarginNoFill_2[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1], 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_2[1], marginAfterMarginNoFill_2[1], 0.0001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_2[0] > marginAfterMarginNoFill_2[0]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(sectionDimensionsBeforeMargin_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsBeforeMargin_2[1], sectionDimensionsAfterMarginNoFill_2[1], 0.0001);
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill[1], marginAfterMarginNoFill[1], 0.0001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_2[1]);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK_CLOSE(sectionDimensionsAfterMarginFill_2[1], sectionDimensionsAfterMarginNoFill_2[1], 0.0001);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.0001);
+        CHECK_CLOSE(marginAfterMarginFill_0[1], marginAfterMarginNoFill_0[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(marginAfterMarginFill_2[1], marginAfterMarginNoFill_2[1], 0.0001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_2[0] > marginAfterMarginNoFill_2[0]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(sectionDimensionsBeforeMargin_1[1], sectionDimensionsAfterMarginNoFill_1[1], 0.0001);
+        CHECK(sectionDimensionsBeforeMargin_2[1] > sectionDimensionsAfterMarginNoFill_2[1]);
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.001;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowEndingWidth = windingWindowCoordinates[0] + windingWindowDimensions[0] / 2;
+        auto sectionEndingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] + coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1]);
+        CHECK_CLOSE(windingWindowEndingWidth, sectionEndingWidth, 0.001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.001;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.002;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[1], sectionDimensionsAfterMarginNoFill[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth, 0.001);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[1] > sectionDimensionsAfterMarginNoFill[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 25, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.001;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[1] > sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_1[1] > sectionDimensionsAfterMarginNoFill_1[1]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK_CLOSE(marginAfterMarginFill_2[1], marginAfterMarginNoFill_2[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 3, margin * 0.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[1], marginAfterMarginNoFill_1[1], 0.0001);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_1[0]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread) {
+        std::vector<int64_t> numberTurns = {47};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin[0]);
+        CHECK_EQUAL(0, marginBeforeMargin[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill[0], sectionDimensionsAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[0] > marginAfterMarginNoFill[0]);
+        CHECK(marginAfterMarginFill[1] > marginAfterMarginNoFill[1]);
+        CHECK(sectionDimensionsBeforeMargin[0] > sectionDimensionsAfterMarginNoFill[0]);
+
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins) {
+        std::vector<int64_t> numberTurns = {34, 12, 10};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        double margin = 0.0005;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_fill_coil_sections_with_margin_tape(false);
+
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         "PQ 28/20",
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        settings->set_wind_even_if_not_fit(true);
+        settings->set_fill_coil_sections_with_margin_tape(false);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto bobbin = coil.resolve_bobbin();
+        auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
+        auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        OpenMagneticsTesting::check_turns_description(coil);
+
+        settings->set_fill_coil_sections_with_margin_tape(true);
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+
+        // {
+        //     std::string filePath = __FILE__;
+        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        //     auto outFile = outputFilePath;
+        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile);
+        //     OpenMagnetics::Magnetic magnetic;
+        //     magnetic.set_core(core);
+        //     magnetic.set_coil(coil);
+
+        //     painter.paint_core(magnetic);
+        //     painter.paint_bobbin(magnetic);
+        //     painter.paint_coil_sections(magnetic);
+        //     painter.paint_coil_turns(magnetic);
+
+        //     painter.export_svg();
+        // }
+
+        CHECK_EQUAL(0, marginBeforeMargin_0[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_0[1]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[0]);
+        CHECK_EQUAL(0, marginBeforeMargin_1[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_0[1], sectionDimensionsAfterMarginNoFill_0[1]);
+        CHECK_EQUAL(sectionDimensionsAfterMarginFill_1[1], sectionDimensionsAfterMarginNoFill_1[1]);
+        CHECK_CLOSE(windingWindowStartingWidth, sectionStartingWidth_0, 0.001);
+        CHECK(marginAfterMarginFill_0[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_0[1] > marginAfterMarginNoFill_0[1]);
+        CHECK_CLOSE(marginAfterMarginFill_1[0], marginAfterMarginNoFill_1[0], 0.0001);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_1[1]);
+        CHECK(marginAfterMarginFill_1[0] > marginAfterMarginNoFill_0[0]);
+        CHECK(marginAfterMarginFill_1[1] > marginAfterMarginNoFill_0[1]);
+        CHECK(sectionDimensionsBeforeMargin_0[0] > sectionDimensionsAfterMarginNoFill_0[0]);
+        CHECK(sectionDimensionsBeforeMargin_1[0] > sectionDimensionsAfterMarginNoFill_1[0]);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+}
+
 SUITE(CoilSectionsDescription) {
 
     TEST(Wind_By_Section_Wind_By_Consecutive_Parallels) {

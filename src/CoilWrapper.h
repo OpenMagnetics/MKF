@@ -37,14 +37,14 @@ class CoilWrapper : public Coil {
         WindingOrientation _windingOrientation = WindingOrientation::HORIZONTAL;
         WindingOrientation _layersOrientation = WindingOrientation::VERTICAL;
         CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
-        CoilAlignment _sectionAlignment = CoilAlignment::CENTERED;
+        CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
         std::optional<InputsWrapper> _inputs;
 
         CoilWrapper(const json& j, uint8_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
                        WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
-                       CoilAlignment sectionAlignment = CoilAlignment::CENTERED,
+                       CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP,
                        bool delimitAndCompact = true);
         CoilWrapper(const Coil coil, bool delimitAndCompact = true);
         CoilWrapper() = default;
@@ -58,6 +58,9 @@ class CoilWrapper : public Coil {
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
+        std::vector<double> get_proportion_per_winding_based_on_wires();
+        void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
+        std::vector<double> get_aligned_section_dimensions(size_t sectionIndex);
         bool wind_by_sections();
         bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);

@@ -405,37 +405,9 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
     matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorBobbin));
 }
 
-void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
-    auto constants = Constants();
-
-    if (!magnetic.get_coil().get_sections_description()) {
-        throw std::runtime_error("Winding sections not created");
-    }
-
+void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
-
     for (size_t i = 0; i < sections.size(); ++i){
-
-        {
-            std::vector<std::vector<double>> sectionPoints = {};
-            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
-            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
-            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
-            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
-
-            std::vector<double> x, y;
-            for (auto& point : sectionPoints) {
-                x.push_back(point[0]);
-                y.push_back(point[1]);
-            }
-            if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
-            }
-            else {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
-            }
-        }
-
         if (sections[i].get_margin()) {
             auto margins = sections[i].get_margin().value();
             if (margins[0] > 0) {
@@ -505,6 +477,41 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
     }
 }
 
+void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
+    auto constants = Constants();
+
+    if (!magnetic.get_coil().get_sections_description()) {
+        throw std::runtime_error("Winding sections not created");
+    }
+
+    auto sections = magnetic.get_coil().get_sections_description().value();
+
+    for (size_t i = 0; i < sections.size(); ++i){
+
+        {
+            std::vector<std::vector<double>> sectionPoints = {};
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+            sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+
+            std::vector<double> x, y;
+            for (auto& point : sectionPoints) {
+                x.push_back(point[0]);
+                y.push_back(point[1]);
+            }
+            if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+            }
+            else {
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+            }
+        }
+    }
+
+    paint_two_piece_set_margin(magnetic);
+}
+
 void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
@@ -541,6 +548,8 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
             matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
         }
     }
+
+    paint_two_piece_set_margin(magnetic);
 }
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
@@ -626,6 +635,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
         }
     }
 
+    paint_two_piece_set_margin(magnetic);
 }
 
 } // namespace OpenMagnetics
