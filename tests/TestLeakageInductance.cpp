@@ -3,6 +3,7 @@
 #include "CoreWrapper.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
+#include "Painter.h"
 
 #include <UnitTest++.h>
 #include <filesystem>
@@ -608,7 +609,7 @@ SUITE(LeakageInductance) {
         uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
         std::vector<OpenMagnetics::WireWrapper> wires;

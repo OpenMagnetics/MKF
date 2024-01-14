@@ -285,6 +285,7 @@ namespace OpenMagnetics {
         OpenMagnetics::WireAdviser wireAdviser;
         std::vector<std::vector<std::pair<CoilFunctionalDescription, double>>> wireCoilPerWinding;
 
+
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()) {
             throw std::runtime_error("Missing current in excitaton");
         }
@@ -371,6 +372,7 @@ namespace OpenMagnetics {
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
+
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
