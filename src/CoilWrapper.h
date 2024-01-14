@@ -150,6 +150,8 @@ class CoilWrapper : public Coil {
         void set_number_turns(std::vector<uint64_t> numberTurns);
 
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
+        const Section get_section_by_name(std::string name) const;
+        const std::vector<Section> get_sections_by_winding(std::string windingName) const;
 
         std::vector<Layer> get_layers_by_section(std::string sectionName);
         const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;

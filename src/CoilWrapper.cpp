@@ -255,6 +255,29 @@ const std::vector<Section> CoilWrapper::get_sections_by_type(ElectricalType elec
     return foundSections;
 }
 
+const std::vector<Section> CoilWrapper::get_sections_by_winding(std::string windingName) const {
+    auto sections = get_sections_description().value();
+    std::vector<Section> foundSections;
+    for (auto & section : sections) {
+        for (auto & winding : section.get_partial_windings()) {
+            if (winding.get_winding() == windingName) {
+                foundSections.push_back(section);
+            }
+        }
+    }
+    return foundSections;
+}
+
+const Section CoilWrapper::get_section_by_name(std::string name) const {
+    auto sections = get_sections_description().value();
+    for (auto & section : sections) {
+        if (section.get_name() == name) {
+            return section;
+        }
+    }
+    throw std::runtime_error("Not found section with name:" + name);
+}
+
 const std::vector<Layer> CoilWrapper::get_layers_by_type(ElectricalType electricalType) const {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
@@ -409,7 +432,15 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     }
     else {
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
-            double numberTurnsToAddToCurrentParallel = ceil(numberTurns * totalParallelsProportion[parallelIndex] / slots) ;
+            double numberTurnsToAddToCurrentParallel = ceil(numberTurns * totalParallelsProportion[parallelIndex] / slots);
+            double remainingTurnsBeforeThisParallel = numberTurns * remainingParallelsProportion[parallelIndex];
+            double remainingTurnsAfterThisParallel = remainingTurnsBeforeThisParallel - numberTurnsToAddToCurrentParallel;
+            double remainingSlots = slots - slotIndex;
+            double remainingSlotsAfterThisOne = remainingSlots - 1;
+            if (remainingTurnsAfterThisParallel < remainingSlotsAfterThisOne) {
+                numberTurnsToAddToCurrentParallel = roundFloat(remainingTurnsBeforeThisParallel / remainingSlots, 10);
+            }
+
             double proportionParallelsThisSection = std::min(remainingParallelsProportion[parallelIndex], numberTurnsToAddToCurrentParallel / numberTurns);
             physicalTurnsThisSlot += numberTurnsToAddToCurrentParallel;
             slotParallelsProportion[parallelIndex] = proportionParallelsThisSection;
@@ -935,6 +966,7 @@ bool CoilWrapper::wind_by_layers() {
                 }
             }
 
+
             if (maximumNumberLayersFittingInSection == 0) {
                 numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
             }
@@ -945,6 +977,9 @@ bool CoilWrapper::wind_by_layers() {
                 minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
                 numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
             }
+
+            // We cannot have more layers than physical turns
+            numberLayers = std::min(numberLayers, physicalTurnsInSection);
 
             double currentLayerCenterWidth;
             double currentLayerCenterHeight;
@@ -984,14 +1019,26 @@ bool CoilWrapper::wind_by_layers() {
                 Layer layer;
 
                 auto parallels_proportions = get_parallels_proportions(layerIndex,
-                                                               numberLayers,
-                                                               get_number_turns(windingIndex),
-                                                               get_number_parallels(windingIndex),
-                                                               remainingParallelsProportionInSection,
-                                                               windByConsecutiveTurns,
-                                                               totalParallelsProportionInSection);
+                                                                       numberLayers,
+                                                                       get_number_turns(windingIndex),
+                                                                       get_number_parallels(windingIndex),
+                                                                       remainingParallelsProportionInSection,
+                                                                       windByConsecutiveTurns,
+                                                                       totalParallelsProportionInSection);
 
                 std::vector<double> layerParallelsProportion = parallels_proportions.second;
+
+                size_t numberParallelsProportionsToZero = 0;
+                for (auto parallelProportion : layerParallelsProportion) {
+                    if (parallelProportion == 0) {
+                        numberParallelsProportionsToZero++;
+                    }
+                }
+
+                if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
+                    throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
+                }
+
                 uint64_t physicalTurnsThisLayer = parallels_proportions.first;
 
                 partialWinding.set_parallels_proportion(layerParallelsProportion);
@@ -1573,9 +1620,6 @@ bool CoilWrapper::delimit_and_compact() {
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                     auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
-                    if (turnsInLayer.size() == 0) {
-                        throw std::runtime_error("No turns in layer: " + layers[i].get_name());
-                    }
                     auto layerCoordinates = layers[i].get_coordinates();
                     double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
                     double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
