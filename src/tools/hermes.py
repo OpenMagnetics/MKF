@@ -1,3 +1,4 @@
+from io import StringIO
 import contextlib
 import requests, json
 import webbrowser
@@ -186,7 +187,15 @@ class Stocker():
             core['manufacturer_reference'] = manufacturer_part_number
             if coating is not None:
                 core['functionalDescription']['coating'] = coating
-            self.core_data = self.core_data.append(core, ignore_index=True)
+
+            core_series = pandas.Series()
+            core_series["name"] = core["name"]
+            core_series["manufacturerInfo"] = core["manufacturerInfo"]
+            core_series["distributorsInfo"] = core["distributorsInfo"]
+            core_series["functionalDescription"] = core["functionalDescription"]
+            core_series["manufacturer_reference"] = core["manufacturer_reference"]
+
+            self.core_data = pandas.concat([self.core_data, core_series.to_frame().T], ignore_index=True)
         elif unique:
             assert 0, f"Already inserted core: {core_name}"
 
@@ -212,7 +221,7 @@ class Stocker():
             ("TDK", "PQ 32/30 - 95 - Distributed gapped 0.710 mm"),
             ("Magnetics", "T 22.1/13.7/7.9 - epoxy coated - MPP 60 - Ungapped"),
             ("TDK", "ER 11/5 - N87 - Ungapped"),
-            ]
+        ]
 
         for distributor_info in core['distributorsInfo']:
             if (distributor_info["name"] == distributor_name):
@@ -240,9 +249,14 @@ class Stocker():
         }
         core['distributorsInfo'].append(distributor_info)
 
-        print(core)
-        self.core_data.iloc[row_index] = core
-        print(self.core_data.iloc[row_index])
+        core_series = pandas.Series()
+        core_series["name"] = core["name"]
+        core_series["manufacturerInfo"] = core["manufacturerInfo"]
+        core_series["distributorsInfo"] = core["distributorsInfo"]
+        core_series["functionalDescription"] = core["functionalDescription"]
+        core_series["manufacturer_reference"] = core["manufacturer_reference"]
+
+        self.core_data.iloc[row_index] = [core_series]
 
     def get_gapping(self, core_data, manufacturer_name, al_value, number_gaps=1):
         constants = PyMKF.get_constants()
@@ -482,7 +496,7 @@ class DigikeyStocker(Stocker):
         # https://api.digikey.com/v1/oauth2/authorize?response_type=code&client_id=cN8i6L6KnNGJB2h3zsQgC7KvWf8AccsC&redirect_uri=https://localhost:8139/digikey_callback
         # get auth code from the redirected URL and paste it here:
 
-        auth_code = 'BcuAh7lC'
+        auth_code = 'xTYZGMpO'
 
         token_response = requests.post('https://api.digikey.com/v1/oauth2/token', data={
             'client_id': self.client_id,
@@ -1438,8 +1452,13 @@ class MouserStocker(Stocker):
             except IndexError:
                 return
 
-            pprint.pprint(product['Description'].split(material)[1])
-            pprint.pprint(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core "))
+            if product['Description'] is None:
+                pprint.pprint(product['Description'])
+                assert 0
+
+            if material is None:
+                return 
+
             family = self.try_get_family(product['Description'].replace(material, '').replace("Planar EE", "E").split("Core ")[0])
             pprint.pprint(material)
             pprint.pprint(family)
@@ -1465,7 +1484,7 @@ class MouserStocker(Stocker):
             if shape is None:
                 response = requests.get(url, headers=headers)
                 try:
-                    extra_data = pandas.read_html(response.text)[8]
+                    extra_data = pandas.read_html(StringIO(response.text))[8]
                 except ValueError:
                     return
                 for datum_index, datum in extra_data.iterrows():
@@ -2039,27 +2058,26 @@ class GatewayStocker(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    # digikeyStocker = DigikeyStocker()
-    # digikeyStocker.get_cores_stock()
+    digikeyStocker = DigikeyStocker()
+    digikeyStocker.get_cores_stock()
 
-    # mouserStocker = MouserStocker()
-    # mouserStocker.get_cores_stock()
+    mouserStocker = MouserStocker()
+    mouserStocker.get_cores_stock()
 
-    # gatewayStocker = GatewayStocker()
-    # gatewayStocker.get_cores_stock()
+    gatewayStocker = GatewayStocker()
+    gatewayStocker.get_cores_stock()
 
+    cores = {}
+    if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
+        with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+            previous_data = ndjson.load(f)
+            for row in previous_data:
+                cores[row['name']] = row
+                cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
 
-    # cores = {}
-    # if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
-    #     with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
-    #         previous_data = ndjson.load(f)
-    #         for row in previous_data:
-    #             cores[row['name']] = row
-    #             cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
+    cores = pandas.DataFrame(cores.values())
+    out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores.ndjson", "w")
+    ndjson.dump(cores.to_dict('records'), out_file)
+    out_file.close()
 
-    # cores = pandas.DataFrame(cores.values())
-    # out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores.ndjson", "w")
-    # ndjson.dump(cores.to_dict('records'), out_file)
-    # out_file.close()
-
-    # pprint.pprint(mouserStocker.unfound_descriptions)
+    pprint.pprint(mouserStocker.unfound_descriptions)

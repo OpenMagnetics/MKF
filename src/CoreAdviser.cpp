@@ -226,7 +226,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
 
 
                     double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
@@ -583,7 +583,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
 
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
                     coreLossesOutput = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
                     coreLosses = coreLossesOutput.get_core_losses();
                 }
@@ -739,7 +739,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTe
                 auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ) != coreLossesMethods.end()) {
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
                     coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature).get_core_losses();
                 }
                 else {
@@ -880,7 +880,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     std::string file_path = __FILE__;
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores_stock.ndjson");
+    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
     std::ifstream ndjsonFile(inventory_path);
     std::string jsonLine;
     std::vector<CoreWrapper> cores;

@@ -157,7 +157,7 @@ class CoreWrapper : public MagneticCore {
     std::string get_material_name();
     double get_remanence(double temperature);
     double get_coercive_force(double temperature);
-    std::vector<SteinmetzCoreLossesMethodDataMethod> get_available_core_losses_methods();
+    std::vector<CoreLossesMethodType> get_available_core_losses_methods();
     OpenMagnetics::CoreType get_type();
 };
 } // namespace OpenMagnetics
