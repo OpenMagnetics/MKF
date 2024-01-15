@@ -31,6 +31,7 @@ struct Defaults {
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultSectionsOrientation = WindingOrientation::HORIZONTAL;
+    const std::string defaultInsulationMaterial = "ETFE";
 };
 } // namespace OpenMagnetics
 

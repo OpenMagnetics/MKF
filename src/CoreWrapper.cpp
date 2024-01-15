@@ -2719,8 +2719,8 @@ std::string CoreWrapper::get_material_name() {
     return get_material().get_name();
 }
 
-std::vector<SteinmetzCoreLossesMethodDataMethod> CoreWrapper::get_available_core_losses_methods(){
-    std::vector<SteinmetzCoreLossesMethodDataMethod> methods;
+std::vector<CoreLossesMethodType> CoreWrapper::get_available_core_losses_methods(){
+    std::vector<CoreLossesMethodType> methods;
     auto volumetricLossesMethodsVariants = get_material().get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;

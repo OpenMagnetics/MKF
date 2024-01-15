@@ -577,7 +577,7 @@ SUITE(CoilAdviser) {
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
             auto outFile = outputFilePath;
-            std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
+            std::string filename = "Test_CoilAdviser_No_Margin_" + std::to_string(currentIndex) + ".svg";
             currentIndex++;
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
@@ -683,7 +683,7 @@ SUITE(CoilAdviser) {
             std::string filePath = __FILE__;
             auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
             auto outFile = outputFilePath;
-            std::string filename = "Test_CoilAdviser" + std::to_string(currentIndex) + ".svg";
+            std::string filename = "Test_CoilAdviser_Margin_" + std::to_string(currentIndex) + ".svg";
             currentIndex++;
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
@@ -695,7 +695,6 @@ SUITE(CoilAdviser) {
             painter.export_svg();
         }
     }
-
 
     TEST(Test_CoilAdviser_Random) {
         srand (time(NULL));

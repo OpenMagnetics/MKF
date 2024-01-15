@@ -1004,7 +1004,6 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 40/40";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
-        double margin = 0.002;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
@@ -1836,7 +1835,45 @@ SUITE(CoilPainter) {
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_sections(magnetic);
-        // painter.paint_coil_layers(magnetic);
+        painter.paint_coil_layers(magnetic);
+        painter.paint_coil_turns(magnetic);
+
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(std::filesystem::exists(outFile));
+    }
+
+
+    TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Horizontal_Centered) {
+        std::vector<int64_t> numberTurns = {23, 23};
+        std::vector<int64_t> numberParallels = {2, 2};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+
+        coil.delimit_and_compact();
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Delimit_Coil_Sections_Horizontal_Horizontal_Centered.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_sections(magnetic);
+        painter.paint_coil_layers(magnetic);
         painter.paint_coil_turns(magnetic);
 
         painter.export_svg();

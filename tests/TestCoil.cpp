@@ -42,65 +42,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -138,65 +134,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -204,29 +196,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -272,84 +262,78 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -387,98 +371,92 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_1[0]);
@@ -527,84 +505,78 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -642,98 +614,92 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_1[0]);
@@ -782,84 +748,78 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -897,98 +857,92 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginBeforeMargin_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description().value()[2].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_1[0]);
@@ -1037,65 +991,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -1133,65 +1083,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -1199,29 +1145,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -1267,65 +1211,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowEndingWidth = windingWindowCoordinates[0] + windingWindowDimensions[0] / 2;
-        auto sectionEndingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] + coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionEndingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] + coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -1363,65 +1303,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -1429,29 +1365,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -1497,65 +1431,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -1593,65 +1523,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -1659,29 +1585,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -1727,61 +1651,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -1819,66 +1739,62 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginNoFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginNoFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -1886,30 +1802,28 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
-        auto marginAfterMarginFill_2 = coil.get_sections_description().value()[2].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
+        auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -1955,61 +1869,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -2046,65 +1956,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -2112,29 +2018,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -2180,61 +2084,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -2271,65 +2171,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -2337,29 +2233,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -2405,61 +2299,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -2496,65 +2386,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -2562,29 +2448,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -2630,61 +2514,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -2722,65 +2602,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 3, margin * 0.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -2788,29 +2664,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -2856,61 +2730,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -2948,65 +2818,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -3014,29 +2880,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -3082,61 +2946,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -3174,65 +3034,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -3240,29 +3096,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -3308,61 +3162,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -3400,65 +3250,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -3466,29 +3312,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -3534,61 +3378,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -3626,65 +3466,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -3692,29 +3528,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -3757,61 +3591,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -3849,65 +3679,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -3915,29 +3741,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -3983,61 +3807,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -4075,65 +3895,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -4141,29 +3957,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -4209,61 +4023,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -4301,65 +4111,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -4367,29 +4173,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -4435,61 +4239,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -4527,65 +4327,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -4593,29 +4389,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -4661,61 +4455,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -4753,65 +4543,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -4819,29 +4605,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -4887,61 +4671,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -4979,65 +4759,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -5045,29 +4821,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);
@@ -5113,61 +4887,57 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginBeforeMargin = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsBeforeMargin = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginNoFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
         settings->set_fill_coil_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
-        auto sectionDimensionsAfterMarginFill = coil.get_sections_description().value()[0].get_dimensions();
-        auto marginAfterMarginFill = coil.get_sections_description().value()[0].get_margin().value();
+        auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin[0]);
         CHECK_EQUAL(0, marginBeforeMargin[1]);
@@ -5205,65 +4975,61 @@ SUITE(CoilSectionsDescriptionMargins) {
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
-        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginBeforeMargin_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginBeforeMargin_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginBeforeMargin_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginBeforeMargin_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         settings->set_wind_even_if_not_fit(true);
         settings->set_fill_coil_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
-        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginNoFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginNoFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginNoFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto bobbin = coil.resolve_bobbin();
         auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
         auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
-        auto sectionStartingWidth_0 = coil.get_sections_description().value()[0].get_coordinates()[0] - coil.get_sections_description().value()[0].get_dimensions()[0] / 2;
+        auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         OpenMagneticsTesting::check_turns_description(coil);
 
@@ -5271,29 +5037,27 @@ SUITE(CoilSectionsDescriptionMargins) {
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
-        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description().value()[0].get_dimensions();
-        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description().value()[1].get_dimensions();
-        auto marginAfterMarginFill_0 = coil.get_sections_description().value()[0].get_margin().value();
-        auto marginAfterMarginFill_1 = coil.get_sections_description().value()[1].get_margin().value();
+        auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
+        auto sectionDimensionsAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_dimensions();
+        auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
+        auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        // {
-        //     std::string filePath = __FILE__;
-        //     auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
-        //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile);
-        //     OpenMagnetics::Magnetic magnetic;
-        //     magnetic.set_core(core);
-        //     magnetic.set_coil(coil);
-
-        //     painter.paint_core(magnetic);
-        //     painter.paint_bobbin(magnetic);
-        //     painter.paint_coil_sections(magnetic);
-        //     painter.paint_coil_turns(magnetic);
-
-        //     painter.export_svg();
-        // }
+        {
+            std::string filePath = __FILE__;
+            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         CHECK_EQUAL(0, marginBeforeMargin_0[0]);
         CHECK_EQUAL(0, marginBeforeMargin_0[1]);

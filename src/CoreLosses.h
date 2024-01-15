@@ -90,7 +90,15 @@ class CoreLossesModel {
         return volumetricLossesWithTemperature;
     }
 
-    static std::vector<std::string> get_methods(CoreMaterialDataOrNameUnion material) {
+    static std::vector<std::string> get_methods_string(CoreMaterialDataOrNameUnion material) {
+        std::vector<std::string> methodsString;
+        auto methods = get_methods(material);
+        for (auto method : methods) {
+            methodsString.push_back(std::string{magic_enum::enum_name(method)});
+        }
+        return methodsString;
+    }
+    static std::vector<CoreLossesModels> get_methods(CoreMaterialDataOrNameUnion material) {
         OpenMagnetics::CoreMaterial materialData;
         // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
         // avoid long loading operatings)
@@ -102,7 +110,7 @@ class CoreLossesModel {
             materialData = std::get<OpenMagnetics::CoreMaterial>(material);
         }
 
-        std::vector<SteinmetzCoreLossesMethodDataMethod> methods;
+        std::vector<CoreLossesMethodType> methods;
         auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
         for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
             auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
@@ -114,19 +122,19 @@ class CoreLossesModel {
             }
         }
 
-        std::vector<std::string> models;
-        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::STEINMETZ)) {
-            models.push_back("Steinmetz");
-            models.push_back("iGSE");
-            models.push_back("Barg");
-            models.push_back("Albach");
-            models.push_back("MSE");
+        std::vector<CoreLossesModels> models;
+        if (std::count(methods.begin(), methods.end(), CoreLossesMethodType::STEINMETZ)) {
+            models.push_back(CoreLossesModels::STEINMETZ);
+            models.push_back(CoreLossesModels::IGSE);
+            models.push_back(CoreLossesModels::BARG);
+            models.push_back(CoreLossesModels::ALBACH);
+            models.push_back(CoreLossesModels::MSE);
         }
-        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::ROSHEN)) {
-            models.push_back("Roshen");
+        if (std::count(methods.begin(), methods.end(), CoreLossesMethodType::ROSHEN)) {
+            models.push_back(CoreLossesModels::ROSHEN);
         }
-        if (std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::MAGNETICS) || std::count(methods.begin(), methods.end(), SteinmetzCoreLossesMethodDataMethod::MICROMETALS)) {
-            models.push_back("Proprietary");
+        if (std::count(methods.begin(), methods.end(), CoreLossesMethodType::MAGNETICS) || std::count(methods.begin(), methods.end(), CoreLossesMethodType::MICROMETALS)) {
+            models.push_back(CoreLossesModels::PROPRIETARY);
         }
         return models;
     }

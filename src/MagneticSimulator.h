@@ -15,29 +15,31 @@ class MagneticSimulator {
     private:
         bool _enableTemperatureConvergence = false;
 
-        CoreLossesModels _coreLossesModelName;
+        std::vector<CoreLossesModels> _coreLossesModelNames;
         CoreTemperatureModels _coreTemperatureModelName;
         ReluctanceModels _reluctanceModelName;
 
-        std::shared_ptr<CoreLossesModel> _coreLossesModel;
+        std::vector<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _coreLossesModels;
         std::shared_ptr<CoreTemperatureModel> _coreTemperatureModel;
         MagnetizingInductance _magnetizingInductanceModel;
 
     public:
 
         MagneticSimulator() {
-            _coreLossesModelName = Defaults().coreLossesModelDefault;
+            _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
             _coreTemperatureModelName = Defaults().coreTemperatureModelDefault;
             
             _reluctanceModelName = Defaults().reluctanceModelDefault;
 
-            _coreLossesModel = CoreLossesModel::factory(_coreLossesModelName);
+            for (auto modelName : _coreLossesModelNames) {
+                _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
+            }
             _coreTemperatureModel = CoreTemperatureModel::factory(_coreTemperatureModelName);
             _magnetizingInductanceModel = MagnetizingInductance(std::string(magic_enum::enum_name(_reluctanceModelName)));
         }
 
         void set_core_losses_model_name(CoreLossesModels model) {
-            _coreLossesModelName = model;
+            _coreLossesModelNames = {model, CoreLossesModels::PROPRIETARY, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
         }
         void set_core_temperature_model_name(CoreTemperatureModels model) {
             _coreTemperatureModelName = model;

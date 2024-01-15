@@ -334,9 +334,10 @@ namespace OpenMagnetics {
                 wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
 
+                auto sectionIndex = mas.get_mutable_magnetic().get_mutable_coil().convert_conduction_section_index_to_global(windingIndex);
                 auto wiresWithScoring = wireAdviser.get_advised_wire(wires,
                                                                      mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
-                                                                     mas.get_mutable_magnetic().get_coil().get_sections_description().value()[windingIndex],
+                                                                     mas.get_mutable_magnetic().get_coil().get_sections_description().value()[sectionIndex],
                                                                      maximumCurrent,
                                                                      maximumTemperature,
                                                                      mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),

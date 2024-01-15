@@ -2,3 +2,6 @@ ninja
 pybind11
 tabula-py
 openpyxl
+ndjson
+beautifulsoup4 >= 4.11.1
+xlrd >= 2.0.1

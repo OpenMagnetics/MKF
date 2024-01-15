@@ -31,6 +31,9 @@ class CoilWrapper : public Coil {
         std::string coilLog;
         bool are_sections_and_layers_fitting();
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
+        std::vector<double> _currentProportionPerWinding;
+        std::vector<size_t> _currentPattern;
+        size_t _currentRepetitions;
 
     public:
         uint8_t _interleavingLevel = 1;
@@ -53,6 +56,7 @@ class CoilWrapper : public Coil {
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
+        void try_rewind();
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
@@ -61,6 +65,7 @@ class CoilWrapper : public Coil {
         std::vector<double> get_proportion_per_winding_based_on_wires();
         void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
         std::vector<double> get_aligned_section_dimensions(size_t sectionIndex);
+        size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
         bool wind_by_sections();
         bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);
@@ -68,6 +73,7 @@ class CoilWrapper : public Coil {
         bool wind_by_layers();
         bool wind_by_turns();
         bool calculate_insulation();
+        bool calculate_mechanical_insulation();
         bool delimit_and_compact();
         void log(std::string entry) {
             coilLog += entry + "\n";
@@ -111,6 +117,10 @@ class CoilWrapper : public Coil {
             return _sectionAlignment;
         }
 
+        std::vector<Section> get_sections_description_conduction();
+        std::vector<Layer> get_layers_description_conduction();
+        std::vector<Section> get_sections_description_insulation();
+        std::vector<Layer> get_layers_description_insulation();
 
         uint64_t get_number_turns(size_t windingIndex) {
             return get_functional_description()[windingIndex].get_number_turns();

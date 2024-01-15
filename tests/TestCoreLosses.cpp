@@ -2327,17 +2327,17 @@ SUITE(CoreLossesFromWeb) {
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.0001);
     }
     TEST(Test_Methods) {
-        std::vector<std::string> methods = OpenMagnetics::CoreLossesModel::get_methods("3C97");
+        std::vector<std::string> methods = OpenMagnetics::CoreLossesModel::get_methods_string("3C97");
         CHECK(methods.size() == 6);
-        CHECK(methods[0] == "Steinmetz");
-        CHECK(methods[1] == "iGSE");
-        CHECK(methods[2] == "Barg");
-        CHECK(methods[3] == "Albach");
+        CHECK(methods[0] == "STEINMETZ");
+        CHECK(methods[1] == "IGSE");
+        CHECK(methods[2] == "BARG");
+        CHECK(methods[3] == "ALBACH");
         CHECK(methods[4] == "MSE");
-        CHECK(methods[5] == "Roshen");
-        methods = OpenMagnetics::CoreLossesModel::get_methods("XFlux 19");
+        CHECK(methods[5] == "ROSHEN");
+        methods = OpenMagnetics::CoreLossesModel::get_methods_string("XFlux 19");
         CHECK(methods.size() == 1);
-        CHECK(methods[0] == "Proprietary");
+        CHECK(methods[0] == "PROPRIETARY");
     }
 
 
