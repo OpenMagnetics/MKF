@@ -125,16 +125,8 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
     std::string methodName = "Muehlethaler";
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 
-    double get_basic_reluctance(double l, double w, double h) {
-        auto constants = Constants();
-        return 1 / constants.vacuumPermeability /
-               (w / 2 / l + 2 / std::numbers::pi * (1 + log(std::numbers::pi * h / 4 / l)));
-    }
-
-    double get_reluctance_type_1(double l, double w, double h) {
-        double basicReluctance = get_basic_reluctance(l, w, h);
-        return 1 / (1 / (basicReluctance + basicReluctance) + 1 / (basicReluctance + basicReluctance));
-    }
+    double get_basic_reluctance(double l, double w, double h);
+    double get_reluctance_type_1(double l, double w, double h);
 };
 
 class ReluctanceEffectiveAreaModel : public ReluctanceModel {

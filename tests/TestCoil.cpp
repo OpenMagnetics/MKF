@@ -17,6 +17,16 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 
+SUITE(CoilWeb) {
+    TEST(Test_Coil_Json) {
+        std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
+
+        auto coilJson = json::parse(coilString);
+        auto coilWrapper(coilJson);
+
+    }
+
+}
 SUITE(CoilSectionsDescriptionMargins) {
     TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
         std::vector<int64_t> numberTurns = {47};

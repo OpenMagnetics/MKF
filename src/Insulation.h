@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include "battery/embed.hpp"
 
 
 namespace OpenMagnetics {
@@ -92,9 +93,7 @@ class InsulationIEC60664Model : public InsulationStandard {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/"));
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_60664-1.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-1.json">().str());
             part1TableA2 = jf["A.2"];
             part1TableF1 = jf["F.1"];
             part1TableF2 = jf["F.2"];
@@ -103,9 +102,7 @@ class InsulationIEC60664Model : public InsulationStandard {
             part1TableF8 = jf["F.8"];
         }
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_60664-4.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-4.json">().str());
             part4Table1 = jf["Table 1"];
 
             std::map<std::string, std::vector<std::pair<double, double>>> temp;
@@ -117,9 +114,7 @@ class InsulationIEC60664Model : public InsulationStandard {
             }
         }
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_60664-5.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-5.json">().str());
             part5Table2 = jf["Table 2"];
             part5Table3 = jf["Table 3"];
             part5Table4 = jf["Table 4"];
@@ -195,9 +190,7 @@ class InsulationIEC62368Model : public InsulationStandard {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/"));
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_62368-1.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_62368-1.json">().str());
             table10 = jf["Table 10"];
             table11 = jf["Table 11"];
             table12 = jf["Table 12"];
@@ -293,9 +286,7 @@ class InsulationIEC61558Model : public InsulationStandard {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/"));
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_61558-1.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_61558-1.json">().str());
             table14 = jf["Table 14"];
             table20 = jf["Table 20"];
             table21 = jf["Table 21"];
@@ -303,9 +294,7 @@ class InsulationIEC61558Model : public InsulationStandard {
             table23 = jf["Table 23"];
         }
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_61558-2-16.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_61558-2-16.json">().str());
             table102 = jf["Table 102"];
             table103 = jf["Table 103"];
             table104 = jf["Table 104"];
@@ -430,9 +419,7 @@ class InsulationIEC60335Model : public InsulationStandard {
         std::string filePath = __FILE__;
         auto masPath = filePath.substr(0, filePath.rfind("/"));
         {
-            auto dataFilePath = masPath + "/data/insulation_standards/IEC_60335-1.json";
-            std::ifstream jsonFile(dataFilePath);
-            json jf = json::parse(jsonFile);
+            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60335-1.json">().str());
             table7 = jf["Table 7"];
             table15 = jf["Table 15"];
             table16 = jf["Table 16"];
