@@ -52,11 +52,11 @@ namespace OpenMagnetics {
         size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
         // std::cout << "Getting core" << std::endl;
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, std::max(1.0, floor(float(maximumNumberResults) / numberWindings)));
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, std::max(1.0, floor(double(maximumNumberResults) / numberWindings)));
         for (auto& masMagneticWithCore : masMagneticsWithCore) {
 
             // std::cout << "Getting coil" << std::endl;
-            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, std::max(2.0, ceil(float(maximumNumberResults) / masMagneticsWithCore.size())));
+            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             for (auto masMagnetic : masMagneticsWithCoreAndCoil) {
 
                 // std::cout << "Simulating" << std::endl;

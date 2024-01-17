@@ -52,6 +52,12 @@ FetchContent_Declare(matplotplusplus
         GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
         GIT_TAG origin/master) # or whatever tag you want
 
+FetchContent_Declare(
+  battery-embed
+  GIT_REPOSITORY https://github.com/batterycenter/embed.git
+  GIT_TAG        origin/main
+)
+
 if(INCLUDE_PYMKF)
         FetchContent_Declare(pybind11
                 GIT_REPOSITORY https://github.com/pybind/pybind11.git)
@@ -63,7 +69,7 @@ endif(INCLUDE_PYMKF)
 FetchContent_Declare(spline
         GIT_REPOSITORY https://github.com/ttk592/spline.git)
 
-FetchContent_MakeAvailable(json magic-enum spline)
+FetchContent_MakeAvailable(json magic-enum spline battery-embed)
 
 FetchContent_GetProperties(matplotplusplus)
 if(NOT matplotplusplus_POPULATED)
@@ -104,6 +110,13 @@ file(GLOB SOURCES
 add_library(MKF SHARED ${SOURCES})
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+b_embed(MKF src/data/insulation_standards/IEC_60664-1.json)
+b_embed(MKF src/data/insulation_standards/IEC_60664-4.json)
+b_embed(MKF src/data/insulation_standards/IEC_60664-5.json)
+b_embed(MKF src/data/insulation_standards/IEC_62368-1.json)
+b_embed(MKF src/data/insulation_standards/IEC_61558-1.json)
+b_embed(MKF src/data/insulation_standards/IEC_61558-2-16.json)
+b_embed(MKF src/data/insulation_standards/IEC_60335-1.json)
 
 add_custom_target(MASGeneration
                   /bin/echo "RUNNING MASGeneration"
