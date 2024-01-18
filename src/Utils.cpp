@@ -14,6 +14,9 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include <cmrc/cmrc.hpp>
+
+CMRC_DECLARE(data);
 
 using json = nlohmann::json;
 
@@ -28,27 +31,31 @@ OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 namespace OpenMagnetics {
 
 void load_databases(bool withAliases) {
+    auto fs = cmrc::data::get_filesystem();
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/core_materials.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/core_materials.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             CoreMaterial coreMaterial(jf);
             coreMaterialDatabase[jf["name"]] = coreMaterial;
+            database.erase(0, pos + delimiter.length());
         }
     }
 
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/core_shapes.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/core_shapes.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             CoreShape coreShape(jf);
             coreShapeDatabase[jf["name"]] = coreShape;
             if (withAliases) {
@@ -56,58 +63,67 @@ void load_databases(bool withAliases) {
                     coreShapeDatabase[alias] = coreShape;
                 }
             }
+            database.erase(0, pos + delimiter.length());
         }
     }
 
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/wires.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/wires.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             WireWrapper wire(jf);
             wireDatabase[jf["name"]] = wire;
+            database.erase(0, pos + delimiter.length());
         }
     }
 
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/bobbins.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/bobbins.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             BobbinWrapper bobbin(jf);
             bobbinDatabase[jf["name"]] = bobbin;
+            database.erase(0, pos + delimiter.length());
         }
     }
 
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/insulation_materials.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/insulation_materials.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             InsulationMaterialWrapper insulationMaterial(jf);
             insulationMaterialDatabase[jf["name"]] = insulationMaterial;
+            database.erase(0, pos + delimiter.length());
         }
     }
 
     {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
-        auto dataFilePath = masPath + "data/wire_materials.ndjson";
-        std::ifstream ndjsonFile(dataFilePath);
-        std::string myline;
-        while (std::getline(ndjsonFile, myline)) {
-            json jf = json::parse(myline);
+        auto data = fs.open("build/MAS/data/wire_materials.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
             WireMaterial wireMaterial(jf);
             wireMaterialDatabase[jf["name"]] = wireMaterial;
+            database.erase(0, pos + delimiter.length());
         }
     }
 }

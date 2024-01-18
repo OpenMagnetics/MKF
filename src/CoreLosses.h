@@ -94,7 +94,9 @@ class CoreLossesModel {
         std::vector<std::string> methodsString;
         auto methods = get_methods(material);
         for (auto method : methods) {
-            methodsString.push_back(std::string{magic_enum::enum_name(method)});
+            auto methodString = std::string{magic_enum::enum_name(method)};
+            std::transform(methodString.begin(), methodString.end(), methodString.begin(), ::tolower);
+            methodsString.push_back(methodString);
         }
         return methodsString;
     }

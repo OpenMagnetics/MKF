@@ -8,7 +8,7 @@
 #include <iostream>
 #include <cmrc/cmrc.hpp>
 
-CMRC_DECLARE(data);
+CMRC_DECLARE(insulationData);
 
 
 namespace OpenMagnetics {
@@ -92,7 +92,7 @@ class InsulationIEC60664Model : public InsulationStandard {
     std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> part5Table4;
 
     InsulationIEC60664Model() {
-        auto fs = cmrc::data::get_filesystem();
+        auto fs = cmrc::insulationData::get_filesystem();
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60664-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
@@ -191,7 +191,7 @@ class InsulationIEC62368Model : public InsulationStandard {
     std::map<std::string, std::vector<std::pair<double, double>>> tableG13;
 
     InsulationIEC62368Model() {
-        auto fs = cmrc::data::get_filesystem();
+        auto fs = cmrc::insulationData::get_filesystem();
         {
             auto data = fs.open("src/data/insulation_standards/IEC_62368-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
@@ -287,7 +287,7 @@ class InsulationIEC61558Model : public InsulationStandard {
 
 
     InsulationIEC61558Model() {
-        auto fs = cmrc::data::get_filesystem();
+        auto fs = cmrc::insulationData::get_filesystem();
         {
             auto data = fs.open("src/data/insulation_standards/IEC_61558-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
@@ -421,7 +421,7 @@ class InsulationIEC60335Model : public InsulationStandard {
 
 
     InsulationIEC60335Model() {
-        auto fs = cmrc::data::get_filesystem();
+        auto fs = cmrc::insulationData::get_filesystem();
         {
             auto data = fs.open("src/data/insulation_standards/IEC_60335-1.json");
             json jf = json::parse(std::string(data.begin(), data.end()));
