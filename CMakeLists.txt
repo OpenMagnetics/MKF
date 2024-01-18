@@ -34,7 +34,7 @@ if(NOT DEFINED MAS_DIRECTORY)
 endif(NOT DEFINED MAS_DIRECTORY)
 
 if(NOT DEFINED MAS_DIR)
-        set(MAS_DIR "${PROJECT_SOURCE_DIR}/../MAS")
+        set(MAS_DIR "${PROJECT_SOURCE_DIR}/MAS")
 endif(NOT DEFINED MAS_DIR)
 
 include(FetchContent)
@@ -110,13 +110,8 @@ set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
 target_link_libraries(MKF data::insulation_standards)
 
-add_custom_command(OUTPUT "${MAS_DIRECTORY}/data/core_materials.ndjson"
-                   COMMAND ${CMAKE_COMMAND} -E copy_directory ${MAS_DIR}/data/ ${MAS_DIRECTORY}/data)
 
-add_custom_target(DATA ALL
-    DEPENDS "${MAS_DIRECTORY}/data/core_materials.ndjson")
-
-cmrc_add_resource_library(data ALIAS data::data NAMESPACE data ${CMAKE_BINARY_DIR}/MAS/data/core_materials.ndjson ${CMAKE_BINARY_DIR}/MAS/data/core_shapes.ndjson ${CMAKE_BINARY_DIR}/MAS/data/cores.ndjson ${CMAKE_BINARY_DIR}/MAS/data/bobbins.ndjson ${CMAKE_BINARY_DIR}/MAS/data/insulation_materials.ndjson ${CMAKE_BINARY_DIR}/MAS/data/wire_materials.ndjson ${CMAKE_BINARY_DIR}/MAS/data/wires.ndjson)
+cmrc_add_resource_library(data ALIAS data::data NAMESPACE data MAS/data/core_materials.ndjson MAS/data/core_shapes.ndjson MAS/data/cores.ndjson MAS/data/bobbins.ndjson MAS/data/insulation_materials.ndjson MAS/data/wire_materials.ndjson MAS/data/wires.ndjson)
 target_link_libraries(MKF data::data)
 
 add_custom_target(MASGeneration

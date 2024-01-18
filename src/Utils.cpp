@@ -33,7 +33,7 @@ namespace OpenMagnetics {
 void load_databases(bool withAliases) {
     auto fs = cmrc::data::get_filesystem();
     {
-        auto data = fs.open("build/MAS/data/core_materials.ndjson");
+        auto data = fs.open("MAS/data/core_materials.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -48,7 +48,7 @@ void load_databases(bool withAliases) {
     }
 
     {
-        auto data = fs.open("build/MAS/data/core_shapes.ndjson");
+        auto data = fs.open("MAS/data/core_shapes.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -68,7 +68,7 @@ void load_databases(bool withAliases) {
     }
 
     {
-        auto data = fs.open("build/MAS/data/wires.ndjson");
+        auto data = fs.open("MAS/data/wires.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -83,7 +83,7 @@ void load_databases(bool withAliases) {
     }
 
     {
-        auto data = fs.open("build/MAS/data/bobbins.ndjson");
+        auto data = fs.open("MAS/data/bobbins.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -98,7 +98,7 @@ void load_databases(bool withAliases) {
     }
 
     {
-        auto data = fs.open("build/MAS/data/insulation_materials.ndjson");
+        auto data = fs.open("MAS/data/insulation_materials.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -113,7 +113,7 @@ void load_databases(bool withAliases) {
     }
 
     {
-        auto data = fs.open("build/MAS/data/wire_materials.ndjson");
+        auto data = fs.open("MAS/data/wire_materials.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;

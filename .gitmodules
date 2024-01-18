@@ -1,0 +1,3 @@
+[submodule "MAS"]
+	path = MAS
+	url = git@github.com:OpenMagnetics/MAS.git
