@@ -23,6 +23,9 @@ option(UTPP_INCLUDE_TESTS_IN_BUILD   "Build tests" OFF)
 option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
 option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
 
+file(DOWNLOAD "https://raw.githubusercontent.com/vector-of-bool/cmrc/master/CMakeRC.cmake"
+                 "${CMAKE_BINARY_DIR}/CMakeRC.cmake")
+include("${CMAKE_BINARY_DIR}/CMakeRC.cmake")
 
 if(NOT DEFINED MAS_DIRECTORY)
         set(MAS_DIRECTORY "${CMAKE_BINARY_DIR}/MAS/")
@@ -52,12 +55,6 @@ FetchContent_Declare(matplotplusplus
         GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
         GIT_TAG origin/master) # or whatever tag you want
 
-FetchContent_Declare(
-  battery-embed
-  GIT_REPOSITORY https://github.com/batterycenter/embed.git
-  GIT_TAG        origin/main
-)
-
 if(INCLUDE_PYMKF)
         FetchContent_Declare(pybind11
                 GIT_REPOSITORY https://github.com/pybind/pybind11.git)
@@ -69,7 +66,7 @@ endif(INCLUDE_PYMKF)
 FetchContent_Declare(spline
         GIT_REPOSITORY https://github.com/ttk592/spline.git)
 
-FetchContent_MakeAvailable(json magic-enum spline battery-embed)
+FetchContent_MakeAvailable(json magic-enum spline)
 
 FetchContent_GetProperties(matplotplusplus)
 if(NOT matplotplusplus_POPULATED)
@@ -91,8 +88,6 @@ find_program(NAMES libgtest-dev REQUIRED)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 
-
-
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
   COMMAND quicktype -l c++ -s schema ${MAS_DIR}/schemas/MAS.json -S ${MAS_DIR}/schemas/magnetic.json -S ${MAS_DIR}/schemas/magnetic/core.json -S ${MAS_DIR}/schemas/magnetic/coil.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/core/gap.json -S ${MAS_DIR}/schemas/magnetic/core/shape.json -S ${MAS_DIR}/schemas/magnetic/core/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/bobbin.json -S ${MAS_DIR}/schemas/magnetic/core/piece.json -S ${MAS_DIR}/schemas/magnetic/core/spacer.json -S ${MAS_DIR}/schemas/magnetic/wire/basicWire.json -S ${MAS_DIR}/schemas/magnetic/wire/round.json -S ${MAS_DIR}/schemas/magnetic/wire/rectangular.json -S ${MAS_DIR}/schemas/magnetic/wire/foil.json -S ${MAS_DIR}/schemas/magnetic/wire/litz.json -S ${MAS_DIR}/schemas/magnetic/wire/material.json -S ${MAS_DIR}/schemas/magnetic/wire.json -S ${MAS_DIR}/schemas/utils.json -S ${MAS_DIR}/schemas/magnetic/insulation/wireCoating.json -S ${MAS_DIR}/schemas/magnetic/insulation/material.json -S ${MAS_DIR}/schemas/inputs.json -S ${MAS_DIR}/schemas/outputs.json -S ${MAS_DIR}/schemas/inputs/designRequirements.json -S ${MAS_DIR}/schemas/inputs/operatingConditions.json -S ${MAS_DIR}/schemas/inputs/operatingPointExcitation.json -o ${MAS_DIRECTORY}/MAS.hpp --namespace OpenMagnetics --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
@@ -110,13 +105,8 @@ file(GLOB SOURCES
 add_library(MKF SHARED ${SOURCES})
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-b_embed(MKF src/data/insulation_standards/IEC_60664-1.json)
-b_embed(MKF src/data/insulation_standards/IEC_60664-4.json)
-b_embed(MKF src/data/insulation_standards/IEC_60664-5.json)
-b_embed(MKF src/data/insulation_standards/IEC_62368-1.json)
-b_embed(MKF src/data/insulation_standards/IEC_61558-1.json)
-b_embed(MKF src/data/insulation_standards/IEC_61558-2-16.json)
-b_embed(MKF src/data/insulation_standards/IEC_60335-1.json)
+cmrc_add_resource_library(insulation_standads ALIAS data::insulation_standads NAMESPACE data src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
+target_link_libraries(MKF data::insulation_standads)
 
 add_custom_target(MASGeneration
                   /bin/echo "RUNNING MASGeneration"

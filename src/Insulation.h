@@ -6,7 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include "battery/embed.hpp"
+#include <cmrc/cmrc.hpp>
+
+CMRC_DECLARE(data);
 
 
 namespace OpenMagnetics {
@@ -90,10 +92,10 @@ class InsulationIEC60664Model : public InsulationStandard {
     std::map<std::string, std::map<std::string, std::vector<std::pair<double, double>>>> part5Table4;
 
     InsulationIEC60664Model() {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        auto fs = cmrc::data::get_filesystem();
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-1.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_60664-1.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             part1TableA2 = jf["A.2"];
             part1TableF1 = jf["F.1"];
             part1TableF2 = jf["F.2"];
@@ -102,7 +104,8 @@ class InsulationIEC60664Model : public InsulationStandard {
             part1TableF8 = jf["F.8"];
         }
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-4.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_60664-4.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             part4Table1 = jf["Table 1"];
 
             std::map<std::string, std::vector<std::pair<double, double>>> temp;
@@ -114,7 +117,8 @@ class InsulationIEC60664Model : public InsulationStandard {
             }
         }
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60664-5.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_60664-5.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             part5Table2 = jf["Table 2"];
             part5Table3 = jf["Table 3"];
             part5Table4 = jf["Table 4"];
@@ -187,10 +191,10 @@ class InsulationIEC62368Model : public InsulationStandard {
     std::map<std::string, std::vector<std::pair<double, double>>> tableG13;
 
     InsulationIEC62368Model() {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        auto fs = cmrc::data::get_filesystem();
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_62368-1.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_62368-1.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             table10 = jf["Table 10"];
             table11 = jf["Table 11"];
             table12 = jf["Table 12"];
@@ -283,10 +287,10 @@ class InsulationIEC61558Model : public InsulationStandard {
 
 
     InsulationIEC61558Model() {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        auto fs = cmrc::data::get_filesystem();
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_61558-1.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_61558-1.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             table14 = jf["Table 14"];
             table20 = jf["Table 20"];
             table21 = jf["Table 21"];
@@ -294,7 +298,8 @@ class InsulationIEC61558Model : public InsulationStandard {
             table23 = jf["Table 23"];
         }
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_61558-2-16.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_61558-2-16.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             table102 = jf["Table 102"];
             table103 = jf["Table 103"];
             table104 = jf["Table 104"];
@@ -416,10 +421,10 @@ class InsulationIEC60335Model : public InsulationStandard {
 
 
     InsulationIEC60335Model() {
-        std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/"));
+        auto fs = cmrc::data::get_filesystem();
         {
-            json jf = json::parse(b::embed<"src/data/insulation_standards/IEC_60335-1.json">().str());
+            auto data = fs.open("src/data/insulation_standards/IEC_60335-1.json");
+            json jf = json::parse(std::string(data.begin(), data.end()));
             table7 = jf["Table 7"];
             table15 = jf["Table 15"];
             table16 = jf["Table 16"];
