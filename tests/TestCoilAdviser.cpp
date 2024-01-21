@@ -574,8 +574,7 @@ SUITE(CoilAdviser) {
             CHECK(numberMaximumLayers >= 3 || maximumGrade >= 3);
             CHECK((bobbinWindingWindowHeight - primarySectionHeight) < std::max(creepageDistance, clearance));
 
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser_No_Margin_" + std::to_string(currentIndex) + ".svg";
             currentIndex++;
@@ -680,8 +679,7 @@ SUITE(CoilAdviser) {
             CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[0], std::max(creepageDistance, clearance) / 2, 0.00001);
             CHECK_CLOSE(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_margin().value()[1], std::max(creepageDistance, clearance) / 2, 0.00001);
 
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser_Margin_" + std::to_string(currentIndex) + ".svg";
             currentIndex++;
@@ -943,8 +941,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1005,8 +1002,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1073,8 +1069,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1139,8 +1134,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1208,8 +1202,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1275,8 +1268,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1343,8 +1335,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1411,8 +1402,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -1479,8 +1469,7 @@ SUITE(CoilAdviser) {
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "Test_CoilAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);

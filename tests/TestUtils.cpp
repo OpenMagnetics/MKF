@@ -1,4 +1,3 @@
-#include "InitialPermeability.h"
 #include "Utils.h"
 #include "json.hpp"
 
@@ -16,7 +15,7 @@ using json = nlohmann::json;
 SUITE(Utils) {
     TEST(LoadDatabaseJson) {
         std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("/masData.json");
+        auto masPath = filePath.substr(0, filePath.rfind("/")).append("masData.json");
 
         std::ifstream ifs(masPath);
         json masData = json::parse(ifs);

@@ -47,8 +47,7 @@ SUITE(MagneticAdviser) {
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -85,8 +84,7 @@ SUITE(MagneticAdviser) {
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -124,8 +122,7 @@ SUITE(MagneticAdviser) {
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
@@ -265,8 +262,7 @@ SUITE(MagneticAdviser) {
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);

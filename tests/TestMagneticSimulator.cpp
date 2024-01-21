@@ -69,12 +69,11 @@ SUITE(MagneticSimulator) {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i];
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex(" "), "_"));
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
+            filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
+            filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("/"), "_")).string();
 
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
@@ -114,12 +113,11 @@ SUITE(MagneticSimulator) {
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             auto simulatedMas = masMagnetics[i];
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex(" "), "_"));
-            filename = std::filesystem::path(std::regex_replace(std::string(filename),std::regex("/"), "_"));
+            filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
+            filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("/"), "_")).string();
 
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);

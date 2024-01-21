@@ -68,8 +68,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -92,8 +91,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -152,8 +150,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -184,8 +181,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -212,8 +208,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -277,8 +272,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
             std::filesystem::remove(outFile);
@@ -305,8 +299,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
             std::filesystem::remove(outFile);
@@ -329,8 +322,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
             std::filesystem::remove(outFile);
@@ -390,8 +382,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -423,8 +414,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -452,8 +442,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -520,8 +509,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
             std::filesystem::remove(outFile);
@@ -548,8 +536,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
             std::filesystem::remove(outFile);
@@ -572,8 +559,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
             std::filesystem::remove(outFile);
@@ -633,8 +619,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -666,8 +651,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -695,8 +679,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -763,8 +746,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
             std::filesystem::remove(outFile);
@@ -791,8 +773,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
             std::filesystem::remove(outFile);
@@ -815,8 +796,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
             std::filesystem::remove(outFile);
@@ -876,8 +856,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -909,8 +888,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -938,8 +916,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1017,8 +994,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1041,8 +1017,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1101,8 +1076,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -1133,8 +1107,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1161,8 +1134,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1237,8 +1209,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionEndingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] + coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1261,8 +1232,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1321,8 +1291,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -1353,8 +1322,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1381,8 +1349,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1457,8 +1424,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1481,8 +1447,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1541,8 +1506,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -1573,8 +1537,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1601,8 +1564,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1672,8 +1634,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1697,8 +1658,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -1757,8 +1717,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -1790,8 +1749,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1819,8 +1777,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -1890,8 +1847,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
             std::filesystem::remove(outFile);
@@ -1915,8 +1871,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
             std::filesystem::remove(outFile);
@@ -1974,8 +1929,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -2006,8 +1960,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2034,8 +1987,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2105,8 +2057,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
             std::filesystem::remove(outFile);
@@ -2130,8 +2081,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
             std::filesystem::remove(outFile);
@@ -2189,8 +2139,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -2221,8 +2170,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2249,8 +2197,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2320,8 +2267,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -2345,8 +2291,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -2404,8 +2349,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -2436,8 +2380,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2464,8 +2407,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2535,8 +2477,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -2560,8 +2501,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -2620,8 +2560,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -2652,8 +2591,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2680,8 +2618,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2751,8 +2688,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -2776,8 +2712,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -2836,8 +2771,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -2868,8 +2802,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2896,8 +2829,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -2967,8 +2899,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -2992,8 +2923,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -3052,8 +2982,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -3084,8 +3013,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3112,8 +3040,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3183,8 +3110,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -3208,8 +3134,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -3268,8 +3193,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -3300,8 +3224,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3328,8 +3251,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3399,8 +3321,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -3424,8 +3345,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -3484,8 +3404,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -3516,8 +3435,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3544,8 +3462,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3612,8 +3529,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -3637,8 +3553,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -3697,8 +3612,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -3729,8 +3643,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3757,8 +3670,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3828,8 +3740,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -3853,8 +3764,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -3913,8 +3823,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -3945,8 +3854,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -3973,8 +3881,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4044,8 +3951,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -4069,8 +3975,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -4129,8 +4034,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -4161,8 +4065,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4189,8 +4092,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4260,8 +4162,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -4285,8 +4186,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
@@ -4345,8 +4245,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -4377,8 +4276,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4405,8 +4303,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4476,8 +4373,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -4501,8 +4397,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
@@ -4561,8 +4456,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -4593,8 +4487,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4621,8 +4514,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4692,8 +4584,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -4717,8 +4608,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
@@ -4777,8 +4667,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -4809,8 +4698,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4837,8 +4725,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -4908,8 +4795,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -4933,8 +4819,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
@@ -4993,8 +4878,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
@@ -5025,8 +4909,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
@@ -5053,8 +4936,7 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
         {
-            std::string filePath = __FILE__;
-            auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);

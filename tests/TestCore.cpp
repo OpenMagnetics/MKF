@@ -11,8 +11,7 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 SUITE(CoreProcessedDescription) {
-    std::string filePath = __FILE__;
-    auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+    auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
 
     TEST(E_55_21) {
         auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";

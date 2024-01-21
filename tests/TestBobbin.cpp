@@ -12,12 +12,12 @@ using json = nlohmann::json;
 
 
 SUITE(Bobbin) {
-    std::string filePath = __FILE__;
-    auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+    auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.01;
 
     TEST(Sample_Bobbin) {
         auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
+        std::cout << wireFilePath << std::endl;
         std::ifstream json_file(wireFilePath);
         auto bobbinJson = json::parse(json_file);
 

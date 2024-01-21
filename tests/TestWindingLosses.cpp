@@ -15,8 +15,7 @@
 #include <cmath>
 
 
-std::string filePath = __FILE__;
-auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
 SUITE(WindingLossesRound) {
     double maximumError = 0.15;
