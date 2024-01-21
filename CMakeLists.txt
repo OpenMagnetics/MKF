@@ -22,7 +22,8 @@ else ()
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
     # set(CMAKE_BUILD_TYPE RelWithDebInfo)
-    set(CMAKE_BUILD_TYPE MinSizeRel)
+    # set(CMAKE_BUILD_TYPE MinSizeRel)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
 
