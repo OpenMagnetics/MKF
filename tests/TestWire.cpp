@@ -12,8 +12,7 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 SUITE(Wire) {
-    std::string filePath = __FILE__;
-    auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
+    auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.05;
 
     TEST(Sample_Wire) {

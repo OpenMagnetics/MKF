@@ -22,9 +22,9 @@ class ListFilter {
     bool operator()(const Test* const t) const {
         for (int i = 0; i < n; ++i) {
             std::string dot_cpp_appended = std::string(list[i]) + ".cpp";
-            if (!strcasecmp(t->m_details.testName, list[i]) || !strcasecmp(t->m_details.suiteName, list[i]) ||
-                !strcasecmp(t->m_details.filename, list[i]) ||
-                !strcasecmp(t->m_details.filename, dot_cpp_appended.c_str())) {
+            if (!strcmp(t->m_details.testName, list[i]) || !strcmp(t->m_details.suiteName, list[i]) ||
+                !strcmp(t->m_details.filename, list[i]) ||
+                !strcmp(t->m_details.filename, dot_cpp_appended.c_str())) {
                 // erring on the side of matching more tests
                 return true;
             }

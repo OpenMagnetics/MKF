@@ -145,14 +145,13 @@ int main(int argc, char* argv[]) {
     else {
         int numberMagnetics = 1;
         std::filesystem::path inputFilepath = argv[1];
-        std::string filePath = __FILE__;
-        std::filesystem::path outputFilepath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         if (argc >= 3) {
             if (is_number(argv[2])) {
                 numberMagnetics = std::stoi(argv[2]);
             }
             else {
-                outputFilepath = argv[2];
+                outputFilePath = argv[2];
             }
         }
         if (argc >= 4) {
@@ -187,7 +186,7 @@ int main(int argc, char* argv[]) {
         for (size_t i = 0; i < masMagnetics.size(); ++i){
             preview_magnetic(masMagnetics[i]);
 
-            std::filesystem::path outputFilename = outputFilepath;
+            std::filesystem::path outputFilename = outputFilePath;
             outputFilename += inputFilepath.filename();
             outputFilename += "_design_" + std::to_string(i) + ".json";
             std::ofstream outputFile(outputFilename);

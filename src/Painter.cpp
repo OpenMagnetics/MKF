@@ -144,12 +144,15 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
 }
 
 void Painter::export_svg() {
-    auto outFile = _filepath;
+    auto outFile = std::string {_filepath.string()};
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
     matplot::save(outFile);
 }
 void Painter::export_png() {
-    auto outFile = _filepath;
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile),std::regex(".svg"), ".png"));
+    auto outFile = std::string {_filepath.string()};
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex(".svg"), std::string(".png")))
+                  .string();
     matplot::save(outFile);
 }
 

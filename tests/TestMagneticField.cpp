@@ -12,9 +12,8 @@
 
 
 SUITE(MagneticField) {
-    std::string filePath = __FILE__;
     double maximumError = 0.05;
-    auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
     std::vector<int64_t> numberTurns = {1};
     std::vector<int64_t> numberParallels = {1};

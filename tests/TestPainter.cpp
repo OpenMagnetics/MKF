@@ -13,8 +13,7 @@
 #include <thread>
 
 SUITE(FieldPainter) {
-    std::string filePath = __FILE__;
-    auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Contour_Many_Turns) {
         std::vector<int64_t> numberTurns = {23, 13};
@@ -803,8 +802,7 @@ SUITE(FieldPainter) {
 }
 
 SUITE(CoilPainter) {
-    std::string filePath = __FILE__;
-    auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
+    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Pq_Core_Distributed_Gap) {
         std::vector<int64_t> numberTurns = {42};

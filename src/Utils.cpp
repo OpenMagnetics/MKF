@@ -18,6 +18,10 @@
 
 CMRC_DECLARE(data);
 
+#ifndef M_PI_2
+#    define M_PI_2 (1.57079632679)
+#endif
+
 using json = nlohmann::json;
 
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
