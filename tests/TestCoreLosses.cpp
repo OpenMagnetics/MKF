@@ -2329,15 +2329,15 @@ SUITE(CoreLossesFromWeb) {
     TEST(Test_Methods) {
         std::vector<std::string> methods = OpenMagnetics::CoreLossesModel::get_methods_string("3C97");
         CHECK(methods.size() == 6);
-        CHECK(methods[0] == "STEINMETZ");
-        CHECK(methods[1] == "IGSE");
-        CHECK(methods[2] == "BARG");
-        CHECK(methods[3] == "ALBACH");
-        CHECK(methods[4] == "MSE");
-        CHECK(methods[5] == "ROSHEN");
+        CHECK(methods[0] == "steinmetz");
+        CHECK(methods[1] == "igse");
+        CHECK(methods[2] == "barg");
+        CHECK(methods[3] == "albach");
+        CHECK(methods[4] == "mse");
+        CHECK(methods[5] == "roshen");
         methods = OpenMagnetics::CoreLossesModel::get_methods_string("XFlux 19");
         CHECK(methods.size() == 1);
-        CHECK(methods[0] == "PROPRIETARY");
+        CHECK(methods[0] == "proprietary");
     }
 
 

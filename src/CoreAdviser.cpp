@@ -367,7 +367,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
     return filteredMagneticsWithScoring;
 }
 
-std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindingWindowArea::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
+std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
     if (weight <= 0) {
         return *unfilteredMasMagnetics;
     }
@@ -398,10 +398,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
         auto core = magnetic.get_core();
 
-        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_reference().value()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA][magnetic.get_manufacturer_info().value().get_reference().value()]);
+        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::COST)) {
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::COST].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::COST][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::COST][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -412,9 +412,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
 
         double primaryNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
         double estimatedNeededWindingArea = primaryNumberTurns * estimatedParallels * estimatedWireTotalArea;
-        double coreWindingWindowArea = core.get_winding_windows()[0].get_area().value();
+        double coreCost = core.get_winding_windows()[0].get_area().value();
 
-        if (coreWindingWindowArea >= estimatedNeededWindingArea * defaults.coreAdviserThresholdValidity) {
+        if (coreCost >= estimatedNeededWindingArea * defaults.coreAdviserThresholdValidity) {
             double manufacturabilityRelativeCost;
             if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
                 double estimatedNeededLayers = (primaryNumberTurns * estimatedParallels * (2 * skinDepth / wireAirFillingFactor)) / core.get_winding_windows()[0].get_height().value();
@@ -436,7 +436,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
 
             double scoring = manufacturabilityRelativeCost;
             newScoring.push_back(scoring);
-            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA, scoring, firstFilter);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::COST, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
@@ -459,12 +459,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterWindin
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
-        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::WINDING_WINDOW_AREA]);
+        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::COST]);
     }
     return filteredMagneticsWithScoring;
 }
 
-std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLosses::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
+std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
     if (weight <= 0) {
         return *unfilteredMasMagnetics;
     }
@@ -506,10 +506,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
         auto core = magnetic.get_core();
 
-        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_LOSSES)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES][magnetic.get_manufacturer_info().value().get_reference().value()]);
+        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::EFFICIENCY)) {
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::EFFICIENCY].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::EFFICIENCY][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::EFFICIENCY][magnetic.get_manufacturer_info().value().get_reference().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(masIndex);
@@ -667,7 +667,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
                 (*unfilteredMasMagnetics)[masIndex].first = mas;
                 if (magnetic.get_manufacturer_info().value().get_reference().value() == "P 9/5 - N30 - Ungapped") {
                 }
-                add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::CORE_LOSSES, scoring, firstFilter);
+                add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::EFFICIENCY, scoring, firstFilter);
             }
             else {
                 listOfIndexesToErase.push_back(masIndex);
@@ -692,113 +692,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreLo
     }
 
     if (filteredMagneticsWithScoring.size() > 0) {
-        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::CORE_LOSSES]);
-    }
-    return filteredMagneticsWithScoring;
-}
-
-std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCoreTemperature::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
-    auto defaults = Defaults();
-    std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
-    std::vector<double> newScoring;
-
-    auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
-    auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
-
-    OpenMagnetics::MagnetizingInductance magnetizingInductance(models["gapReluctance"]);
-
-    std::list<size_t> listOfIndexesToErase;
-    for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){
-        MasWrapper mas = (*unfilteredMasMagnetics)[masIndex].first;
-        MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
-        auto core = magnetic.get_core();
-
-        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE)) {
-            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
-                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_reference().value()]) {
-                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE][magnetic.get_manufacturer_info().value().get_reference().value()]);
-                }
-                else {
-                    listOfIndexesToErase.push_back(masIndex);
-                }
-                continue;
-            }
-        }
-        auto winding = magnetic.get_coil();
-        bool validMagnetic = true;
-        double meanTemperature = 0;
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-            double temperature = inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature();
-            auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
-            OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
-            double coreLosses;
-            if (!mas.get_outputs()[operatingPointIndex].get_core_losses()) {
-                auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
-                excitation.set_magnetic_flux_density(magneticFluxDensity);
-                auto coreLossesMethods = core.get_available_core_losses_methods();
-                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                    coreLosses = coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature).get_core_losses();
-                }
-                else {
-                    coreLosses = coreLossesModelProprietary->get_core_losses(core, excitation, temperature).get_core_losses();
-                }
-                CoreLossesOutput coreLossesOutput;
-                coreLossesOutput.set_core_losses(coreLosses);
-                coreLossesOutput.set_method_used(models["coreLosses"]);
-                coreLossesOutput.set_origin(ResultOrigin::SIMULATION);
-                mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesOutput);
-            }
-            else {
-                coreLosses = mas.get_outputs()[operatingPointIndex].get_core_losses().value().get_core_losses();
-            }
-
-            auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(CoreTemperatureModels::MANIKTALA);
-            auto coreTemperature = coreTemperatureModel->get_core_temperature(core, coreLosses, temperature);
-            double calculatedTemperature = coreTemperature.get_maximum_temperature();
-            meanTemperature += calculatedTemperature;
-
-            if (calculatedTemperature < defaults.coreAdviserMaximumCoreTemperature / defaults.coreAdviserThresholdValidity) {
-                auto coreLossesOutput = mas.get_mutable_outputs()[operatingPointIndex].get_core_losses().value();
-                coreLossesOutput.set_temperature(calculatedTemperature);
-                mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesOutput);
-            }
-            else {
-                validMagnetic = false;
-                break;
-            }
-        }
-        if (validMagnetic) {
-            meanTemperature /= inputs.get_operating_points().size();
-            double scoring = meanTemperature;
-            newScoring.push_back(scoring);
-            (*unfilteredMasMagnetics)[masIndex].first = mas;
-            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE, scoring, firstFilter);
-        }
-        else {
-            listOfIndexesToErase.push_back(masIndex);
-        }
-    }
-
-
-    for (size_t i = 0; i < (*unfilteredMasMagnetics).size(); ++i) {
-        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
-            listOfIndexesToErase.pop_front();
-        }
-        else {
-            filteredMagneticsWithScoring.push_back((*unfilteredMasMagnetics)[i]);
-        }
-    }
-    // (*unfilteredMasMagnetics).clear();
-
-    if (filteredMagneticsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMasMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
-    }
-
-    if (filteredMagneticsWithScoring.size() > 0) {
-        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::CORE_TEMPERATURE]);
+        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::EFFICIENCY]);
     }
     return filteredMagneticsWithScoring;
 }
@@ -948,7 +842,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     bool needToAddStacks = false;
 
-    if (firstFilter == CoreAdviserFilters::CORE_LOSSES || firstFilter == CoreAdviserFilters::CORE_TEMPERATURE) {
+    if (firstFilter == CoreAdviserFilters::EFFICIENCY) {
         masMagnetics = create_mas_dataset(inputs, cores, true);
         logEntry("We start the search with " + std::to_string(masMagnetics.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.");
         std::string firstFilterString = std::string{magic_enum::enum_name(firstFilter)};
@@ -977,7 +871,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 
     // auto masMagnetics = create_mas_dataset(inputs, cores, true);
     logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(masMagnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.");
-    weights[CoreAdviserFilters::CORE_LOSSES] = 1;
     maximumMagneticsAfterFiltering = masMagnetics.size();
     auto filteredMasMagnetics = apply_filters(&masMagnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
     return filteredMasMagnetics;
@@ -1123,9 +1016,8 @@ void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWi
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vector<std::pair<MasWrapper, double>>* masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
     MagneticCoreFilterAreaProduct filterAreaProduct;
     MagneticCoreFilterEnergyStored filterEnergyStored;
-    MagneticCoreFilterWindingWindowArea filterWindingWindowArea;
-    MagneticCoreFilterCoreLosses filterCoreLosses;
-    MagneticCoreFilterCoreTemperature filterCoreTemperature;
+    MagneticCoreFilterCost filterCost;
+    MagneticCoreFilterLosses filterLosses;
     MagneticCoreFilterDimensions filterDimensions;
 
     filterAreaProduct.set_scorings(&_scorings);
@@ -1134,15 +1026,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     filterEnergyStored.set_scorings(&_scorings);
     filterEnergyStored.set_valid_scorings(&_validScorings);
     filterEnergyStored.set_filter_configuration(&_filterConfiguration);
-    filterWindingWindowArea.set_scorings(&_scorings);
-    filterWindingWindowArea.set_valid_scorings(&_validScorings);
-    filterWindingWindowArea.set_filter_configuration(&_filterConfiguration);
-    filterCoreLosses.set_scorings(&_scorings);
-    filterCoreLosses.set_valid_scorings(&_validScorings);
-    filterCoreLosses.set_filter_configuration(&_filterConfiguration);
-    filterCoreTemperature.set_scorings(&_scorings);
-    filterCoreTemperature.set_valid_scorings(&_validScorings);
-    filterCoreTemperature.set_filter_configuration(&_filterConfiguration);
+    filterCost.set_scorings(&_scorings);
+    filterCost.set_valid_scorings(&_validScorings);
+    filterCost.set_filter_configuration(&_filterConfiguration);
+    filterLosses.set_scorings(&_scorings);
+    filterLosses.set_valid_scorings(&_validScorings);
+    filterLosses.set_filter_configuration(&_filterConfiguration);
     filterDimensions.set_scorings(&_scorings);
     filterDimensions.set_valid_scorings(&_validScorings);
     filterDimensions.set_filter_configuration(&_filterConfiguration);
@@ -1170,19 +1059,14 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
 
             masMagneticsWithScoring = filterEnergyStored.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::ENERGY_STORED], true);
             break;
-        case CoreAdviserFilters::WINDING_WINDOW_AREA: 
+        case CoreAdviserFilters::COST: 
 
-            masMagneticsWithScoring = filterWindingWindowArea.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::WINDING_WINDOW_AREA], true);
+            masMagneticsWithScoring = filterCost.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::COST], true);
             break;
-        case CoreAdviserFilters::CORE_LOSSES: 
+        case CoreAdviserFilters::EFFICIENCY: 
 
             add_initial_turns(masMagnetics, inputs);
-            masMagneticsWithScoring = filterCoreLosses.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::CORE_LOSSES], true);
-            break;
-        case CoreAdviserFilters::CORE_TEMPERATURE: 
-
-            add_initial_turns(masMagnetics, inputs);
-            masMagneticsWithScoring = filterCoreTemperature.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::CORE_TEMPERATURE], true);
+            masMagneticsWithScoring = filterLosses.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::EFFICIENCY], true);
             break;
         case CoreAdviserFilters::DIMENSIONS: 
 
@@ -1199,7 +1083,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
         logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " after culling by the score on the first filter.");
     }
 
-    if (firstFilter != CoreAdviserFilters::CORE_LOSSES && firstFilter != CoreAdviserFilters::CORE_TEMPERATURE) {
+    if (firstFilter != CoreAdviserFilters::EFFICIENCY) {
         add_initial_turns(&masMagneticsWithScoring, inputs);
     }
     
@@ -1209,27 +1093,18 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
         if (filter != firstFilter) {
             switch (filter) {
                 case CoreAdviserFilters::AREA_PRODUCT: 
-
                     masMagneticsWithScoring = filterAreaProduct.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::AREA_PRODUCT]);
                     break;
                 case CoreAdviserFilters::ENERGY_STORED: 
-
                     masMagneticsWithScoring = filterEnergyStored.filter_magnetics(&masMagneticsWithScoring, inputs, _models, weights[CoreAdviserFilters::ENERGY_STORED]);
                     break;
-                case CoreAdviserFilters::WINDING_WINDOW_AREA: 
-
-                    masMagneticsWithScoring = filterWindingWindowArea.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::WINDING_WINDOW_AREA]);
+                case CoreAdviserFilters::COST: 
+                    masMagneticsWithScoring = filterCost.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::COST]);
                     break;
-                case CoreAdviserFilters::CORE_LOSSES: 
-
-                    masMagneticsWithScoring = filterCoreLosses.filter_magnetics(&masMagneticsWithScoring, inputs, _models, weights[CoreAdviserFilters::CORE_LOSSES]);
-                    break;
-                case CoreAdviserFilters::CORE_TEMPERATURE: 
-
-                    masMagneticsWithScoring = filterCoreTemperature.filter_magnetics(&masMagneticsWithScoring, inputs, _models, weights[CoreAdviserFilters::CORE_TEMPERATURE]);
+                case CoreAdviserFilters::EFFICIENCY: 
+                    masMagneticsWithScoring = filterLosses.filter_magnetics(&masMagneticsWithScoring, inputs, _models, weights[CoreAdviserFilters::EFFICIENCY]);
                     break;
                 case CoreAdviserFilters::DIMENSIONS: 
-
                     masMagneticsWithScoring = filterDimensions.filter_magnetics(&masMagneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS]);
                     break;
             }    

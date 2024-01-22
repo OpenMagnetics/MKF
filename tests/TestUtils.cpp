@@ -15,8 +15,7 @@ using json = nlohmann::json;
 SUITE(Utils) {
     TEST(LoadDatabaseJson) {
         std::string filePath = __FILE__;
-        auto masPath = filePath.substr(0, filePath.rfind("/")).append("masData.json");
-
+        auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("masData.json");
         std::ifstream ifs(masPath);
         json masData = json::parse(ifs);
 

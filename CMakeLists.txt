@@ -16,7 +16,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W0")
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 else ()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch -Ofast")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-deprecated-declarations -Wno-unused-parameter -Wno-switch")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pg")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -123,12 +123,10 @@ target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
 target_include_directories(MKF PUBLIC "${PROJECT_SOURCE_DIR}/src/")
 
 
-file(GLOB TESTS_SOURCES "tests/*.cpp" )
-add_executable(MKF_tests ${TESTS_SOURCES})
-target_link_libraries(MKF_tests MKF)
-
-
 if(INCLUDE_MKF_TESTS)
+    file(GLOB TESTS_SOURCES "tests/*.cpp" )
+    add_executable(MKF_tests ${TESTS_SOURCES})
+    target_link_libraries(MKF_tests MKF)
     target_link_libraries(MKF_tests UnitTest++)
 endif(INCLUDE_MKF_TESTS)
 
