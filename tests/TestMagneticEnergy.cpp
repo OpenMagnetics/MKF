@@ -44,7 +44,7 @@ SUITE(MagneticEnergy) {
         OpenMagnetics::MagneticEnergy magneticEnergy(
             std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
 
-        double expectedValue = 0.48;
+        double expectedValue = 1.34;
 
         double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);

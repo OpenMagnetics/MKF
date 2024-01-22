@@ -42,6 +42,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -57,6 +60,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -77,6 +83,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -92,6 +101,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -107,6 +119,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -122,6 +137,9 @@ void load_databases(bool withAliases) {
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
@@ -140,7 +158,6 @@ void load_databases(json data, bool withAliases) {
             coreMaterialDatabase[jf["name"]] = coreMaterial;
         }
         catch (...) {
-            std::cout << "error: " << jf << std::endl;
             continue;
         }
     }
@@ -329,6 +346,9 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     if (wireMaterialDatabase.empty()) {
         load_databases();
     }
+    for (const auto& [key, value] : wireMaterialDatabase) {
+    }
+
     if (wireMaterialDatabase.count(name)) {
         return wireMaterialDatabase[name];
     }

@@ -2115,6 +2115,7 @@ void CoilWrapper::add_margin_to_section_by_index(size_t sectionIndex, std::vecto
     wind_by_layers();
     wind_by_turns();
     delimit_and_compact();
+    // std::cout << are_sections_and_layers_fitting() << std::endl;
     if (!are_sections_and_layers_fitting()) {
         try_rewind();
     }
