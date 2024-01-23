@@ -35,10 +35,10 @@ OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 
 namespace OpenMagnetics {
 
-void load_cores() {
+void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
     auto fs = cmrc::data::get_filesystem();
     {
-        auto data = fs.open("MAS/data/cores.ndjson");
+        auto data = fs.open("MAS/data/cores_stock.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
         size_t pos = 0;
@@ -49,11 +49,19 @@ void load_cores() {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            CoreWrapper core(jf);
-            coreDatabase.push_back(core);
+            if (!useOnlyCoresInStock || jf["distributorsInfo"].size() > 0) {
+                CoreWrapper core(jf, false, false, false);
+                if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+                    coreDatabase.push_back(core);
+                }
+            }
             database.erase(0, pos + delimiter.length());
         }
     }
+}
+
+void clear_loaded_cores() {
+    coreDatabase.clear();
 }
 
 void load_databases(bool withAliases) {
@@ -368,9 +376,6 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     if (wireMaterialDatabase.empty()) {
         load_databases();
     }
-    for (const auto& [key, value] : wireMaterialDatabase) {
-    }
-
     if (wireMaterialDatabase.count(name)) {
         return wireMaterialDatabase[name];
     }
