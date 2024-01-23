@@ -116,7 +116,7 @@ cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards 
 target_link_libraries(MKF data::insulation_standards)
 
 
-cmrc_add_resource_library(data ALIAS data::data NAMESPACE data MAS/data/core_materials.ndjson MAS/data/core_shapes.ndjson MAS/data/cores_stock.ndjson MAS/data/bobbins.ndjson MAS/data/insulation_materials.ndjson MAS/data/wire_materials.ndjson MAS/data/wires.ndjson)
+cmrc_add_resource_library(data ALIAS data::data NAMESPACE data MAS/data/core_materials.ndjson MAS/data/core_shapes.ndjson MAS/data/cores_stock.ndjson MAS/data/cores.ndjson MAS/data/bobbins.ndjson MAS/data/insulation_materials.ndjson MAS/data/wire_materials.ndjson MAS/data/wires.ndjson)
 target_link_libraries(MKF data::data)
 target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
 

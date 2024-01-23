@@ -37,7 +37,7 @@ namespace OpenMagnetics {
 
 void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
     auto fs = cmrc::data::get_filesystem();
-    {
+    if (useOnlyCoresInStock) {
         auto data = fs.open("MAS/data/cores_stock.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
@@ -49,11 +49,28 @@ void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            if (!useOnlyCoresInStock || jf["distributorsInfo"].size() > 0) {
-                CoreWrapper core(jf, false, false, false);
-                if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
-                    coreDatabase.push_back(core);
-                }
+            CoreWrapper core(jf, false, true, false);
+            if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+                coreDatabase.push_back(core);
+            }
+            database.erase(0, pos + delimiter.length());
+        }
+    }
+    else {
+        auto data = fs.open("MAS/data/cores.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
+            CoreWrapper core(jf, false, true, false);
+            if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+                coreDatabase.push_back(core);
             }
             database.erase(0, pos + delimiter.length());
         }
