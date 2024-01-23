@@ -1,3 +1,4 @@
+#include "Settings.h"
 #include "CoreAdviser.h"
 #include "Utils.h"
 #include "InputsWrapper.h"
@@ -78,7 +79,7 @@ SUITE(CoreAdviser) {
     }
 
 
-    TEST(Test_All_Cores_Load_Internally) {
+    TEST(Test_All_Cores_Load_Internally_Only_Stock) {
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
         double ambientTemperature = 25;
@@ -86,6 +87,11 @@ SUITE(CoreAdviser) {
         double desiredMagnetizingInductance = 10e-5;
         std::vector<double> turnsRatios = {};
         OpenMagnetics::InputsWrapper inputs;
+
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(true);
+        OpenMagnetics::clear_loaded_cores();
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
 
@@ -102,6 +108,40 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
 
 
+        CHECK(coreDatabase.size() < 3000);
+        CHECK(masMagnetics.size() == 1);
+    }
+
+    TEST(Test_All_Cores_Load_Internally_All) {
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::InputsWrapper inputs;
+
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(false);
+        OpenMagnetics::clear_loaded_cores();
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreAdviser coreAdviser;
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+
+
+        CHECK(coreDatabase.size() > 3000);
         CHECK(masMagnetics.size() == 1);
     }
 
