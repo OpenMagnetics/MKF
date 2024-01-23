@@ -24,6 +24,7 @@ CMRC_DECLARE(data);
 
 using json = nlohmann::json;
 
+std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
 std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
@@ -33,6 +34,27 @@ std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 
 namespace OpenMagnetics {
+
+void load_cores() {
+    auto fs = cmrc::data::get_filesystem();
+    {
+        auto data = fs.open("MAS/data/cores.ndjson");
+        std::string database = std::string(data.begin(), data.end());
+        std::string delimiter = "\n";
+        size_t pos = 0;
+        std::string token;
+        if (database.back() != delimiter.back()) {
+            database += delimiter;
+        }
+        while ((pos = database.find(delimiter)) != std::string::npos) {
+            token = database.substr(0, pos);
+            json jf = json::parse(token);
+            CoreWrapper core(jf);
+            coreDatabase.push_back(core);
+            database.erase(0, pos + delimiter.length());
+        }
+    }
+}
 
 void load_databases(bool withAliases) {
     auto fs = cmrc::data::get_filesystem();

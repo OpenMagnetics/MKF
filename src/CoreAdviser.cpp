@@ -10,6 +10,7 @@
 #include "WireWrapper.h"
 #include "BobbinWrapper.h"
 #include "Defaults.h"
+#include "Settings.h"
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
@@ -21,6 +22,9 @@
 #include <execution>
 #include <magic_enum_utility.hpp>
 #include <list>
+#include <cmrc/cmrc.hpp>
+
+CMRC_DECLARE(data);
 
 
 namespace OpenMagnetics {
@@ -122,9 +126,6 @@ void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsW
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaProduct::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -291,9 +292,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergyStored::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
     auto defaults = Defaults();
     OpenMagnetics::MagneticEnergy magneticEnergy(models);    
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
@@ -368,9 +366,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -465,9 +460,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -698,9 +690,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterDimensions::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, double weight, bool firstFilter) {
-    if (weight <= 0) {
-        return *unfilteredMasMagnetics;
-    }
     std::vector<double> newScoring;
 
     for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){
@@ -773,18 +762,23 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
-    std::string file_path = __FILE__;
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
-    std::ifstream ndjsonFile(inventory_path);
-    std::string jsonLine;
     std::vector<CoreWrapper> cores;
-    while (std::getline(ndjsonFile, jsonLine)) {
-        json jf = json::parse(jsonLine);
-        CoreWrapper core(jf, false, true, false);
-        if (_includeToroids || core.get_type() != CoreType::TOROIDAL) {
-            cores.push_back(core);
+    if (coreDatabase.empty()) {
+        load_cores();
+    }
+
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    for (auto core : coreDatabase) {
+        if (!settings->get_use_only_cores_in_stock() || core.get_distributors_info().value().size() > 0) {
+            if (_includeToroids || core.get_type() != CoreType::TOROIDAL) {
+                cores.push_back(core);
+            }
         }
     }
+
+    std::cout << "cores.size()" << std::endl;
+    std::cout << cores.size() << std::endl;
+
     return get_advised_core(inputs, weights, &cores, maximumNumberResults);
 }
 

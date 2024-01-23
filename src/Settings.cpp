@@ -45,4 +45,11 @@ namespace OpenMagnetics {
     void Settings::set_wind_even_if_not_fit(bool value) {
         _windEvenIfNotFit = value;
     } 
+
+    bool Settings::get_use_only_cores_in_stock() const {
+        return _useOnlyCoresInStock;
+    } 
+    void Settings::set_use_only_cores_in_stock(bool value) {
+        _useOnlyCoresInStock = value;
+    } 
 } // namespace OpenMagnetics
