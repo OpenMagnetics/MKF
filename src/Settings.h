@@ -15,6 +15,7 @@ class Settings
         bool _allowInsulatedWire = true;
         bool _fillCoilSectionsWithMarginTape = false;
         bool _windEvenIfNotFit = false;
+        bool _useOnlyCoresInStock = true;
 
     public:
         Settings(Settings &other) = delete;
@@ -35,5 +36,8 @@ class Settings
 
         bool get_wind_even_if_not_fit() const;
         void set_wind_even_if_not_fit(bool value);
+
+        bool get_use_only_cores_in_stock() const;
+        void set_use_only_cores_in_stock(bool value);
     };
 } // namespace OpenMagnetics

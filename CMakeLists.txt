@@ -135,6 +135,12 @@ target_link_libraries(magnetic_adviser MKF)
 
 
 if(INCLUDE_PYMKF)
+        FetchContent_Declare(pybind11
+                GIT_REPOSITORY https://github.com/pybind/pybind11.git)
+
+        FetchContent_Declare(pybind11_json
+                GIT_REPOSITORY https://github.com/pybind/pybind11_json.git)
+
         FetchContent_MakeAvailable( pybind11 pybind11_json)
         set_target_properties(pybind11_json PROPERTIES EXCLUDE_FROM_ALL True)
         add_custom_target(PyMASGeneration

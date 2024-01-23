@@ -1,5 +1,6 @@
 #pragma once
 #include "WireWrapper.h"
+#include "CoreWrapper.h"
 #include "BobbinWrapper.h"
 #include "InsulationMaterialWrapper.h"
 
@@ -13,6 +14,7 @@
 #include <complex>
 #include "spline.h"
 
+extern std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
 extern std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
@@ -82,6 +84,7 @@ OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name);
 OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name);
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
 
+void load_cores();
 void load_databases(bool withAliases=true);
 void load_databases(json data, bool withAliases=true);
 

@@ -77,6 +77,34 @@ SUITE(CoreAdviser) {
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
     }
 
+
+    TEST(Test_All_Cores_Load_Internally) {
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::InputsWrapper inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreAdviser coreAdviser;
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights);
+
+
+        CHECK(masMagnetics.size() == 1);
+    }
+
     TEST(Test_All_Cores_Two_Chosen_Ones) {
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
