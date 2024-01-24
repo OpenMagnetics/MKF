@@ -494,7 +494,7 @@ namespace OpenMagnetics {
                               bool includeAirInCell,
                               std::string key) {
         if (wireDatabase.empty()) {
-            load_databases(true);
+            load_wires();
         }
 
         if (!wireFillingFactorInterps.contains(key)) {
@@ -544,7 +544,7 @@ namespace OpenMagnetics {
                                WireType wireType,
                                std::string key) {
         if (wireDatabase.empty()) {
-            load_databases(true);
+            load_wires();
         }
 
         if (!wireFillingFactorInterps.contains(key)) {
@@ -589,7 +589,7 @@ namespace OpenMagnetics {
                                std::optional<WireStandard> standard,
                                std::string key) {
         if (wireDatabase.empty()) {
-            load_databases(true);
+            load_wires();
         }
 
         if (!wirePackingFactorInterps.contains(key)) {
@@ -618,7 +618,7 @@ namespace OpenMagnetics {
                                                              std::optional<WireStandard> standard,
                                                              std::string key) {
         if (wireDatabase.empty()) {
-            load_databases(true);
+            load_wires();
         }
 
         if (!wireConductingAreaInterps.contains(key)) {
