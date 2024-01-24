@@ -86,7 +86,12 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
 
 void clear_loaded_cores();
 void load_cores(bool includeToroids=true, bool useOnlyCoresInStock=false);
-void load_databases(bool withAliases=true);
+void load_core_materials();
+void load_core_shapes(bool withAliases=true);
+void load_wires();
+void load_bobbins();
+void load_insulation_materials();
+void load_wire_materials();
 void load_databases(json data, bool withAliases=true);
 
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);

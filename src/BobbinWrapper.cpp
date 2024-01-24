@@ -226,7 +226,7 @@ void load_interpolators() {
         bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
         bobbinWindingWindowInterpWidth.get_x().size() == 0 || 
         bobbinWindingWindowInterpHeight.get_x().size() == 0) {
-        load_databases(true);
+        load_bobbins();
 
         struct AuxFillingFactorWidth
         {

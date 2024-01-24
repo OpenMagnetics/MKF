@@ -60,20 +60,29 @@ void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
         auto data = fs.open("MAS/data/cores.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
-        size_t pos = 0;
-        std::string token;
-        if (database.back() != delimiter.back()) {
-            database += delimiter;
+        // size_t pos = 0;
+        // std::string token;
+        // if (database.back() != delimiter.back()) {
+        //     database += delimiter;
+        // }
+        if (database.back() == delimiter.back()) {
+            database.pop_back();
         }
-        while ((pos = database.find(delimiter)) != std::string::npos) {
-            token = database.substr(0, pos);
-            json jf = json::parse(token);
-            CoreWrapper core(jf, false, true, false);
-            if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
-                coreDatabase.push_back(core);
-            }
-            database.erase(0, pos + delimiter.length());
-        }
+        database = std::regex_replace(database, std::regex("\n"), ", ");
+        database = "[" + database + "]";
+        json arr = json::parse(database);
+        coreDatabase = std::vector<CoreWrapper>(arr);
+
+        // throw std::runtime_error("Ea");
+        // while ((pos = database.find(delimiter)) != std::string::npos) {
+        //     token = database.substr(0, pos);
+        //     json jf = json::parse(token);
+        //     CoreWrapper core(jf, false, true, false);
+        //     if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+        //         coreDatabase.push_back(core);
+        //     }
+        //     database.erase(0, pos + delimiter.length());
+        // }
     }
 }
 
@@ -81,7 +90,7 @@ void clear_loaded_cores() {
     coreDatabase.clear();
 }
 
-void load_databases(bool withAliases) {
+void load_core_materials() {
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/core_materials.ndjson");
@@ -100,7 +109,10 @@ void load_databases(bool withAliases) {
             database.erase(0, pos + delimiter.length());
         }
     }
+}
 
+void load_core_shapes(bool withAliases) {
+    auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/core_shapes.ndjson");
         std::string database = std::string(data.begin(), data.end());
@@ -123,7 +135,10 @@ void load_databases(bool withAliases) {
             database.erase(0, pos + delimiter.length());
         }
     }
+}
 
+void load_wires() {
+    auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/wires.ndjson");
         std::string database = std::string(data.begin(), data.end());
@@ -141,7 +156,10 @@ void load_databases(bool withAliases) {
             database.erase(0, pos + delimiter.length());
         }
     }
+}
 
+void load_bobbins() {
+    auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/bobbins.ndjson");
         std::string database = std::string(data.begin(), data.end());
@@ -159,7 +177,10 @@ void load_databases(bool withAliases) {
             database.erase(0, pos + delimiter.length());
         }
     }
+}
 
+void load_insulation_materials() {
+    auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/insulation_materials.ndjson");
         std::string database = std::string(data.begin(), data.end());
@@ -177,7 +198,10 @@ void load_databases(bool withAliases) {
             database.erase(0, pos + delimiter.length());
         }
     }
+}
 
+void load_wire_materials() {
+    auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/wire_materials.ndjson");
         std::string database = std::string(data.begin(), data.end());
@@ -273,7 +297,7 @@ void load_databases(json data, bool withAliases) {
 
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
-        load_databases();
+        load_core_materials();
     }
 
     std::vector<std::string> materialNames;
@@ -294,7 +318,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
 
 std::vector<std::string> get_shape_names(bool includeToroidal) {
     if (coreShapeDatabase.empty()) {
-        load_databases(true);
+        load_core_shapes(true);
     }
 
     std::vector<std::string> shapeNames;
@@ -310,7 +334,7 @@ std::vector<std::string> get_shape_names(bool includeToroidal) {
 
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
     if (coreMaterialDatabase.empty()) {
-        load_databases();
+        load_core_materials();
     }
     if (coreMaterialDatabase.count(name)) {
         return coreMaterialDatabase[name];
@@ -322,7 +346,7 @@ OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
 
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
     if (coreShapeDatabase.empty()) {
-        load_databases();
+        load_core_shapes();
     }
     if (coreShapeDatabase.count(name)) {
         return coreShapeDatabase[name];
@@ -341,7 +365,7 @@ OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
 
 std::vector<std::string> get_wire_names() {
     if (wireDatabase.empty()) {
-        load_databases(true);
+        load_wires();
     }
 
     std::vector<std::string> wireNames;
@@ -355,7 +379,7 @@ std::vector<std::string> get_wire_names() {
 
 OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
     if (wireDatabase.empty()) {
-        load_databases();
+        load_wires();
     }
     if (wireDatabase.count(name)) {
         return wireDatabase[name];
@@ -367,7 +391,7 @@ OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
 
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
     if (bobbinDatabase.empty()) {
-        load_databases();
+        load_bobbins();
     }
     if (bobbinDatabase.count(name)) {
         return bobbinDatabase[name];
@@ -379,7 +403,7 @@ OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
 
 OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name) {
     if (insulationMaterialDatabase.empty()) {
-        load_databases();
+        load_insulation_materials();
     }
     if (insulationMaterialDatabase.count(name)) {
         return insulationMaterialDatabase[name];
@@ -391,7 +415,7 @@ OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::s
 
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     if (wireMaterialDatabase.empty()) {
-        load_databases();
+        load_wire_materials();
     }
     if (wireMaterialDatabase.count(name)) {
         return wireMaterialDatabase[name];
