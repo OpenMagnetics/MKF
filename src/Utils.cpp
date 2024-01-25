@@ -37,7 +37,7 @@ namespace OpenMagnetics {
 
 void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
     auto fs = cmrc::data::get_filesystem();
-    if (useOnlyCoresInStock) {
+    if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
         auto data = fs.open("MAS/data/cores_stock.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";

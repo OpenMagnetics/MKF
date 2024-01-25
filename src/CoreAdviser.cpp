@@ -126,6 +126,9 @@ void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsW
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaProduct::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -292,6 +295,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergyStored::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
     auto defaults = Defaults();
     OpenMagnetics::MagneticEnergy magneticEnergy(models);    
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
@@ -366,6 +372,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -460,6 +469,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
@@ -690,6 +702,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterDimensions::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, double weight, bool firstFilter) {
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
     std::vector<double> newScoring;
 
     for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){

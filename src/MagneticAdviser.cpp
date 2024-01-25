@@ -3,48 +3,24 @@
 #include "MagneticSimulator.h"
 #include "Painter.h"
 #include "Defaults.h"
+#include "Settings.h"
 
 
 namespace OpenMagnetics {
 
-
     std::vector<MasWrapper> MagneticAdviser::get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults) {
-        std::vector<WireWrapper> wires;
-        std::vector<CoreWrapper> cores;
-        std::string file_path = __FILE__;
-
-        {
-            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
-            std::ifstream ndjsonFile(inventory_path);
-            std::string jsonLine;
-            while (std::getline(ndjsonFile, jsonLine)) {
-                json jf = json::parse(jsonLine);
-                WireWrapper wire(jf);
-                if ((_includeFoil || wire.get_type() != WireType::FOIL) &&
-                    (_includeRectangular || wire.get_type() != WireType::RECTANGULAR) &&
-                    (_includeLitz || wire.get_type() != WireType::LITZ) &&
-                    (_includeRound || wire.get_type() != WireType::ROUND)) {
-                    wires.push_back(wire);
-                }
-            }
-        }
-        {
-            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/cores.ndjson");
-            std::ifstream ndjsonFile(inventory_path);
-            std::string jsonLine;
-            while (std::getline(ndjsonFile, jsonLine)) {
-                json jf = json::parse(jsonLine);
-                CoreWrapper core(jf, false, true, false);
-                if (_includeToroids || core.get_type() != CoreType::TOROIDAL) {
-                    cores.push_back(core);
-                }
-            }
-        }
-        return get_advised_magnetic(&cores, &wires, inputs, maximumNumberResults);
-    }
-
-    std::vector<MasWrapper> MagneticAdviser::get_advised_magnetic(std::vector<CoreWrapper>* cores, std::vector<WireWrapper>* wires, InputsWrapper inputs, size_t maximumNumberResults){
         std::vector<MasWrapper> masData;
+
+        if (coreDatabase.empty()) {
+            load_cores();
+        }
+        if (wireDatabase.empty()) {
+            load_wires();
+        }
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(true);
+
         CoreAdviser coreAdviser(false);
         coreAdviser.set_unique_core_shapes(true);
         CoilAdviser coilAdviser;
@@ -52,11 +28,11 @@ namespace OpenMagnetics {
         size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
         // std::cout << "Getting core" << std::endl;
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, cores, std::max(1.0, floor(double(maximumNumberResults) / numberWindings)));
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, std::max(1.0, floor(double(maximumNumberResults) / numberWindings)));
         for (auto& masMagneticWithCore : masMagneticsWithCore) {
 
             // std::cout << "Getting coil" << std::endl;
-            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(wires, masMagneticWithCore.first, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
+            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(masMagneticWithCore.first, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             for (auto masMagnetic : masMagneticsWithCoreAndCoil) {
 
                 // std::cout << "Simulating" << std::endl;

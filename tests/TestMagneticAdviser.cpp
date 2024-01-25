@@ -41,8 +41,8 @@ SUITE(MagneticAdviser) {
         OpenMagnetics::MasWrapper masMagnetic;
         inputs.process_waveforms();
 
-        OpenMagnetics::MagneticAdviser MagneticAdviser;
-        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+        OpenMagnetics::MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
 
         if (masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0];

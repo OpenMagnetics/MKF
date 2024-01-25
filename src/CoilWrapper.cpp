@@ -570,6 +570,10 @@ bool CoilWrapper::calculate_insulation() {
             coilSectionInterface.set_number_layers_insulation(ULONG_MAX);
             InsulationMaterialWrapper chosenInsulationMaterial;
 
+            if (insulationMaterialDatabase.empty()) {
+                load_insulation_materials();
+            }
+
             for (auto& insulationMaterial : insulationMaterialDatabase) {
                 auto auxCoilSectionInterface = _standardCoordinator.calculate_coil_section_interface_layers(inputs, wireLeftTopWinding, wireRightBottomWinding, insulationMaterial.second);
                 if (auxCoilSectionInterface) {

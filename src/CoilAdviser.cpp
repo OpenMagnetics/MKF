@@ -95,14 +95,12 @@ namespace OpenMagnetics {
 
 
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil(MasWrapper mas, size_t maximumNumberResults){
-        std::string file_path = __FILE__;
-        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
-        std::ifstream ndjsonFile(inventory_path);
+        if (wireDatabase.empty()) {
+            load_wires();
+        }
         std::string jsonLine;
         std::vector<WireWrapper> wires;
-        while (std::getline(ndjsonFile, jsonLine)) {
-            json jf = json::parse(jsonLine);
-            WireWrapper wire(jf);
+        for (const auto& [key, wire] : wireDatabase) {
             if ((_includeFoil || wire.get_type() != WireType::FOIL) &&
                 (_includeRectangular || wire.get_type() != WireType::RECTANGULAR) &&
                 (_includeLitz || wire.get_type() != WireType::LITZ) &&
