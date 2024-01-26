@@ -1,3 +1,4 @@
+#include "Settings.h"
 #include "Painter.h"
 #include "WindingLosses.h"
 #include "Utils.h"
@@ -18,6 +19,7 @@
 auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
 SUITE(WindingLossesRound) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.15;
 
     TEST(Test_Winding_Losses_One_Turn_Round_Tendency) {
@@ -85,6 +87,7 @@ SUITE(WindingLossesRound) {
                     ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError);
         CHECK(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
         CHECK(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal) {
@@ -159,6 +162,7 @@ SUITE(WindingLossesRound) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal) {
@@ -231,11 +235,12 @@ SUITE(WindingLossesRound) {
 
 
             auto windingLosses = OpenMagnetics::WindingLosses();
-            windingLosses.set_mirroring_dimension(1);
-            windingLosses.set_fringing_effect(true);
+            settings->set_magnetic_field_mirroring_dimension(1);
+            settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Interleaving) {
@@ -311,12 +316,13 @@ SUITE(WindingLossesRound) {
 
 
             auto windingLosses = OpenMagnetics::WindingLosses();
-            windingLosses.set_mirroring_dimension(1);
-            windingLosses.set_fringing_effect(true);
+            settings->set_magnetic_field_mirroring_dimension(1);
+            settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
 
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC) {
@@ -391,6 +397,7 @@ SUITE(WindingLossesRound) {
 
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty) {
@@ -461,6 +468,7 @@ SUITE(WindingLossesRound) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC) {
@@ -531,6 +539,7 @@ SUITE(WindingLossesRound) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_90_Duty) {
@@ -601,9 +610,11 @@ SUITE(WindingLossesRound) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 }
 SUITE(WindingLossesLitz) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.15;
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal) {
@@ -688,6 +699,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands) {
@@ -772,6 +784,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands) {
@@ -850,6 +863,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands) {
@@ -934,6 +948,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands) {
@@ -1018,6 +1033,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal) {
@@ -1102,6 +1118,7 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal) {
@@ -1186,10 +1203,12 @@ SUITE(WindingLossesLitz) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
 }
 SUITE(WindingLossesRectangular) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.2;
 
     TEST(Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing) {
@@ -1272,10 +1291,11 @@ SUITE(WindingLossesRectangular) {
 
 
             OpenMagnetics::WindingLosses windingLosses;
-            windingLosses.set_fringing_effect(false);
+            settings->set_magnetic_field_include_fringing(false);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal) {
 
@@ -1354,10 +1374,11 @@ SUITE(WindingLossesRectangular) {
 
 
             OpenMagnetics::WindingLosses windingLosses;
-            windingLosses.set_mirroring_dimension(2);
+            settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps) {
 
@@ -1436,10 +1457,11 @@ SUITE(WindingLossesRectangular) {
 
 
             OpenMagnetics::WindingLosses windingLosses;
-            windingLosses.set_mirroring_dimension(2);
+            settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps) {
 
@@ -1518,10 +1540,11 @@ SUITE(WindingLossesRectangular) {
 
 
             OpenMagnetics::WindingLosses windingLosses;
-            windingLosses.set_mirroring_dimension(2);
+            settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
     TEST(Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal) {
 
@@ -1622,7 +1645,7 @@ SUITE(WindingLossesRectangular) {
 
 
             OpenMagnetics::WindingLosses windingLosses;
-            windingLosses.set_mirroring_dimension(2);
+            settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
             // auto outFile = outputFilePath;
@@ -1642,9 +1665,11 @@ SUITE(WindingLossesRectangular) {
             // painter.export_svg();
 
         }
+        settings->reset();
     }
 }
 SUITE(WindingLossesFoil) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.3;
     TEST(Test_Winding_Losses_One_Turn_Foil_Sinusoidal) {
 
@@ -1721,6 +1746,7 @@ SUITE(WindingLossesFoil) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal) {
@@ -1798,6 +1824,7 @@ SUITE(WindingLossesFoil) {
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
+        settings->reset();
     }
 
     TEST(Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal) {
@@ -1875,6 +1902,7 @@ SUITE(WindingLossesFoil) {
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
 
         }
+        settings->reset();
     }
 
 }

@@ -5,6 +5,7 @@
 #include "Models.h"
 #include "Reluctance.h"
 #include "InitialPermeability.h"
+#include "Settings.h"
 
 #include <cmath>
 #include <filesystem>
@@ -148,9 +149,9 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
 }
 
 WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField) {
-
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto includeFringing = settings->get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
-    coilMesher.set_mirroring_dimension(_mirroringDimension);
     std::vector<Field> inducingFields;
     if (externalInducedField){
         auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0);
@@ -189,7 +190,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
 
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
-        if (_includeFringing) {
+        if (includeFringing) {
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
                 throw std::runtime_error("Operating point is missing magnetizing current");
             }
@@ -226,7 +227,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
             if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN) {
                 // For the main harmonic we calculate the fringing effect for each gap
-                if (_includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
+                if (includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
                         throw std::runtime_error("Operating point is missing magnetizing current");
                     }

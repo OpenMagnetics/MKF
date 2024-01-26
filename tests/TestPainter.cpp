@@ -1,6 +1,7 @@
 #include "Painter.h"
 #include "json.hpp"
 #include "TestingUtils.h"
+#include "Settings.h"
 
 #include <UnitTest++.h>
 
@@ -13,6 +14,7 @@
 #include <thread>
 
 SUITE(FieldPainter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Contour_Many_Turns) {
@@ -42,17 +44,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_Many_Turns_Logarithmic_Scale) {
@@ -82,17 +86,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(true);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(true);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_Many_Turns_No_Fringing) {
@@ -122,17 +128,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_Many_Turns_Limit_Scale) {
@@ -162,17 +170,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(5500);
-        painter.set_minimum_scale_value(0);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(5500);
+        settings->set_painter_minimum_value_colorbar(0);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_One_Turn) {
@@ -202,11 +212,13 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(true);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(true);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns) {
@@ -237,17 +249,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_One_Turn) {
@@ -277,17 +291,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(true);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(true);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns_No_Fringing) {
@@ -318,17 +334,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_fringing_effect(false);
-        painter.set_logarithmic_scale(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns_Logarithmic_Scale) {
@@ -359,17 +377,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(true);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(true);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns_Limit_Scale) {
@@ -400,17 +420,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(true);
-        painter.set_maximum_scale_value(2500);
-        painter.set_minimum_scale_value(0);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(true);
+        settings->set_painter_maximum_value_colorbar(2500);
+        settings->set_painter_minimum_value_colorbar(0);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_One_Turn_Rectangular) {
@@ -445,17 +467,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_One_Turn_Rectangular) {
@@ -490,11 +514,12 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -502,6 +527,7 @@ SUITE(FieldPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns_Rectangular) {
@@ -536,17 +562,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_Many_Turns_Rectangular) {
@@ -581,17 +609,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_One_Turn_Foil) {
@@ -631,11 +661,12 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -643,6 +674,7 @@ SUITE(FieldPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_One_Turn_Foil) {
@@ -682,11 +714,12 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
@@ -694,6 +727,7 @@ SUITE(FieldPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Quiver_Many_Turns_Foil) {
@@ -735,17 +769,19 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Contour_Many_Turns_Foil) {
@@ -787,21 +823,24 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 }
 
 SUITE(CoilPainter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Pq_Core_Distributed_Gap) {
@@ -828,6 +867,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Distributed_Gap_Many) {
@@ -855,6 +895,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap) {
@@ -882,6 +923,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_U_Core_Distributed_Gap) {
@@ -909,6 +951,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_U_Core_Grinded_Gap) {
@@ -936,6 +979,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin) {
@@ -964,6 +1008,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Section) {
@@ -992,6 +1037,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_And_Section) {
@@ -1023,6 +1069,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_And_Two_Sections) {
@@ -1052,6 +1099,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Epx_Core_Grinded_Gap) {
@@ -1081,6 +1129,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Epx_Core_Spacer_Gap) {
@@ -1115,6 +1164,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_P_Core_Grinded_Gap) {
@@ -1144,6 +1194,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_U80_Core_Grinded_Gap) {
@@ -1173,6 +1224,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Ep_Core_Grinded_Gap) {
@@ -1202,6 +1254,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_All_Cores) {
@@ -1239,6 +1292,7 @@ SUITE(CoilPainter) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
         }
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Layers_No_Interleaving) {
@@ -1268,6 +1322,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Turns_No_Interleaving) {
@@ -1297,6 +1352,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving) {
@@ -1326,6 +1382,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Top_Alignment) {
@@ -1358,6 +1415,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Bottom_Alignment) {
@@ -1390,6 +1448,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Grinded_Gap_Turns_Interleaving_Spread_Alignment) {
@@ -1422,6 +1481,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections) {
@@ -1454,6 +1514,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Vectical_Layers) {
@@ -1486,6 +1547,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Horizontal_Layers) {
@@ -1518,6 +1580,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Horizontal_Layers_Spread_Turns) {
@@ -1550,6 +1613,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Horizontal_Layers_Inner_Turns) {
@@ -1582,6 +1646,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Horizontal_Layers_Outer_Turns) {
@@ -1614,6 +1679,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Vertical_Sections_Horizontal_Layers_Centered_Turns) {
@@ -1646,6 +1712,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Foil_Centered) {
@@ -1685,6 +1752,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Foil_Top) {
@@ -1724,6 +1792,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Foil_With_Insulation_Centered) {
@@ -1765,6 +1834,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Centered) {
@@ -1802,6 +1872,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Centered) {
@@ -1839,6 +1910,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
 
@@ -1877,6 +1949,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Top) {
@@ -1914,6 +1987,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Inner) {
@@ -1951,6 +2025,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Outer) {
@@ -1988,6 +2063,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Bottom) {
@@ -2025,6 +2101,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Spread) {
@@ -2062,6 +2139,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Spread_Two_Sections) {
@@ -2099,6 +2177,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Vertical_Spread_One_Section) {
@@ -2136,6 +2215,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Spread) {
@@ -2173,6 +2253,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_Two_Sections) {
@@ -2210,6 +2291,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Spread_One_Section) {
@@ -2247,6 +2329,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_Vertical_Sections_And_Insulation) {
@@ -2287,6 +2370,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_Horizontal_Sections_And_Insulation) {
@@ -2327,6 +2411,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_Layers_And_Insulation) {
@@ -2363,6 +2448,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Painter_Pq_Core_Bobbin_Turns_And_Insulation) {
@@ -2399,6 +2485,7 @@ SUITE(CoilPainter) {
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
     TEST(Test_Turns_Not_Fitting) {
@@ -2447,6 +2534,7 @@ SUITE(CoilPainter) {
             CHECK(true);
             std::cerr << e.what() << std::endl;
         }
+        settings->reset();
     }
 
     TEST(Test_Painter_Planar) {
@@ -2494,17 +2582,19 @@ SUITE(CoilPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Planar.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
-        painter.set_logarithmic_scale(false);
-        painter.set_fringing_effect(false);
-        painter.set_maximum_scale_value(std::nullopt);
-        painter.set_minimum_scale_value(std::nullopt);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
+        settings->reset();
     }
 
 }

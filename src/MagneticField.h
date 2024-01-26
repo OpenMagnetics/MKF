@@ -36,8 +36,6 @@ class MagneticField {
         MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
         std::shared_ptr<MagneticFieldStrengthModel>  _model;
         std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
-        bool _includeFringing = true;
-        int _mirroringDimension = 0;
         double _windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold;
     public:
 
@@ -47,14 +45,6 @@ class MagneticField {
             _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
             _model = factory(_magneticFieldStrengthModel);
             _fringingEffectModel = factory(_magneticFieldStrengthFringingEffectModel);
-        }
-
-        void set_fringing_effect(bool value) {
-            _includeFringing = value;
-        }
-
-        void set_mirroring_dimension(int mirroringDimension) {
-            _mirroringDimension = mirroringDimension;
         }
 
         void set_winding_losses_harmonic_amplitude_threshold(double windingLossesHarmonicAmplitudeThreshold) {

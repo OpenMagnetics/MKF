@@ -1,5 +1,6 @@
 #include "MagneticField.h"
 #include "LeakageInductance.h"
+#include "Settings.h"
 #include "MAS.hpp"
 #include "Utils.h"
 #include "json.hpp"
@@ -9,6 +10,10 @@
 namespace OpenMagnetics {
 
 ComplexField LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto numberPointsX = settings->get_magnetic_field_number_points_x();
+    auto numberPointsY = settings->get_magnetic_field_number_points_y();
+
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
         throw std::runtime_error("Bobbin is not processed");
@@ -25,8 +30,8 @@ ComplexField LeakageInductance::calculate_magnetic_field(OperatingPoint operatin
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, _numberPointsX);
-    std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, _numberPointsY);
+    std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, numberPointsX);
+    std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, numberPointsY);
     std::vector<OpenMagnetics::FieldPoint> points;
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
@@ -41,8 +46,6 @@ ComplexField LeakageInductance::calculate_magnetic_field(OperatingPoint operatin
     inducedField.set_frequency(frequency);
 
     OpenMagnetics::MagneticField magneticField;
-    magneticField.set_fringing_effect(_includeFringing);
-    magneticField.set_mirroring_dimension(_mirroringDimension);
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
 
     auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -50,6 +53,12 @@ ComplexField LeakageInductance::calculate_magnetic_field(OperatingPoint operatin
 }
 
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto numberPointsX = settings->get_magnetic_field_number_points_x();
+    auto numberPointsY = settings->get_magnetic_field_number_points_y();
+    auto originallyIncludeFringing = settings->get_magnetic_field_include_fringing();
+    settings->set_magnetic_field_include_fringing(false);
+
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()){
         throw std::runtime_error("Bobbin is not processed");
@@ -73,8 +82,8 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Operatin
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
     }
 
-    double dx = coreWindingWindowWidth / _numberPointsX;
-    double dy = coreWindingWindowHeight / _numberPointsY;
+    double dx = coreWindingWindowWidth / numberPointsX;
+    double dy = coreWindingWindowHeight / numberPointsY;
     double dA = dx * dy;
     double vacuumPermeability = Constants().vacuumPermeability;
 
@@ -100,6 +109,8 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Operatin
     DimensionWithTolerance dimensionWithTolerance;
     dimensionWithTolerance.set_nominal(leakageInductance);
     leakageInductanceOutput.set_leakage_inductance_per_winding({dimensionWithTolerance});
+
+    settings->set_magnetic_field_include_fringing(originallyIncludeFringing);
 
     return leakageInductanceOutput;
 }

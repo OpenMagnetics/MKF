@@ -1,4 +1,5 @@
 #include "LeakageInductance.h"
+#include "Settings.h"
 #include "Utils.h"
 #include "CoreWrapper.h"
 #include "InputsWrapper.h"
@@ -16,6 +17,7 @@
 
 
 SUITE(LeakageInductance) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.1;
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
@@ -97,6 +99,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_E_1) {
@@ -178,6 +181,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_E_2) {
@@ -263,6 +267,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_E_3) {
@@ -348,6 +353,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_Parallels_No_Interleaving) {
@@ -431,6 +437,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_Parallels_Interleaving) {
@@ -514,6 +521,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_ETD_0) {
@@ -596,6 +604,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_PQ_26_0) {
@@ -681,6 +690,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_PQ_40_Horizontal) {
@@ -760,6 +770,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_PQ_40_Vertical) {
@@ -840,6 +851,7 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        settings->reset();
     }
 
 }
