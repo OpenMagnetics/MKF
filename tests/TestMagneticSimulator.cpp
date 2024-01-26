@@ -3,6 +3,7 @@
 #include "MagneticAdviser.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
+#include "Settings.h"
 
 #include <UnitTest++.h>
 #include <vector>
@@ -76,12 +77,15 @@ SUITE(MagneticSimulator) {
             filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("/"), "_")).string();
 
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
+            OpenMagnetics::Painter painter(outFile);
+            auto settings = OpenMagnetics::Settings::GetInstance();
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
 
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(false);
-            painter.set_mirroring_dimension(0);
+            settings->set_painter_number_points_x(20);
+            settings->set_painter_number_points_y(20);
+
+            settings->set_painter_include_fringing(false);
+            settings->set_painter_mirroring_dimension(0);
             painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_mutable_magnetic());
             painter.paint_core(simulatedMas.get_mutable_magnetic());
             painter.paint_bobbin(simulatedMas.get_mutable_magnetic());
@@ -120,12 +124,14 @@ SUITE(MagneticSimulator) {
             filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("/"), "_")).string();
 
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::CONTOUR);
+            OpenMagnetics::Painter painter(outFile);
+            auto settings = OpenMagnetics::Settings::GetInstance();
 
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(false);
-            painter.set_mirroring_dimension(0);
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_number_points_x(20);
+            settings->set_painter_number_points_y(20);
+            settings->set_painter_include_fringing(false);
+            settings->set_painter_mirroring_dimension(0);
             painter.paint_magnetic_field(inputs.get_operating_point(0), simulatedMas.get_mutable_magnetic());
             painter.paint_core(simulatedMas.get_mutable_magnetic());
             painter.paint_bobbin(simulatedMas.get_mutable_magnetic());

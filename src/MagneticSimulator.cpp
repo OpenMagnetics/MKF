@@ -1,4 +1,5 @@
 #include "MagneticSimulator.h"
+#include "Settings.h"
 #include <MAS.hpp>
 
 
@@ -30,6 +31,9 @@ MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(
     return _magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
 }
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature){
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    // settings->set_magnetic_field_mirroring_dimension(0);
+
     double simulationTemperature;
     if (!temperature) {
         simulationTemperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -38,7 +42,6 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
         simulationTemperature = temperature.value();
     }
     WindingLosses windingLosses;
-    windingLosses.set_mirroring_dimension(0);
     windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.05);
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }

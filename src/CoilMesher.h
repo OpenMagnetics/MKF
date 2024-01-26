@@ -28,31 +28,21 @@ class CoilMesher {
   private:
   protected:
     double _windingLossesHarmonicAmplitudeThreshold;
-    int _mirroringDimension = 0;
     double _quickModeForManyHarmonicsThreshold = 1;
   public:
     std::vector<Field> generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
     std::vector<Field> generate_mesh_induced_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
     std::vector<size_t> get_common_harmonic_indexes(CoilWrapper coil, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
-
-    void set_mirroring_dimension(int mirroringDimension) {
-        _mirroringDimension = mirroringDimension;
-    }
 };
 
 class CoilMesherModel {
   private:
-  protected:
-    int _mirroringDimension = 0;
   public:
     std::string method_name = "Default";
     virtual std::vector<FieldPoint> generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) = 0;
     virtual std::vector<FieldPoint> generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex = std::nullopt) = 0;
     static std::shared_ptr<CoilMesherModel> factory(CoilMesherModels modelName);
 
-    void set_mirroring_dimension(int mirroringDimension) {
-        _mirroringDimension = mirroringDimension;
-    }
 };
 
 class CoilMesherCenterModel : public CoilMesherModel {

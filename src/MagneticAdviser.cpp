@@ -174,12 +174,15 @@ int main(int argc, char* argv[]) {
             outputFile.close();
 
             outputFilename.replace_extension("svg");
-            OpenMagnetics::Painter painter(outputFilename, OpenMagnetics::Painter::PainterModes::CONTOUR);
+            OpenMagnetics::Painter painter(outputFilename);
+            auto settings = OpenMagnetics::Settings::GetInstance();
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
 
-            painter.set_number_points_x(20);
-            painter.set_number_points_y(20);
-            painter.set_fringing_effect(false);
-            painter.set_mirroring_dimension(0);
+            settings->set_painter_number_points_x(20);
+            settings->set_painter_number_points_y(20);
+            settings->set_painter_include_fringing(false);
+            settings->set_painter_mirroring_dimension(0);
+
             painter.paint_magnetic_field(masMagnetics[i].get_mutable_inputs().get_operating_point(0), masMagnetics[i].get_mutable_magnetic());
             painter.paint_core(masMagnetics[i].get_mutable_magnetic());
             painter.paint_bobbin(masMagnetics[i].get_mutable_magnetic());

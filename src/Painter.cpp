@@ -3,6 +3,7 @@
 #include "CoilMesher.h"
 #include "MAS.hpp"
 #include "Utils.h"
+#include "Settings.h"
 #include "json.hpp"
 #include <matplot/matplot.h>
 #include <cfloat>
@@ -10,6 +11,7 @@
 namespace OpenMagnetics {
 
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
     double bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
     double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
@@ -18,8 +20,13 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, _numberPointsX);
-    std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, _numberPointsY);
+    size_t numberPointsX = settings->get_painter_number_points_x();
+    size_t numberPointsY = settings->get_painter_number_points_y();
+    bool includeFringing = settings->get_painter_include_fringing();
+    bool mirroringDimension = settings->get_painter_mirroring_dimension();
+
+    std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, numberPointsX);
+    std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, numberPointsY);
     std::vector<OpenMagnetics::FieldPoint> points;
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
@@ -34,8 +41,8 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
     inducedField.set_frequency(frequency);
 
     OpenMagnetics::MagneticField magneticField;
-    magneticField.set_fringing_effect(_includeFringing);
-    magneticField.set_mirroring_dimension(_mirroringDimension);
+    settings->set_magnetic_field_include_fringing(includeFringing);
+    settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
 
     auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -43,6 +50,7 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
 }
 
 void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     matplot::gcf()->quiet_mode(true);
     matplot::cla();
     double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
@@ -50,6 +58,11 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     double bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_height().value();
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
+
+    size_t numberPointsX = settings->get_painter_number_points_x();
+    size_t numberPointsY = settings->get_painter_number_points_y();
+    auto mode = settings->get_painter_mode();
+    bool logarithmicScale = settings->get_painter_logarithmic_scale();
 
     ComplexField field;
     if (inputField) {
@@ -59,21 +72,21 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
     }
 
-    if (_mode == PainterModes::CONTOUR) {
+    if (mode == PainterModes::CONTOUR) {
 
-        std::vector<std::vector<double>> X(_numberPointsY, std::vector<double>(_numberPointsX, 0));
-        std::vector<std::vector<double>> Y(_numberPointsY, std::vector<double>(_numberPointsX, 0));
-        std::vector<std::vector<double>> M(_numberPointsY, std::vector<double>(_numberPointsX, 0));
+        std::vector<std::vector<double>> X(numberPointsY, std::vector<double>(numberPointsX, 0));
+        std::vector<std::vector<double>> Y(numberPointsY, std::vector<double>(numberPointsX, 0));
+        std::vector<std::vector<double>> M(numberPointsY, std::vector<double>(numberPointsX, 0));
 
-        for (size_t j = 0; j < _numberPointsY; ++j) { 
-            for (size_t i = 0; i < _numberPointsX; ++i) { 
-                X[j][i] = field.get_data()[_numberPointsX * j + i].get_point()[0];
-                Y[j][i] = field.get_data()[_numberPointsX * j + i].get_point()[1];
-                if (_logarithmicScale) {
-                    M[j][i] = hypot(log(fabs(field.get_data()[_numberPointsX * j + i].get_real())), log(fabs(field.get_data()[_numberPointsX * j + i].get_imaginary())));
+        for (size_t j = 0; j < numberPointsY; ++j) { 
+            for (size_t i = 0; i < numberPointsX; ++i) { 
+                X[j][i] = field.get_data()[numberPointsX * j + i].get_point()[0];
+                Y[j][i] = field.get_data()[numberPointsX * j + i].get_point()[1];
+                if (logarithmicScale) {
+                    M[j][i] = hypot(log(fabs(field.get_data()[numberPointsX * j + i].get_real())), log(fabs(field.get_data()[numberPointsX * j + i].get_imaginary())));
                 }
                 else {
-                    M[j][i] = hypot(field.get_data()[_numberPointsX * j + i].get_real(), field.get_data()[_numberPointsX * j + i].get_imaginary());
+                    M[j][i] = hypot(field.get_data()[numberPointsX * j + i].get_real(), field.get_data()[numberPointsX * j + i].get_imaginary());
                 }
                 minimumModule = std::min(minimumModule, M[j][i]);
                 maximumModule = std::max(maximumModule, M[j][i]);
@@ -83,18 +96,18 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         matplot::gcf()->quiet_mode(true);
         matplot::contourf(X, Y, M);
     }
-    else if (_mode == PainterModes::QUIVER) {
+    else if (mode == PainterModes::QUIVER) {
 
-        std::vector<double> X(_numberPointsY * _numberPointsX, 0);
-        std::vector<double> Y(_numberPointsY * _numberPointsX, 0);
-        std::vector<double> U(_numberPointsY * _numberPointsX, 0);
-        std::vector<double> V(_numberPointsY * _numberPointsX, 0);
-        std::vector<double> M(_numberPointsY * _numberPointsX, 0);
+        std::vector<double> X(numberPointsY * numberPointsX, 0);
+        std::vector<double> Y(numberPointsY * numberPointsX, 0);
+        std::vector<double> U(numberPointsY * numberPointsX, 0);
+        std::vector<double> V(numberPointsY * numberPointsX, 0);
+        std::vector<double> M(numberPointsY * numberPointsX, 0);
 
-        for (size_t i = 0; i < _numberPointsY * _numberPointsX; ++i) {
+        for (size_t i = 0; i < numberPointsY * numberPointsX; ++i) {
             X[i] = field.get_data()[i].get_point()[0];
             Y[i] = field.get_data()[i].get_point()[1];
-            if (_logarithmicScale) {
+            if (logarithmicScale) {
                 U[i] = log(fabs(field.get_data()[i].get_real()));
                 if (field.get_data()[i].get_real() < 0) {
                     U[i] = -U[i];
@@ -122,11 +135,11 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         throw std::runtime_error("Unknown field painter mode");
     }
 
-    if (_maximumValueColorbar) {
-        maximumModule = _maximumValueColorbar.value();
+    if (settings->get_painter_maximum_value_colorbar()) {
+        maximumModule = settings->get_painter_maximum_value_colorbar().value();
     }
-    if (_minimumValueColorbar) {
-        minimumModule = _minimumValueColorbar.value();
+    if (settings->get_painter_maximum_value_colorbar()) {
+        minimumModule = settings->get_painter_maximum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {
         minimumModule = maximumModule - 1;
@@ -224,6 +237,7 @@ void Painter::paint_coil_turns(MagneticWrapper magnetic) {
 }
 
 void Painter::paint_two_piece_set_core(CoreWrapper core) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     std::vector<std::vector<double>> topPiecePoints = {};
     std::vector<std::vector<double>> bottomPiecePoints = {};
     std::vector<std::vector<std::vector<double>>> gapChunks = {};
@@ -337,7 +351,7 @@ void Painter::paint_two_piece_set_core(CoreWrapper core) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorFerrite));
+        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 
     {
@@ -347,7 +361,7 @@ void Painter::paint_two_piece_set_core(CoreWrapper core) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorFerrite));
+        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 
     for (auto& chunk : gapChunks){
@@ -357,11 +371,12 @@ void Painter::paint_two_piece_set_core(CoreWrapper core) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorFerrite));
+        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 }
 
 void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()) {
         throw std::runtime_error("Bobbin has not being processed");
@@ -405,10 +420,11 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
         y.push_back(point[1]);
     }
 
-    matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorBobbin));
+    matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_bobbin()));
 }
 
 void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto sections = magnetic.get_coil().get_sections_description().value();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
@@ -442,7 +458,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                     x.push_back(point[0]);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorMargin));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
             }
             if (margins[1] > 0) {
                 auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -474,13 +490,14 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                     x.push_back(point[0]);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorMargin));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
             }
         }
     }
 }
 
 void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto constants = Constants();
 
     if (!magnetic.get_coil().get_sections_description()) {
@@ -504,10 +521,10 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
                 y.push_back(point[1]);
             }
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             else {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
         }
     }
@@ -516,6 +533,7 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
 }
 
 void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     CoreWrapper core = magnetic.get_core();
@@ -545,10 +563,10 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
             y.push_back(point[1]);
         }
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+            matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
         }
         else {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+            matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
         }
     }
 
@@ -556,6 +574,7 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
 }
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto constants = Constants();
     CoilWrapper winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
@@ -572,11 +591,11 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
         auto wire = wirePerWinding[windingIndex];
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
             double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-            matplot::ellipse(turns[i].get_coordinates()[0] - outerDiameter / 2, turns[i].get_coordinates()[1] - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(_colorInsulation));
+            matplot::ellipse(turns[i].get_coordinates()[0] - outerDiameter / 2, turns[i].get_coordinates()[1] - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
 
             if (wire.get_conducting_diameter()) {
                 double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-                matplot::ellipse(turns[i].get_coordinates()[0] - conductingDiameter / 2, turns[i].get_coordinates()[1] - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(_colorCopper));
+                matplot::ellipse(turns[i].get_coordinates()[0] - conductingDiameter / 2, turns[i].get_coordinates()[1] - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
             }
         }
         else {
@@ -592,7 +611,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                     x.push_back(point[0]);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
 
             if (wire.get_conducting_width() && wire.get_conducting_height()) {
@@ -607,7 +626,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                     x.push_back(point[0]);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             
         }
@@ -630,10 +649,10 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                 y.push_back(point[1]);
             }
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorCopper));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             else {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(_colorInsulation));
+                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
         }
     }

@@ -1,6 +1,7 @@
 #include "CoilMesher.h"
 #include "WindingOhmicLosses.h"
 #include "Defaults.h"
+#include "Settings.h"
 
 #include <cmath>
 #include <complex>
@@ -108,7 +109,6 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
                 throw std::runtime_error("Unknown type of wire");
         }
 
-        model->set_mirroring_dimension(_mirroringDimension);
         breakdownModelPerWinding.push_back(model);
     }
 
@@ -188,7 +188,6 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
                 throw std::runtime_error("Unknown type of wire");
         }
 
-        model->set_mirroring_dimension(_mirroringDimension);
         breakdownModelPerWinding.push_back(model);
     }
 
@@ -226,10 +225,12 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
 }
 
 std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto mirroringDimension = settings->get_magnetic_field_mirroring_dimension();
     std::vector<FieldPoint> fieldPoints;
 
-    int M = _mirroringDimension;
-    int N = _mirroringDimension;
+    int M = mirroringDimension;
+    int N = mirroringDimension;
 
     double corePermeability = core.get_initial_permeability(Defaults().ambientTemperature);
 
