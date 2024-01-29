@@ -382,7 +382,6 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
         throw std::runtime_error("Bobbin has not being processed");
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
-    CoreWrapper core = magnetic.get_core();
 
     std::vector<double> bobbinCoordinates = std::vector<double>({0, 0, 0});
     if (bobbinProcessedDescription.get_coordinates()) {

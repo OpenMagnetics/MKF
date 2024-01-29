@@ -55,6 +55,7 @@ class CoilWrapper : public Coil {
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
+        bool wind(size_t repetitions);
         void try_rewind();
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);

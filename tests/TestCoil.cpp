@@ -18,12 +18,147 @@ using json = nlohmann::json;
 
 
 SUITE(CoilWeb) {
-    TEST(Test_Coil_Json) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    TEST(Test_Coil_Json_0) {
         std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
 
         auto coilJson = json::parse(coilString);
         auto coilWrapper(coilJson);
+    }
 
+    TEST(Test_Coil_Json_1) {
+        std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"vertical","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"0.475 - Grade 1"}]})";
+
+        auto coilJson = json::parse(coilString);
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::CoilWrapper coil;
+        if (coilJson.contains("_interleavingLevel")) {
+            coil.set_interleaving_level(coilJson["_interleavingLevel"]);
+        }
+        if (coilJson.contains("_windingOrientation")) {
+            coil.set_winding_orientation(coilJson["_windingOrientation"]);
+        }
+        if (coilJson.contains("_layersOrientation")) {
+            coil.set_layers_orientation(coilJson["_layersOrientation"]);
+        }
+        if (coilJson.contains("_turnsAlignment")) {
+            coil.set_turns_alignment(coilJson["_turnsAlignment"]);
+        }
+        if (coilJson.contains("_sectionAlignment")) {
+            coil.set_section_alignment(coilJson["_sectionAlignment"]);
+        }
+
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.wind();
+
+        auto section = coil.get_sections_description().value()[0];
+        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
+        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
+        CHECK(!std::isnan(section.get_dimensions()[0]));
+        CHECK(!std::isnan(section.get_dimensions()[1]));
+    }
+
+    TEST(Test_Coil_Json_2) {
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"horizontal","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"0.475 - Grade 1"}]})";
+        // settings->set_coil_try_rewind(false);
+
+        auto coilJson = json::parse(coilString);
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::CoilWrapper coil;
+        if (coilJson.contains("_interleavingLevel")) {
+            coil.set_interleaving_level(coilJson["_interleavingLevel"]);
+        }
+        if (coilJson.contains("_windingOrientation")) {
+            coil.set_winding_orientation(coilJson["_windingOrientation"]);
+        }
+        if (coilJson.contains("_layersOrientation")) {
+            coil.set_layers_orientation(coilJson["_layersOrientation"]);
+        }
+        if (coilJson.contains("_turnsAlignment")) {
+            coil.set_turns_alignment(coilJson["_turnsAlignment"]);
+        }
+        if (coilJson.contains("_sectionAlignment")) {
+            coil.set_section_alignment(coilJson["_sectionAlignment"]);
+        }
+ 
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.wind();
+
+        auto section = coil.get_sections_description().value()[0];
+        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
+        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
+        CHECK(!std::isnan(section.get_dimensions()[0]));
+        CHECK(!std::isnan(section.get_dimensions()[1]));
+        std::vector<int64_t> numberTurns = {36};
+        std::vector<int64_t> numberParallels = {27};
+        uint8_t interleavingLevel = 7;
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Json_2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Coil_Json_3) {
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"vertical","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"0.475 - Grade 1"}]})";
+        settings->set_coil_delimit_and_compact(false);
+
+        auto coilJson = json::parse(coilString);
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::CoilWrapper coil;
+        if (coilJson.contains("_interleavingLevel")) {
+            coil.set_interleaving_level(coilJson["_interleavingLevel"]);
+        }
+        if (coilJson.contains("_windingOrientation")) {
+            coil.set_winding_orientation(coilJson["_windingOrientation"]);
+        }
+        if (coilJson.contains("_layersOrientation")) {
+            coil.set_layers_orientation(coilJson["_layersOrientation"]);
+        }
+        if (coilJson.contains("_turnsAlignment")) {
+            coil.set_turns_alignment(coilJson["_turnsAlignment"]);
+        }
+        if (coilJson.contains("_sectionAlignment")) {
+            coil.set_section_alignment(coilJson["_sectionAlignment"]);
+        }
+ 
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.wind();
+
+        auto section = coil.get_sections_description().value()[0];
+        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
+        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
+        CHECK(!std::isnan(section.get_dimensions()[0]));
+        CHECK(!std::isnan(section.get_dimensions()[1]));
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {88};
+        uint8_t interleavingLevel = 7;
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Coil_Json_3.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
     }
 
 }
