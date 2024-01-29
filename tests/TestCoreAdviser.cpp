@@ -226,8 +226,8 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 72/28/19 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Gapped 4.0 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
     }
 
     TEST(Test_No_Toroids_Low_Power) {
@@ -284,8 +284,8 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 8.8 - N30 - Ungapped");
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 18/4/10 - 3C97 - Gapped 0.3 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
 
     TEST(Test_No_Toroids_Low_Power_Low_Losses_No_Care_About_Size) {
@@ -313,7 +313,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 80/38/20 - 80 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
     }
 
@@ -745,33 +745,4 @@ SUITE(CoreAdviser) {
         CHECK(masMagnetics.size() > 0);
     }
 
-    TEST(Test_CoreAdviser_User_1) {
-        std::string inputsString = R"({"designRequirements":{"magnetizingInductance":{"nominal":0.00001},"name":"My Design Requirements","turnsRatios":[]},"operatingPoints":[{"name":"Operating Point No. 1","conditions":{"ambientTemperature":42},"excitationsPerWinding":[{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.0000025,0.00001]},"processed":{"dutyCycle":0.25,"peakToPeak":10,"offset":0,"label":"Triangular","acEffectiveFrequency":128062.87364573497,"effectiveFrequency":128062.87364573497,"peak":4.999999999999998,"rms":2.887690890756071,"thd":0.37655984422983674},"harmonics":{"amplitudes":[1.057834375650657e-14,3.8218284740811654,1.3520347077861394,0.4253304394765621,2.0451658656097295e-15,0.15361202132455717,0.1511952491356625,0.07875264997066955,9.147290176737562e-16,0.04794839995573495,0.055136232876625904,0.03235759328251894,5.942500669304174e-16,0.023392967261331943,0.028681570420819563,0.017771008577657506,4.480960813987701e-16,0.014016396066471289,0.017807158306087034,0.011386475028370353,4.0120207228235354e-16,0.009474348163803114,0.012316262725232938,0.008041926341760212,3.291294404519727e-16,0.006942375707716075,0.00917327900077013,0.006081161484994139,1.7279005517465273e-16,0.005395200034140711,0.00721789399528569,0.00484110135817692,2.1149402582199242e-16,0.004388239086959991,0.005929248667932675,0.00401450896779898,2.157255682812684e-16,0.003703646967008042,0.005045721135369252,0.0034434847131706746,1.6787221123065324e-16,0.0032247860657256414,0.004424650744237714,0.0030404540187279378,2.3125579070802604e-16,0.0028849794948139283,0.003983384372505707,0.0027540516952747904,1.4216315610418345e-16,0.0026442785821521567,0.0036719561660328304,0.002552983887311765,1.889676895636462e-16,0.0024780582850305525,0.0034594522045110314,0.0024178496118518887,3.358503416551359e-16,0.002371081787894119,0.003326834522131644,0.0023367953000156096,1.7281675154410565e-16,0.0023143043115014237,0.0032630646073169567,0.002303167019442115],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}},"voltage":{"waveform":{"ancillaryLabel":null,"data":[-250,750,750,-250,-250],"numberPeriods":null,"time":[0,0,0.0000025,0.0000025,0.00001]},"processed":{"dutyCycle":0.25,"peakToPeak":1000,"offset":0,"label":"Rectangular","acEffectiveFrequency":690362.0785055,"effectiveFrequency":690304.6703245762,"peak":750,"rms":428.47841252506527,"thd":0.9507084995254543},"harmonics":{"amplitudes":[7.8125,439.01922030748125,318.054181640425,160.82999269932893,15.625,78.53068032814724,105.33519383460938,74.72286834292353,15.625,38.152854838935994,62.378496621407685,50.97284946091542,15.625,22.395874930175204,43.66894957016387,39.69081532881608,15.625,13.876571197254473,33.036286836697556,32.99822945556908,15.625,8.454863298834162,26.068737587242392,28.496100197734226,15.625,4.639182894050336,21.06787364823009,25.205943526842702,15.625,1.759788880760638,17.239530870835743,22.653191551027128,15.625,0.5294556301253199,14.161674515924204,20.579082584016138,15.625,2.426175514926857,11.588289785500606,18.829805684603613,15.625,4.052130473568203,9.365264588780075,17.30746601424853,15.625,5.48717403587503,7.390074623301945,15.946025943000762,15.625,6.786649949748976,5.590714395539472,14.69848919856514,15.625,7.990999700987584,3.91385875298921,13.529576856110252,15.625,9.131439305868467,2.317749805286752,12.411251317787945,15.625,10.233553928853821,0.7676070276481539,11.319769974196564],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}}}]}]})";
-        std::string weightsString = R"({"AREA_PRODUCT":0,"ENERGY_STORED":0,"COST":1,"EFFICIENCY":0.1,"DIMENSIONS":0.1})";
-        std::string file_path = __FILE__;
-
-        std::map<std::string, double> weightsKeysString = json::parse(weightsString);
-        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
-        for (auto const& pair : weightsKeysString) {
-            weights[magic_enum::enum_cast<OpenMagnetics::CoreAdviser::CoreAdviserFilters>(pair.first).value()] = pair.second;
-        }
-
-        OpenMagnetics::InputsWrapper inputs(json::parse(inputsString));
-
-        OpenMagnetics::CoreAdviser coreAdviser(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 20);
-        // auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 20);
-        auto log = coreAdviser.read_log();
-        std::vector<std::string> listOfNames;
-        for (size_t i = 0; i < masMagnetics.size(); ++i ){
-            // listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
-            std::cout << masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
-        }
-
-        // investigar pq todos los resultados tienen la misma inducntacia cn las mismas vueltas y diferentes stacks
-        // sospecho que las vueltas y la idncutania final se traspapelan, yuju...
-
-        std::cout << masMagnetics.size() << std::endl;
-        CHECK(masMagnetics.size() > 0);
-    }
 }

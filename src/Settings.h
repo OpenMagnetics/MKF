@@ -12,16 +12,19 @@ class Settings
 
         static Settings* settings_;
 
-        bool _allowMarginTape = true;
-        bool _allowInsulatedWire = true;
-        bool _fillCoilSectionsWithMarginTape = false;
-        bool _windEvenIfNotFit = false;
+        bool _coilAllowMarginTape = true;
+        bool _coilAllowInsulatedWire = true;
+        bool _coilFillSectionsWithMarginTape = false;
+        bool _coilWindEvenIfNotFit = false;
+        bool _coilDelimitAndCompact = true;
+        bool _coilTryRewind = true;
+
         bool _useOnlyCoresInStock = true;
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
         int _painterMirroringDimension = Defaults().magneticFieldMirroringDimension;
-        Painter::PainterModes _painterMode;
+        Painter::PainterModes _painterMode = Painter::PainterModes::CONTOUR;
         bool _painterLogarithmicScale = false;
         bool _painterIncludeFringing = true;
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
@@ -45,17 +48,23 @@ class Settings
 
         void reset();
 
-        bool get_allow_margin_tape() const;
-        void set_allow_margin_tape(bool value);
+        bool get_coil_allow_margin_tape() const;
+        void set_coil_allow_margin_tape(bool value);
 
-        bool get_allow_insulated_wire() const;
-        void set_allow_insulated_wire(bool value);
+        bool get_coil_allow_insulated_wire() const;
+        void set_coil_allow_insulated_wire(bool value);
 
-        bool get_fill_coil_sections_with_margin_tape() const;
-        void set_fill_coil_sections_with_margin_tape(bool value);
+        bool get_coil_fill_sections_with_margin_tape() const;
+        void set_coil_fill_sections_with_margin_tape(bool value);
 
-        bool get_wind_even_if_not_fit() const;
-        void set_wind_even_if_not_fit(bool value);
+        bool get_coil_wind_even_if_not_fit() const;
+        void set_coil_wind_even_if_not_fit(bool value);
+
+        bool get_coil_delimit_and_compact() const;
+        void set_coil_delimit_and_compact(bool value);
+
+        bool get_coil_try_rewind() const;
+        void set_coil_try_rewind(bool value);
 
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);

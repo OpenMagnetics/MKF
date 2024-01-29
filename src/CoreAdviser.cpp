@@ -469,6 +469,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, bool firstFilter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto coilDelimitAndCompactOld = settings->get_coil_delimit_and_compact();
     if (weight <= 0) {
         return *unfilteredMasMagnetics;
     }
@@ -562,7 +564,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                 auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
                 coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
                 // coil = CoilWrapper(coil);
-                coil.try_wind(true);
+                settings->set_coil_delimit_and_compact(false);
+                coil.try_wind();
 
                 auto aux = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
                 auto magnetizingInductance = aux.first;
@@ -571,7 +574,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                 if (!check_requirement(inputs.get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
                     // coil = CoilWrapper(coil);
-                    coil.try_wind(true);
+                    settings->set_coil_delimit_and_compact(false);
+                    coil.try_wind();
                     break;
                 }
                 else {
@@ -698,6 +702,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
     if (filteredMagneticsWithScoring.size() > 0) {
         normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::EFFICIENCY]);
     }
+    settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
     return filteredMagneticsWithScoring;
 }
 

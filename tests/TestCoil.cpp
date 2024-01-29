@@ -28,6 +28,7 @@ SUITE(CoilWeb) {
 
 }
 SUITE(CoilSectionsDescriptionMargins) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
         std::vector<int64_t> numberTurns = {47};
         std::vector<int64_t> numberParallels = {1};
@@ -36,8 +37,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -56,8 +57,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -85,7 +86,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -126,8 +127,10 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
+        // settings->set_coil_wind_even_if_not_fit(false);
+        // settings->set_coil_try_rewind(true);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -165,8 +168,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -198,7 +201,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -251,8 +254,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -287,8 +290,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -316,7 +319,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -357,8 +360,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -397,8 +400,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -431,7 +434,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -488,8 +491,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -524,8 +527,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -553,7 +556,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -594,8 +597,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -634,8 +637,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -668,7 +671,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -725,8 +728,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -761,8 +764,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -790,7 +793,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -831,8 +834,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -871,8 +874,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginNoFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -905,7 +908,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 2, 0});
         auto sectionDimensionsAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -962,8 +965,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -982,8 +985,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1011,7 +1014,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1052,8 +1055,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -1091,8 +1094,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1124,7 +1127,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1177,8 +1180,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -1197,8 +1200,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1226,7 +1229,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1267,8 +1270,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -1306,8 +1309,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1339,7 +1342,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1392,8 +1395,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -1412,8 +1415,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1441,7 +1444,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1482,8 +1485,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
@@ -1521,8 +1524,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1554,7 +1557,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 3.5, margin * 0.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
@@ -1607,8 +1610,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -1627,8 +1630,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1651,7 +1654,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -1693,8 +1696,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -1732,8 +1735,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
@@ -1766,7 +1769,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3});
@@ -1820,8 +1823,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -1840,8 +1843,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -1864,7 +1867,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -1905,8 +1908,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -1944,8 +1947,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -1977,7 +1980,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -2030,8 +2033,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2050,8 +2053,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -2074,7 +2077,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -2115,8 +2118,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2154,8 +2157,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -2187,7 +2190,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -2240,8 +2243,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2260,8 +2263,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -2284,7 +2287,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -2325,8 +2328,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2364,8 +2367,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -2397,7 +2400,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -2450,8 +2453,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2470,8 +2473,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -2494,7 +2497,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -2536,8 +2539,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2575,8 +2578,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 3, margin * 0.5});
@@ -2608,7 +2611,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -2661,8 +2664,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2681,8 +2684,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -2705,7 +2708,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -2747,8 +2750,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2786,8 +2789,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -2819,7 +2822,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -2872,8 +2875,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2892,8 +2895,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -2916,7 +2919,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -2958,8 +2961,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -2997,8 +3000,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -3030,7 +3033,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -3083,8 +3086,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3103,8 +3106,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -3127,7 +3130,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -3169,8 +3172,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3208,8 +3211,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -3241,7 +3244,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -3294,8 +3297,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3314,8 +3317,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -3338,7 +3341,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -3380,8 +3383,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3419,8 +3422,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -3452,7 +3455,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -3502,8 +3505,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3522,8 +3525,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -3546,7 +3549,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -3588,8 +3591,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3627,8 +3630,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -3660,7 +3663,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -3713,8 +3716,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3733,8 +3736,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -3757,7 +3760,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -3799,8 +3802,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3838,8 +3841,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -3871,7 +3874,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -3924,8 +3927,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -3944,8 +3947,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -3968,7 +3971,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -4010,8 +4013,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4049,8 +4052,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4082,7 +4085,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -4135,8 +4138,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4155,8 +4158,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -4179,7 +4182,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -4221,8 +4224,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4260,8 +4263,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4293,7 +4296,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4346,8 +4349,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4366,8 +4369,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -4390,7 +4393,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -4432,8 +4435,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4471,8 +4474,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4504,7 +4507,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -4557,8 +4560,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4577,8 +4580,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -4601,7 +4604,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -4643,8 +4646,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4682,8 +4685,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4715,7 +4718,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -4768,8 +4771,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4788,8 +4791,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
@@ -4812,7 +4815,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
@@ -4854,8 +4857,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        
+        settings->set_coil_fill_sections_with_margin_tape(false);
 
         OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
@@ -4893,8 +4896,8 @@ SUITE(CoilSectionsDescriptionMargins) {
             painter.export_svg();
         }
 
-        settings->set_wind_even_if_not_fit(true);
-        settings->set_fill_coil_sections_with_margin_tape(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        settings->set_coil_fill_sections_with_margin_tape(false);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -4926,7 +4929,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         OpenMagneticsTesting::check_turns_description(coil);
 
-        settings->set_fill_coil_sections_with_margin_tape(true);
+        settings->set_coil_fill_sections_with_margin_tape(true);
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 0.5});
@@ -4973,6 +4976,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 }
 
 SUITE(CoilSectionsDescription) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Wind_By_Section_Wind_By_Consecutive_Parallels) {
         std::vector<int64_t> numberTurns = {42};
@@ -5144,6 +5148,7 @@ SUITE(CoilSectionsDescription) {
     }
 
     TEST(Wind_By_Section_Random) {
+        settings->set_coil_try_rewind(false);
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -5160,9 +5165,11 @@ SUITE(CoilSectionsDescription) {
             auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, windingOrientation);
         }
+        settings->reset();
     }
 
     TEST(Wind_By_Section_Random_Multiwinding) {
+        settings->set_coil_try_rewind(false);
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -5191,6 +5198,7 @@ SUITE(CoilSectionsDescription) {
             auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, windingOrientation);
         }
+        settings->reset();
     }
 
     TEST(Wind_By_Section_With_Insulation_Sections) {
@@ -5522,7 +5530,10 @@ SUITE(CoilLayersDescription) {
 
 SUITE(CoilTurnsDescription) {
 
+    auto settings = OpenMagnetics::Settings::GetInstance();
+
     TEST(Wind_By_Turn_Wind_One_Section_One_Layer) {
+        settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5535,40 +5546,69 @@ SUITE(CoilTurnsDescription) {
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel);
         OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
     }
 
     TEST(Wind_By_Turn_Random_Multiwinding) {
+        settings->set_coil_wind_even_if_not_fit(false);
         srand (time(NULL));
-        for (size_t i = 0; i < 1000; ++i)
-        {
-            std::vector<int64_t> numberTurns;
-            std::vector<int64_t> numberParallels;
-            int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
-            for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
-            {
-                numberTurns.push_back(std::rand() % 100 + 1L);
-                numberParallels.push_back(std::rand() % 100 + 1L);
-                numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns.back() * numberParallels.back());
-            }
-            double bobbinHeight = 0.01;
-            double bobbinWidth = 0.01;
-            std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-            uint8_t interleavingLevel = std::rand() % 10 + 1;
-            interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-            auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
-            if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
-                bobbinWidth *= numberTurns.size();
+        auto numberReallyTestedWound = std::vector<int>(2, 0);
+        for (size_t testIndex = 0; testIndex < 2; ++testIndex) {
+            if (testIndex == 0) {
+                settings->set_coil_try_rewind(false);
             }
             else {
-                bobbinHeight *= numberTurns.size();
+                settings->set_coil_try_rewind(true);
             }
 
-            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
-            OpenMagneticsTesting::check_turns_description(coil);
+            for (size_t i = 0; i < 100; ++i)
+            {
+                std::vector<int64_t> numberTurns;
+                std::vector<int64_t> numberParallels;
+                int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+                for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
+                {
+                    int64_t numberPhysicalTurnsThisWinding = std::rand() % 300 + 1UL;
+                    int64_t numberTurnsThisWinding = std::rand() % 100 + 1L;
+                    int64_t numberParallelsThisWinding = std::max(1.0, std::ceil(double(numberPhysicalTurnsThisWinding) / numberTurnsThisWinding));
+                    numberTurns.push_back(numberTurnsThisWinding);
+                    numberParallels.push_back(numberParallelsThisWinding);
+                    numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns.back() * numberParallels.back());
+                }
+                double bobbinHeight = 0.01;
+                double bobbinWidth = 0.01;
+                std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+                uint8_t interleavingLevel = std::rand() % 10 + 1;
+                interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+                auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
+                if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                    bobbinWidth *= numberTurns.size();
+                }
+                else {
+                    bobbinHeight *= numberTurns.size();
+                }
+
+                int64_t numberPhysicalTurnsDebug = 0;
+                for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                    numberPhysicalTurnsDebug += numberTurns[windingIndex] * numberParallels[windingIndex];
+                }
+
+                auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+                if (coil.get_turns_description()) {
+                    numberReallyTestedWound[testIndex]++;
+                }
+
+                OpenMagneticsTesting::check_turns_description(coil);
+            }
         }
+
+        CHECK(numberReallyTestedWound[1] > numberReallyTestedWound[0]);
+
+        settings->reset();
     }
 
     TEST(Wind_By_Turn_Random_Multiwinding_0) {
+        settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns;
         std::vector<int64_t> numberParallels;
         int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
@@ -5594,9 +5634,11 @@ SUITE(CoilTurnsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
         OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
     }
 
     TEST(Wind_By_Turn_Random_Multiwinding_1) {
+        settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {80};
         std::vector<int64_t> numberParallels = {3};
         int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
@@ -5622,9 +5664,11 @@ SUITE(CoilTurnsDescription) {
 
         OpenMagneticsTesting::check_layers_description(coil);
         OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
     }
 
     TEST(Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin) {
+        settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -5655,7 +5699,8 @@ SUITE(CoilTurnsDescription) {
                                                          false);
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-    OpenMagneticsTesting::check_turns_description(coil);
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
     }
 
 }

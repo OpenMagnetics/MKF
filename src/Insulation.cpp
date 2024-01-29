@@ -160,8 +160,8 @@ double insulation_distance_provided_by_wires(WireWrapper leftWire, WireWrapper r
 
 std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_section_interface_layers(InputsWrapper& inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial) {
     auto settings = Settings::GetInstance();
-    bool allowMarginTape = settings->get_allow_margin_tape();
-    bool allowInsulatedWire = settings->get_allow_insulated_wire();
+    bool allowMarginTape = settings->get_coil_allow_margin_tape();
+    bool allowInsulatedWire = settings->get_coil_allow_insulated_wire();
 
     CoilSectionInterface coilSectionInterface;
     size_t numberInsulationLayers = 0;

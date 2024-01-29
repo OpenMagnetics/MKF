@@ -26,8 +26,7 @@ CoilWrapper::CoilWrapper(const json& j, uint8_t interleavingLevel,
                                WindingOrientation windingOrientation,
                                WindingOrientation layersOrientation,
                                CoilAlignment turnsAlignment,
-                               CoilAlignment sectionAlignment,
-                               bool delimitAndCompact) {
+                               CoilAlignment sectionAlignment) {
     _interleavingLevel = interleavingLevel;
     _windingOrientation = windingOrientation;
     _layersOrientation = layersOrientation;
@@ -35,13 +34,16 @@ CoilWrapper::CoilWrapper(const json& j, uint8_t interleavingLevel,
     _sectionAlignment = sectionAlignment;
     from_json(j, *this);
 
+    auto settings = Settings::GetInstance();
+    auto delimitAndCompact = settings->get_coil_delimit_and_compact();
+
     if (wind() && delimitAndCompact) {
         delimit_and_compact();
     }
 
 }
 
-CoilWrapper::CoilWrapper(const Coil coil, bool delimitAndCompact) {
+CoilWrapper::CoilWrapper(const Coil coil) {
     bool hasSectionsData = false;
     bool hasLayersData = false;
     bool hasTurnsData = false;
@@ -61,6 +63,8 @@ CoilWrapper::CoilWrapper(const Coil coil, bool delimitAndCompact) {
         hasTurnsData = true;
         set_turns_description(coil.get_turns_description());
     }
+    auto settings = Settings::GetInstance();
+    auto delimitAndCompact = settings->get_coil_delimit_and_compact();
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
         if (wind() && delimitAndCompact) {
@@ -70,9 +74,9 @@ CoilWrapper::CoilWrapper(const Coil coil, bool delimitAndCompact) {
 
 }
 
-bool CoilWrapper::try_wind(bool delimitAndCompact) {
+bool CoilWrapper::try_wind() {
     auto settings = Settings::GetInstance();
-    bool windEvenIfNotFit = settings->get_wind_even_if_not_fit();
+    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool hasSectionsData = false;
     bool hasLayersData = false;
     bool hasTurnsData = false;
@@ -86,6 +90,7 @@ bool CoilWrapper::try_wind(bool delimitAndCompact) {
     if (get_turns_description()) {
         hasTurnsData = true;
     }
+    auto delimitAndCompact = settings->get_coil_delimit_and_compact();
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && (windEvenIfNotFit || are_sections_and_layers_fitting()))) {
         if (wind() && delimitAndCompact) {
@@ -112,7 +117,9 @@ bool CoilWrapper::wind(std::vector<size_t> pattern, size_t repetitions){
 
 bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     auto settings = Settings::GetInstance();
-    bool windEvenIfNotFit = settings->get_wind_even_if_not_fit();
+    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
+    bool tryRewind = settings->get_coil_try_rewind();
     std::string bobbinName = "";
     if (std::holds_alternative<std::string>(get_bobbin())) {
         bobbinName = std::get<std::string>(get_bobbin());
@@ -148,17 +155,18 @@ bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<siz
             }
             wind_by_sections(proportionPerWinding, pattern, repetitions);
             wind_by_layers(); 
-    // if (!are_sections_and_layers_fitting()) {
-    //     try_rewind();
-    // }
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
                 wind_by_turns();
-                return true;
+                if (delimitAndCompact) {
+                    delimit_and_compact();
+                }
             }
-
+            if (tryRewind && !are_sections_and_layers_fitting()) {
+                try_rewind();
+            }
         }
     }
-    return false;
+    return are_sections_and_layers_fitting();
 }
 
 
@@ -879,7 +887,7 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
             }
 
             if (section.get_dimensions()[0] < 0) {
-                throw std::runtime_error("Something wrong happened in section dimn 1: " + std::to_string(section.get_dimensions()[0]) +
+                throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
                                          " currentSectionWidth: " + std::to_string(currentSectionWidth) +
                                          " currentSectionHeight: " + std::to_string(currentSectionHeight)
                                          );
@@ -892,7 +900,7 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
             }
 
             if (section.get_coordinates()[0] < -1) {
-                throw std::runtime_error("Something wrong happened in section dimn 1: " + std::to_string(section.get_coordinates()[0]) +
+                throw std::runtime_error("Something wrong happened in section coordiantes 0: " + std::to_string(section.get_coordinates()[0]) +
                                          " currentSectionCenterWidth: " + std::to_string(currentSectionCenterWidth) +
                                          " windingWindows[0].get_coordinates().value()[0]: " + std::to_string(windingWindows[0].get_coordinates().value()[0]) +
                                          " windingWindows[0].get_width(): " + std::to_string(bool(windingWindows[0].get_width())) +
@@ -1886,7 +1894,7 @@ bool CoilWrapper::delimit_and_compact() {
 
     // Add extra margin for support if required
     auto settings = Settings::GetInstance();
-    bool fillCoilSectionsWithMarginTape = settings->get_fill_coil_sections_with_margin_tape();
+    bool fillCoilSectionsWithMarginTape = settings->get_coil_fill_sections_with_margin_tape();
 
 
     if (fillCoilSectionsWithMarginTape) {
@@ -1998,6 +2006,9 @@ size_t CoilWrapper::convert_conduction_section_index_to_global(size_t conduction
 }
 
 void CoilWrapper::try_rewind() {
+    auto settings = Settings::GetInstance();
+    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
     if (!get_sections_description()) {
         throw std::runtime_error("Section description empty, wind coil first");
     }
@@ -2026,7 +2037,6 @@ void CoilWrapper::try_rewind() {
             else {
                 windingWindowRestrictiveDimension -= section.get_dimensions()[1];
             }
-
         }
 
         double sectionRestrictiveDimension;
@@ -2063,9 +2073,17 @@ void CoilWrapper::try_rewind() {
         totalExtraSpaceNeeded += extraSpaceNeededThisSection;
     }
 
-    std::vector<double> newProportions;
+    if (windingWindowRemainingRestrictiveDimension <= 0) {
+        return;
+    } 
 
+    std::vector<double> newProportions;
     double numberWindings = get_functional_description().size();
+
+    if (totalExtraSpaceNeeded < 0) {
+        throw std::runtime_error("totalExtraSpaceNeeded cannot be negative: " + std::to_string(totalExtraSpaceNeeded));
+    }
+
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         double currentProportion = _currentProportionPerWinding[windingIndex];
         double currentSpace = 0;
@@ -2085,17 +2103,31 @@ void CoilWrapper::try_rewind() {
                 }
             }
         }
+        if (extraSpaceNeededThisWinding < 0) {
+            throw std::runtime_error("extraSpaceNeededThisWinding cannot be negative: " + std::to_string(extraSpaceNeededThisWinding));
+        }
         double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimension * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
         double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
+        if (extraSpaceGottenByThisWinding < 0) {
+            throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative: " + std::to_string(extraSpaceGottenByThisWinding));
+        }
+        if (newProportionGottenByThisWinding < 0) {
+            throw std::runtime_error("newProportionGottenByThisWinding cannot be negative: " + std::to_string(newProportionGottenByThisWinding));
+        }
+
         newProportions.push_back(newProportionGottenByThisWinding);
     }
 
     wind_by_sections(newProportions, _currentPattern, _currentRepetitions);
     wind_by_layers();
-    wind_by_turns();
-    delimit_and_compact();
+    if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
+        wind_by_turns();
+        if (delimitAndCompact) {
+            delimit_and_compact();
+        }
+    }
 }
 
 
@@ -2114,16 +2146,21 @@ void CoilWrapper::add_margin_to_section_by_index(size_t sectionIndex, std::vecto
 
 
     auto settings = Settings::GetInstance();
-    bool windEvenIfNotFit = settings->get_wind_even_if_not_fit();
+    bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
+    bool delimitAndCompact = settings->get_coil_delimit_and_compact();
+    bool tryRewind = settings->get_coil_try_rewind();
+
     wind_by_sections();
     wind_by_layers();
-    wind_by_turns();
-    delimit_and_compact();
-    // std::cout << are_sections_and_layers_fitting() << std::endl;
-    if (!are_sections_and_layers_fitting()) {
+    if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
+        wind_by_turns();
+        if (delimitAndCompact) {
+            delimit_and_compact();
+        }
+    }
+    if (tryRewind && !are_sections_and_layers_fitting()) {
         try_rewind();
     }
-
 }
 
 std::vector<Section> CoilWrapper::get_sections_description_conduction() {

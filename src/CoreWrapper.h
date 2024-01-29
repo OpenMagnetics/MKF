@@ -155,6 +155,7 @@ class CoreWrapper : public MagneticCore {
     CoreShapeFamily get_shape_family();
     std::string get_shape_name();
     std::string get_material_name();
+    int64_t get_number_stacks();
     double get_remanence(double temperature);
     double get_coercive_force(double temperature);
     std::vector<CoreLossesMethodType> get_available_core_losses_methods();

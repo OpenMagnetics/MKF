@@ -2489,6 +2489,9 @@ SUITE(CoilPainter) {
     }
 
     TEST(Test_Turns_Not_Fitting) {
+
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {6, 6};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
