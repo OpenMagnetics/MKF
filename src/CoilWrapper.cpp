@@ -110,6 +110,16 @@ bool CoilWrapper::wind() {
     return wind(proportionPerWinding, pattern, _interleavingLevel);
 }
 
+bool CoilWrapper::wind(size_t repetitions){
+    std::vector<size_t> pattern;
+    double numberWindings = get_functional_description().size();
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        pattern.push_back(windingIndex);
+    }
+    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    return wind(proportionPerWinding, pattern, repetitions);
+}
+
 bool CoilWrapper::wind(std::vector<size_t> pattern, size_t repetitions){
     auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
     return wind(proportionPerWinding, pattern, repetitions);
@@ -651,6 +661,9 @@ std::vector<std::pair<size_t, double>> CoilWrapper::get_ordered_sections(double 
 
     for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
         for (auto windingIndex : pattern) {
+            if (roundFloat(proportionPerWinding[windingIndex], 6) > 1) {
+                throw std::invalid_argument("proportionPerWinding[windingIndex] cannot be greater than 1: " + std::to_string(proportionPerWinding[windingIndex]));
+            }
             double spaceForSection = roundFloat(spaceForSections * proportionPerWinding[windingIndex] / numberSectionsPerWinding[windingIndex], 9);
             orderedSections.push_back({windingIndex, spaceForSection});
         }
@@ -828,7 +841,6 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
             auto windingIndex = sectionInfo.first;
             auto spaceForSection = sectionInfo.second;
 
-
             double currentSectionHeight = 0;
             double currentSectionWidth = 0;
             if (_windingOrientation == WindingOrientation::HORIZONTAL) {
@@ -856,7 +868,6 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
             else {
                 throw std::runtime_error("Toroidal windings not implemented");
             }
-
             
             PartialWinding partialWinding;
             Section section;
@@ -883,6 +894,7 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
                 section.set_dimensions(std::vector<double>{currentSectionWidth, currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]});
             }
             else {
+
                 section.set_dimensions(std::vector<double>{currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1], currentSectionHeight});
             }
 
@@ -2007,6 +2019,12 @@ size_t CoilWrapper::convert_conduction_section_index_to_global(size_t conduction
 
 void CoilWrapper::try_rewind() {
     auto settings = Settings::GetInstance();
+
+    if (!get_turns_description()) {
+        wind_by_turns();
+        delimit_and_compact();
+    }
+
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings->get_coil_delimit_and_compact();
     if (!get_sections_description()) {
@@ -2069,19 +2087,22 @@ void CoilWrapper::try_rewind() {
 
 
         extraSpaceNeededThisSection = std::max(extraSpaceNeededThisSection, (sectionFillingFactor - 1) * sectionRestrictiveDimension);
+        if (extraSpaceNeededThisSection < 0 || std::isnan(extraSpaceNeededThisSection)) {
+            throw std::runtime_error("extraSpaceNeededThisSection cannot be negative or nan: " + std::to_string(extraSpaceNeededThisSection));
+        }
         extraSpaceNeededPerSection.push_back(extraSpaceNeededThisSection);
         totalExtraSpaceNeeded += extraSpaceNeededThisSection;
     }
 
-    if (windingWindowRemainingRestrictiveDimension <= 0) {
+    if (windingWindowRemainingRestrictiveDimension <= 0 || totalExtraSpaceNeeded <= 0) {
         return;
     } 
 
     std::vector<double> newProportions;
     double numberWindings = get_functional_description().size();
 
-    if (totalExtraSpaceNeeded < 0) {
-        throw std::runtime_error("totalExtraSpaceNeeded cannot be negative: " + std::to_string(totalExtraSpaceNeeded));
+    if (totalExtraSpaceNeeded < 0 || std::isnan(totalExtraSpaceNeeded)) {
+        throw std::runtime_error("totalExtraSpaceNeeded cannot be negative or nan: " + std::to_string(totalExtraSpaceNeeded));
     }
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -2103,18 +2124,21 @@ void CoilWrapper::try_rewind() {
                 }
             }
         }
-        if (extraSpaceNeededThisWinding < 0) {
-            throw std::runtime_error("extraSpaceNeededThisWinding cannot be negative: " + std::to_string(extraSpaceNeededThisWinding));
+        if (extraSpaceNeededThisWinding < 0 || std::isnan(extraSpaceNeededThisWinding)) {
+            throw std::runtime_error("extraSpaceNeededThisWinding cannot be negative or nan: " + std::to_string(extraSpaceNeededThisWinding));
         }
         double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimension * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
         double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
-        if (extraSpaceGottenByThisWinding < 0) {
-            throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative: " + std::to_string(extraSpaceGottenByThisWinding));
+        if (extraSpaceGottenByThisWinding < 0 || std::isnan(extraSpaceGottenByThisWinding)) {
+            throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
         }
-        if (newProportionGottenByThisWinding < 0) {
-            throw std::runtime_error("newProportionGottenByThisWinding cannot be negative: " + std::to_string(newProportionGottenByThisWinding));
+        if (newProportionGottenByThisWinding < 0 || std::isnan(newProportionGottenByThisWinding)) {
+            throw std::runtime_error("newProportionGottenByThisWinding cannot be negative or nan: " + std::to_string(newProportionGottenByThisWinding));
+        }
+        if (roundFloat(newProportionGottenByThisWinding, 6) > 1 || std::isnan(newProportionGottenByThisWinding)) {
+            throw std::runtime_error("newProportionGottenByThisWinding cannot be greater than 1 or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
 
         newProportions.push_back(newProportionGottenByThisWinding);
@@ -2122,6 +2146,7 @@ void CoilWrapper::try_rewind() {
 
     wind_by_sections(newProportions, _currentPattern, _currentRepetitions);
     wind_by_layers();
+    set_turns_description(std::nullopt);
     if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
         wind_by_turns();
         if (delimitAndCompact) {

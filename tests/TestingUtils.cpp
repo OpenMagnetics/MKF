@@ -432,12 +432,10 @@ void check_sections_description(OpenMagnetics::CoilWrapper coil,
             if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
                 CHECK(sectionsDescription[i].get_coordinates()[0] < sectionsDescription[i + 1].get_coordinates()[0]);
                 CHECK(sectionsDescription[i].get_coordinates()[1] == sectionsDescription[i + 1].get_coordinates()[1]);
-                // CHECK(sectionsDescription[i].get_coordinates()[2] == sectionsDescription[i + 1].get_coordinates()[2]);
             } 
             else if (windingOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
                 CHECK(sectionsDescription[i].get_coordinates()[1] > sectionsDescription[i + 1].get_coordinates()[1]);
                 CHECK(sectionsDescription[i].get_coordinates()[0] == sectionsDescription[i + 1].get_coordinates()[0]);
-                // CHECK(sectionsDescription[i].get_coordinates()[2] == sectionsDescription[i + 1].get_coordinates()[2]);
             }
         }
     }
