@@ -38,31 +38,6 @@ class Painter{
             matplot::yticks({});
         };
         virtual ~Painter() = default;
-
-    // void set_number_points_x(double numberPoints) {
-    //     _numberPointsX = numberPoints;
-    // }
-    // void set_number_points_y(double numberPoints) {
-    //     _numberPointsY = numberPoints;
-    // }
-    // void set_mode(PainterModes mode) {
-    //     _mode = mode;
-    // }
-    // void set_logarithmic_scale(bool mode) {
-    //     _logarithmicScale = mode;
-    // }
-    // void set_maximum_scale_value(std::optional<double> value) {
-    //     _maximumValueColorbar = value;
-    // }
-    // void set_minimum_scale_value(std::optional<double> value) {
-    //     _minimumValueColorbar = value;
-    // }
-    // void set_fringing_effect(bool value) {
-    //     _includeFringing = value;
-    // }
-    // void set_mirroring_dimension(int mirroringDimension) {
-    //     _mirroringDimension = mirroringDimension;
-    // }
     
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
     void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);

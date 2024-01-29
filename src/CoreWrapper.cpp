@@ -2245,6 +2245,23 @@ void CoreWrapper::scale_to_stacks(int64_t numberStacks) {
         column.set_depth(column.get_depth() * numberStacks);
     }
     set_processed_description(processedDescription);
+
+    auto functionalDescription = get_functional_description();
+    auto gapping = functionalDescription.get_gapping();
+    std::vector<CoreGap> scaledGapping;
+    for (auto& gapInfo : gapping) {
+        if (gapInfo.get_section_dimensions()) {
+            auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
+            gapSectionDimensions[1] *= numberStacks;
+            gapInfo.set_section_dimensions(gapSectionDimensions);
+        }
+        if (gapInfo.get_area()) {
+            gapInfo.set_area(gapInfo.get_area().value() * numberStacks);
+        }
+        scaledGapping.push_back(gapInfo);
+    }
+    functionalDescription.set_gapping(scaledGapping);
+    set_functional_description(functionalDescription);
 }
 
 bool CoreWrapper::distribute_and_process_gap() {
@@ -2713,6 +2730,15 @@ CoreShapeFamily CoreWrapper::get_shape_family() {
 
 std::string CoreWrapper::get_shape_name() {
     return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_name().value();
+}
+
+int64_t CoreWrapper::get_number_stacks() {
+    if (get_functional_description().get_number_stacks()) {
+        return get_functional_description().get_number_stacks().value();
+    }
+    else {
+        return 1;
+    }
 }
 
 std::string CoreWrapper::get_material_name() {

@@ -1,3 +1,4 @@
+#include "Settings.h"
 #include "Utils.h"
 #include "TestingUtils.h"
 #include <UnitTest++.h>
@@ -145,7 +146,10 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> number
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
 
-    OpenMagnetics::CoilWrapper coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment, false);
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    settings->set_coil_delimit_and_compact(false);
+
+    OpenMagnetics::CoilWrapper coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
     return coil;
 }
 

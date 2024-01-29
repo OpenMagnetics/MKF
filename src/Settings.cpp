@@ -12,16 +12,19 @@ namespace OpenMagnetics {
     }
 
     void Settings::reset() {
-        _allowMarginTape = true;
-        _allowInsulatedWire = true;
-        _fillCoilSectionsWithMarginTape = false;
-        _windEvenIfNotFit = false;
+        _coilAllowMarginTape = true;
+        _coilAllowInsulatedWire = true;
+        _coilFillSectionsWithMarginTape = false;
+        _coilWindEvenIfNotFit = false;
+        _coilDelimitAndCompact = true;
+        _coilTryRewind = true;
+
         _useOnlyCoresInStock = true;
 
         _painterNumberPointsX = 25;
         _painterNumberPointsY = 50;
         _painterMirroringDimension = Defaults().magneticFieldMirroringDimension;
-        _painterMode;
+        _painterMode = Painter::PainterModes::CONTOUR;
         _painterLogarithmicScale = false;
         _painterIncludeFringing = true;
         _painterMaximumValueColorbar = std::nullopt;
@@ -36,39 +39,53 @@ namespace OpenMagnetics {
         _magneticFieldNumberPointsY = 50;
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldIncludeFringing = true;
-    } 
-
-    bool Settings::get_allow_margin_tape() const {
-        return _allowMarginTape;
-    } 
-    void Settings::set_allow_margin_tape(bool value) {
-        _allowMarginTape = value;
     }
 
-    bool Settings::get_allow_insulated_wire() const {
-        return _allowInsulatedWire;
-    } 
-    void Settings::set_allow_insulated_wire(bool value) {
-        _allowInsulatedWire = value;
+    bool Settings::get_coil_allow_margin_tape() const {
+        return _coilAllowMarginTape;
+    }
+    void Settings::set_coil_allow_margin_tape(bool value) {
+        _coilAllowMarginTape = value;
     }
 
-    bool Settings::get_fill_coil_sections_with_margin_tape() const {
-        return _fillCoilSectionsWithMarginTape;
-    } 
-    void Settings::set_fill_coil_sections_with_margin_tape(bool value) {
-        _fillCoilSectionsWithMarginTape = value;
-    } 
+    bool Settings::get_coil_allow_insulated_wire() const {
+        return _coilAllowInsulatedWire;
+    }
+    void Settings::set_coil_allow_insulated_wire(bool value) {
+        _coilAllowInsulatedWire = value;
+    }
 
-    bool Settings::get_wind_even_if_not_fit() const {
-        return _windEvenIfNotFit;
-    } 
-    void Settings::set_wind_even_if_not_fit(bool value) {
-        _windEvenIfNotFit = value;
-    } 
+    bool Settings::get_coil_fill_sections_with_margin_tape() const {
+        return _coilFillSectionsWithMarginTape;
+    }
+    void Settings::set_coil_fill_sections_with_margin_tape(bool value) {
+        _coilFillSectionsWithMarginTape = value;
+    }
+
+    bool Settings::get_coil_wind_even_if_not_fit() const {
+        return _coilWindEvenIfNotFit;
+    }
+    void Settings::set_coil_wind_even_if_not_fit(bool value) {
+        _coilWindEvenIfNotFit = value;
+    }
+
+    bool Settings::get_coil_delimit_and_compact() const {
+        return _coilDelimitAndCompact;
+    }
+    void Settings::set_coil_delimit_and_compact(bool value) {
+        _coilDelimitAndCompact = value;
+    }
+
+    bool Settings::get_coil_try_rewind() const {
+        return _coilTryRewind;
+    }
+    void Settings::set_coil_try_rewind(bool value) {
+        _coilTryRewind = value;
+    }
 
     bool Settings::get_use_only_cores_in_stock() const {
         return _useOnlyCoresInStock;
-    } 
+    }
     void Settings::set_use_only_cores_in_stock(bool value) {
         _useOnlyCoresInStock = value;
     }

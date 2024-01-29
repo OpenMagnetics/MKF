@@ -192,7 +192,7 @@ namespace OpenMagnetics {
         std::vector<std::vector<WireSolidInsulationRequirements>> combinationsWithstandVoltageForWires;
         auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
         auto settings = Settings::GetInstance();
-        bool allowMarginTape = settings->get_allow_margin_tape();
+        bool allowMarginTape = settings->get_coil_allow_margin_tape();
 
         // If we don't want margin tape we have to increase to insulation type to DOUBLE:
         if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {

@@ -47,12 +47,11 @@ class CoilWrapper : public Coil {
                        WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
                        WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
-                       CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP,
-                       bool delimitAndCompact = true);
-        CoilWrapper(const Coil coil, bool delimitAndCompact = true);
+                       CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
+        CoilWrapper(const Coil coil);
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
-        bool try_wind(bool delimitAndCompact);
+        bool try_wind();
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);

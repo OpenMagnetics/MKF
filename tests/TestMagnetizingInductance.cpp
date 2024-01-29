@@ -800,29 +800,33 @@ SUITE(MagnetizingInductance) {
         magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
 
-    // TEST(Test_Magnetizing_Inductance_PQ_27_15) {
-    //     double dcCurrent = 0;
-    //     double ambientTemperature = 25;
-    //     double numberTurns = 7;
-    //     double frequency = 100000;
-    //     std::string coreShape = "PQ 27/15";
-    //     std::string coreMaterial = "DMR95";
-    //     auto gapping = OpenMagneticsTesting::get_grinded_gap(0.00228);
+    TEST(Test_Magnetizing_Inductance_Error_Web_0) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 10;
+        double frequency = 20000;
+        std::string coreShape = "E 65/32/27";
+        std::string coreMaterial = "N95";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
 
-    //     OpenMagnetics::CoreWrapper core;
-    //     OpenMagnetics::CoilWrapper winding; 
-    //     OpenMagnetics::InputsWrapper inputs; 
-    //     OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::CoilWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
 
-    //     prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
-    //                             coreMaterial, core, winding, inputs);
+        double expectedValue = 19e-6;
 
-    //     auto operatingPoint = inputs.get_operating_point(0);
-    //     auto ea = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
-    //     auto magnetizingInductance = ea.get_magnetizing_inductance().get_nominal().value();
-    //     auto reluctanceCore = ea.get_core_reluctance();
-    //     auto reluctanceGapping = ea.get_gapping_reluctance().value();
-    //     auto reluctanceUngappedCore = ea.get_ungapped_core_reluctance().value();
-    // }
+        int numberStacks = 2;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs, 20, numberStacks);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        double magnetizingInductance =
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+    }
+
 
 }
