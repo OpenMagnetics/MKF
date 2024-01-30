@@ -140,8 +140,18 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     OpenMagnetics::InitialPermeability initial_permeability;
     double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_core().get_functional_description().get_material(), std::nullopt, std::nullopt, frequency);
     double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability).get_core_reluctance();
-    auto magneticFlux = MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
-        reluctance, numberTurns);
+    if (!operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
+        throw std::runtime_error("Magnetizing current is missing");
+    }
+
+    auto magnetizingCurrent = operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value();
+    if (!magnetizingCurrent.get_waveform()) {
+        throw std::runtime_error("Magnetizing current is missing waveform");
+    }
+    if (!magnetizingCurrent.get_waveform()->get_time()) {
+        magnetizingCurrent = InputsWrapper::standarize_waveform(magnetizingCurrent, frequency);
+    }
+    auto magneticFlux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
 
     double magneticFieldStrengthGap = magneticFluxDensity.get_processed()->get_peak().value() / Constants().vacuumPermeability;
@@ -285,6 +295,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
 
     WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput;
     windingWindowMagneticStrengthFieldOutput.set_field_per_frequency(complexFieldPerHarmonic);
+    windingWindowMagneticStrengthFieldOutput.set_method_used(std::string{magic_enum::enum_name(_magneticFieldStrengthModel)});
+    windingWindowMagneticStrengthFieldOutput.set_origin(ResultOrigin::SIMULATION);
     return windingWindowMagneticStrengthFieldOutput;
 }
 
