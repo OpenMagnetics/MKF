@@ -537,6 +537,7 @@ SUITE(CoilAdviser) {
         settings->set_coil_allow_margin_tape(false);
         settings->set_coil_allow_insulated_wire(true);
         settings->set_coil_try_rewind(false);
+        settings->set_coil_adviser_maximum_number_wires(1000);
 
         OpenMagnetics::CoilAdviser coilAdviser;
         auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 1);

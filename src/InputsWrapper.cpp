@@ -190,9 +190,12 @@ SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, dou
         auto waveform = create_waveform(signal.get_processed().value(), frequency);
         standardized_signal.set_waveform(waveform);
     }
-    if (signal.get_waveform() && !signal.get_waveform()->get_time()) {
-        auto time = linear_spaced_array(0, 1. / frequency, signal.get_waveform()->get_data().size());
-        standardized_signal.get_waveform()->set_time(time);
+
+    if (standardized_signal.get_waveform() && !standardized_signal.get_waveform()->get_time()) {
+        auto time = linear_spaced_array(0, 1. / frequency, standardized_signal.get_waveform()->get_data().size());
+        auto waveform = standardized_signal.get_waveform().value();
+        waveform.set_time(time);
+        standardized_signal.set_waveform(waveform);
     }
 
     return standardized_signal;
