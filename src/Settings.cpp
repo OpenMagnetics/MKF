@@ -39,6 +39,9 @@ namespace OpenMagnetics {
         _magneticFieldNumberPointsY = 50;
         _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         _magneticFieldIncludeFringing = true;
+        
+        _coilAdviserMaximumNumberWires = 100;
+
     }
 
     bool Settings::get_coil_allow_margin_tape() const {
@@ -207,6 +210,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_magnetic_field_include_fringing(bool value) {
         _magneticFieldIncludeFringing = value;
+    }
+
+    size_t Settings::get_coil_adviser_maximum_number_wires() const {
+        return _coilAdviserMaximumNumberWires;
+    }
+    void Settings::set_coil_adviser_maximum_number_wires(size_t value) {
+        _coilAdviserMaximumNumberWires = value;
     }
 
 } // namespace OpenMagnetics

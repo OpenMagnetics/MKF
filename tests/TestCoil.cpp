@@ -87,9 +87,6 @@ SUITE(CoilWeb) {
         auto section = coil.get_sections_description().value()[0];
         CHECK(!std::isnan(section.get_dimensions()[0]));
         CHECK(!std::isnan(section.get_dimensions()[1]));
-        std::vector<int64_t> numberTurns = {36};
-        std::vector<int64_t> numberParallels = {27};
-        uint8_t interleavingLevel = 7;
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;

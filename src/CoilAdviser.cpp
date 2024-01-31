@@ -273,6 +273,8 @@ namespace OpenMagnetics {
     }
 
     std::vector<std::pair<MasWrapper, double>> CoilAdviser::get_advised_coil_for_pattern(std::vector<WireWrapper>* wires, MasWrapper mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> withstandVoltageForWires, size_t maximumNumberResults){
+        auto settings = Settings::GetInstance();
+        size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
         auto defaults = Defaults();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
@@ -339,7 +341,7 @@ namespace OpenMagnetics {
                                                                      maximumCurrent,
                                                                      maximumTemperature,
                                                                      mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),
-                                                                     1000);
+                                                                     maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
                     timeout += wiresWithScoring.size();

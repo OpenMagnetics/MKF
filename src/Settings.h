@@ -39,6 +39,7 @@ class Settings
         size_t _magneticFieldNumberPointsY = 50;
         int _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
+        size_t _coilAdviserMaximumNumberWires = 100;
 
     public:
         Settings(Settings &other) = delete;
@@ -119,6 +120,9 @@ class Settings
 
         int get_magnetic_field_mirroring_dimension() const;
         void set_magnetic_field_mirroring_dimension(int value);
+
+        size_t get_coil_adviser_maximum_number_wires() const;
+        void set_coil_adviser_maximum_number_wires(size_t value);
 
     };
 } // namespace OpenMagnetics

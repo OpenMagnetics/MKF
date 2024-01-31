@@ -192,6 +192,7 @@ SUITE(MagneticAdviser) {
             try {
                 OpenMagnetics::MagneticAdviser MagneticAdviser;
                 auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+                count--;
             }
             catch (...) {
                 for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {

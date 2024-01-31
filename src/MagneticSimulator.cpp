@@ -16,8 +16,11 @@ MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const Magnet
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         OutputsWrapper output;
+        // std::cout << "Simulating magnetizing_inductance" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
+        // std::cout << "Simulating core_losses" << std::endl;
         output.set_core_losses(calculate_core_loses(operatingPoint, magnetic));
+        // std::cout << "Simulating winding_losses" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, output.get_core_losses().value().get_temperature()));
         outputs.push_back(output);
         simulatedOperatingPoints.push_back(operatingPoint);
@@ -32,7 +35,7 @@ MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(
 }
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature){
     auto settings = OpenMagnetics::Settings::GetInstance();
-    // settings->set_magnetic_field_mirroring_dimension(0);
+    settings->set_magnetic_field_mirroring_dimension(0);
 
     double simulationTemperature;
     if (!temperature) {
