@@ -633,6 +633,7 @@ std::map<OpenMagnetics::CoreLossesModels, double> testMaximumErrors = {
     {OpenMagnetics::CoreLossesModels::ALBACH, 0.0},
 };
 
+
 double run_test_core_losses(const OpenMagnetics::CoreLossesModels& modelName,
                             const std::string& shapeName,
                             const std::string& materialName,
@@ -795,14 +796,16 @@ void test_core_losses_magnet_verification_3F4(OpenMagnetics::CoreLossesModels mo
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_losses_magnet_verification_N49(OpenMagnetics::CoreLossesModels modelName,
@@ -1077,14 +1080,16 @@ void test_core_losses_magnet_verification_N49(OpenMagnetics::CoreLossesModels mo
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_losses_magnet_verification_3C94(OpenMagnetics::CoreLossesModels modelName,
@@ -1179,14 +1184,16 @@ void test_core_losses_magnet_verification_3C94(OpenMagnetics::CoreLossesModels m
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_losses_magnet_verification_N27(OpenMagnetics::CoreLossesModels modelName,
@@ -1241,14 +1248,16 @@ void test_core_losses_magnet_verification_N27(OpenMagnetics::CoreLossesModels mo
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_losses_magnet_verification_N87(OpenMagnetics::CoreLossesModels modelName,
@@ -1413,14 +1422,16 @@ void test_core_losses_magnet_verification_N87(OpenMagnetics::CoreLossesModels mo
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_losses_magnet_verification_3C90(OpenMagnetics::CoreLossesModels modelName,
@@ -1565,14 +1576,16 @@ void test_core_losses_magnet_verification_3C90(OpenMagnetics::CoreLossesModels m
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 std::vector<std::map<std::string, double>> load_sample_data_from_material(std::string material) {
@@ -1696,14 +1709,16 @@ void test_core_losses_magnet_data(OpenMagnetics::CoreLossesModels modelName,
     }
     meanError /= tests.size();
     testAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
-              << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                     testAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core losses for " << coreMaterial << " with Model " << magic_enum::enum_name(modelName)
+                  << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                         testAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 
     export_test_result_for_material(testResult, coreMaterial, modelName);
 }

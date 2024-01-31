@@ -104,6 +104,9 @@ SUITE(LeakageInductance) {
 
     TEST(Test_Leakage_Inductance_E_1) {
 
+        // settings->set_coil_wind_even_if_not_fit(true);
+        // settings->set_coil_try_rewind(false);
+
         double temperature = 20;
         std::vector<int64_t> numberTurns({64, 20});
         std::vector<int64_t> numberParallels({1, 1});
@@ -181,6 +184,22 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        auto outFile = outputFilePath;
+        outFile.append("Test_Leakage_Inductance_E_1.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_sections(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        settings->reset();
         settings->reset();
     }
 

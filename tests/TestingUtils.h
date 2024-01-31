@@ -10,6 +10,8 @@
 #include <iostream>
 #include <vector>
 
+extern bool verboseTests;
+
 namespace OpenMagneticsTesting {
 OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
                                           std::vector<int64_t> numberParallels,
@@ -102,6 +104,6 @@ void check_layers_description(OpenMagnetics::CoilWrapper coil,
                                       OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL);
 
 
-void check_turns_description(OpenMagnetics::CoilWrapper coil);
+bool check_turns_description(OpenMagnetics::CoilWrapper coil);
 
 } // namespace OpenMagneticsTesting

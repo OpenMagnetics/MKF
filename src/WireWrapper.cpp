@@ -459,7 +459,8 @@ namespace OpenMagnetics {
             }
         }
         if (interpolatorData.size() == 0) {
-            throw std::runtime_error("No wires with that specification");
+            // throw std::runtime_error("No wires with that specification");
+            return;
         }
 
         size_t n = interpolatorData.size();
@@ -625,8 +626,9 @@ namespace OpenMagnetics {
             create_conducting_area_interpolator(standard,
                                                 key);
         }
+        double wireTheoreticalConductingArea = conductingWidth * conductingHeight;
         if (!wireConductingAreaInterps.contains(key)) {
-            return 0;
+            return wireTheoreticalConductingArea;
         }
         else {
 

@@ -183,12 +183,16 @@ std::vector<double> linear_spaced_array(double startingValue, double endingValue
 // the code depends on it.
 SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, double frequency) {
     SignalDescriptor standardized_signal(signal);
-    if (!signal.get_waveform() || !signal.get_waveform()->get_time()) {
+    if (!signal.get_waveform()) {
         if (!signal.get_processed()) {
             throw std::runtime_error("Signal is not processed");
         }
         auto waveform = create_waveform(signal.get_processed().value(), frequency);
         standardized_signal.set_waveform(waveform);
+    }
+    if (signal.get_waveform() && !signal.get_waveform()->get_time()) {
+        auto time = linear_spaced_array(0, 1. / frequency, signal.get_waveform()->get_data().size());
+        standardized_signal.get_waveform()->set_time(time);
     }
 
     return standardized_signal;

@@ -17,6 +17,7 @@ std::map<OpenMagnetics::CoreTemperatureModels, double> maximumAdmittedErrorTempe
 std::map<OpenMagnetics::CoreTemperatureModels, std::vector<double>> testCoreTemperatureAverageErrors = {};
 std::map<OpenMagnetics::CoreTemperatureModels, double> testCoreTemperatureMaximumErrors = {};
 
+
 double run_test_core_temperature(const OpenMagnetics::CoreTemperatureModels& modelName,
                                  const std::string& shapeName,
                                  const std::string& materialName,
@@ -57,15 +58,17 @@ void test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels model
                                            expectedTemperature);
 
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels modelName) {
@@ -81,15 +84,17 @@ void test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels model
                                            expectedTemperature);
 
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels modelName) {
@@ -105,15 +110,17 @@ void test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels model
                                            expectedTemperature);
 
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels modelName) {
@@ -132,15 +139,17 @@ void test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels model
 
     meanError /= coreLosses.size();
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels modelName) {
@@ -156,15 +165,17 @@ void test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels mod
                                            expectedTemperature);
 
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 void test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels modelName) {
@@ -180,15 +191,17 @@ void test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels mod
                                            expectedTemperature);
 
     testCoreTemperatureAverageErrors[modelName].push_back(meanError);
-    std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
-              << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-    std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-              << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
-                             testCoreTemperatureAverageErrors[modelName].end()) /
-                     testCoreTemperatureAverageErrors[modelName].size() * 100
-              << " %" << std::endl;
-    std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
-              << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    if (verboseTests) {
+        std::cout << "Mean Error in Core Temperature for " << coreMaterial << " with Model "
+                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                  << std::reduce(testCoreTemperatureAverageErrors[modelName].begin(),
+                                 testCoreTemperatureAverageErrors[modelName].end()) /
+                         testCoreTemperatureAverageErrors[modelName].size() * 100
+                  << " %" << std::endl;
+        std::cout << "Current maximum for  " << magic_enum::enum_name(modelName) << ": "
+                  << testCoreTemperatureMaximumErrors[modelName] * 100 << " %" << std::endl;
+    }
 }
 
 SUITE(KazimierczukCoreTemperatureModel) {

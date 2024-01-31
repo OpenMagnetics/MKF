@@ -17,7 +17,6 @@ SUITE(Bobbin) {
 
     TEST(Sample_Bobbin) {
         auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
-        std::cout << wireFilePath << std::endl;
         std::ifstream json_file(wireFilePath);
         auto bobbinJson = json::parse(json_file);
 

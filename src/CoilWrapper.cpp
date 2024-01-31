@@ -459,15 +459,15 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     }
     else {
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
-            double numberTurnsToAddToCurrentParallel = ceil(numberTurns * totalParallelsProportion[parallelIndex] / slots);
-            double remainingTurnsBeforeThisParallel = numberTurns * remainingParallelsProportion[parallelIndex];
-            double remainingTurnsAfterThisParallel = remainingTurnsBeforeThisParallel - numberTurnsToAddToCurrentParallel;
             double remainingSlots = slots - slotIndex;
+            double remainingTurnsBeforeThisParallel = numberTurns * remainingParallelsProportion[parallelIndex];
+            double numberTurnsToAddToCurrentParallel = ceil(remainingTurnsBeforeThisParallel / remainingSlots);
+            // double numberTurnsToAddToCurrentParallel = ceil(numberTurns * totalParallelsProportion[parallelIndex] / slots);
+            double remainingTurnsAfterThisParallel = remainingTurnsBeforeThisParallel - numberTurnsToAddToCurrentParallel;
             double remainingSlotsAfterThisOne = remainingSlots - 1;
             if (remainingTurnsAfterThisParallel < remainingSlotsAfterThisOne) {
-                numberTurnsToAddToCurrentParallel = roundFloat(remainingTurnsBeforeThisParallel / remainingSlots, 10);
+                numberTurnsToAddToCurrentParallel = ceil(roundFloat(remainingTurnsBeforeThisParallel / remainingSlots, 10));
             }
-
             double proportionParallelsThisSection = std::min(remainingParallelsProportion[parallelIndex], numberTurnsToAddToCurrentParallel / numberTurns);
             physicalTurnsThisSlot += numberTurnsToAddToCurrentParallel;
             slotParallelsProportion[parallelIndex] = proportionParallelsThisSection;
@@ -2024,6 +2024,11 @@ void CoilWrapper::try_rewind() {
         wind_by_turns();
         delimit_and_compact();
     }
+    auto electricalSections = get_sections_by_type(ElectricalType::CONDUCTION);
+
+    if (electricalSections.size() == 1 || get_functional_description().size() == 1) {
+        return;
+    }
 
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings->get_coil_delimit_and_compact();
@@ -2037,15 +2042,20 @@ void CoilWrapper::try_rewind() {
     auto sectionOrientation = bobbin.get_winding_window_sections_orientation(0);
     auto windingWindowDimensions = bobbin.get_winding_window_dimensions(0);
     double windingWindowRemainingRestrictiveDimension;
+    double windingWindowRemainingRestrictiveDimensionAccordingToSections;
     double windingWindowRestrictiveDimension;
     if (sectionOrientation == WindingOrientation::HORIZONTAL) {
+        windingWindowRemainingRestrictiveDimensionAccordingToSections = windingWindowDimensions[0];
         windingWindowRemainingRestrictiveDimension = windingWindowDimensions[0];
         windingWindowRestrictiveDimension = windingWindowDimensions[0];
     }
     else {
+        windingWindowRemainingRestrictiveDimensionAccordingToSections = windingWindowDimensions[1];
         windingWindowRemainingRestrictiveDimension = windingWindowDimensions[1];
         windingWindowRestrictiveDimension = windingWindowDimensions[1];
     }
+    // std::cout << "************************************************************************************************************************" << std::endl;
+    // std::cout << "windingWindowRestrictiveDimension: " << windingWindowRestrictiveDimension << std::endl;
 
     for (auto& section : sections) {
         if (section.get_type() == ElectricalType::INSULATION) {
@@ -2058,22 +2068,57 @@ void CoilWrapper::try_rewind() {
         }
 
         double sectionRestrictiveDimension;
+        double layersRestrictiveDimension = 0;
         double sectionFillingFactor;
         double extraSpaceNeededThisSection = 0;
 
         auto layers = get_layers_by_section(section.get_name());
-        for (auto layer : layers) {
-            double layerRestrictiveDimension;
-            double sectionFillingFactor = layer.get_filling_factor().value();
+        if (sectionOrientation == WindingOrientation::HORIZONTAL) {
             if (section.get_layers_orientation() == WindingOrientation::VERTICAL) {
-                layerRestrictiveDimension = layer.get_dimensions()[0];
-            }
-            else {
-                layerRestrictiveDimension = layer.get_dimensions()[1];
-            }
+                for (auto layer : layers) {
+                    double layerRestrictiveDimension = layer.get_dimensions()[0];
+                    double layerFillingFactor = layer.get_filling_factor().value();
+                    layersRestrictiveDimension += layerRestrictiveDimension;
 
-            extraSpaceNeededThisSection += std::max(0.0, (sectionFillingFactor - 1) * layerRestrictiveDimension);
-            windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
+                    extraSpaceNeededThisSection += std::max(0.0, (layerFillingFactor - 1) * layerRestrictiveDimension);
+                    windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
+                }
+            }
+            if (section.get_layers_orientation() == WindingOrientation::HORIZONTAL) {
+                double layerRestrictiveDimension = 0;
+                double layerFillingFactor = 0;
+                for (auto layer : layers) {
+                    layerRestrictiveDimension = std::max(layerRestrictiveDimension, layer.get_dimensions()[0]);
+                    layerFillingFactor = std::max(layerFillingFactor, layer.get_filling_factor().value());
+                }
+                layersRestrictiveDimension = layerRestrictiveDimension;
+                extraSpaceNeededThisSection += std::max(0.0, (layerFillingFactor - 1) * layerRestrictiveDimension);
+                windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
+            }
+        }
+        else if (sectionOrientation == WindingOrientation::VERTICAL) {
+            if (section.get_layers_orientation() == WindingOrientation::VERTICAL) {
+                double layerRestrictiveDimension = 0;
+                double layerFillingFactor = 0;
+                for (auto layer : layers) {
+                    layerRestrictiveDimension = std::max(layerRestrictiveDimension, layer.get_dimensions()[1]);
+                    layerFillingFactor = std::max(layerFillingFactor, layer.get_filling_factor().value());
+                }
+
+                layersRestrictiveDimension = layerRestrictiveDimension;
+                extraSpaceNeededThisSection += std::max(0.0, (layerFillingFactor - 1) * layerRestrictiveDimension);
+                windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
+            }
+            if (section.get_layers_orientation() == WindingOrientation::HORIZONTAL) {
+                for (auto layer : layers) {
+                    double layerRestrictiveDimension = layer.get_dimensions()[1];
+                    double layerFillingFactor = layer.get_filling_factor().value();
+                    layersRestrictiveDimension += layerRestrictiveDimension;
+
+                    extraSpaceNeededThisSection += std::max(0.0, (layerFillingFactor - 1) * layerRestrictiveDimension);
+                    windingWindowRemainingRestrictiveDimension -= layerRestrictiveDimension;
+                }
+            }
         }
 
         if (sectionOrientation == WindingOrientation::HORIZONTAL) {
@@ -2084,19 +2129,30 @@ void CoilWrapper::try_rewind() {
             sectionRestrictiveDimension = section.get_dimensions()[1];
             sectionFillingFactor = vertical_filling_factor(section);
         }
+        windingWindowRemainingRestrictiveDimensionAccordingToSections -= sectionRestrictiveDimension;
 
 
         extraSpaceNeededThisSection = std::max(extraSpaceNeededThisSection, (sectionFillingFactor - 1) * sectionRestrictiveDimension);
         if (extraSpaceNeededThisSection < 0 || std::isnan(extraSpaceNeededThisSection)) {
             throw std::runtime_error("extraSpaceNeededThisSection cannot be negative or nan: " + std::to_string(extraSpaceNeededThisSection));
         }
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            // std::cout << "extraSpaceNeededThisSection: " << extraSpaceNeededThisSection << std::endl;
+            // std::cout << "sectionRestrictiveDimension: " << sectionRestrictiveDimension << std::endl;
+            // std::cout << "sectionOrientation: " << magic_enum::enum_name(sectionOrientation) << std::endl;
+            // std::cout << "section.get_layers_orientation(): " << magic_enum::enum_name(section.get_layers_orientation()) << std::endl;
+            // std::cout << "layersRestrictiveDimension: " << layersRestrictiveDimension << std::endl;
+        }
         extraSpaceNeededPerSection.push_back(extraSpaceNeededThisSection);
         totalExtraSpaceNeeded += extraSpaceNeededThisSection;
     }
+    // std::cout << "windingWindowRemainingRestrictiveDimensionAccordingToSections: " << windingWindowRemainingRestrictiveDimensionAccordingToSections << std::endl;
+    // std::cout << "windingWindowRemainingRestrictiveDimension: " << windingWindowRemainingRestrictiveDimension << std::endl;
+    // std::cout << "totalExtraSpaceNeeded: " << totalExtraSpaceNeeded << std::endl;
 
-    if (windingWindowRemainingRestrictiveDimension <= 0 || totalExtraSpaceNeeded <= 0) {
+    if (windingWindowRemainingRestrictiveDimensionAccordingToSections <= 0 || totalExtraSpaceNeeded <= 0) {
         return;
-    } 
+    }
 
     std::vector<double> newProportions;
     double numberWindings = get_functional_description().size();
@@ -2128,9 +2184,16 @@ void CoilWrapper::try_rewind() {
             throw std::runtime_error("extraSpaceNeededThisWinding cannot be negative or nan: " + std::to_string(extraSpaceNeededThisWinding));
         }
         double proportionOfNeededForThisWinding = extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
-        double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimension * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
+        double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimensionAccordingToSections * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
         double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
+        // std::cout << "windingWindowRestrictiveDimension: " << windingWindowRestrictiveDimension << std::endl;
+        // std::cout << "windingWindowRemainingRestrictiveDimensionAccordingToSections: " << windingWindowRemainingRestrictiveDimensionAccordingToSections << std::endl;
+        // std::cout << "extraSpaceNeededThisWinding: " << extraSpaceNeededThisWinding << std::endl;
+        // std::cout << "proportionOfNeededForThisWinding: " << proportionOfNeededForThisWinding << std::endl;
+        // std::cout << "extraSpaceGottenByThisWinding: " << extraSpaceGottenByThisWinding << std::endl;
+        // std::cout << "currentSpace: " << currentSpace << std::endl;
+        // std::cout << "newSpaceGottenByThisWinding: " << newSpaceGottenByThisWinding << std::endl;
         if (extraSpaceGottenByThisWinding < 0 || std::isnan(extraSpaceGottenByThisWinding)) {
             throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
         }
@@ -2146,7 +2209,7 @@ void CoilWrapper::try_rewind() {
 
     wind_by_sections(newProportions, _currentPattern, _currentRepetitions);
     wind_by_layers();
-    set_turns_description(std::nullopt);
+    // set_turns_description(std::nullopt);
     if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
         wind_by_turns();
         if (delimitAndCompact) {
