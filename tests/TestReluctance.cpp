@@ -9,6 +9,7 @@
 #include <vector>
 
 SUITE(Reluctance) {
+
     std::map<OpenMagnetics::ReluctanceModels, double> maximumErrorReluctances = {
         {OpenMagnetics::ReluctanceModels::ZHANG, 0.26},
         {OpenMagnetics::ReluctanceModels::MUEHLETHALER, 0.42},
@@ -106,12 +107,14 @@ SUITE(Reluctance) {
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
-        std::cout << "Mean Error in Reluctance for Test_reluctance_PQ_28_20_Grinded with Model "
-                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+        if (verboseTests) {
+            std::cout << "Mean Error in Reluctance for Test_reluctance_PQ_28_20_Grinded with Model "
+                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+            std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
                   << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
                          testAverageErrors[modelName].size() * 100
                   << " %" << std::endl;
+        }
     }
 
     void test_reluctance_e42_21_20_spacer(OpenMagnetics::ReluctanceModels modelName) {
@@ -137,12 +140,14 @@ SUITE(Reluctance) {
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
-        std::cout << "Mean Error in Reluctance for Test_reluctance_E42_21_20_Spacer with Model "
-                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                         testAverageErrors[modelName].size() * 100
-                  << " %" << std::endl;
+        if (verboseTests) {
+            std::cout << "Mean Error in Reluctance for Test_reluctance_E42_21_20_Spacer with Model "
+                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+            std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                      << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                             testAverageErrors[modelName].size() * 100
+                      << " %" << std::endl;
+        }
     }
 
     void test_reluctance_etd_59_spacer(OpenMagnetics::ReluctanceModels modelName) {
@@ -166,12 +171,14 @@ SUITE(Reluctance) {
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
-        std::cout << "Mean Error in Reluctance for Test_reluctance_ETD_59_Spacer with Model "
-                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                         testAverageErrors[modelName].size() * 100
-                  << " %" << std::endl;
+        if (verboseTests) {
+            std::cout << "Mean Error in Reluctance for Test_reluctance_ETD_59_Spacer with Model "
+                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+            std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                      << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                             testAverageErrors[modelName].size() * 100
+                      << " %" << std::endl;
+        }
     }
 
     void test_reluctance_e_55_28_21_spacer(OpenMagnetics::ReluctanceModels modelName) {
@@ -190,17 +197,19 @@ SUITE(Reluctance) {
         }
         meanError /= tests.size();
         testAverageErrors[modelName].push_back(meanError);
-        std::cout << "Mean Error in Reluctance for Test_reluctance_E_55_28_21_Spacer with Model "
-                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
-        std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
-                  << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
-                         testAverageErrors[modelName].size() * 100
-                  << " %" << std::endl;
+        if (verboseTests) {
+            std::cout << "Mean Error in Reluctance for Test_reluctance_E_55_28_21_Spacer with Model "
+                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+            std::cout << "Current average for  " << magic_enum::enum_name(modelName) << ": "
+                      << std::reduce(testAverageErrors[modelName].begin(), testAverageErrors[modelName].end()) /
+                             testAverageErrors[modelName].size() * 100
+                      << " %" << std::endl;
 
-        // std::cout << "Current error versus C1 for  " << magic_enum::enum_name(modelName) << ": " << std::endl;
-        // for (auto & ea: testErrorVersusC1[modelName]) {
-        //     std::cout << ea.first << ": " << ea.second << std::endl;
-        // }
+            // std::cout << "Current error versus C1 for  " << magic_enum::enum_name(modelName) << ": " << std::endl;
+            // for (auto & ea: testErrorVersusC1[modelName]) {
+            //     std::cout << ea.first << ": " << ea.second << std::endl;
+            // }
+        }
     }
 
     void test_energy_pq_40_40_grinded(OpenMagnetics::ReluctanceModels modelName) {
@@ -216,8 +225,10 @@ SUITE(Reluctance) {
                                 test["expectedEnergy"]);
         }
         meanError /= tests.size();
-        std::cout << "Mean Error in Energy for Test_reluctance_PQ_40_40_Grinded with Model "
-                  << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        if (verboseTests) {
+            std::cout << "Mean Error in Energy for Test_reluctance_PQ_40_40_Grinded with Model "
+                      << magic_enum::enum_name(modelName) << ": " << meanError * 100 << " %" << std::endl;
+        }
     }
 
     SUITE(ZhangModel) {

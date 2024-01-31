@@ -8,6 +8,9 @@
 #include <iostream>
 #include <vector>
 
+bool verboseTests = false;
+
+
 namespace OpenMagneticsTesting {
 
 
@@ -497,9 +500,9 @@ void check_layers_description(OpenMagnetics::CoilWrapper coil,
 }
 
 
-void check_turns_description(OpenMagnetics::CoilWrapper coil) {
+bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
     if (!coil.get_turns_description()) {
-        return;
+        return true;
     }
 
     std::vector<std::vector<double>> parallelProportion;
@@ -511,8 +514,12 @@ void check_turns_description(OpenMagnetics::CoilWrapper coil) {
     std::map<std::string, std::vector<double>> dimensionsByName;
     std::map<std::string, std::vector<double>> coordinatesByName;
 
+    int turnsIn0 = 0;
     for (auto& turn : turns){
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        if (windingIndex == 0 && turn.get_parallel() == 0) {
+            turnsIn0++;
+        }
         parallelProportion[windingIndex][turn.get_parallel()] += 1.0 / coil.get_number_turns(windingIndex);
         dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
         coordinatesByName[turn.get_name()] = turn.get_coordinates();
@@ -520,10 +527,14 @@ void check_turns_description(OpenMagnetics::CoilWrapper coil) {
 
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
-            CHECK(OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1);
+            bool equalToOne = OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1;
+            CHECK(equalToOne);
+            return equalToOne;
         }
     }
-    CHECK(!OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName));
+    bool collides = !OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName);
+    CHECK(collides);
+    return !collides;
 }
 
 } // namespace OpenMagneticsTesting

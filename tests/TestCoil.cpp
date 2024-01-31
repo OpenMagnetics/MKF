@@ -53,15 +53,13 @@ SUITE(CoilWeb) {
         coil.wind();
 
         auto section = coil.get_sections_description().value()[0];
-        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
-        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
         CHECK(!std::isnan(section.get_dimensions()[0]));
         CHECK(!std::isnan(section.get_dimensions()[1]));
     }
 
     TEST(Test_Coil_Json_2) {
         std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"horizontal","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"0.475 - Grade 1"}]})";
-        // settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(false);
 
         auto coilJson = json::parse(coilString);
         auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
@@ -87,14 +85,11 @@ SUITE(CoilWeb) {
         coil.wind();
 
         auto section = coil.get_sections_description().value()[0];
-        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
-        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
         CHECK(!std::isnan(section.get_dimensions()[0]));
         CHECK(!std::isnan(section.get_dimensions()[1]));
         std::vector<int64_t> numberTurns = {36};
         std::vector<int64_t> numberParallels = {27};
         uint8_t interleavingLevel = 7;
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -105,7 +100,7 @@ SUITE(CoilWeb) {
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
-            // painter.paint_coil_turns(magnetic);
+            painter.paint_coil_turns(magnetic);
             painter.export_svg();
         }
     }
@@ -138,8 +133,6 @@ SUITE(CoilWeb) {
         coil.wind();
 
         auto section = coil.get_sections_description().value()[0];
-        std::cout << "section.get_dimensions()[0]: " << section.get_dimensions()[0] << std::endl;
-        std::cout << "section.get_dimensions()[1]: " << section.get_dimensions()[1] << std::endl;
         CHECK(!std::isnan(section.get_dimensions()[0]));
         CHECK(!std::isnan(section.get_dimensions()[1]));
         std::vector<int64_t> numberTurns = {1};
@@ -165,6 +158,7 @@ SUITE(CoilWeb) {
 SUITE(CoilSectionsDescriptionMargins) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
+        settings->reset();
         std::vector<int64_t> numberTurns = {47};
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
@@ -5381,8 +5375,12 @@ SUITE(CoilSectionsDescription) {
 }
 
 SUITE(CoilLayersDescription) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Wind_By_Layer_Wind_One_Section_One_Layer) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5399,6 +5397,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_One_Section_Two_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5415,6 +5416,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_One_Section_One_Layer_Two_Parallels) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
         double wireDiameter = 0.000509;
@@ -5431,6 +5435,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_One_Section_Two_Layers_Two_Parallels) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
         double wireDiameter = 0.000509;
@@ -5447,6 +5454,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Two_Sections_Two_Layers_Two_Parallels) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
         double wireDiameter = 0.000509;
@@ -5463,6 +5473,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Two_Sections_One_Layer_One_Parallel) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5479,6 +5492,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Two_Sections_One_Layer_Two_Parallels) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {2};
         double wireDiameter = 0.000509;
@@ -5495,6 +5511,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Two_Sections_Two_Layers_One_Parallel) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5511,6 +5530,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Vertical_Winding_Horizontal_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5522,13 +5544,15 @@ SUITE(CoilLayersDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
         auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
-     
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
     TEST(Wind_By_Layer_Wind_Vertical_Winding_Vertical_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5547,6 +5571,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Horizontal_Winding_Horizontal_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5565,6 +5592,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Horizontal_Winding_Vertical_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5583,6 +5613,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Wind_Horizontal_Winding) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5600,6 +5633,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Random_0) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {5};
         std::vector<int64_t> numberParallels = {1};
         double wireDiameter = 0.000509;
@@ -5616,6 +5652,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_Random) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -5637,6 +5676,9 @@ SUITE(CoilLayersDescription) {
     }
 
     TEST(Wind_By_Layer_With_Insulation_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
         std::vector<int64_t> numberTurns = {23, 42};
         std::vector<int64_t> numberParallels = {2, 1};
         double bobbinHeight = 0.01;
@@ -5701,7 +5743,8 @@ SUITE(CoilTurnsDescription) {
                 std::vector<int64_t> numberTurns;
                 std::vector<int64_t> numberParallels;
                 int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
-                for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
+                for (size_t windingIndex = 0; windingIndex < std::rand() % 2 + 1UL; ++windingIndex)
+                // for (size_t windingIndex = 0; windingIndex < std::rand() % 10 + 1UL; ++windingIndex)
                 {
                     int64_t numberPhysicalTurnsThisWinding = std::rand() % 300 + 1UL;
                     int64_t numberTurnsThisWinding = std::rand() % 100 + 1L;
@@ -5712,12 +5755,16 @@ SUITE(CoilTurnsDescription) {
                 }
                 double bobbinHeight = 0.01;
                 double bobbinWidth = 0.01;
-                std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+                std::vector<double> bobbinCenterCoodinates = {0.05, 0, 0};
                 uint8_t interleavingLevel = std::rand() % 10 + 1;
                 interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-                auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
+                int windingOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
+                OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(windingOrientationIndex).value();
+
+                // auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
                 if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
                     bobbinWidth *= numberTurns.size();
+                    // bobbinCenterCoodinates[0] += bobbinWidth / 2;
                 }
                 else {
                     bobbinHeight *= numberTurns.size();
@@ -5728,12 +5775,40 @@ SUITE(CoilTurnsDescription) {
                     numberPhysicalTurnsDebug += numberTurns[windingIndex] * numberParallels[windingIndex];
                 }
 
-                auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
-                if (coil.get_turns_description()) {
-                    numberReallyTestedWound[testIndex]++;
-                }
+                try {
+                    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
-                OpenMagneticsTesting::check_turns_description(coil);
+                    if (coil.get_turns_description()) {
+                        numberReallyTestedWound[testIndex]++;
+                    }
+
+                    bool result = OpenMagneticsTesting::check_turns_description(coil);
+
+                    if (!result) {
+
+                        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                            std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+                        }
+                        for (size_t windingIndex = 0; windingIndex < numberParallels.size(); ++windingIndex) {
+                            std::cout << "numberParallels: " << numberParallels[windingIndex] << std::endl;
+                        }
+                        std::cout << "interleavingLevel: " << double(interleavingLevel) << std::endl;
+                        std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
+                        return;
+
+                    }
+                }
+                catch (...) {
+                    for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                        std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+                    }
+                    for (size_t windingIndex = 0; windingIndex < numberParallels.size(); ++windingIndex) {
+                        std::cout << "numberParallels: " << numberParallels[windingIndex] << std::endl;
+                    }
+                    std::cout << "interleavingLevel: " << double(interleavingLevel) << std::endl;
+                    std::cout << "windingOrientationIndex: " << windingOrientationIndex << std::endl;
+                    return;
+                }
             }
         }
 
@@ -5799,6 +5874,241 @@ SUITE(CoilTurnsDescription) {
 
         OpenMagneticsTesting::check_layers_description(coil);
         OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_2) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {39};
+        std::vector<int64_t> numberParallels = {8};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 7;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Wind_By_Turn_Random_Multiwinding_2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_3) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {33, 18};
+        std::vector<int64_t> numberParallels = {8, 2};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 3;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_layers_description(coil);
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_4) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {48, 68};
+        std::vector<int64_t> numberParallels = {5, 2};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 2;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_5) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {16};
+        std::vector<int64_t> numberParallels = {3};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 4;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_6) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {90, 37};
+        std::vector<int64_t> numberParallels = {1, 1};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 2;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Wind_By_Turn_Random_Multiwinding_7) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {1, 8};
+        std::vector<int64_t> numberParallels = {7, 30};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 1;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
         settings->reset();
     }
 

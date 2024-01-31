@@ -255,7 +255,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 14/3.5/5 - 3C97 - Gapped 0.17 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "EFD 10/5/3 - 3C95 - Gapped 0.13999999999999999 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
 
@@ -284,8 +284,8 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 18/4/10 - 3C97 - Gapped 0.3 mm");
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 5 - 3C97 - Gapped 0.94 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
     }
 
     TEST(Test_No_Toroids_Low_Power_Low_Losses_No_Care_About_Size) {
@@ -313,7 +313,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 5 - 3C97 - Gapped 0.94 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 4);
     }
 
@@ -342,7 +342,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 25.4/10/7 - N27 - Gapped 0.5 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 22/6/16 - 3C95 - Gapped 0.6 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
     }
 

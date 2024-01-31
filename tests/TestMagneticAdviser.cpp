@@ -99,6 +99,7 @@ SUITE(MagneticAdviser) {
 
     TEST(MagneticAdviserJsonLV) {
         auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->reset();
         settings->set_coil_fill_sections_with_margin_tape(true);
         std::string masString = R"({"inputs": {"designRequirements": {"insulation": {"altitude": {"maximum": 1000 }, "cti": "Group IIIB", "pollutionDegree": "P2", "overvoltageCategory": "OVC-II", "insulationType": "Basic", "mainSupplyVoltage": {"nominal": 120, "minimum": 20, "maximum": 450 }, "standards": ["IEC 60664-1"] }, "leakageInductance": [{"maximum": 0.00000135 }, {"maximum": 0.00000135 } ], "magnetizingInductance": {"maximum": 0.000088, "minimum": 0.000036, "nominal": 0.000039999999999999996 }, "market": "Commercial", "maximumDimensions": {"width": null, "height": 0.02, "depth": null }, "maximumWeight": null, "name": "My Design Requirements", "operatingTemperature": null, "strayCapacitance": [{"maximum": 5e-11 }, {"maximum": 5e-11 } ], "terminalType": ["Pin", "Pin", "Pin"], "topology": "Flyback Converter", "turnsRatios": [{"nominal": 1.2 }, {"nominal": 1.2 } ] }, "operatingPoints": [{"name": "Operating Point No. 1", "conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"name": "Primary winding excitation", "frequency": 36000, "current": {"waveform": {"ancillaryLabel": null, "data": [0, 0, 5.5, 0, 0 ], "numberPeriods": null, "time": [0, 0, 0.000011111111111111112, 0.000011111111111111112, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.4, "peakToPeak": 5.5, "offset": 0, "label": "Flyback Primary", "acEffectiveFrequency": 247671.20334838802, "effectiveFrequency": 224591.09893738205, "peak": 5.478515625000006, "rms": 2.025897603604934, "thd": 0.8123116860415294 }, "harmonics": {"amplitudes": [1.1128234863281259, 1.8581203560604207, 1.051281221517565, 0.5159082238421047, 0.4749772671818343, 0.35101798151542746, 0.28680520988943464, 0.26606329358167974, 0.2109058168232097, 0.2038324242201338, 0.17683391011628416, 0.15977271740890614, 0.15330090420784062, 0.13359870506402888, 0.1311678604251054, 0.11938227872282572, 0.11196939263234992, 0.10881687126769939, 0.09881440376099933, 0.09781517962337143, 0.09113803697574208, 0.08720137281111257, 0.08534603089826898, 0.07933100843010468, 0.07894777491614259, 0.0746052794656816, 0.07229734773884018, 0.07109041486606842, 0.0670974294019412, 0.06703716258861198, 0.06396085871081211, 0.0625474905371643, 0.06171647321147238, 0.05889230550248535, 0.059028047581821314, 0.05671822612277054, 0.05585484049699437, 0.055265364667603324, 0.0531817689812044, 0.053452567468547284, 0.05164394009764037, 0.051150939884780554, 0.05072953903613357, 0.049149522805038266, 0.049525208170729855, 0.04806384343218855, 0.04784167797419847, 0.047545488047249944, 0.04632889186784806, 0.046795775944523485, 0.045586400651502844, 0.045578916197115495, 0.045382141359988915, 0.04444264358178238, 0.04499725549277023, 0.04397809673849301, 0.04415534166549457, 0.044042673430388084, 0.04332652563384539, 0.04397294643650677, 0.043102730085842, 0.043452676225114936, 0.04341597260904029, 0.04289100286968138 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-8, 12, 12, -8, -8 ], "numberPeriods": null, "time": [0, 0, 0.000011111111111111112, 0.000011111111111111112, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.4, "peakToPeak": 20, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 217445.61780293446, "effectiveFrequency": 217445.06394458748, "peak": 12, "rms": 9.79157801378307, "thd": 0.5579294461931013 }, "harmonics": {"amplitudes": [0.03125, 12.090982167347164, 3.7938629699811433, 2.4460154592542187, 3.050934294867692, 0.06265085868474476, 2.0052584267980813, 1.1245773748206938, 0.8899247078195547, 1.3746157728063957, 0.06310658027096225, 1.0931619934351904, 0.682943044655975, 0.5329821111108219, 0.8998037891938968, 0.06387675236155328, 0.7544417382415929, 0.5036912732460003, 0.37575767434186663, 0.6781566555968945, 0.06497787099509279, 0.579613707579126, 0.4082105683349906, 0.28790910341678466, 0.5516771452281819, 0.06643416431010025, 0.4742269329016237, 0.35024440150573616, 0.23220844850577863, 0.4713901788294872, 0.0682788501833682, 0.40480954492681936, 0.3125, 0.19399945657286152, 0.41719035005974064, 0.07055595095604376, 0.35652867811806305, 0.28709106236926035, 0.16634675530328177, 0.3793488450042862, 0.07332285477181877, 0.32183350571658953, 0.2699539504381825, 0.14554626367323475, 0.3526337777044684, 0.0766539126369276, 0.29650814745710025, 0.25883312123614344, 0.12944173824159266, 0.33403609127672834, 0.08064551519955634, 0.27805045130481554, 0.25243555700995646, 0.1166943265232067, 0.3217665194149353, 0.08542334196565987, 0.2649247078195551, 0.250039428516803, 0.10643002348369442, 0.31477312120987916, 0.09115288771096393, 0.25618941041585475, 0.2513050615401854, 0.098055076230366 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } } }, {"name": "Primary winding excitation", "frequency": 36000, "current": {"waveform": {"ancillaryLabel": null, "data": [0, 0, 6.6, 0, 0 ], "numberPeriods": null, "time": [0, 0.00001388888888888889, 0.00001388888888888889, 0.00002777777777777778, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 6.6, "offset": 0, "label": "Flyback Secondary", "acEffectiveFrequency": 234518.76473649617, "effectiveFrequency": 205388.02000937346, "peak": 6.599999999999992, "rms": 2.7259938518765505, "thd": 0.6765065136547781 }, "harmonics": {"amplitudes": [1.6757812500000036, 2.5183033006556617, 1.0508445877408874, 0.7271846526610849, 0.5260559513023173, 0.43112241679715924, 0.35140961815458516, 0.30751649536118214, 0.2643006555483416, 0.23957382058929272, 0.21220866665144478, 0.19664985565967041, 0.17762735700582763, 0.16712773941846806, 0.15305447605739808, 0.14562523024961643, 0.13473930575287565, 0.12930491961017093, 0.12059849313526576, 0.11652868809047452, 0.10938238636775419, 0.10628456966336206, 0.10029609952951436, 0.0979137380509861, 0.09281004801094254, 0.09096893358288156, 0.08655793218347599, 0.08513597099573951, 0.08127844554340995, 0.08018779841976777, 0.07678030294711186, 0.07595637558884157, 0.07292038680986246, 0.07231479790644763, 0.06958961021254718, 0.06916556182624073, 0.06670349640899874, 0.06643264501653386, 0.06419573768805274, 0.06405603077180153, 0.062013691465176275, 0.0619878418001075, 0.060115168596257366, 0.060189559664044844, 0.058466103590436726, 0.05862999271489314, 0.05703883927855185, 0.05728377042425536, 0.05581084782757627, 0.05613021480841572, 0.054763767206133816, 0.05515248676284005, 0.05388266966565528, 0.05433693628512042, 0.05315550383577058, 0.05367260658830061, 0.05257266909511635, 0.05315085657150875, 0.052126692739434176, 0.05276507626997662, 0.05181198888815346, 0.05251047719660189, 0.051624684193004804, 0.05238394486208969 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-8.335, 8.335, 8.335, -8.335, -8.335 ], "numberPeriods": null, "time": [0, 0, 0.00001388888888888889, 0.00001388888888888889, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 16.67, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 212934.79296426187, "effectiveFrequency": 212921.79129775826, "peak": 8.335, "rms": 8.33500000000001, "thd": 0.48331514845248513 }, "harmonics": {"amplitudes": [0.130234375, 10.610320564806702, 0.26046875, 3.531088691718988, 0.26046875, 2.1118248335514735, 0.26046875, 1.5011183941457937, 0.26046875, 1.1599200168904427, 0.26046875, 0.9412131219905466, 0.26046875, 0.7884501596246478, 0.26046875, 0.6752398432920929, 0.26046875, 0.587608084557174, 0.26046875, 0.5174625323181874, 0.26046875, 0.4597916456948479, 0.26046875, 0.4113251048108877, 0.26046875, 0.36983720876947807, 0.26046875, 0.333759858425148, 0.26046875, 0.3019556674257579, 0.26046875, 0.2735788835440449, 0.26046875, 0.24798686524225744, 0.26046875, 0.2246818889174983, 0.26046875, 0.20327180760048874, 0.26046875, 0.18344279082219334, 0.26046875, 0.16494001687000165, 0.26046875, 0.14755372430492025, 0.26046875, 0.1311089508695984, 0.26046875, 0.1154578561962637, 0.26046875, 0.10047388405843227, 0.26046875, 0.0860472521926578, 0.26046875, 0.0720814108318868, 0.26046875, 0.058490213754947895, 0.26046875, 0.04519561547653339, 0.26046875, 0.032125756193742694, 0.26046875, 0.019213329273115587, 0.26046875, 0.006394148914942832 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } } }, {"name": "Primary winding excitation", "frequency": 36000, "current": {"waveform": {"ancillaryLabel": null, "data": [0, 0, 0.08, 0, 0 ], "numberPeriods": null, "time": [0, 0.00001388888888888889, 0.00001388888888888889, 0.00002777777777777778, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 0.08, "offset": 0, "label": "Flyback Secondary", "acEffectiveFrequency": 234518.7647364962, "effectiveFrequency": 205388.02000937346, "peak": 0.0799999999999999, "rms": 0.033042349719715765, "thd": 0.6765065136547783 }, "harmonics": {"amplitudes": [0.020312500000000046, 0.030524888492795898, 0.012737510154435002, 0.008814359426194969, 0.006376435773361423, 0.005225726264207993, 0.004259510523085882, 0.003727472671044633, 0.0032036443096768678, 0.0029039250980520334, 0.002572226262441755, 0.002383634614056611, 0.0021530588727979106, 0.0020257907808299163, 0.001855205770392704, 0.0017651543060559591, 0.0016332037060954637, 0.0015673323589111632, 0.0014617999167910998, 0.0014124689465512055, 0.0013258471074879294, 0.0012882978141013591, 0.0012157102973274472, 0.0011868331884968021, 0.0011249702789205155, 0.0011026537403985642, 0.0010491870567694056, 0.0010319511635847216, 0.0009851932793140603, 0.0009719733141790018, 0.0009306703387528721, 0.0009206833404708108, 0.0008838834764831795, 0.0008765430049266376, 0.0008435104268187531, 0.0008383704463786751, 0.0008085272291999843, 0.0008052441820185928, 0.0007781301537945793, 0.0007764367366278984, 0.0007516811086688035, 0.0007513677793952425, 0.0007286687102576648, 0.0007295704201702394, 0.0007086800435204447, 0.0007106665783623409, 0.0006913798700430537, 0.0006943487324152148, 0.0006764951251827443, 0.0006803662401020098, 0.0006638032388622283, 0.0006685149910647278, 0.0006531232686746098, 0.0006586295307287323, 0.0006443091374032788, 0.0006505770495551569, 0.0006372444738801973, 0.0006442528069273779, 0.0006318386998719287, 0.0006395766820603229, 0.0006280241077351938, 0.0006364906326860843, 0.0006257537477939962, 0.0006349569074192687 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } }, "voltage": {"waveform": {"ancillaryLabel": null, "data": [-8.335, 8.335, 8.335, -8.335, -8.335 ], "numberPeriods": null, "time": [0, 0, 0.00001388888888888889, 0.00001388888888888889, 0.00002777777777777778 ] }, "processed": {"dutyCycle": 0.5, "peakToPeak": 16.67, "offset": 0, "label": "Rectangular", "acEffectiveFrequency": 212934.79296426187, "effectiveFrequency": 212921.79129775826, "peak": 8.335, "rms": 8.33500000000001, "thd": 0.48331514845248513 }, "harmonics": {"amplitudes": [0.130234375, 10.610320564806702, 0.26046875, 3.531088691718988, 0.26046875, 2.1118248335514735, 0.26046875, 1.5011183941457937, 0.26046875, 1.1599200168904427, 0.26046875, 0.9412131219905466, 0.26046875, 0.7884501596246478, 0.26046875, 0.6752398432920929, 0.26046875, 0.587608084557174, 0.26046875, 0.5174625323181874, 0.26046875, 0.4597916456948479, 0.26046875, 0.4113251048108877, 0.26046875, 0.36983720876947807, 0.26046875, 0.333759858425148, 0.26046875, 0.3019556674257579, 0.26046875, 0.2735788835440449, 0.26046875, 0.24798686524225744, 0.26046875, 0.2246818889174983, 0.26046875, 0.20327180760048874, 0.26046875, 0.18344279082219334, 0.26046875, 0.16494001687000165, 0.26046875, 0.14755372430492025, 0.26046875, 0.1311089508695984, 0.26046875, 0.1154578561962637, 0.26046875, 0.10047388405843227, 0.26046875, 0.0860472521926578, 0.26046875, 0.0720814108318868, 0.26046875, 0.058490213754947895, 0.26046875, 0.04519561547653339, 0.26046875, 0.032125756193742694, 0.26046875, 0.019213329273115587, 0.26046875, 0.006394148914942832 ], "frequencies": [0, 36000, 72000, 108000, 144000, 180000, 216000, 252000, 288000, 324000, 360000, 396000, 432000, 468000, 504000, 540000, 576000, 612000, 648000, 684000, 720000, 756000, 792000, 828000, 864000, 900000, 936000, 972000, 1008000, 1044000, 1080000, 1116000, 1152000, 1188000, 1224000, 1260000, 1296000, 1332000, 1368000, 1404000, 1440000, 1476000, 1512000, 1548000, 1584000, 1620000, 1656000, 1692000, 1728000, 1764000, 1800000, 1836000, 1872000, 1908000, 1944000, 1980000, 2016000, 2052000, 2088000, 2124000, 2160000, 2196000, 2232000, 2268000 ] } } } ] } ] }, "magnetic": {"coil": {"functionalDescription": [{"name": "Primary"}, {"name": "Secondary"}, {"name": "Tertiary"} ] } } })";
         json masJson = json::parse(masString);
@@ -136,6 +137,8 @@ SUITE(MagneticAdviser) {
     }
 
     TEST(Test_MagneticAdviser_Random) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->reset();
         srand (time(NULL));
 
         int count = 10;
@@ -174,19 +177,6 @@ SUITE(MagneticAdviser) {
                 waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
             }
 
-            for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
-            }
-            for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
-                std::cout << "isolationSides: " << magic_enum::enum_name(isolationSides[windingIndex]) << std::endl;
-            }
-            std::cout << "frequency: " << frequency << std::endl;
-            std::cout << "peakToPeak: " << peakToPeak << std::endl;
-            std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-            std::cout << "dutyCycle: " << dutyCycle << std::endl;
-            std::cout << "dcCurrent: " << dcCurrent << std::endl;
-            std::cout << "waveShape: " << magic_enum::enum_name(waveShape) << std::endl;
-
             auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
@@ -199,29 +189,29 @@ SUITE(MagneticAdviser) {
             inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
             inputs.process_waveforms();
 
-            OpenMagnetics::MagneticAdviser MagneticAdviser;
-            auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
-
-            if (masMagnetics.size() > 0) {
-                auto masMagnetic = masMagnetics[0];
-                OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
-                std::string filePath = __FILE__;
-                auto outputFilePath = filePath.substr(0, filePath.rfind("/")).append("/../output/");
-                auto outFile = outputFilePath;
-                std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
-                outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
-
-                painter.paint_core(masMagnetic.get_mutable_magnetic());
-                painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
-                painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
-                painter.export_svg();
-                count--;
+            try {
+                OpenMagnetics::MagneticAdviser MagneticAdviser;
+                auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+            }
+            catch (...) {
+                for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                    std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+                }
+                for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                    std::cout << "isolationSides: " << magic_enum::enum_name(isolationSides[windingIndex]) << std::endl;
+                }
+                std::cout << "frequency: " << frequency << std::endl;
+                std::cout << "peakToPeak: " << peakToPeak << std::endl;
+                std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+                std::cout << "dutyCycle: " << dutyCycle << std::endl;
+                std::cout << "dcCurrent: " << dcCurrent << std::endl;
+                std::cout << "waveShape: " << magic_enum::enum_name(waveShape) << std::endl;
+                CHECK(false);
+                return;
             }
 
         }
     }
-
 
     TEST(Test_MagneticAdviser_Random_0) {
         srand (time(NULL));
@@ -243,6 +233,110 @@ SUITE(MagneticAdviser) {
         double dcCurrent = 0;
         double temperature = 25;
         OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        inputs.process_waveforms();
+
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+
+        if (masMagnetics.size() > 0) {
+            auto masMagnetic = masMagnetics[0];
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_MagneticAdviser_Random_1) {
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+
+        std::vector<int64_t> numberTurns = {24};
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::SECONDARY};
+
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+
+        double frequency = 47405;
+        double peakToPeak = 25;
+        double magnetizingInductance = 0.000831;
+        double dutyCycle = 0.05;
+        double dcCurrent = 6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY;
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        inputs.process_waveforms();
+
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+
+        if (masMagnetics.size() > 0) {
+            auto masMagnetic = masMagnetics[0];
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_MagneticAdviser_Random_2) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        // settings->set_coil_try_rewind(false);
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+
+        std::vector<int64_t> numberTurns = {45, 94};
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::SECONDARY, OpenMagnetics::IsolationSide::DENARY};
+
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+
+        double frequency = 569910;
+        double peakToPeak = 1;
+        double magnetizingInductance = 0.00354;
+        double dutyCycle = 0.01;
+        double dcCurrent = 0;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
 
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
                                                                                               magnetizingInductance,
