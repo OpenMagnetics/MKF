@@ -97,6 +97,16 @@ void load_databases(json data, bool withAliases=true);
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_shape_names(bool includeToroidal = true);
 std::vector<std::string> get_wire_names();
+std::vector<std::string> get_bobbin_names();
+std::vector<std::string> get_insulation_material_names();
+std::vector<std::string> get_wire_material_names();
+
+std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string> manufacturer);
+std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal = true);
+std::vector<OpenMagnetics::WireWrapper> get_wires();
+std::vector<OpenMagnetics::BobbinWrapper> get_bobbins();
+std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials();
+std::vector<OpenMagnetics::WireMaterial> get_wire_materials();
 
 template<int decimals> double roundFloat(double value);
 

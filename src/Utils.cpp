@@ -295,6 +295,38 @@ void load_databases(json data, bool withAliases) {
     }
 }
 
+
+OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    if (coreMaterialDatabase.count(name)) {
+        return coreMaterialDatabase[name];
+    }
+    else {
+        throw std::runtime_error("Core material not found: " + name);
+    }
+}
+
+OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+    if (coreShapeDatabase.count(name)) {
+        return coreShapeDatabase[name];
+    }
+    else {
+        for (const auto& [key, value] : coreShapeDatabase) {
+            std::string dbName = key;
+            dbName.erase(remove(dbName.begin(), dbName.end(), ' '), dbName.end());
+            if (name == dbName) {
+                return value;
+            }
+        }
+        throw std::runtime_error("Core shape not found: " + name);
+    }
+}
+
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
@@ -332,37 +364,6 @@ std::vector<std::string> get_shape_names(bool includeToroidal) {
     return shapeNames;
 }
 
-OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
-    if (coreMaterialDatabase.empty()) {
-        load_core_materials();
-    }
-    if (coreMaterialDatabase.count(name)) {
-        return coreMaterialDatabase[name];
-    }
-    else {
-        throw std::runtime_error("Core material not found: " + name);
-    }
-}
-
-OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
-    if (coreShapeDatabase.empty()) {
-        load_core_shapes();
-    }
-    if (coreShapeDatabase.count(name)) {
-        return coreShapeDatabase[name];
-    }
-    else {
-        for (const auto& [key, value] : coreShapeDatabase) {
-            std::string dbName = key;
-            dbName.erase(remove(dbName.begin(), dbName.end(), ' '), dbName.end());
-            if (name == dbName) {
-                return value;
-            }
-        }
-        throw std::runtime_error("Core shape not found: " + name);
-    }
-}
-
 std::vector<std::string> get_wire_names() {
     if (wireDatabase.empty()) {
         load_wires();
@@ -375,6 +376,147 @@ std::vector<std::string> get_wire_names() {
     }
 
     return wireNames;
+}
+
+
+std::vector<std::string> get_bobbin_names() {
+    if (wireDatabase.empty()) {
+        load_bobbins();
+    }
+
+    std::vector<std::string> bobbinNames;
+
+    for (auto& datum : bobbinDatabase) {
+        bobbinNames.push_back(datum.first);
+    }
+
+    return bobbinNames;
+}
+
+
+std::vector<std::string> get_insulation_material_names() {
+    if (wireDatabase.empty()) {
+        load_insulation_materials();
+    }
+
+    std::vector<std::string> insulationMaterialNames;
+
+    for (auto& datum : insulationMaterialDatabase) {
+        insulationMaterialNames.push_back(datum.first);
+    }
+
+    return insulationMaterialNames;
+}
+
+
+std::vector<std::string> get_wire_material_names() {
+    if (wireDatabase.empty()) {
+        load_wire_materials();
+    }
+
+    std::vector<std::string> wireMaterialNames;
+
+    for (auto& datum : wireMaterialDatabase) {
+        wireMaterialNames.push_back(datum.first);
+    }
+
+    return wireMaterialNames;
+}
+
+std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string> manufacturer) {
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+
+    std::vector<OpenMagnetics::CoreMaterial> materials;
+
+    for (auto& datum : coreMaterialDatabase) {
+        if (!manufacturer) {
+            materials.push_back(datum.second);
+        }
+        else {
+            if (datum.second.get_manufacturer_info().get_name() == manufacturer.value() || manufacturer.value() == "") {
+                materials.push_back(datum.second);
+            }
+        }
+    }
+
+    return materials;
+}
+
+std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<OpenMagnetics::CoreShape> shapes;
+
+    for (auto& datum : coreShapeDatabase) {
+        if (includeToroidal || (datum.second.get_family() != CoreShapeFamily::T)) {
+            shapes.push_back(datum.second);
+        }
+    }
+
+    return shapes;
+}
+
+std::vector<OpenMagnetics::WireWrapper> get_wires() {
+    if (wireDatabase.empty()) {
+        load_wires();
+    }
+
+    std::vector<OpenMagnetics::WireWrapper> wires;
+
+    for (auto& datum : wireDatabase) {
+        wires.push_back(datum.second);
+    }
+
+    return wires;
+}
+
+
+std::vector<OpenMagnetics::BobbinWrapper> get_bobbins() {
+    if (wireDatabase.empty()) {
+        load_bobbins();
+    }
+
+    std::vector<OpenMagnetics::BobbinWrapper> bobbins;
+
+    for (auto& datum : bobbinDatabase) {
+        bobbins.push_back(datum.second);
+    }
+
+    return bobbins;
+}
+
+
+std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials() {
+    if (wireDatabase.empty()) {
+        load_insulation_materials();
+    }
+
+    std::vector<OpenMagnetics::InsulationMaterialWrapper> insulationMaterials;
+
+    for (auto& datum : insulationMaterialDatabase) {
+        insulationMaterials.push_back(datum.second);
+    }
+
+    return insulationMaterials;
+}
+
+
+std::vector<OpenMagnetics::WireMaterial> get_wire_materials() {
+    if (wireDatabase.empty()) {
+        load_wire_materials();
+    }
+
+    std::vector<OpenMagnetics::WireMaterial> wireMaterials;
+
+    for (auto& datum : wireMaterialDatabase) {
+        wireMaterials.push_back(datum.second);
+    }
+
+    return wireMaterials;
 }
 
 OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
