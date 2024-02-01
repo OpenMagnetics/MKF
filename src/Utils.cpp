@@ -222,6 +222,25 @@ void load_wire_materials() {
 }
 
 void load_databases(json data, bool withAliases) {
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+    if (wireDatabase.empty()) {
+        load_wires();
+    }
+    if (bobbinDatabase.empty()) {
+        load_bobbins();
+    }
+    if (insulationMaterialDatabase.empty()) {
+        load_insulation_materials();
+    }
+    if (wireMaterialDatabase.empty()) {
+        load_wire_materials();
+    }
+
     for (auto& element : data["coreMaterials"].items()) {
         json jf = element.value();
         try {
