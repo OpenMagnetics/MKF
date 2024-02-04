@@ -36,14 +36,14 @@ class CoilWrapper : public Coil {
         size_t _currentRepetitions;
 
     public:
-        uint8_t _interleavingLevel = 1;
+        size_t _interleavingLevel = 1;
         WindingOrientation _windingOrientation = WindingOrientation::HORIZONTAL;
         WindingOrientation _layersOrientation = WindingOrientation::VERTICAL;
         CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
         CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
         std::optional<InputsWrapper> _inputs;
 
-        CoilWrapper(const json& j, uint8_t interleavingLevel = 1,
+        CoilWrapper(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
                        WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
@@ -59,7 +59,7 @@ class CoilWrapper : public Coil {
         void try_rewind();
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
-        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, uint8_t numberSlots);
+        WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         std::vector<double> get_proportion_per_winding_based_on_wires();
@@ -72,7 +72,7 @@ class CoilWrapper : public Coil {
         bool wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_layers();
         bool wind_by_turns();
-        bool calculate_insulation();
+        bool calculate_insulation(bool simpleMode = false);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
         void log(std::string entry) {
@@ -89,6 +89,9 @@ class CoilWrapper : public Coil {
             _interleavingLevel = interleavingLevel;
             _marginsPerSection = std::vector<std::vector<double>>(interleavingLevel, {0, 0});
         }
+        size_t get_interleaving_level() {
+            return _currentRepetitions;
+        }
         void set_winding_orientation(WindingOrientation windingOrientation) {
             _windingOrientation = windingOrientation;
         }
@@ -101,9 +104,7 @@ class CoilWrapper : public Coil {
         void set_section_alignment(CoilAlignment sectionAlignment) {
             _sectionAlignment = sectionAlignment;
         }
-        uint8_t get_interleaving_level() {
-            return _interleavingLevel;
-        }
+
         WindingOrientation get_winding_orientation() {
             return _windingOrientation;
         }

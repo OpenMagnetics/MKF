@@ -100,7 +100,8 @@ class WireAdviser {
 
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_area_with_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                 Section section,
-                                                                                                double numberSections);
+                                                                                                double numberSections,
+                                                                                                bool allowNotFit);
 
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_skin_depth_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                   SignalDescriptor current,

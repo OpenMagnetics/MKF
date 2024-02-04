@@ -69,7 +69,7 @@ SUITE(MagneticSimulator) {
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
-            auto simulatedMas = masMagnetics[i];
+            auto simulatedMas = masMagnetics[i].first;
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";
@@ -116,7 +116,7 @@ SUITE(MagneticSimulator) {
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
         for (size_t i = 0; i < masMagnetics.size(); ++i){
-            auto simulatedMas = masMagnetics[i];
+            auto simulatedMas = masMagnetics[i].first;
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             std::string filename = "MagneticSimulator_" + std::to_string(i) + "_" + simulatedMas.get_mutable_magnetic().get_mutable_core().get_shape_name() + ".svg";

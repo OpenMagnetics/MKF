@@ -262,9 +262,8 @@ void Painter::paint_two_piece_set_core(CoreWrapper core) {
     double coreWidth = processedDescription.get_width();
     double coreHeight = processedDescription.get_height();
 
-
-    matplot::gcf()->size(coreWidth / 2 * _scale, coreHeight * _scale);
-    matplot::xlim({0, coreWidth / 2});
+    matplot::gcf()->size(showingCoreWidth * _scale, coreHeight * _scale);
+    matplot::xlim({0, showingCoreWidth});
     matplot::ylim({-coreHeight / 2, coreHeight / 2});
     matplot::gca()->cb_inside(true);
     matplot::gca()->cb_position({0.05f, 0.05f, 0.05f, 0.9f});

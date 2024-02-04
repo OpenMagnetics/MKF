@@ -41,7 +41,15 @@ namespace OpenMagnetics {
         _magneticFieldIncludeFringing = true;
         
         _coilAdviserMaximumNumberWires = 100;
+        _verbose = false;
 
+    }
+
+    bool Settings::get_verbose() const {
+        return _verbose;
+    }
+    void Settings::set_verbose(bool value) {
+        _verbose = value;
     }
 
     bool Settings::get_coil_allow_margin_tape() const {

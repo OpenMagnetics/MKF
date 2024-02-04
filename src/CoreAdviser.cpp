@@ -218,7 +218,20 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         else {
             bobbinFillingFactor = bobbinFillingFactors[core.get_shape_name()];
         }
-        double areaProductCore = windingWindow.get_area().value() * windingColumn.get_area();
+        double windingWindowArea = windingWindow.get_area().value();
+        if ((*_averageMarginInWindingWindow) > 0) {
+            if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
+                throw std::runtime_error("Not implemented margin for toroids yet");
+            }
+            if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
+                windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+            }
+            else {
+                windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+            }
+
+        }
+        double areaProductCore = windingWindowArea * windingColumn.get_area();
         double maximumAreaProductRequired = 0;
 
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
@@ -415,17 +428,39 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
         }
 
         double primaryNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
-        double estimatedNeededWindingArea = primaryNumberTurns * estimatedParallels * estimatedWireTotalArea;
-        double coreCost = core.get_winding_windows()[0].get_area().value();
+        double estimatedNeededWindingArea = primaryNumberTurns * estimatedParallels * estimatedWireTotalArea * (inputs.get_design_requirements().get_turns_ratios().size() + 1);
+        WindingWindowElement windingWindow;
 
-        if (coreCost >= estimatedNeededWindingArea * defaults.coreAdviserThresholdValidity) {
+        std::string shapeName = core.get_shape_name();
+        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
+            windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+        }
+        else {
+            windingWindow = core.get_winding_windows()[0];
+
+        }
+        double windingWindowArea = windingWindow.get_area().value();
+        if ((*_averageMarginInWindingWindow) > 0) {
+            if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
+                throw std::runtime_error("Not implemented margin for toroids yet");
+            }
+            if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
+                windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+            }
+            else {
+                windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+            }
+        }
+
+        if (windingWindowArea >= estimatedNeededWindingArea * defaults.coreAdviserThresholdValidity) {
             double manufacturabilityRelativeCost;
             if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
-                double estimatedNeededLayers = (primaryNumberTurns * estimatedParallels * (2 * skinDepth / wireAirFillingFactor)) / core.get_winding_windows()[0].get_height().value();
+                double estimatedNeededLayers = (primaryNumberTurns * estimatedParallels * (2 * skinDepth / wireAirFillingFactor)) / windingWindow.get_height().value();
                 manufacturabilityRelativeCost = estimatedNeededLayers;
             }
             else {
-                double layerLength = 2 * std::numbers::pi * (core.get_winding_windows()[0].get_radial_height().value() - skinDepth);
+                double layerLength = 2 * std::numbers::pi * (windingWindow.get_radial_height().value() - skinDepth);
                 double estimatedNeededLayers = (primaryNumberTurns * estimatedParallels * (2 * skinDepth / wireAirFillingFactor)) / layerLength;
                 if (estimatedNeededLayers > 1) {
                     manufacturabilityRelativeCost = estimatedNeededLayers * 2;
@@ -548,6 +583,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         CoreLossesOutput coreLossesOutput;
         double ohmicLosses = DBL_MAX;
         WindingLossesOutput windingLossesOutput;
+        windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
         double newTotalLosses = DBL_MAX;
         auto previousNumberTurnsPrimary = currentNumberTurns;
 
@@ -619,7 +655,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                     if (ohmicLosses < 0) {
                         throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value() + " ohmicLosses: " + std::to_string(ohmicLosses));
                     }
-
                 }
                 else {
                     newTotalLosses = coreLosses;
@@ -1026,18 +1061,23 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     filterAreaProduct.set_scorings(&_scorings);
     filterAreaProduct.set_valid_scorings(&_validScorings);
     filterAreaProduct.set_filter_configuration(&_filterConfiguration);
+    filterAreaProduct.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
     filterEnergyStored.set_scorings(&_scorings);
     filterEnergyStored.set_valid_scorings(&_validScorings);
     filterEnergyStored.set_filter_configuration(&_filterConfiguration);
+    filterEnergyStored.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
     filterCost.set_scorings(&_scorings);
     filterCost.set_valid_scorings(&_validScorings);
     filterCost.set_filter_configuration(&_filterConfiguration);
+    filterCost.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
     filterLosses.set_scorings(&_scorings);
     filterLosses.set_valid_scorings(&_validScorings);
     filterLosses.set_filter_configuration(&_filterConfiguration);
+    filterLosses.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
     filterDimensions.set_scorings(&_scorings);
     filterDimensions.set_valid_scorings(&_validScorings);
     filterDimensions.set_filter_configuration(&_filterConfiguration);
+    filterDimensions.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
 
     CoreAdviserFilters firstFilter = CoreAdviserFilters::AREA_PRODUCT;
     double maxWeight = 0;
