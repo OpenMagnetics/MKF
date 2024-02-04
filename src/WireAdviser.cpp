@@ -71,7 +71,8 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
 
 std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_by_area_with_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                     Section section,
-                                                                                                    double numberSections) {
+                                                                                                    double numberSections,
+                                                                                                    bool allowNotFit) {
     std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
@@ -89,6 +90,17 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
             // double scoring = (section.get_dimensions()[0] * section.get_dimensions()[1]) - neededOuterAreaNoCompact;
             double scoring = 1;
             newScoring.push_back(scoring);
+        }
+        else if (allowNotFit) {
+            double extra = (neededOuterAreaNoCompact - (section.get_dimensions()[0] * section.get_dimensions()[1])) / (section.get_dimensions()[0] * section.get_dimensions()[1]);
+            if (extra < 0.5) {
+                double scoring = extra;
+                // double scoring = 1;
+                newScoring.push_back(scoring);
+            }
+            else {
+                listOfIndexesToErase.push_back(coilIndex);
+            }
         }
         else {
             listOfIndexesToErase.push_back(coilIndex);
@@ -398,9 +410,9 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
         double areaProportion = neededOuterAreaNoCompact / (section.get_dimensions()[0] * section.get_dimensions()[1]);
         _maximumOuterAreaProportion = std::max(_maximumOuterAreaProportion, areaProportion);
 
-        if (areaProportion > 1) {
-            throw std::runtime_error("areaProportion cannot be bigger than 1");
-        }
+        // if (areaProportion > 1) {
+        //     throw std::runtime_error("areaProportion cannot be bigger than 1");
+        // }
     }
 
 }
@@ -415,12 +427,23 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
 
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
 
+
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
+
     }
-    coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections);
+    auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
+    if (tempCoilsWithScoring.size() == 0) {
+        coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
+    }
+    else{
+        coilsWithScoring = tempCoilsWithScoring;
+    }
+
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
+
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
+
     
 
     if (coilsWithScoring.size() > maximumNumberResults) {

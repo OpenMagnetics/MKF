@@ -40,6 +40,7 @@ class Settings
         int _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
         size_t _coilAdviserMaximumNumberWires = 100;
+        bool _verbose = false;
 
     public:
         Settings(Settings &other) = delete;
@@ -48,6 +49,9 @@ class Settings
         static Settings *GetInstance();
 
         void reset();
+
+        bool get_verbose() const;
+        void set_verbose(bool value);
 
         bool get_coil_allow_margin_tape() const;
         void set_coil_allow_margin_tape(bool value);

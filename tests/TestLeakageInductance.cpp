@@ -23,7 +23,7 @@ SUITE(LeakageInductance) {
 
 
     TEST(Test_Leakage_Inductance_E_0) {
-
+        settings->reset();
         double temperature = 20;
         std::vector<int64_t> numberTurns({69, 69});
         std::vector<int64_t> numberParallels({1, 1});

@@ -27,6 +27,7 @@ class CoreAdviser {
         std::string _log;
         bool _uniqueCoreShapes = false;
         std::map<CoreAdviserFilters, double> _weights;
+        double _averageMarginInWindingWindow = 0;
 
         void logEntry(std::string entry) {
             _log += entry + "\n";
@@ -70,6 +71,12 @@ class CoreAdviser {
         void set_unique_core_shapes(bool value) {
             _uniqueCoreShapes = value;
         }
+        void set_average_margin_in_winding_window(double value) {
+            _averageMarginInWindingWindow = value;
+        }
+        double get_average_margin_in_winding_window() {
+            return _averageMarginInWindingWindow;
+        }
 
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, std::vector<CoreWrapper>* cores, size_t maximumNumberResults=1);
@@ -87,6 +94,7 @@ class CoreAdviser {
             std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
+            double* _averageMarginInWindingWindow;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring, bool firstFilter) {
                 if (firstFilter) {
@@ -104,6 +112,9 @@ class CoreAdviser {
             }
             void set_filter_configuration(std::map<CoreAdviserFilters, std::map<std::string, bool>>* filterConfiguration) {
                 _filterConfiguration = filterConfiguration;
+            }
+            void set_average_margin_in_winding_window(double* averageMarginInWindingWindow) {
+                _averageMarginInWindingWindow = averageMarginInWindingWindow;
             }
             MagneticCoreFilter(){
             }

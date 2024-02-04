@@ -52,9 +52,12 @@ bool InsulationCoordinator::can_fully_insulated_wire_be_used(InputsWrapper& inpu
 }
 
 size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWrapper rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+    auto leftCoatingMaybe = leftWire.resolve_coating();
+    auto rightCoatingMaybe = rightWire.resolve_coating();
+
     size_t times = 0;
-    {
-        auto coating = leftWire.resolve_coating().value();
+    if (leftCoatingMaybe) {
+        auto coating = leftCoatingMaybe.value();
 
         if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = leftWire.resolve_strand();
@@ -77,8 +80,8 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
             }
         }
     }
-    {
-        auto coating = rightWire.resolve_coating().value();
+    if (rightCoatingMaybe) {
+        auto coating = rightCoatingMaybe.value();
 
         if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = rightWire.resolve_strand();

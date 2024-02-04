@@ -8,10 +8,34 @@
 namespace OpenMagnetics {
 
 class MagneticAdviser : public CoreAdviser, public CoilAdviser {
+    public:
+        enum class MagneticAdviserFilters : int {
+            COST, 
+            EFFICIENCY,
+            DIMENSIONS
+        };
     private:
+        std::map<MagneticAdviserFilters, double> _weights;
     public:
 
-        std::vector<MasWrapper> get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults=1);
+        std::map<MagneticAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
+                { MagneticAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
+                { MagneticAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
+                { MagneticAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
+            };
+        std::map<MagneticAdviserFilters, std::map<std::string, double>> _scorings;
+
+
+        std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults=1);
+        std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults);
+        std::vector<std::pair<MasWrapper, double>> score_magnetics(std::vector<MasWrapper> masMagneticsWithCoil, std::map<MagneticAdviserFilters, double> weights);
+        void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration);
+
+        std::map<std::string, std::map<MagneticAdviserFilters, double>> get_scorings(){
+            return get_scorings(false);
+        }
+
+        std::map<std::string, std::map<MagneticAdviserFilters, double>> get_scorings(bool weighted);
 };
 
 

@@ -1229,5 +1229,40 @@ namespace OpenMagnetics {
         set_outer_height(get_conducting_height());
     }
 
+    double WireWrapper::get_relative_cost() {
+        double cost = 0;
+        if (get_type() == WireType::LITZ) {
+            cost++;
+            if (get_number_conductors().value() > 100) {
+                cost++;
+            }
+            if (get_number_conductors().value() > 500) {
+                cost++;
+            }
+            if (get_number_conductors().value() > 1000) {
+                cost++;
+            }
+        }
+        auto coatingMaybe = resolve_coating();
+        if (coatingMaybe) {
+            auto coating = coatingMaybe.value();
+    
+            if (coating.get_type() == InsulationWireCoatingType::INSULATED) {
+                cost += coating.get_number_layers().value();
+    
+                // Due to lead time
+                if (coating.get_number_layers().value() == 1 || coating.get_number_layers().value() == 2) {
+                    cost += 2;
+                }
+            }
+    
+            if (coating.get_type() == InsulationWireCoatingType::ENAMELLED) {
+                cost += coating.get_grade().value();
+            }
+        }
+
+        return cost;
+    }
+
 
 } // namespace OpenMagnetics
