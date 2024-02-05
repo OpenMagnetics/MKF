@@ -36,7 +36,6 @@ namespace OpenMagnetics {
         MagneticSimulator magneticSimulator;
         size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
-        bool allowMarginTape = settings->get_coil_allow_margin_tape();
         double clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
         coreAdviser.set_average_margin_in_winding_window(clearanceAndCreepageDistance);
 
@@ -52,13 +51,12 @@ namespace OpenMagnetics {
                 coresWound++;
             }
             size_t processedCoils = 0;
-            for (auto masMagnetic : masMagneticsWithCoreAndCoil) {
+            for (auto mas : masMagneticsWithCoreAndCoil) {
 
-                // std::cout << "Simulating" << std::endl;
-                masMagnetic = magneticSimulator.simulate(masMagnetic);
+                mas = magneticSimulator.simulate(mas);
                 processedCoils++;
 
-                masData.push_back(masMagnetic);
+                masData.push_back(mas);
                 if (processedCoils >= size_t(ceil(maximumNumberResults * 0.66))) {
                     break;
                 }
@@ -83,7 +81,6 @@ namespace OpenMagnetics {
         return masMagneticsWithScoring;
 
     }
-
 
     void MagneticAdviser::normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
         double maximumScoring = *std::max_element(scoring->begin(), scoring->end());
@@ -133,6 +130,8 @@ namespace OpenMagnetics {
                     scoring += output.get_core_losses().value().get_core_losses() + output.get_winding_losses().value().get_winding_losses();
                 }
                 scorings.push_back(scoring);
+                add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::EFFICIENCY, scoring);
+
             }
             if (masMagneticsWithScoring.size() > 0) {
                 normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::EFFICIENCY], _filterConfiguration[MagneticAdviserFilters::EFFICIENCY]);
@@ -151,6 +150,7 @@ namespace OpenMagnetics {
 
 
                 scorings.push_back(scoring);
+                add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::COST, scoring);
             }
             if (masMagneticsWithScoring.size() > 0) {
                 normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::COST], _filterConfiguration[MagneticAdviserFilters::COST]);
@@ -168,6 +168,7 @@ namespace OpenMagnetics {
                 double scoring = coilDepth;
 
                 scorings.push_back(scoring);
+                add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::DIMENSIONS, scoring);
             }
             if (masMagneticsWithScoring.size() > 0) {
                 normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::DIMENSIONS], _filterConfiguration[MagneticAdviserFilters::DIMENSIONS]);
