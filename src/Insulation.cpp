@@ -328,6 +328,9 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
 }
 
 double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper& inputs) {
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return 0;
+    }
     double solidInsulation = 0;
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
@@ -353,6 +356,10 @@ double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper& inputs)
 }
 
 double InsulationCoordinator::calculate_clearance(InputsWrapper& inputs) {
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return 0;
+    }
+
     double clearance = 0;
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
@@ -378,6 +385,9 @@ double InsulationCoordinator::calculate_clearance(InputsWrapper& inputs) {
 }
 
 double InsulationCoordinator::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return 0;
+    }
     double creepageDistance = 0;
     for (auto standard : inputs.get_standards()) {
         switch (standard) {
@@ -403,6 +413,9 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper& inputs,
 }
 
 double InsulationCoordinator::calculate_distance_through_insulation(InputsWrapper& inputs) {
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return 0;
+    }
     double dti = 0;
     for (auto standard : inputs.get_standards()) {
         switch (standard) {

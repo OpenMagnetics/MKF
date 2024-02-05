@@ -45,7 +45,6 @@ SUITE(MagneticAdviser) {
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
 
         for (auto masMagneticWithScoring : masMagnetics) {
-            std::cout << masMagneticWithScoring.second << std::endl;
             auto masMagnetic = masMagneticWithScoring.first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -108,12 +107,72 @@ SUITE(MagneticAdviser) {
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
-        // std::cout << masMagnetics.size() << std::endl;
         CHECK(masMagnetics.size() > 0);
 
         for (auto masMagneticWithScoring : masMagnetics) {
-            // std::cout << masMagneticWithScoring.first.get_magnetic().get_core().get_name().value() << std::endl;
-            // std::cout << masMagneticWithScoring.second << std::endl;
+            auto masMagnetic = masMagneticWithScoring.first;
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+
+    }
+
+    TEST(Test_MagneticAdviser_No_Insulation_Requirements) {
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+
+        std::vector<int64_t> numberTurns = {24, 78, 76};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+
+        double frequency = 507026;
+        double magnetizingInductance = 100e-6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        double peakToPeak = 1;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_coil_allow_margin_tape(true);
+        settings->set_coil_allow_insulated_wire(false);
+        settings->set_coil_fill_sections_with_margin_tape(true);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+
+        auto requirements = inputs.get_mutable_design_requirements();
+        requirements.set_insulation(std::nullopt);
+        inputs.set_design_requirements(requirements);
+
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+
+        OpenMagnetics::MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
+        CHECK(masMagnetics.size() > 0);
+
+        for (auto masMagneticWithScoring : masMagnetics) {
             auto masMagnetic = masMagneticWithScoring.first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");

@@ -112,6 +112,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<MasWrapper> CoilAdviser::get_advised_coil(std::vector<WireWrapper>* wires, MasWrapper mas, size_t maximumNumberResults){
+
         auto inputs = mas.get_mutable_inputs();
         auto patterns = get_patterns(inputs);
         auto repetitions = get_repetitions(inputs);
@@ -199,73 +200,51 @@ namespace OpenMagnetics {
     }
 
     std::vector<std::vector<WireSolidInsulationRequirements>> CoilAdviser::get_solid_insulation_requirements_for_wires(InputsWrapper& inputs) {
+
         auto isolationSidesRequired = get_isolation_sides(inputs);
         auto withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
         size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
-        auto insulationType = inputs.get_insulation_type();
-        bool canFullyInsulatedWireBeUsed = InsulationCoordinator::can_fully_insulated_wire_be_used(inputs);
         std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires;
-        auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
-        auto settings = Settings::GetInstance();
-        bool allowMarginTape = settings->get_coil_allow_margin_tape();
 
-        // If we don't want margin tape we have to increase to insulation type to DOUBLE:
-        if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {
-            if (!allowMarginTape) {
-                insulationType = InsulationType::DOUBLE;
-            }
-        }
-
-        // Unless we cannot use margin tape, we always add the option of the wires not complying with anything
-        if (allowMarginTape) {
+        if (!inputs.get_design_requirements().get_insulation()) {
             std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
             for(unsigned windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 solidInsulationForWires.push_back(get_requirements_for_functional());
             }
             combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
             bool needsMargin = needs_margin(solidInsulationForWires);
-
         }
+        else {
 
+            auto insulationType = inputs.get_insulation_type();
+            bool canFullyInsulatedWireBeUsed = InsulationCoordinator::can_fully_insulated_wire_be_used(inputs);
+            auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
+            auto settings = Settings::GetInstance();
+            bool allowMarginTape = settings->get_coil_allow_margin_tape();
 
-        if (insulationType != InsulationType::FUNCTIONAL) {
-
-            if ((insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE)) {
-                // Reinforced or single winding inductors must have all the isolation needed in one later or coating
-                for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
-                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
-                    for (auto isolationSidePerWinding : isolationSidePerWinding) {
-                        if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
-                            solidInsulationForWires.push_back(get_requirements_for_functional());
-                        }
-                        else {
-                            solidInsulationForWires.push_back(get_requirements_for_reinforced(withstandVoltage, canFullyInsulatedWireBeUsed));
-                        }
-                    }
-                    combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+            // If we don't want margin tape we have to increase to insulation type to DOUBLE:
+            if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {
+                if (!allowMarginTape) {
+                    insulationType = InsulationType::DOUBLE;
                 }
             }
 
-            if (insulationType != InsulationType::REINFORCED) {
-                // If insulation is Double, we need to get the withstand voltage for basic, not double
-                if (insulationType == InsulationType::DOUBLE) {
-                    auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
-                    insulation.set_insulation_type(InsulationType::BASIC);
-                    inputs.get_mutable_design_requirements().set_insulation(insulation);
-                    withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+            // Unless we cannot use margin tape, we always add the option of the wires not complying with anything
+            if (allowMarginTape) {
+                std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                for(unsigned windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                    solidInsulationForWires.push_back(get_requirements_for_functional());
                 }
+                combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                bool needsMargin = needs_margin(solidInsulationForWires);
 
-                if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {
-                    // Additionally, Double can be composed of several steps or parts, as long as each reachs Basic and Supplementary insulation.
+            }
 
-                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
-                    for (size_t i = 0; i < isolationSidePerWinding.size(); ++i) {
-                        solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
-                    }
-                    combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
-                }
 
-                if (isolationSidesRequired.size() > 1) {
+            if (insulationType != InsulationType::FUNCTIONAL) {
+
+                if ((insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE)) {
+                    // Reinforced or single winding inductors must have all the isolation needed in one later or coating
                     for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
                         std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
                         for (auto isolationSidePerWinding : isolationSidePerWinding) {
@@ -273,17 +252,52 @@ namespace OpenMagnetics {
                                 solidInsulationForWires.push_back(get_requirements_for_functional());
                             }
                             else {
-                                solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                                solidInsulationForWires.push_back(get_requirements_for_reinforced(withstandVoltage, canFullyInsulatedWireBeUsed));
                             }
                         }
                         combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
                     }
                 }
-            }
-        } 
 
-        if (!allowMarginTape) {
-            combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires);
+                if (insulationType != InsulationType::REINFORCED) {
+                    // If insulation is Double, we need to get the withstand voltage for basic, not double
+                    if (insulationType == InsulationType::DOUBLE) {
+                        auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
+                        insulation.set_insulation_type(InsulationType::BASIC);
+                        inputs.get_mutable_design_requirements().set_insulation(insulation);
+                        withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+                    }
+
+                    if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {
+                        // Additionally, Double can be composed of several steps or parts, as long as each reachs Basic and Supplementary insulation.
+
+                        std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                        for (size_t i = 0; i < isolationSidePerWinding.size(); ++i) {
+                            solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                        }
+                        combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                    }
+
+                    if (isolationSidesRequired.size() > 1) {
+                        for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
+                            std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                            for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                                if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
+                                    solidInsulationForWires.push_back(get_requirements_for_functional());
+                                }
+                                else {
+                                    solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                                }
+                            }
+                            combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                        }
+                    }
+                }
+            } 
+
+            if (!allowMarginTape) {
+                combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires);
+            }
         }
 
         return combinationsSolidInsulationRequirementsForWires;
@@ -406,7 +420,6 @@ namespace OpenMagnetics {
             }
         }
 
-        // std::cout << "Mierda 5" << std::endl;
         // std::cout << wireCoilPerWinding[0].size() << std::endl;
         // std::cout << wireCoilPerWinding[1].size() << std::endl;
 

@@ -567,6 +567,12 @@ bool CoilWrapper::calculate_mechanical_insulation() {
 }
 
 bool CoilWrapper::calculate_insulation(bool simpleMode) {
+    auto inputs = _inputs.value();
+
+    if (!inputs.get_design_requirements().get_insulation()) {
+        return false;
+    }
+
     auto settings = Settings::GetInstance();
     auto wirePerWinding = get_wires();
 
@@ -579,7 +585,6 @@ bool CoilWrapper::calculate_insulation(bool simpleMode) {
             if (leftTopWindingIndex == rightBottomWindingIndex) {
                 continue;
             }
-            auto inputs = _inputs.value();
             auto wireLeftTopWinding = wirePerWinding[leftTopWindingIndex];
             auto wireRightBottomWinding = wirePerWinding[rightBottomWindingIndex];
             auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
