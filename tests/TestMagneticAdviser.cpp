@@ -106,15 +106,26 @@ SUITE(MagneticAdviser) {
         inputs.process_waveforms();
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
-        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 4);
         CHECK(masMagnetics.size() > 0);
+
+        auto scorings = magneticAdviser.get_scorings();
+        std::cout << "scorings.size()" << std::endl;
+        std::cout << scorings.size() << std::endl;
+        for (auto [name, values] : scorings) {
+            std::cout << name << std::endl;
+            for (auto [key, value] : values) {
+                std::cout << magic_enum::enum_name(key) << std::endl;
+                std::cout << value << std::endl;
+            }
+        }
 
         for (auto masMagneticWithScoring : masMagnetics) {
             auto masMagnetic = masMagneticWithScoring.first;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
@@ -446,8 +457,6 @@ SUITE(MagneticAdviser) {
     }
 
     TEST(Test_MagneticAdviser_Random_2) {
-        auto settings = OpenMagnetics::Settings::GetInstance();
-        // settings->set_coil_try_rewind(false);
         srand (time(NULL));
 
         std::vector<double> turnsRatios;

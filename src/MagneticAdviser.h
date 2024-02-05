@@ -7,7 +7,7 @@
 
 namespace OpenMagnetics {
 
-class MagneticAdviser : public CoreAdviser, public CoilAdviser {
+class MagneticAdviser{
     public:
         enum class MagneticAdviserFilters : int {
             COST, 
@@ -25,6 +25,11 @@ class MagneticAdviser : public CoreAdviser, public CoilAdviser {
             };
         std::map<MagneticAdviserFilters, std::map<std::string, double>> _scorings;
 
+        void add_scoring(std::string name, MagneticAdviser::MagneticAdviserFilters filter, double scoring) {
+            if (scoring != -1) {
+                _scorings[filter][name] = scoring;
+            }
+        }
 
         std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults);
