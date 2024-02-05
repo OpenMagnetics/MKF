@@ -110,18 +110,22 @@ SUITE(MagneticAdviser) {
         CHECK(masMagnetics.size() > 0);
 
         auto scorings = magneticAdviser.get_scorings();
-        std::cout << "scorings.size()" << std::endl;
-        std::cout << scorings.size() << std::endl;
+        // std::cout << "scorings.size(): " << scorings.size() << std::endl;
         for (auto [name, values] : scorings) {
-            std::cout << name << std::endl;
+            double scoringTotal = 0;
+            // std::cout << name << std::endl;
             for (auto [key, value] : values) {
-                std::cout << magic_enum::enum_name(key) << std::endl;
-                std::cout << value << std::endl;
+                // std::cout << magic_enum::enum_name(key) << std::endl;
+                // std::cout << value << std::endl;
+                scoringTotal += value;
             }
+            // std::cout << "scoringTotal: " << scoringTotal << std::endl;
         }
 
         for (auto masMagneticWithScoring : masMagnetics) {
             auto masMagnetic = masMagneticWithScoring.first;
+            // std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
+            // std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -134,7 +138,6 @@ SUITE(MagneticAdviser) {
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
             painter.export_svg();
         }
-
     }
 
     TEST(Test_MagneticAdviser_No_Insulation_Requirements) {
