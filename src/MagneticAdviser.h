@@ -19,9 +19,9 @@ class MagneticAdviser{
     public:
 
         std::map<MagneticAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
-                { MagneticAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
-                { MagneticAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
-                { MagneticAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
+                { MagneticAdviserFilters::COST,                  { {"invert", true}, {"log", false} } },
+                { MagneticAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", false} } },
+                { MagneticAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", false} } },
             };
         std::map<MagneticAdviserFilters, std::map<std::string, double>> _scorings;
 

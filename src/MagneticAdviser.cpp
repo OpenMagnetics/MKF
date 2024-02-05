@@ -74,9 +74,9 @@ namespace OpenMagnetics {
         });
 
 
-        if (masMagneticsWithScoring.size() > maximumNumberResults) {
-            masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
-        }
+        // if (masMagneticsWithScoring.size() > maximumNumberResults) {
+        //     masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        // }
 
         return masMagneticsWithScoring;
 
@@ -111,9 +111,6 @@ namespace OpenMagnetics {
                 (*masMagneticsWithScoring)[i].second += 1;
             }
         }
-        sort((*masMagneticsWithScoring).begin(), (*masMagneticsWithScoring).end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
-            return b1.second > b2.second;
-        });
     }
 
     std::vector<std::pair<MasWrapper, double>> MagneticAdviser::score_magnetics(std::vector<MasWrapper> masMagnetics, std::map<MagneticAdviserFilters, double> weights) {
@@ -137,6 +134,7 @@ namespace OpenMagnetics {
                 normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::EFFICIENCY], _filterConfiguration[MagneticAdviserFilters::EFFICIENCY]);
             }
         }
+
         {
             std::vector<double> scorings;
             for (auto mas : masMagnetics) {
