@@ -72,8 +72,9 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
                 times += coating.get_number_layers().value();
             }
             else if (coating.get_grade() && canFullyInsulatedWireBeUsed) {
-                if (coating.get_grade().value() > 3) 
-                times += 3;
+                if (coating.get_grade().value() > 3) {
+                    times += 3;
+                }
             }
             else {
                 times++;

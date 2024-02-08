@@ -22,13 +22,18 @@ namespace OpenMagnetics {
         std::vector<MasWrapper> masData;
 
         if (coreDatabase.empty()) {
-            load_cores();
+            load_cores(false, settings->get_use_only_cores_in_stock());
         }
         if (wireDatabase.empty()) {
             load_wires();
         }
 
-        settings->set_use_only_cores_in_stock(true);
+        std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
+        coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        coreWeights[CoreAdviser::CoreAdviserFilters::COST] = weights[MagneticAdviser::MagneticAdviserFilters::COST];
+        coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = weights[MagneticAdviser::MagneticAdviserFilters::EFFICIENCY];
+        coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = weights[MagneticAdviser::MagneticAdviserFilters::DIMENSIONS];
 
         CoreAdviser coreAdviser(false);
         coreAdviser.set_unique_core_shapes(true);
@@ -41,7 +46,7 @@ namespace OpenMagnetics {
 
         // std::cout << "Getting core" << std::endl;
         size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
-        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, expectedWoundCores * 10);
+        auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
         size_t coresWound = 0;
         for (auto& masMagneticWithCore : masMagneticsWithCore) {
             // std::cout << "core:                                                                 " << masMagneticWithCore.first.get_magnetic().get_core().get_name().value() << std::endl;
@@ -57,7 +62,7 @@ namespace OpenMagnetics {
                 processedCoils++;
 
                 masData.push_back(mas);
-                if (processedCoils >= size_t(ceil(maximumNumberResults * 0.66))) {
+                if (processedCoils >= size_t(ceil(maximumNumberResults * 0.5))) {
                     break;
                 }
             }
@@ -73,10 +78,9 @@ namespace OpenMagnetics {
             return b1.second > b2.second;
         });
 
-
-        // if (masMagneticsWithScoring.size() > maximumNumberResults) {
-        //     masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
-        // }
+        if (masMagneticsWithScoring.size() > maximumNumberResults) {
+            masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        }
 
         return masMagneticsWithScoring;
 
