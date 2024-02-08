@@ -89,6 +89,9 @@ class CoilWrapper : public Coil {
             _interleavingLevel = interleavingLevel;
             _marginsPerSection = std::vector<std::vector<double>>(interleavingLevel, {0, 0});
         }
+        void reset_margins_per_section() {
+            _marginsPerSection.clear();
+        }
         size_t get_interleaving_level() {
             return _currentRepetitions;
         }

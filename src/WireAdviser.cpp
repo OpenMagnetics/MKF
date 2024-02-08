@@ -280,6 +280,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
         if (coating.get_breakdown_voltage().value() < wireSolidInsulationRequirements.get_minimum_breakdown_voltage()) {
             isValid = false;
         }
+
         if (wireSolidInsulationRequirements.get_minimum_grade() && coating.get_grade()) {
             if (coating.get_grade().value() < wireSolidInsulationRequirements.get_minimum_grade().value()) {
                 isValid = false;
@@ -291,6 +292,20 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
             }
         }
         else if (wireSolidInsulationRequirements.get_minimum_number_layers() || wireSolidInsulationRequirements.get_minimum_grade()) {
+            isValid = false;
+        }
+        
+        if (wireSolidInsulationRequirements.get_maximum_grade() && coating.get_grade()) {
+            if (coating.get_grade().value() > wireSolidInsulationRequirements.get_maximum_grade().value()) {
+                isValid = false;
+            }
+        }
+        else if (wireSolidInsulationRequirements.get_maximum_number_layers() && coating.get_number_layers()) {
+            if (coating.get_number_layers().value() > wireSolidInsulationRequirements.get_maximum_number_layers().value()) {
+                isValid = false;
+            }
+        }
+        else if (wireSolidInsulationRequirements.get_maximum_number_layers() || wireSolidInsulationRequirements.get_maximum_grade()) {
             isValid = false;
         }
 

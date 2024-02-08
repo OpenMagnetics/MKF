@@ -9,26 +9,38 @@
 
 
 namespace OpenMagnetics {
-    bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires) {
-        for(size_t leftIndex = 0; leftIndex < combinationSolidInsulationRequirementsForWires.size(); ++leftIndex) {
-            for(size_t rightIndex = leftIndex + 1; rightIndex < combinationSolidInsulationRequirementsForWires.size(); ++rightIndex) {
-                int64_t numberLayers = 0;
-                int64_t numberGrades = 0;
-                if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade()) {
-                    numberGrades += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade().value();
+    bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
+        for(size_t index = 0; index < pattern.size(); ++index) {
+            size_t leftIndex = pattern[index];
+            size_t rightIndex;
+            if (leftIndex == pattern.size() - 1) {
+                if (repetitions == 0) {
+                    break;
                 }
-                if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers()) {
-                    numberLayers += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers().value();
+                else {
+                    rightIndex = pattern[0];
                 }
-                if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade()) {
-                    numberGrades += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade().value();
-                }
-                if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers()) {
-                    numberLayers += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers().value();
-                }
-                if (numberLayers < 3 && numberGrades < 4) {
-                    return true;
-                }
+            }
+            else {
+                rightIndex = pattern[leftIndex + 1];
+            }
+            int64_t numberLayers = 0;
+            int64_t numberGrades = 0;
+            if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade()) {
+                numberGrades += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade().value();
+            }
+            if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers()) {
+                numberLayers += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers().value();
+            }
+            if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade()) {
+                numberGrades += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade().value();
+            }
+            if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers()) {
+                numberLayers += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers().value();
+            }
+
+            if (numberLayers < 3 && numberGrades < 4) {
+                return true;
             }
         }
         return false;
@@ -145,10 +157,10 @@ namespace OpenMagnetics {
 
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
 
-        auto combinationsSolidInsulationRequirementsForWires = get_solid_insulation_requirements_for_wires(mas.get_mutable_inputs());
         std::vector<MasWrapper> masMagneticsWithCoil;
         for (auto repetition : repetitions) {
             for (auto pattern : patterns) {
+                auto combinationsSolidInsulationRequirementsForWires = get_solid_insulation_requirements_for_wires(mas.get_mutable_inputs(), pattern, repetition);
                 for(size_t insulationIndex = 0; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
                     auto solidInsulationRequirementsForWires = combinationsSolidInsulationRequirementsForWires[insulationIndex];
                     std::string reference = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
@@ -165,7 +177,7 @@ namespace OpenMagnetics {
                     else {
                         reference += ", Non-Interleaved";
                     }
-                    if (needs_margin(solidInsulationRequirementsForWires)) {
+                    if (needs_margin(solidInsulationRequirementsForWires, pattern, repetition)) {
                         reference += ", Margin Taped";
                     }
                     else {
@@ -210,10 +222,10 @@ namespace OpenMagnetics {
         return wireSolidInsulationRequirements;
     }
 
-    std::vector<std::vector<WireSolidInsulationRequirements>> remove_combination_that_need_margin(std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires) {
+    std::vector<std::vector<WireSolidInsulationRequirements>> remove_combination_that_need_margin(std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
         std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWiresWithoutMargin;
         for (auto combinationSolidInsulationRequirementsForWires : combinationsSolidInsulationRequirementsForWires) {
-            bool needsMargin = needs_margin(combinationSolidInsulationRequirementsForWires);
+            bool needsMargin = needs_margin(combinationSolidInsulationRequirementsForWires, pattern, repetitions);
             if (!needsMargin) {
                 combinationsSolidInsulationRequirementsForWiresWithoutMargin.push_back(combinationSolidInsulationRequirementsForWires);
             }
@@ -221,7 +233,7 @@ namespace OpenMagnetics {
         return combinationsSolidInsulationRequirementsForWiresWithoutMargin;
     }
 
-    std::vector<std::vector<WireSolidInsulationRequirements>> CoilAdviser::get_solid_insulation_requirements_for_wires(InputsWrapper& inputs) {
+    std::vector<std::vector<WireSolidInsulationRequirements>> CoilAdviser::get_solid_insulation_requirements_for_wires(InputsWrapper& inputs, std::vector<size_t> pattern, size_t repetitions) {
 
         auto isolationSidesRequired = get_isolation_sides(inputs);
         auto withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
@@ -314,7 +326,7 @@ namespace OpenMagnetics {
             } 
 
             if (!allowMarginTape) {
-                combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires);
+                combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires, pattern, repetitions);
             }
         }
 
@@ -328,12 +340,22 @@ namespace OpenMagnetics {
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
 
+        auto needsMargin = needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
         mas.get_mutable_magnetic().get_mutable_coil().set_inputs(mas.get_inputs());
         mas.get_mutable_magnetic().get_mutable_coil().calculate_insulation(true);
         mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions, pattern, repetitions);
         mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
 
         OpenMagnetics::WireAdviser wireAdviser;
+
+        if (needsMargin) {
+            // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                solidInsulationRequirementsForWires[windingIndex].set_maximum_number_layers(1);
+                solidInsulationRequirementsForWires[windingIndex].set_maximum_grade(3);
+            }
+        }
+
         std::vector<std::vector<std::pair<CoilFunctionalDescription, double>>> wireCoilPerWinding;
 
 
@@ -386,7 +408,7 @@ namespace OpenMagnetics {
                 wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
 
                 auto sectionIndex = mas.get_mutable_magnetic().get_mutable_coil().convert_conduction_section_index_to_global(windingIndex);
-                // std::cout << "wires.size(): " << wires.size() << std::endl;
+
                 auto wiresWithScoring = wireAdviser.get_advised_wire(wires,
                                                                      mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
                                                                      mas.get_mutable_magnetic().get_coil().get_sections_description().value()[sectionIndex],
@@ -433,6 +455,7 @@ namespace OpenMagnetics {
             }
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
+            mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
             // settings->set_coil_wind_even_if_not_fit(true);
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
 
@@ -454,10 +477,11 @@ namespace OpenMagnetics {
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
                 auto info = mas.get_mutable_magnetic().get_manufacturer_info().value();
                 auto auxReference = reference;
-                auxReference += " , wiresIndex: " + std::to_string(wiresIndex);
+                auxReference += std::to_string(wiresIndex);
                 info.set_reference(auxReference);
                 mas.get_mutable_magnetic().set_manufacturer_info(info);
 
+                std::string name = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
                 masMagneticsWithCoil.push_back(mas);
                 wiresIndex++;
                 if (masMagneticsWithCoil.size() == maximumNumberResults) {
