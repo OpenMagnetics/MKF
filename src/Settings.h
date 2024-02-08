@@ -31,8 +31,8 @@ class Settings
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
         std::string _painterColorFerrite = "0x8F7b7c7d";
         std::string _painterColorBobbin = "0x8F1b1b1b";
-        std::string _painterColorCopper = "0x8Fb87333";
-        std::string _painterColorInsulation = "0x18E37E00";
+        std::string _painterColorCopper = "0x00b87333";
+        std::string _painterColorInsulation = "0x18539796";
         std::string _painterColorMargin = "0x8Ffff05b";
 
         size_t _magneticFieldNumberPointsX = 25;

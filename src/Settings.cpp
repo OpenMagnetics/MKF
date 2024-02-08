@@ -31,8 +31,8 @@ namespace OpenMagnetics {
         _painterMinimumValueColorbar = std::nullopt;
         _painterColorFerrite = "0x8F7b7c7d";
         _painterColorBobbin = "0x8F1b1b1b";
-        _painterColorCopper = "0x8Fb87333";
-        _painterColorInsulation = "0x18E37E00";
+        _painterColorCopper = "0x00b87333";
+        _painterColorInsulation = "0x18539796";
         _painterColorMargin = "0x8Ffff05b";
 
         _magneticFieldNumberPointsX = 25;
