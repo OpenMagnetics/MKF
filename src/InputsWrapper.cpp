@@ -1272,6 +1272,84 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
 
     return inputs;
 }
+InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double frequency,
+                                                          double magnetizingInductance,
+                                                          double temperature,
+                                                          WaveformLabel waveShape,
+                                                          std::vector<double> peakToPeaks,
+                                                          double dutyCycle,
+                                                          double dcCurrent,
+                                                          std::vector<double> turnsRatios) {
+
+    InputsWrapper inputs;
+
+    DesignRequirements designRequirements;
+    DimensionWithTolerance magnetizingInductanceWithTolerance;
+    magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance * 0.8);
+    magnetizingInductanceWithTolerance.set_nominal(magnetizingInductance);
+    magnetizingInductanceWithTolerance.set_maximum(magnetizingInductance * 1.2);
+    OpenMagnetics::InsulationRequirements insulationRequirements;
+
+    auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
+    auto cti = OpenMagnetics::Cti::GROUP_I;
+    OpenMagnetics::DimensionWithTolerance altitude;
+    OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+    auto pollutionDegree = OpenMagnetics::PollutionDegree::P1;
+    auto standards = std::vector<OpenMagnetics::InsulationStandards>{};
+    altitude.set_maximum(2000);
+    mainSupplyVoltage.set_nominal(400);
+    auto insulationType = OpenMagnetics::InsulationType::BASIC;
+
+    insulationRequirements.set_altitude(altitude);
+    insulationRequirements.set_cti(cti);
+    insulationRequirements.set_insulation_type(insulationType);
+    insulationRequirements.set_main_supply_voltage(mainSupplyVoltage);
+    insulationRequirements.set_overvoltage_category(overvoltageCategory);
+    insulationRequirements.set_pollution_degree(pollutionDegree);
+    insulationRequirements.set_standards(standards);
+    designRequirements.set_insulation(insulationRequirements);
+    designRequirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
+    for (auto& turnsRatio : turnsRatios) {
+        DimensionWithTolerance turnsRatiosWithTolerance;
+        turnsRatiosWithTolerance.set_nominal(turnsRatio);
+        designRequirements.get_mutable_turns_ratios().push_back(turnsRatiosWithTolerance);
+    }
+    designRequirements.set_wiring_technology(WiringTechnology::WOUND);
+    inputs.set_design_requirements(designRequirements);
+
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(temperature);
+    conditions.set_ambient_relative_humidity(std::nullopt);
+    conditions.set_cooling(std::nullopt);
+    conditions.set_name(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+    for (size_t i = 0; i < peakToPeaks.size(); i++) {
+        double peakToPeak = peakToPeaks[i];
+        double turnsRatio = (i==0) ? 1 : turnsRatios[i - 1];
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor current;
+        Processed processed;
+        processed.set_label(waveShape);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        processed.set_offset(dcCurrent);
+        current.set_processed(processed);
+        current = standarize_waveform(current, frequency);
+        excitation.set_current(current);
+        if (magnetizingInductance > 0) {
+            auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
+            excitation.set_voltage(voltage);
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+
+    inputs.get_mutable_operating_points().push_back(operatingPoint);
+    inputs.process_waveforms();
+
+    return inputs;
+}
 
 OperatingPoint InputsWrapper::get_operating_point(size_t index) {
     return get_mutable_operating_points()[index];

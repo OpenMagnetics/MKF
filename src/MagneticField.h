@@ -59,7 +59,7 @@ class MagneticField {
         static SignalDescriptor calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
                                                                     double initialPermeability);
 
-        WindingWindowMagneticStrengthFieldOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField = std::nullopt);
+        WindingWindowMagneticStrengthFieldOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField = std::nullopt, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
 
         static std::shared_ptr<MagneticFieldStrengthFringingEffectModel> factory(MagneticFieldStrengthFringingEffectModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory(MagneticFieldStrengthModels modelName);

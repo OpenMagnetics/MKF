@@ -158,13 +158,25 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     return magneticFieldStrengthGap;
 }
 
-WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField) {
+WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings->get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
+
+    std::vector<int8_t> currentDirectionPerWinding;
+    if (!customCurrentDirectionPerWinding) {
+        currentDirectionPerWinding.push_back(1);
+        for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+            currentDirectionPerWinding.push_back(-1);
+        }
+    }
+    else {
+        currentDirectionPerWinding = customCurrentDirectionPerWinding.value();
+    }
+
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0);
+        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0, currentDirectionPerWinding);
         // We only process the harmonic that comes from the external field
         for (auto field : aux) {
             if (field.get_frequency() == externalInducedField.value().get_frequency()) {
@@ -174,7 +186,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         }
     }
     else {
-        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold);
+        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold, currentDirectionPerWinding);
     }
 
     if (!magnetic.get_coil().get_turns_description()) {

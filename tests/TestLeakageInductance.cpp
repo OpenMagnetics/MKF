@@ -4,7 +4,6 @@
 #include "CoreWrapper.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
-#include "Painter.h"
 
 #include <UnitTest++.h>
 #include <filesystem>
@@ -21,10 +20,8 @@ SUITE(LeakageInductance) {
     double maximumError = 0.1;
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
-
     TEST(Test_Leakage_Inductance_E_0) {
         settings->reset();
-        double temperature = 20;
         std::vector<int64_t> numberTurns({69, 69});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -73,31 +70,10 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 6.7e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
@@ -107,7 +83,6 @@ SUITE(LeakageInductance) {
         // settings->set_coil_wind_even_if_not_fit(true);
         // settings->set_coil_try_rewind(false);
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({64, 20});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -158,54 +133,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 13e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
-        auto outFile = outputFilePath;
-        outFile.append("Test_Leakage_Inductance_E_1.svg");
-        std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
-        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-        settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_maximum_value_colorbar(std::nullopt);
-        settings->set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_sections(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-        settings->reset();
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_E_2) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({16, 6});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -260,38 +197,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 4e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_E_3) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({36, 26});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -346,38 +261,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 8e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_Parallels_No_Interleaving) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({24, 6});
         std::vector<int64_t> numberParallels({2, 4});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -430,38 +323,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 7e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_Parallels_Interleaving) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({24, 6});
         std::vector<int64_t> numberParallels({2, 4});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -514,38 +385,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 2e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_ETD_0) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({60, 59});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -597,31 +446,10 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 40e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
@@ -629,7 +457,6 @@ SUITE(LeakageInductance) {
     TEST(Test_Leakage_Inductance_PQ_26_0) {
 
         settings->set_coil_try_rewind(false);
-        double temperature = 20;
         std::vector<int64_t> numberTurns({27, 3});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -684,38 +511,16 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 100e-6;
 
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
     TEST(Test_Leakage_Inductance_PQ_40_Horizontal) {
 
-        double temperature = 20;
         std::vector<int64_t> numberTurns({20, 2});
         std::vector<int64_t> numberParallels({1, 3});
         std::vector<double> turnsRatios({10});
@@ -766,29 +571,9 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 9.9e-6;
-
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
@@ -796,7 +581,6 @@ SUITE(LeakageInductance) {
     TEST(Test_Leakage_Inductance_PQ_40_Vertical) {
 
         settings->set_coil_try_rewind(false);
-        double temperature = 20;
         std::vector<int64_t> numberTurns({20, 2});
         std::vector<int64_t> numberParallels({1, 3});
         std::vector<double> turnsRatios({10});
@@ -847,47 +631,77 @@ SUITE(LeakageInductance) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
-        double offset = 0;
         double frequency = 100000;
-        double peakToPeak = 2;
-        double dutyCycle = 0.5;
-        double magnetizingInductance = 1e-3;
         double expectedLeakageInductance = 40e-6;
 
-        OpenMagnetics::Processed processed;
-        processed.set_label(label);
-        processed.set_offset(offset);
-        processed.set_peak_to_peak(peakToPeak);
-        processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                              magnetizingInductance,
-                                                                                              temperature,
-                                                                                              label,
-                                                                                              peakToPeak,
-                                                                                              dutyCycle,
-                                                                                              offset,
-                                                                                              turnsRatios);
-
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(inputs.get_operating_point(0), magnetic).get_leakage_inductance_per_winding()[0].get_nominal().value();
-        CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
-        auto outFile = outputFilePath;
-        outFile.append("Test_Leakage_Inductance_PQ_40_Vertical.svg");
-        std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
-        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-        settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_maximum_value_colorbar(std::nullopt);
-        settings->set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_sections(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         settings->reset();
     }
 
+    TEST(Test_Leakage_Inductance_Three_Windings) {
+        settings->reset();
+        std::vector<int64_t> numberTurns({50, 100, 25});
+        std::vector<int64_t> numberParallels({1, 1, 1});
+        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1], double(numberTurns[0]) / numberTurns[2]});
+        std::string shapeName = "E 42/33/20";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireRound strand;
+        OpenMagnetics::WireWrapper wire;
+        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
+        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        strandConductingDiameter.set_nominal(0.00005);
+        strandOuterDiameter.set_nominal(0.000055);
+        strand.set_conducting_diameter(strandConductingDiameter);
+        strand.set_outer_diameter(strandOuterDiameter);
+        strand.set_number_conductors(1);
+        strand.set_material("copper");
+        strand.set_type(OpenMagnetics::WireType::ROUND);
+
+        wire.set_strand(strand);
+        wire.set_nominal_value_outer_diameter(0.000752);
+        wire.set_number_conductors(350);
+        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wires.push_back(wire);
+        wires.push_back(wire);
+        wires.push_back(wire);
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        double frequency = 100000;
+
+        auto leakageInductance_01 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance_10 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
+
+        CHECK_CLOSE(leakageInductance_01, leakageInductance_10 * pow(double(numberTurns[0]) / numberTurns[1], 2), leakageInductance_01 * 0.01);
+
+        auto leakageInductance_02 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 2).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance_20 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 2, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        CHECK_CLOSE(leakageInductance_02, leakageInductance_20 * pow(double(numberTurns[0]) / numberTurns[2], 2), leakageInductance_02 * 0.01);
+
+        auto leakageInductance_12 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 2).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageInductance_21 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 2, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        CHECK_CLOSE(leakageInductance_12, leakageInductance_21 * pow(double(numberTurns[1]) / numberTurns[2], 2), leakageInductance_12 * 0.01);
+        settings->reset();
+    }
 }
