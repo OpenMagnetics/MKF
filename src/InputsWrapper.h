@@ -80,6 +80,14 @@ class InputsWrapper : public Inputs {
                                                                   double dutyCycle,
                                                                   double dcCurrent,
                                                                   std::vector<double> turnsRatios = {});
+    static InputsWrapper create_quick_operating_point_only_current(double frequency,
+                                                                  double magnetizingInductance,
+                                                                  double temperature,
+                                                                  WaveformLabel waveShape,
+                                                                  std::vector<double> peakToPeaks,
+                                                                  double dutyCycle,
+                                                                  double dcCurrent,
+                                                                  std::vector<double> turnsRatios = {});
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
     static Waveform create_waveform(Processed processed, double frequency);

@@ -163,7 +163,10 @@ namespace OpenMagnetics {
                 auto combinationsSolidInsulationRequirementsForWires = get_solid_insulation_requirements_for_wires(mas.get_mutable_inputs(), pattern, repetition);
                 for(size_t insulationIndex = 0; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
                     auto solidInsulationRequirementsForWires = combinationsSolidInsulationRequirementsForWires[insulationIndex];
-                    std::string reference = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
+                    std::string reference = "Custom";
+                    if (mas.get_magnetic().get_manufacturer_info() && mas.get_magnetic().get_manufacturer_info()->get_reference()) {
+                        reference = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
+                    }
 
                     reference += ", Turns: ";
                     reference += std::to_string(mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns());
@@ -429,8 +432,6 @@ namespace OpenMagnetics {
             }
         }
 
-        // std::cout << wireCoilPerWinding[0].size() << std::endl;
-        // std::cout << wireCoilPerWinding[1].size() << std::endl;
 
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {
@@ -456,32 +457,21 @@ namespace OpenMagnetics {
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
             mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
-            // settings->set_coil_wind_even_if_not_fit(true);
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
-
-            // auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-            // auto outFile = outputFilePath;
-            // std::string filename = "Debug_" + std::to_string(std::rand()) + ".svg";
-            // outFile.append(filename);
-            // OpenMagnetics::Painter painter(outFile);
-
-            // painter.paint_core(mas.get_mutable_magnetic());
-            // painter.paint_bobbin(mas.get_mutable_magnetic());
-            // painter.paint_coil_sections(mas.get_mutable_magnetic());
-            // painter.paint_coil_turns(mas.get_mutable_magnetic());
-            // painter.export_svg();
-
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
                 mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
+                if (!mas.get_mutable_magnetic().get_manufacturer_info()) {
+                    MagneticManufacturerInfo manufacturerInfo;
+                    mas.get_mutable_magnetic().set_manufacturer_info(manufacturerInfo);
+                }
                 auto info = mas.get_mutable_magnetic().get_manufacturer_info().value();
                 auto auxReference = reference;
                 auxReference += std::to_string(wiresIndex);
                 info.set_reference(auxReference);
                 mas.get_mutable_magnetic().set_manufacturer_info(info);
 
-                std::string name = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
                 masMagneticsWithCoil.push_back(mas);
                 wiresIndex++;
                 if (masMagneticsWithCoil.size() == maximumNumberResults) {

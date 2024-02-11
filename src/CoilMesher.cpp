@@ -62,7 +62,7 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(CoilWrapper coil, Op
 
 
 
-std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto defaults = Defaults();
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
@@ -72,6 +72,16 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
     auto wirePerWinding = coil.get_wires();
     auto turns = coil.get_turns_description().value();
 
+    std::vector<int8_t> currentDirectionPerWinding;
+    if (!customCurrentDirectionPerWinding) {
+        currentDirectionPerWinding.push_back(1);
+        for (size_t windingIndex = 1; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+            currentDirectionPerWinding.push_back(-1);
+        }
+    }
+    else {
+        currentDirectionPerWinding = customCurrentDirectionPerWinding.value();
+    }
 
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, defaults.ambientTemperature);
     auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
@@ -84,8 +94,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
 
     std::vector<std::shared_ptr<CoilMesherModel>> breakdownModelPerWinding;
 
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex)
-    {
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         std::shared_ptr<CoilMesherModel> model;
 
         switch(coil.get_wire_type(windingIndex)) {
@@ -132,9 +141,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
         for (auto harmonicIndex : commonHarmonicIndexes) {
             auto harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
             auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
-            if (windingIndex > 0) {
-                harmonicCurrentPeakInTurn *= -1;
-            }
+            harmonicCurrentPeakInTurn *= currentDirectionPerWinding[windingIndex];
             for (auto& fieldPoint : fieldPoints) {
                 FieldPoint fieldPointThisHarmonic(fieldPoint);
                 fieldPointThisHarmonic.set_value(fieldPoint.get_value() * harmonicCurrentPeakInTurn);

@@ -30,7 +30,7 @@ class CoilMesher {
     double _windingLossesHarmonicAmplitudeThreshold;
     double _quickModeForManyHarmonicsThreshold = 1;
   public:
-    std::vector<Field> generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
+    std::vector<Field> generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
     std::vector<Field> generate_mesh_induced_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold);
     std::vector<size_t> get_common_harmonic_indexes(CoilWrapper coil, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
 };
