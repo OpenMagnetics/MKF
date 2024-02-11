@@ -175,24 +175,6 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
 
     settings->set_magnetic_field_include_fringing(originallyIncludeFringing);
 
-    auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-    auto outFile = outputFilePath;
-    outFile.append("Test_Leakage_Inductance_Three_Windings_" + std::to_string(sourceIndex) + "_" + std::to_string(destinationIndex) + ".svg");
-    std::filesystem::remove(outFile);
-    OpenMagnetics::Painter painter(outFile);
-    settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-    settings->set_painter_logarithmic_scale(false);
-    settings->set_painter_include_fringing(false);
-    settings->set_painter_maximum_value_colorbar(std::nullopt);
-    settings->set_painter_minimum_value_colorbar(std::nullopt);
-    painter.paint_magnetic_field(operatingPoint, magnetic, 0, field);
-    painter.paint_core(magnetic);
-    painter.paint_bobbin(magnetic);
-    // painter.paint_coil_sections(magnetic);
-    painter.paint_coil_turns(magnetic);
-    painter.export_svg();
-    settings->reset();
-
     return leakageInductanceOutput;
 }
 
