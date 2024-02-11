@@ -178,4 +178,28 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     return leakageInductanceOutput;
 }
 
+
+LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance_all_windings(MagneticWrapper magnetic, double frequency, size_t sourceIndex, size_t harmonicIndex) {
+    LeakageInductanceOutput leakageInductanceOutput;
+
+    leakageInductanceOutput.set_method_used("Energy");
+    leakageInductanceOutput.set_origin(ResultOrigin::SIMULATION);
+    std::vector<DimensionWithTolerance> leakageInductancePerWinding;
+
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        double leakageInductance = 0;
+        if (windingIndex != sourceIndex) {
+            leakageInductance = calculate_leakage_inductance(magnetic, frequency, sourceIndex, windingIndex, harmonicIndex).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        }
+
+        DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(leakageInductance);
+        leakageInductancePerWinding.push_back(dimensionWithTolerance);
+    }
+
+    leakageInductanceOutput.set_leakage_inductance_per_winding(leakageInductancePerWinding);
+
+    return leakageInductanceOutput;
+}
+
 } // namespace OpenMagnetics
