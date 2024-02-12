@@ -457,6 +457,7 @@ namespace OpenMagnetics {
             mas.get_mutable_magnetic().get_mutable_coil().set_functional_description(coilFunctionalDescription);
 
             mas.get_mutable_magnetic().get_mutable_coil().reset_margins_per_section();
+
             bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
 
             if (wound) {
