@@ -359,13 +359,15 @@ bool CoilWrapper::are_sections_and_layers_fitting() {
     }
     auto sections = get_sections_description().value();
     auto layers = get_layers_description().value();
+
     for (auto& section: sections) {
-        if (section.get_filling_factor().value() > 1 || horizontal_filling_factor(section) > 1 || vertical_filling_factor(section) > 1) {
+
+        if (roundFloat(section.get_filling_factor().value(), 6) > 1 || roundFloat(horizontal_filling_factor(section), 6) > 1 || roundFloat(vertical_filling_factor(section), 6) > 1) {
             windTurns = false;
         }
     }
     for (auto& layer: layers) {
-        if (layer.get_filling_factor().value() > 1) {
+        if (roundFloat(layer.get_filling_factor().value(), 6) > 1) {
             windTurns = false;
         }
     }
@@ -909,12 +911,6 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
 
             std::vector<double> sectionParallelsProportion = parallels_proportions.second;
             uint64_t physicalTurnsThisSection = parallels_proportions.first;
-
-            // auto settings = Settings::GetInstance();
-            // if (settings->get_verbose()) {
-            //     std::cout << "_marginsPerSection[sectionIndex][0]: " << _marginsPerSection[sectionIndex][0] << std::endl;
-            //     std::cout << "_marginsPerSection[sectionIndex][1]: " << _marginsPerSection[sectionIndex][1] << std::endl;
-            // }
 
             partialWinding.set_parallels_proportion(sectionParallelsProportion);
             section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
