@@ -12,6 +12,8 @@ class Settings
 
         static Settings* settings_;
 
+        bool _magnetizingInductanceIncludeAirInductance = false;
+
         bool _coilAllowMarginTape = true;
         bool _coilAllowInsulatedWire = true;
         bool _coilFillSectionsWithMarginTape = false;
@@ -52,6 +54,9 @@ class Settings
 
         bool get_verbose() const;
         void set_verbose(bool value);
+
+        bool get_magnetizing_inductance_include_air_inductance() const;
+        void set_magnetizing_inductance_include_air_inductance(bool value);
 
         bool get_coil_allow_margin_tape() const;
         void set_coil_allow_margin_tape(bool value);
