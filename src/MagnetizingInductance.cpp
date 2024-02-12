@@ -3,6 +3,7 @@
 #include "InputsWrapper.h"
 #include "MagneticField.h"
 #include "Reluctance.h"
+#include "Settings.h"
 #include "Utils.h"
 
 #include <cmath>
@@ -33,6 +34,24 @@ void set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
     excitation.set_current(currentExcitation);
     excitation.set_magnetizing_current(excitation.get_current().value());
     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+}
+
+double calculate_air_inductance(int64_t numberTurnsPrimary, CoreWrapper core) {
+
+    auto bobbin = BobbinWrapper::create_quick_bobbin(core);
+    auto bobbinColumnDepth = bobbin.get_processed_description()->get_column_depth();
+    auto bobbinColumnWidth = bobbin.get_processed_description()->get_column_width().value();
+    auto bobbinWindingWindowWidth = bobbin.get_winding_window_dimensions()[0];
+    auto bobbinWindingWindowHeight = bobbin.get_winding_window_dimensions()[1];
+    auto meanLengthRadius = (bobbinColumnDepth + bobbinColumnWidth) / 2 + bobbinWindingWindowWidth / 4;
+
+    double coilInternalArea = std::numbers::pi * pow(meanLengthRadius, 2);
+
+    double coreColumnArea = core.get_processed_description()->get_columns()[0].get_area();
+
+    double airAreaProportion = (coilInternalArea - coreColumnArea) / coilInternalArea;
+
+    return Constants().vacuumPermeability * pow(numberTurnsPrimary, 2) * (coilInternalArea * airAreaProportion * 2) / bobbinWindingWindowHeight;
 }
 
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(
@@ -143,6 +162,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     if (!excitation.get_voltage()) {
         operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, currentMagnetizingInductance));
+    }
+
+    auto settings = Settings::GetInstance();
+    if (settings->get_magnetizing_inductance_include_air_inductance()) {
+        currentMagnetizingInductance += calculate_air_inductance(numberTurnsPrimary, core);
     }
 
     DimensionWithTolerance magnetizingInductanceWithTolerance;

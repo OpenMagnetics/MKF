@@ -1,6 +1,7 @@
 #include "MagnetizingInductance.h"
 #include "BobbinWrapper.h"
 #include "TestingUtils.h"
+#include "Settings.h"
 #include "Utils.h"
 #include "json.hpp"
 
@@ -745,6 +746,7 @@ SUITE(MagnetizingInductance) {
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
+
     TEST(Test_Magnetizing_Inductance_Toroid_Stacks) {
         double dcCurrent = 0;
         double ambientTemperature = 25;
@@ -826,6 +828,66 @@ SUITE(MagnetizingInductance) {
             magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+    }
+
+    TEST(Test_Inductance_Powder_E_65) {
+        double max_error = 0.15;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 10;
+        double frequency = 100000;
+        std::string coreShape = "E 65/32/27";
+        std::string coreMaterial = "Kool Mµ 40";
+        auto gapping = OpenMagneticsTesting::get_residual_gap();
+        double expectedValue = 23e-6;
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::CoilWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_magnetizing_inductance_include_air_inductance(true);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        settings->reset();
+    }
+
+
+    TEST(Test_Inductance_Powder_E_34) {
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 10;
+        double frequency = 100000;
+        std::string coreShape = "E 34/14/9";
+        std::string coreMaterial = "Edge 26";
+        auto gapping = OpenMagneticsTesting::get_residual_gap();
+        double expectedValue = 5.6e-6;
+
+        OpenMagnetics::CoreWrapper core;
+        OpenMagnetics::CoilWrapper winding;
+        OpenMagnetics::InputsWrapper inputs;
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, 20e6, gapping, coreShape,
+                                coreMaterial, core, winding, inputs);
+
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_magnetizing_inductance_include_air_inductance(true);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto aux = magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint);
+        double magnetizingInductance = aux.get_magnetizing_inductance().get_nominal().value();
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+        settings->reset();
     }
 
 

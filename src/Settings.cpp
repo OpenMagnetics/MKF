@@ -12,6 +12,8 @@ namespace OpenMagnetics {
     }
 
     void Settings::reset() {
+        _magnetizingInductanceIncludeAirInductance = false;
+
         _coilAllowMarginTape = true;
         _coilAllowInsulatedWire = true;
         _coilFillSectionsWithMarginTape = false;
@@ -50,6 +52,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_verbose(bool value) {
         _verbose = value;
+    }
+
+    bool Settings::get_magnetizing_inductance_include_air_inductance() const {
+        return _magnetizingInductanceIncludeAirInductance;
+    }
+    void Settings::set_magnetizing_inductance_include_air_inductance(bool value) {
+        _magnetizingInductanceIncludeAirInductance = value;
     }
 
     bool Settings::get_coil_allow_margin_tape() const {
