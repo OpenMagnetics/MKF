@@ -48,21 +48,30 @@ namespace OpenMagnetics {
         size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
         size_t coresWound = 0;
-        for (auto& masMagneticWithCore : masMagneticsWithCore) {
-            // std::cout << "core:                                                                 " << masMagneticWithCore.first.get_magnetic().get_core().get_name().value() << std::endl;
+        for (auto& [core, coreScoring] : masMagneticsWithCore) {
+            // std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
             // std::cout << "Getting coil" << std::endl;
-            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(masMagneticWithCore.first, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
+            std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
+
+            auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(core, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
                 coresWound++;
             }
             size_t processedCoils = 0;
             for (auto mas : masMagneticsWithCoreAndCoil) {
+                size_t numberSections = mas.get_magnetic().get_coil().get_sections_description()->size();
+                double margin = mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin().value()[0];
+                std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
+                if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
+                    continue;
+                }
 
                 mas = magneticSimulator.simulate(mas);
                 processedCoils++;
 
                 masData.push_back(mas);
                 if (processedCoils >= size_t(ceil(maximumNumberResults * 0.5))) {
+                    usedNumberSectionsAndMargin.push_back(numberSectionsAndMarginCombination);
                     break;
                 }
             }

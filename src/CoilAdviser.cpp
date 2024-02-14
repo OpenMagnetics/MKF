@@ -126,7 +126,12 @@ namespace OpenMagnetics {
         if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
             return {1};  // hardcoded
         }
-        return {1, 2};  // hardcoded        
+        if (inputs.get_design_requirements().get_leakage_inductance()) {
+            return {2, 1};  // hardcoded        
+        }
+        else{
+            return {1, 2};  // hardcoded        
+        }
     }
 
 
