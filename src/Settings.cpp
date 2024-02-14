@@ -43,6 +43,9 @@ namespace OpenMagnetics {
         _magneticFieldIncludeFringing = true;
         
         _coilAdviserMaximumNumberWires = 100;
+        _coreIncludeStacks = true;
+        _coreIncludeDistributedGaps = true;
+
         _verbose = false;
 
     }
