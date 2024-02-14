@@ -918,6 +918,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     CoilWrapper coil = get_dummy_coil(inputs);
+    auto settings = Settings::GetInstance();
+    auto globalIncludeStacks = settings->get_core_include_stacks();
+    auto globalIncludeDistributedGaps = settings->get_core_include_distributed_gaps();
 
     MagneticWrapper magnetic;
     MasWrapper mas;
@@ -933,11 +936,16 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
         }
 
         core.process_data();
+
         if (!core.process_gap()) {
             continue;
         }
 
-        if (includeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
+        if (!globalIncludeDistributedGaps && core.get_gapping().size() > core.get_processed_description()->get_columns().size()) {
+            continue;
+        }
+
+        if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
@@ -1025,6 +1033,7 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
             core.process_gap();
         }
         double numberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+
         (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(numberTurns);
     }
 }
@@ -1091,27 +1100,48 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
         }
     }
 
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
+        auto excitation = InputsWrapper::get_primary_excitation(inputs.get_mutable_operating_points()[operatingPointIndex]);
+        if (!excitation.get_voltage()) {
+            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance())));
+            InputsWrapper::set_current_as_magnetizing_current(&inputs.get_mutable_operating_points()[operatingPointIndex]);
+        }
+        else if (!excitation.get_magnetizing_current()) {
+            auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation,
+                                                                                   resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()),
+                                                                                   false);
+
+            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+        }
+
+    }
+
     std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoring;
 
     switch (firstFilter) {
         case CoreAdviserFilters::AREA_PRODUCT: 
 
+
             masMagneticsWithScoring = filterAreaProduct.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::AREA_PRODUCT], true);
             break;
         case CoreAdviserFilters::ENERGY_STORED: 
+
 
             masMagneticsWithScoring = filterEnergyStored.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::ENERGY_STORED], true);
             break;
         case CoreAdviserFilters::COST: 
 
+
             masMagneticsWithScoring = filterCost.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::COST], true);
             break;
         case CoreAdviserFilters::EFFICIENCY: 
+
 
             add_initial_turns(masMagnetics, inputs);
             masMagneticsWithScoring = filterLosses.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::EFFICIENCY], true);
             break;
         case CoreAdviserFilters::DIMENSIONS: 
+
 
             masMagneticsWithScoring = filterDimensions.filter_magnetics(masMagnetics, weights[CoreAdviserFilters::DIMENSIONS], true);
             break;

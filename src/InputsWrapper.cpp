@@ -1889,5 +1889,23 @@ std::vector<InsulationStandards> InputsWrapper::get_standards() {
 }
 
 
+void InputsWrapper::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
+    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+    auto current = excitation.get_current().value();
+
+    auto currentExcitation = excitation.get_current().value();
+    auto currentExcitationWaveform = currentExcitation.get_waveform().value();
+    auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
+
+    if (sampledCurrentWaveform.get_data().size() > 0 && ((sampledCurrentWaveform.get_data().size() & (sampledCurrentWaveform.get_data().size() - 1)) != 0)) {
+        throw std::invalid_argument("sampledCurrentWaveform vector size is not a power of 2");
+    }
+
+    currentExcitation.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+    currentExcitation.set_processed(InputsWrapper::calculate_processed_data(currentExcitation, sampledCurrentWaveform, true));
+    excitation.set_current(currentExcitation);
+    excitation.set_magnetizing_current(excitation.get_current().value());
+    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+}
 
 } // namespace OpenMagnetics

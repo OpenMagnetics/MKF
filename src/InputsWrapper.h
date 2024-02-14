@@ -110,6 +110,7 @@ class InputsWrapper : public Inputs {
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {
         get_mutable_operating_points()[index] = value;
     }
+    static void set_current_as_magnetizing_current(OperatingPoint* operatingPoint);
 
     DimensionWithTolerance get_altitude();
     Cti get_cti();
