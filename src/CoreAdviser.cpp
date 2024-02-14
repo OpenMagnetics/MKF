@@ -903,7 +903,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     }
 
     // masMagnetics = create_mas_dataset(inputs, cores, true);
-    if (needToAddStacks) {
+    auto settings = Settings::GetInstance();
+    auto globalIncludeStacks = settings->get_core_include_stacks();
+    if (needToAddStacks && globalIncludeStacks) {
         expand_mas_dataset_with_stacks(inputs, cores, &masMagnetics);
     }
 
