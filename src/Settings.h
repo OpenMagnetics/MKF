@@ -41,7 +41,11 @@ class Settings
         size_t _magneticFieldNumberPointsY = 50;
         int _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
+
         size_t _coilAdviserMaximumNumberWires = 100;
+        bool _coreIncludeStacks = true;
+        bool _coreIncludeDistributedGaps = true;
+
         bool _verbose = false;
 
     public:
@@ -132,6 +136,12 @@ class Settings
 
         size_t get_coil_adviser_maximum_number_wires() const;
         void set_coil_adviser_maximum_number_wires(size_t value);
+
+        bool get_core_include_stacks() const;
+        void set_core_include_stacks(bool value);
+
+        bool get_core_include_distributed_gaps() const;
+        void set_core_include_distributed_gaps(bool value);
 
     };
 } // namespace OpenMagnetics

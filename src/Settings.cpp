@@ -236,4 +236,18 @@ namespace OpenMagnetics {
         _coilAdviserMaximumNumberWires = value;
     }
 
+    bool Settings::get_core_include_stacks() const {
+        return _coreIncludeStacks;
+    }
+    void Settings::set_core_include_stacks(bool value) {
+        _coreIncludeStacks = value;
+    }
+
+    bool Settings::get_core_include_distributed_gaps() const {
+        return _coreIncludeDistributedGaps;
+    }
+    void Settings::set_core_include_distributed_gaps(bool value) {
+        _coreIncludeDistributedGaps = value;
+    }
+
 } // namespace OpenMagnetics

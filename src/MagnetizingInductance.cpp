@@ -17,25 +17,6 @@
 
 namespace OpenMagnetics {
 
-void set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
-    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
-    auto current = excitation.get_current().value();
-
-    auto currentExcitation = excitation.get_current().value();
-    auto currentExcitationWaveform = currentExcitation.get_waveform().value();
-    auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
-
-    if (sampledCurrentWaveform.get_data().size() > 0 && ((sampledCurrentWaveform.get_data().size() & (sampledCurrentWaveform.get_data().size() - 1)) != 0)) {
-        throw std::invalid_argument("sampledCurrentWaveform vector size is not a power of 2");
-    }
-
-    currentExcitation.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-    currentExcitation.set_processed(InputsWrapper::calculate_processed_data(currentExcitation, sampledCurrentWaveform, true));
-    excitation.set_current(currentExcitation);
-    excitation.set_magnetizing_current(excitation.get_current().value());
-    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
-}
-
 double calculate_air_inductance(int64_t numberTurnsPrimary, CoreWrapper core) {
 
     auto bobbin = BobbinWrapper::create_quick_bobbin(core);
@@ -103,7 +84,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
-        set_current_as_magnetizing_current(operatingPoint);
+        InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
         auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
         if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
             throw std::invalid_argument("magnetizing_current_data vector size from current is not a power of 2");
@@ -204,9 +185,11 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
-        set_current_as_magnetizing_current(&operatingPoint);
+        InputsWrapper::set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
+
+
     while (true) {
 
         auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
@@ -314,7 +297,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
     if (!excitation.get_voltage()) {
-        set_current_as_magnetizing_current(&operatingPoint);
+        InputsWrapper::set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
 
