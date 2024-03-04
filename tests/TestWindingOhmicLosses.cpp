@@ -37,7 +37,7 @@ SUITE(WindingOhmicLosses) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 1;
         interleavingLevel = std::min(uint8_t(numberPhysicalTurns), interleavingLevel);
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
 
         auto winding = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
         return winding;

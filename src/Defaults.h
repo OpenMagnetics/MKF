@@ -30,7 +30,7 @@ struct Defaults {
     const double ambientTemperature = 25;
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
-    const WindingOrientation defaultSectionsOrientation = WindingOrientation::HORIZONTAL;
+    const WindingOrientation defaultSectionsOrientation = WindingOrientation::OVERLAPPING;
     const std::string defaultInsulationMaterial = "ETFE";
 };
 } // namespace OpenMagnetics

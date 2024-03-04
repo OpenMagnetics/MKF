@@ -46,6 +46,7 @@ class Painter{
     void export_png();
 
     void paint_core(MagneticWrapper magnetic);
+    void paint_toroidal_core(CoreWrapper core);
     void paint_two_piece_set_core(CoreWrapper core);
     void paint_bobbin(MagneticWrapper magnetic);
     void paint_two_piece_set_bobbin(MagneticWrapper magnetic);

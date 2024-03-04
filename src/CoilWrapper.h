@@ -37,15 +37,15 @@ class CoilWrapper : public Coil {
 
     public:
         size_t _interleavingLevel = 1;
-        WindingOrientation _windingOrientation = WindingOrientation::HORIZONTAL;
-        WindingOrientation _layersOrientation = WindingOrientation::VERTICAL;
+        WindingOrientation _windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation _layersOrientation = WindingOrientation::OVERLAPPING;
         CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
         CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
         std::optional<InputsWrapper> _inputs;
 
         CoilWrapper(const json& j, size_t interleavingLevel = 1,
-                       WindingOrientation windingOrientation = WindingOrientation::HORIZONTAL,
-                       WindingOrientation layersOrientation = WindingOrientation::VERTICAL,
+                       WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
+                       WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
         CoilWrapper(const Coil coil);
@@ -70,6 +70,8 @@ class CoilWrapper : public Coil {
         bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_layers();
         bool wind_by_turns();
         bool calculate_insulation(bool simpleMode = false);

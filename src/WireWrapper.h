@@ -197,6 +197,7 @@ class WireWrapper : public Wire {
 
         double get_maximum_outer_width();
         double get_maximum_outer_height();
+        double get_maximum_outer_dimension();
         double get_maximum_conducting_width();
         double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();

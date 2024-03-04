@@ -31,7 +31,7 @@ class Settings
         bool _painterIncludeFringing = true;
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
-        std::string _painterColorFerrite = "0x8F7b7c7d";
+        std::string _painterColorFerrite = "0x007b7c7d";
         std::string _painterColorBobbin = "0x8F1b1b1b";
         std::string _painterColorCopper = "0x00b87333";
         std::string _painterColorInsulation = "0x18539796";

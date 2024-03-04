@@ -1498,7 +1498,7 @@ SUITE(CoreProcessedDescription) {
         CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_minimum_area(),
                     0.000125 * numberStacks, 0.000125 * numberStacks * 0.2);
         CHECK_CLOSE(*(core.get_processed_description()->get_winding_windows()[0].get_radial_height()), 0.012, 0.012 * 0.2);
-        CHECK_CLOSE(*(core.get_processed_description()->get_winding_windows()[0].get_angle()), 2 * 3.1415, 2 * 3.1415 * 0.2);
+        CHECK_CLOSE(*(core.get_processed_description()->get_winding_windows()[0].get_angle()), 360, 360 * 0.2);
         CHECK_EQUAL(core.get_processed_description()->get_columns().size(), 1u);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_width(), 0.008, 0.008 * 0.2);
         CHECK_CLOSE(core.get_processed_description()->get_columns()[0].get_depth(), 0.016 * numberStacks,

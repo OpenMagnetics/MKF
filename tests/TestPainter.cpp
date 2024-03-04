@@ -27,8 +27,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -69,8 +69,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -111,8 +111,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -153,8 +153,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -195,8 +195,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -232,8 +232,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -274,8 +274,8 @@ SUITE(FieldPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -317,8 +317,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -360,8 +360,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -403,8 +403,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -447,8 +447,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -494,8 +494,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -542,8 +542,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
@@ -589,8 +589,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
@@ -636,8 +636,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -689,8 +689,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -742,8 +742,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -796,8 +796,8 @@ SUITE(FieldPainter) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
         // auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -842,6 +842,38 @@ SUITE(FieldPainter) {
 SUITE(CoilPainter) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+
+    // TEST(Test_Painter_T_Core) {
+    //     std::vector<int64_t> numberTurns = {2};
+    //     std::vector<int64_t> numberParallels = {1};
+    //     uint8_t interleavingLevel = 1;
+    //     int64_t numberStacks = 1;
+    //     std::string coreShape = "T 80/20/50";
+    //     std::string coreMaterial = "3C97"; 
+    //     settings->set_coil_delimit_and_compact(false);
+    //     auto emptyGapping = json::array();
+
+    // std::cout << "Mierdonaco 0" << std::endl;
+    //     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+    // std::cout << "Mierdonaco 1" << std::endl;
+    //     auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+    // std::cout << "Mierdonaco 2" << std::endl;
+
+    //     auto outFile = outputFilePath;
+    //     outFile.append("Test_Painter_T_Core.svg");
+    //     std::filesystem::remove(outFile);
+    //     OpenMagnetics::Painter painter(outFile);
+    //     OpenMagnetics::Magnetic magnetic;
+    //     magnetic.set_core(core);
+    //     magnetic.set_coil(coil);
+
+    //     painter.paint_core(magnetic);
+    // std::cout << "Mierdonaco 2" << std::endl;
+    //     painter.export_svg();
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    //     CHECK(std::filesystem::exists(outFile));
+    //     settings->reset();
+    // }
 
     TEST(Test_Painter_Pq_Core_Distributed_Gap) {
         std::vector<int64_t> numberTurns = {42};
@@ -1390,8 +1422,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1423,8 +1455,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1456,8 +1488,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1489,8 +1521,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1522,8 +1554,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1555,8 +1587,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1588,8 +1620,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1621,8 +1653,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1654,8 +1686,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1687,8 +1719,8 @@ SUITE(CoilPainter) {
         std::vector<int64_t> numberParallels = {4, 4};
         uint8_t interleavingLevel = 3;
         int64_t numberStacks = 1;
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         std::string coreShape = "PQ 35/30";
         std::string coreMaterial = "3C97";
@@ -1723,8 +1755,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1763,8 +1795,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
@@ -1803,8 +1835,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1845,8 +1877,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
@@ -1883,8 +1915,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1922,8 +1954,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1960,8 +1992,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1998,8 +2030,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2036,8 +2068,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2074,8 +2106,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2112,8 +2144,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2150,8 +2182,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2188,8 +2220,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2226,8 +2258,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2264,8 +2296,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2302,8 +2334,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 26/25";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2341,8 +2373,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 40/40";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2382,8 +2414,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "PQ 40/40";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003, 3);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2505,8 +2537,8 @@ SUITE(CoilPainter) {
         wire.set_type(OpenMagnetics::WireType::ROUND);
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire, wire});
 
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -2550,8 +2582,8 @@ SUITE(CoilPainter) {
         std::string coreShape = "ER 18/3/10";
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 

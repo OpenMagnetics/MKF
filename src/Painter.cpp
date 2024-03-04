@@ -161,6 +161,7 @@ void Painter::export_svg() {
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
     matplot::save(outFile);
 }
+
 void Painter::export_png() {
     auto outFile = std::string {_filepath.string()};
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
@@ -169,12 +170,11 @@ void Painter::export_png() {
     matplot::save(outFile);
 }
 
-
 void Painter::paint_core(MagneticWrapper magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            throw std::runtime_error("T shapes not implemented yet");
+            return paint_toroidal_core(magnetic.get_core());
             break;
         default:
             return paint_two_piece_set_core(magnetic.get_core());
@@ -201,6 +201,7 @@ void Painter::paint_coil_sections(MagneticWrapper magnetic) {
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
             throw std::runtime_error("T shapes not implemented yet");
+            // return paint_toroidal_winding_sections(magnetic);
             break;
         default:
             return paint_two_piece_set_winding_sections(magnetic);
@@ -234,6 +235,33 @@ void Painter::paint_coil_turns(MagneticWrapper magnetic) {
             return paint_two_piece_set_winding_turns(magnetic);
             break;
     }
+}
+
+void Painter::paint_toroidal_core(CoreWrapper core) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+
+    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+    auto processedDescription = core.get_processed_description().value();
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+    auto family = core.get_shape_family();
+
+
+    double coreWidth = processedDescription.get_width();
+    double coreHeight = processedDescription.get_height();
+
+    matplot::gcf()->size(coreWidth * _scale, coreHeight * _scale);
+    matplot::xlim({-coreWidth / 2, coreWidth / 2});
+    matplot::ylim({-coreHeight / 2, coreHeight / 2});
+    matplot::gca()->cb_inside(true);
+    matplot::gca()->cb_position({0.05f, 0.05f, 0.05f, 0.9f});
+    matplot::gca()->position({0.0f, 0.0f, 1.0f, 1.0f});
+
+
+    double strokeWidth = mainColumn.get_width();
+    double circleDiameter = processedDescription.get_width() - strokeWidth * 2;
+    matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(settings->get_painter_color_ferrite()));
+    matplot::ellipse(circleDiameter / 2, -circleDiameter / 2, -circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(settings->get_painter_color_ferrite()));
+
 }
 
 void Painter::paint_two_piece_set_core(CoreWrapper core) {
@@ -438,13 +466,13 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                 auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
                 auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
                 std::vector<std::vector<double>> marginPoints = {};
-                if (sectionsOrientation == WindingOrientation::HORIZONTAL) {
+                if (sectionsOrientation == WindingOrientation::OVERLAPPING) {
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2 - margins[0]}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] + windingWindowDimensions[1] / 2 - margins[0]}));
                 }
-                else if (sectionsOrientation == WindingOrientation::VERTICAL) {
+                else if (sectionsOrientation == WindingOrientation::CONTIGUOUS) {
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] - windingWindowDimensions[0] / 2 + margins[0], sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
@@ -470,13 +498,13 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                 auto windingWindowCoordinates = bobbin.get_winding_window_coordinates();
                 auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
                 std::vector<std::vector<double>> marginPoints = {};
-                if (sectionsOrientation == WindingOrientation::HORIZONTAL) {
+                if (sectionsOrientation == WindingOrientation::OVERLAPPING) {
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2 + margins[1]}));
                     marginPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, bobbinCoordinates[1] + windingWindowCoordinates[1] - windingWindowDimensions[1] / 2 + margins[1]}));
                 }
-                else if (sectionsOrientation == WindingOrientation::VERTICAL) {
+                else if (sectionsOrientation == WindingOrientation::CONTIGUOUS) {
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
                     marginPoints.push_back(std::vector<double>({bobbinCoordinates[0] + windingWindowCoordinates[0] + windingWindowDimensions[0] / 2 - margins[1], sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
@@ -529,6 +557,42 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
 
     paint_two_piece_set_margin(magnetic);
 }
+
+// void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
+//     auto settings = OpenMagnetics::Settings::GetInstance();
+//     auto constants = Constants();
+
+//     if (!magnetic.get_coil().get_sections_description()) {
+//         throw std::runtime_error("Winding sections not created");
+//     }
+
+//     auto sections = magnetic.get_coil().get_sections_description().value();
+
+//     for (size_t i = 0; i < sections.size(); ++i){
+
+//         {
+//             std::vector<std::vector<double>> sectionPoints = {};
+//             sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+//             sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2}));
+//             sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+//             sectionPoints.push_back(std::vector<double>({sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2, sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2}));
+
+//             std::vector<double> x, y;
+//             for (auto& point : sectionPoints) {
+//                 x.push_back(point[0]);
+//                 y.push_back(point[1]);
+//             }
+//             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+//                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+//             }
+//             else {
+//                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+//             }
+//         }
+//     }
+
+//     paint_two_piece_set_margin(magnetic);
+// }
 
 void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();

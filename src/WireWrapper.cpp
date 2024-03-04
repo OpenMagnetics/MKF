@@ -1165,6 +1165,11 @@ namespace OpenMagnetics {
         }
     }
 
+
+    double WireWrapper::get_maximum_outer_dimension() {
+        return std::max(get_maximum_outer_width(), get_maximum_outer_height());
+    }
+
     double WireWrapper::get_maximum_conducting_width() {
         switch (get_type()) {
             case WireType::LITZ:

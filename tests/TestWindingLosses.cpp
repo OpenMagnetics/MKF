@@ -50,8 +50,8 @@ SUITE(WindingLossesRound) {
                                                                                          offset);
 
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -97,8 +97,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -172,8 +172,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -250,8 +250,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1, 1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 2;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -332,8 +332,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -407,8 +407,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -478,8 +478,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -549,8 +549,8 @@ SUITE(WindingLossesRound) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -624,8 +624,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -709,8 +709,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -794,8 +794,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -873,8 +873,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -958,8 +958,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1043,8 +1043,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1128,8 +1128,8 @@ SUITE(WindingLossesLitz) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "P 26/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1218,8 +1218,8 @@ SUITE(WindingLossesRectangular) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 44/22/15";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1304,8 +1304,8 @@ SUITE(WindingLossesRectangular) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1387,8 +1387,8 @@ SUITE(WindingLossesRectangular) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1470,8 +1470,8 @@ SUITE(WindingLossesRectangular) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1553,8 +1553,8 @@ SUITE(WindingLossesRectangular) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 27/17";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1678,8 +1678,8 @@ SUITE(WindingLossesFoil) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1756,8 +1756,8 @@ SUITE(WindingLossesFoil) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -1834,8 +1834,8 @@ SUITE(WindingLossesFoil) {
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
