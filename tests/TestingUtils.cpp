@@ -128,10 +128,62 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> number
     json windingWindow;
     windingWindow["height"] = bobbinHeight;
     windingWindow["width"] = bobbinWidth;
+    windingWindow["shape"] = OpenMagnetics::WindingWindowShape::RECTANGULAR;
     windingWindow["coordinates"] = json::array();
     for (auto& coord : bobbinCenterCoodinates) {
         windingWindow["coordinates"].push_back(coord);
     }
+    coilJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
+
+    for (size_t i = 0; i < numberTurns.size(); ++i){
+        json individualcoilJson;
+        individualcoilJson["name"] = "winding " + std::to_string(i);
+        individualcoilJson["numberTurns"] = numberTurns[i];
+        individualcoilJson["numberParallels"] = numberParallels[i];
+        individualcoilJson["isolationSide"] = "primary";
+        if (i < wires.size()) {
+            individualcoilJson["wire"] = wires[i];
+        }
+        else {
+            individualcoilJson["wire"] = "0.475 - Grade 1";
+        }
+        coilJson["functionalDescription"].push_back(individualcoilJson);
+    }
+
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    settings->set_coil_delimit_and_compact(false);
+
+    OpenMagnetics::CoilWrapper coil(coilJson, interleavingLevel, windingOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+    return coil;
+}
+
+OpenMagnetics::CoilWrapper get_quick_toroidal_coil_no_compact(std::vector<int64_t> numberTurns,
+                                                              std::vector<int64_t> numberParallels,
+                                                              double bobbinRadialHeight,
+                                                              double bobbinAngle,
+                                                              double columnDepth,
+                                                              uint8_t interleavingLevel,
+                                                              OpenMagnetics::WindingOrientation windingOrientation,
+                                                              OpenMagnetics::WindingOrientation layersOrientation,
+                                                              OpenMagnetics::CoilAlignment turnsAlignment,
+                                                              OpenMagnetics::CoilAlignment sectionsAlignment,
+                                                              std::vector<OpenMagnetics::WireWrapper> wires){
+    json coilJson;
+    coilJson["functionalDescription"] = json::array();
+
+    coilJson["bobbin"] = json();
+    coilJson["bobbin"]["processedDescription"] = json();
+    coilJson["bobbin"]["processedDescription"]["wallThickness"] = 0.0;
+    coilJson["bobbin"]["processedDescription"]["columnThickness"] = 0.0;
+    coilJson["bobbin"]["processedDescription"]["columnShape"] = OpenMagnetics::ColumnShape::ROUND;
+    coilJson["bobbin"]["processedDescription"]["columnDepth"] = columnDepth;
+    coilJson["bobbin"]["processedDescription"]["windingWindows"] = json::array();
+
+    json windingWindow;
+    windingWindow["radialHeight"] = bobbinRadialHeight;
+    windingWindow["angle"] = bobbinAngle;
+    windingWindow["shape"] = OpenMagnetics::WindingWindowShape::ROUND;
+    windingWindow["coordinates"] = json::array({0, 0, 0});
     coilJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
 
     for (size_t i = 0; i < numberTurns.size(); ++i){
@@ -432,11 +484,11 @@ void check_sections_description(OpenMagnetics::CoilWrapper coil,
         if(sectionsDescription[i].get_type() == OpenMagnetics::ElectricalType::INSULATION) {
         }
         else {
-            if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
                 CHECK(sectionsDescription[i].get_coordinates()[0] < sectionsDescription[i + 1].get_coordinates()[0]);
                 CHECK(sectionsDescription[i].get_coordinates()[1] == sectionsDescription[i + 1].get_coordinates()[1]);
             } 
-            else if (windingOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
+            else if (windingOrientation == OpenMagnetics::WindingOrientation::CONTIGUOUS) {
                 CHECK(sectionsDescription[i].get_coordinates()[1] > sectionsDescription[i + 1].get_coordinates()[1]);
                 CHECK(sectionsDescription[i].get_coordinates()[0] == sectionsDescription[i + 1].get_coordinates()[0]);
             }
@@ -481,12 +533,12 @@ void check_layers_description(OpenMagnetics::CoilWrapper coil,
                 CHECK(OpenMagnetics::roundFloat(sectionParallelsProportion[i], 9) == OpenMagnetics::roundFloat(sectionParallelsProportionExpected[i], 9));
             }
             for (size_t i = 0; i < layers.size() - 1; ++i){
-                if (layersOrientation == OpenMagnetics::WindingOrientation::VERTICAL) {
+                if (layersOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
                     CHECK(layers[i].get_coordinates()[0] < layers[i + 1].get_coordinates()[0]);
                     CHECK(layers[i].get_coordinates()[1] == layers[i + 1].get_coordinates()[1]);
                     CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);
                 } 
-                else if (layersOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                else if (layersOrientation == OpenMagnetics::WindingOrientation::CONTIGUOUS) {
                     CHECK(layers[i].get_coordinates()[1] > layers[i + 1].get_coordinates()[1]);
                     CHECK(layers[i].get_coordinates()[0] == layers[i + 1].get_coordinates()[0]);
                     CHECK(layers[i].get_coordinates()[2] == layers[i + 1].get_coordinates()[2]);

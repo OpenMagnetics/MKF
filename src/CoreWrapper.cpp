@@ -1637,9 +1637,9 @@ class CorePieceT : public CorePiece {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         windingWindow.set_radial_height(dimensions["B"] / 2);
-        windingWindow.set_angle(2 * std::numbers::pi);
+        windingWindow.set_angle(360);
         windingWindow.set_area(std::numbers::pi * pow(dimensions["B"] / 2, 2));
-        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["B"]) / 4, 0}));
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["B"]) / 2, 0}));
         set_winding_window(windingWindow);
     }
 

@@ -27,8 +27,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "E 42/33/20";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -88,8 +88,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "E 42/33/20";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -148,8 +148,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "E 42/33/20";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -212,8 +212,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "E 65/32/27";
         uint8_t interleavingLevel = 2;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -276,8 +276,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "PQ 32/25";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -338,8 +338,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "PQ 32/25";
         uint8_t interleavingLevel = 2;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -400,8 +400,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "ETD 39";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -462,8 +462,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
         std::string shapeName = "PQ 26/25";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
@@ -526,8 +526,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({10});
         std::string shapeName = "PQ 40/40";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
@@ -586,8 +586,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({10});
         std::string shapeName = "PQ 40/40";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
@@ -645,8 +645,8 @@ SUITE(LeakageInductance) {
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1], double(numberTurns[0]) / numberTurns[2]});
         std::string shapeName = "E 42/33/20";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 

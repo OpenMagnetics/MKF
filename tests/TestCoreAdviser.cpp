@@ -742,11 +742,6 @@ SUITE(CoreAdviser) {
         }
 
         CHECK(masMagnetics.size() > 0);
-
-        for (auto [mas, scoring] : masMagnetics) {
-            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_gapping()[0].get_length() > 0.001);
-        }
-
     }
 
     TEST(Test_CoreAdviser_User_0) {

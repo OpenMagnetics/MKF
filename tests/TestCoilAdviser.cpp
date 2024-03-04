@@ -799,8 +799,8 @@ SUITE(CoilAdviser) {
             }
 
             int turnsAlignmentIndex = std::rand() % 4;
-            int windingOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
-            int layersOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
+            int windingOrientationIndex = std::rand() % 2;
+            int layersOrientationIndex = std::rand() % 2;
             OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(turnsAlignmentIndex).value();
             OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(windingOrientationIndex).value();
             OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(layersOrientationIndex).value();
@@ -1067,7 +1067,7 @@ SUITE(CoilAdviser) {
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(3).value();
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.00756);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("U 81/39/20", gapping, numberTurns, numberStacks, "3C91");
 
@@ -1202,7 +1202,7 @@ SUITE(CoilAdviser) {
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(3).value();
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003175, 1);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("E 114/46/26", gapping, numberTurns, numberStacks, "3C91");
 
@@ -1268,7 +1268,7 @@ SUITE(CoilAdviser) {
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(1).value();
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001227);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("E 72/28/19", gapping, numberTurns, numberStacks, "3C91");
 
@@ -1334,7 +1334,7 @@ SUITE(CoilAdviser) {
         OpenMagnetics::MagneticWrapper magnetic;
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(1).value();
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
         auto gapping = OpenMagneticsTesting::get_grinded_gap(0.007023);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("E 35", gapping, numberTurns, numberStacks, "3C91");
@@ -1536,8 +1536,8 @@ SUITE(CoilAdviser) {
         OpenMagnetics::MagneticWrapper magnetic;
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(2).value();
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.002048, 3);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("E 50/15", gapping, numberTurns, numberStacks, "3C91");
 
@@ -1602,7 +1602,7 @@ SUITE(CoilAdviser) {
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(3).value();
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.001424, 1);
         magnetic = OpenMagneticsTesting::get_quick_magnetic("U 15/11/6", gapping, numberTurns, numberStacks, "3C91");
 
@@ -1670,7 +1670,7 @@ SUITE(CoilAdviser) {
         OpenMagnetics::MagneticWrapper magnetic;
 
         OpenMagnetics::CoilAlignment turnsAlignment = magic_enum::enum_cast<OpenMagnetics::CoilAlignment>(0).value();
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
         OpenMagnetics::WindingOrientation layersOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
 
         auto gapping = OpenMagneticsTesting::get_spacer_gap(0.006456);

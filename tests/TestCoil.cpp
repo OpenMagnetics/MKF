@@ -27,7 +27,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_1) {
-        std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"vertical","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"0.475 - Grade 1"}]})";
 
         auto coilJson = json::parse(coilString);
         auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
@@ -58,7 +58,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_2) {
-        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"horizontal","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"overlapping","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"0.475 - Grade 1"}]})";
         settings->set_coil_wind_even_if_not_fit(false);
 
         auto coilJson = json::parse(coilString);
@@ -103,7 +103,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_3) {
-        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"vertical","_layersOrientation":"vertical","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"0.475 - Grade 1"}]})";
         settings->set_coil_delimit_and_compact(false);
 
         auto coilJson = json::parse(coilString);
@@ -135,7 +135,7 @@ SUITE(CoilWeb) {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {88};
         uint8_t interleavingLevel = 7;
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -166,8 +166,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -258,8 +258,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         // settings->set_coil_wind_even_if_not_fit(false);
         // settings->set_coil_try_rewind(true);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -383,8 +383,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -489,8 +489,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -620,8 +620,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -726,8 +726,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -857,8 +857,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -963,8 +963,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -1094,8 +1094,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1184,8 +1184,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1309,8 +1309,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1399,8 +1399,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1524,8 +1524,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1614,8 +1614,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1739,8 +1739,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1825,8 +1825,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -1952,8 +1952,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -2037,8 +2037,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -2162,8 +2162,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -2247,8 +2247,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -2372,8 +2372,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -2457,8 +2457,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -2582,8 +2582,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -2668,8 +2668,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -2793,8 +2793,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -2879,8 +2879,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -3004,8 +3004,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -3090,8 +3090,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
         
@@ -3215,8 +3215,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -3301,8 +3301,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
         
@@ -3426,8 +3426,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -3512,8 +3512,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -3634,8 +3634,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -3720,8 +3720,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -3845,8 +3845,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -3931,8 +3931,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
         
@@ -4056,8 +4056,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -4142,8 +4142,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
         
@@ -4267,8 +4267,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -4353,8 +4353,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -4478,8 +4478,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -4564,8 +4564,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         
@@ -4689,8 +4689,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
         
@@ -4775,8 +4775,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;;
         
@@ -4900,8 +4900,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         
@@ -4986,8 +4986,8 @@ SUITE(CoilSectionsDescriptionMargins) {
         
         settings->set_coil_fill_sections_with_margin_tape(false);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;;
         
@@ -5101,7 +5101,38 @@ SUITE(CoilSectionsDescriptionMargins) {
     }
 }
 
-SUITE(CoilSectionsDescription) {
+// SUITE(CoilSectionsDescriptionRound) {
+//     TEST(Wind_By_Round_Section) {
+//         std::vector<int64_t> numberTurns = {2};
+//         std::vector<int64_t> numberParallels = {1};
+//         double bobbinRadialHeight = 0.01;
+//         double bobbinAngle = 360;
+//         double columnDepth = 0.01;
+//         uint8_t interleavingLevel = 1;
+
+//         std::cout << "Mierda 1" << std::endl;
+//         auto coil = OpenMagneticsTesting::get_quick_toroidal_coil_no_compact(numberTurns, numberParallels, bobbinRadialHeight, bobbinAngle, columnDepth, interleavingLevel);
+//         std::cout << "Mierda 9" << std::endl;
+
+//         // OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
+//         {
+//             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+//             auto outFile = outputFilePath;
+//             outFile.append("Wind_By_Round_Section.svg");
+//             std::filesystem::remove(outFile);
+//             OpenMagnetics::Painter painter(outFile);
+//             OpenMagnetics::Magnetic magnetic;
+//             magnetic.set_coil(coil);
+//             // painter.paint_bobbin(magnetic);
+//             // painter.paint_coil_turns(magnetic);
+//             painter.paint_coil_sections(magnetic);
+//             // painter.paint_coil_turns(magnetic);
+//             painter.export_svg();
+//         }
+//     }
+// }
+
+SUITE(CoilSectionsDescriptionRectangular) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Wind_By_Section_Wind_By_Consecutive_Parallels) {
@@ -5177,9 +5208,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 2;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_0) {
@@ -5190,9 +5221,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 3;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_1) {
@@ -5203,9 +5234,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 3;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_2) {
@@ -5216,9 +5247,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 3;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_3) {
@@ -5229,9 +5260,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 3;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_4) {
@@ -5242,9 +5273,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 3;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_5) {
@@ -5255,9 +5286,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 7;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random_6) {
@@ -5268,9 +5299,9 @@ SUITE(CoilSectionsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 5;
 
-        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
 
-        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::VERTICAL);
+        OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
     TEST(Wind_By_Section_Random) {
@@ -5286,7 +5317,7 @@ SUITE(CoilSectionsDescription) {
             int64_t numberPhysicalTurns = numberTurns[0] * numberParallels[0];
             uint8_t interleavingLevel = uint8_t(std::rand() % 10 + 1);
             interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-            auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
+            auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::CONTIGUOUS : OpenMagnetics::WindingOrientation::OVERLAPPING;
 
             auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
             OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, windingOrientation);
@@ -5313,8 +5344,8 @@ SUITE(CoilSectionsDescription) {
             std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
             int64_t interleavingLevel = std::rand() % 10 + 1;
             interleavingLevel = std::min(numberPhysicalTurns, interleavingLevel);
-            auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
-            if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+            auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::CONTIGUOUS : OpenMagnetics::WindingOrientation::OVERLAPPING;
+            if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
                 bobbinWidth *= numberTurns.size();
             }
             else {
@@ -5338,8 +5369,8 @@ SUITE(CoilSectionsDescription) {
 
         auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("0.014 - Grade 1")});
 
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -5540,8 +5571,8 @@ SUITE(CoilLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
@@ -5560,8 +5591,8 @@ SUITE(CoilLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
@@ -5581,8 +5612,8 @@ SUITE(CoilLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
@@ -5602,8 +5633,8 @@ SUITE(CoilLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation, layersOrientation);
      
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
@@ -5623,7 +5654,7 @@ SUITE(CoilLayersDescription) {
         double bobbinWidth = double(numberMaximumLayers) * double(interleavingLevel) * 0.000509;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0}; 
 
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
      
         OpenMagneticsTesting::check_layers_description(coil);
@@ -5686,8 +5717,8 @@ SUITE(CoilLayersDescription) {
 
         auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("0.014 - Grade 1")});
 
-        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         
@@ -5755,11 +5786,11 @@ SUITE(CoilTurnsDescription) {
                 std::vector<double> bobbinCenterCoodinates = {0.05, 0, 0};
                 uint8_t interleavingLevel = std::rand() % 10 + 1;
                 interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-                int windingOrientationIndex = (std::rand() % 2) * 2;  // To avoid 1, which is RADIAL
+                int windingOrientationIndex = std::rand() % 2;
                 OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(windingOrientationIndex).value();
 
-                // auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::VERTICAL : OpenMagnetics::WindingOrientation::HORIZONTAL;
-                if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+                // auto windingOrientation = std::rand() % 2? OpenMagnetics::WindingOrientation::CONTIGUOUS : OpenMagnetics::WindingOrientation::OVERLAPPING;
+                if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
                     bobbinWidth *= numberTurns.size();
                     // bobbinCenterCoodinates[0] += bobbinWidth / 2;
                 }
@@ -5830,8 +5861,8 @@ SUITE(CoilTurnsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 10;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        auto windingOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
         }
         else {
@@ -5859,8 +5890,8 @@ SUITE(CoilTurnsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 9;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        auto windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
         }
         else {
@@ -5890,7 +5921,7 @@ SUITE(CoilTurnsDescription) {
         uint8_t interleavingLevel = 7;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -5934,7 +5965,7 @@ SUITE(CoilTurnsDescription) {
         uint8_t interleavingLevel = 3;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -5964,8 +5995,8 @@ SUITE(CoilTurnsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 2;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -6007,8 +6038,8 @@ SUITE(CoilTurnsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 4;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -6050,8 +6081,8 @@ SUITE(CoilTurnsDescription) {
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         uint8_t interleavingLevel = 2;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
-        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(2).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(1).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -6081,7 +6112,7 @@ SUITE(CoilTurnsDescription) {
         uint8_t interleavingLevel = 1;
         interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
         OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
-        if (windingOrientation == OpenMagnetics::WindingOrientation::HORIZONTAL) {
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
             bobbinWidth *= numberTurns.size();
             bobbinCenterCoodinates[0] += bobbinWidth / 2;
         }
@@ -6124,8 +6155,8 @@ SUITE(CoilTurnsDescription) {
         wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::HORIZONTAL;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::VERTICAL;
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
         

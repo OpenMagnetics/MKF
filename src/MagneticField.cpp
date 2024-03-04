@@ -335,37 +335,57 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         double tetha2 = atan((y + b) / (x + a));
         double tetha3 = atan((y - b) / (x + a));
         double tetha4 = atan((y - b) / (x - a));
-
-        if (x > a && -b < y && y < b) {
-
-        }
+        if (std::isnan(tetha1) || std::isnan(tetha2) || std::isnan(tetha3) || std::isnan(tetha4)) {
+            Hx = 0;
+            Hy = 0;
+        } 
         else {
-            if (x > a && y < -b) {
-                tetha1 += 2 * std::numbers::pi;
-            }
-            else if (x < a || y < -b) {
-                tetha1 += std::numbers::pi;
-            }
-
-            if (x > -a && y < -b) {
-                tetha2 += 2 * std::numbers::pi;
-            }
-            else if (x < -a || y < -b) {
-                tetha2 += std::numbers::pi;
-            }
-
-            if (x > -a && y < b) {
-                tetha3 += 2 * std::numbers::pi;
-            }
-            else if (x < -a || y < b) {
-                tetha3 += std::numbers::pi;
+            if (x == a) {
+                if ((y + b) > 0) {
+                    tetha1 = std::numbers::pi / 2;
+                }
+                else {
+                    tetha1 = -std::numbers::pi / 2;
+                }
+                if ((y - b) > 0) {
+                    tetha4 = std::numbers::pi / 2;
+                }
+                else {
+                    tetha4 = -std::numbers::pi / 2;
+                }
             }
 
-            if (x > a && y < b) {
-                tetha4 += 2 * std::numbers::pi;
+            if (x > a && -b < y && y < b) {
+
             }
-            else if (x < a || y < b) {
-                tetha4 += std::numbers::pi;
+            else {
+                if (x > a && y < -b) {
+                    tetha1 += 2 * std::numbers::pi;
+                }
+                else if (x < a || y < -b) {
+                    tetha1 += std::numbers::pi;
+                }
+
+                if (x > -a && y < -b) {
+                    tetha2 += 2 * std::numbers::pi;
+                }
+                else if (x < -a || y < -b) {
+                    tetha2 += std::numbers::pi;
+                }
+
+                if (x > -a && y < b) {
+                    tetha3 += 2 * std::numbers::pi;
+                }
+                else if (x < -a || y < b) {
+                    tetha3 += std::numbers::pi;
+                }
+
+                if (x > a && y < b) {
+                    tetha4 += 2 * std::numbers::pi;
+                }
+                else if (x < a || y < b) {
+                    tetha4 += std::numbers::pi;
+                }
             }
         }
 
