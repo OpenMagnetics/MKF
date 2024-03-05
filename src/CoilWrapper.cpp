@@ -2184,7 +2184,7 @@ bool CoilWrapper::delimit_and_compact() {
                         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
                             if (turns[turnIndex].get_layer().value() == layers[layerIndex].get_name()){
 
-                                if (bobbinColumnShape == ColumnShape::ROUND) {
+                                if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::RECTANGULAR) {
                                     if (turns[turnIndex].get_coordinates()[0] < compactingShiftWidth) {
                                         throw std::runtime_error("Something wrong happened with compactingShiftWidth: " + std::to_string(compactingShiftWidth) +
                                                                  "\nsections[sectionIndex].get_coordinates()[0]: " + std::to_string(sections[sectionIndex].get_coordinates()[0]) +
