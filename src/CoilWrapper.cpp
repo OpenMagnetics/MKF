@@ -828,6 +828,16 @@ bool CoilWrapper::wind_by_sections() {
     return wind_by_sections(proportionPerWinding);
 }
 
+bool CoilWrapper::wind_by_sections(size_t repetitions){
+    std::vector<size_t> pattern;
+    double numberWindings = get_functional_description().size();
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        pattern.push_back(windingIndex);
+    }
+    auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
+    return wind_by_sections(proportionPerWinding, pattern, repetitions);
+}
+
 bool CoilWrapper::wind_by_sections(std::vector<size_t> pattern, size_t repetitions) {
     auto proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
     return wind_by_sections(proportionPerWinding, pattern, repetitions);

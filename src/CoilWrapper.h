@@ -67,6 +67,7 @@ class CoilWrapper : public Coil {
         std::vector<double> get_aligned_section_dimensions(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
         bool wind_by_sections();
+        bool wind_by_sections(size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
