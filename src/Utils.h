@@ -131,6 +131,10 @@ double comp_ellint_2(double x);
 
 std::string to_title_case(std::string text);
 
+double wound_distance_to_angle(double distance, double radius);
+double angle_to_wound_distance(double angle, double radius);
+
+
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
 IsolationSide get_isolation_side_from_index(size_t index);
 

@@ -866,4 +866,13 @@ std::string to_title_case(std::string text) {
     return titleText;
 }
 
+double wound_distance_to_angle(double distance, double radius) {
+    return 2 * asin((distance / 2) / radius) * 180 / std::numbers::pi;
+}
+
+double angle_to_wound_distance(double angle, double radius) {
+    return 2 * sin(angle / 2 / 180 * std::numbers::pi) * radius;
+}
+
+
 } // namespace OpenMagnetics

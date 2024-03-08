@@ -5101,36 +5101,36 @@ SUITE(CoilSectionsDescriptionMargins) {
     }
 }
 
-// SUITE(CoilSectionsDescriptionRound) {
-//     TEST(Wind_By_Round_Section) {
-//         std::vector<int64_t> numberTurns = {2};
-//         std::vector<int64_t> numberParallels = {1};
-//         double bobbinRadialHeight = 0.01;
-//         double bobbinAngle = 360;
-//         double columnDepth = 0.01;
-//         uint8_t interleavingLevel = 1;
+SUITE(CoilSectionsDescriptionRound) {
+    TEST(Wind_By_Round_Section) {
+        std::vector<int64_t> numberTurns = {2};
+        std::vector<int64_t> numberParallels = {1};
+        double bobbinRadialHeight = 0.01;
+        double bobbinAngle = 360;
+        double columnDepth = 0.01;
+        uint8_t interleavingLevel = 1;
 
-//         std::cout << "Mierda 1" << std::endl;
-//         auto coil = OpenMagneticsTesting::get_quick_toroidal_coil_no_compact(numberTurns, numberParallels, bobbinRadialHeight, bobbinAngle, columnDepth, interleavingLevel);
-//         std::cout << "Mierda 9" << std::endl;
+        std::cout << "Mierda 1" << std::endl;
+        auto coil = OpenMagneticsTesting::get_quick_toroidal_coil_no_compact(numberTurns, numberParallels, bobbinRadialHeight, bobbinAngle, columnDepth, interleavingLevel);
+        std::cout << "Mierda 9" << std::endl;
 
-//         // OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-//         {
-//             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-//             auto outFile = outputFilePath;
-//             outFile.append("Wind_By_Round_Section.svg");
-//             std::filesystem::remove(outFile);
-//             OpenMagnetics::Painter painter(outFile);
-//             OpenMagnetics::Magnetic magnetic;
-//             magnetic.set_coil(coil);
-//             // painter.paint_bobbin(magnetic);
-//             // painter.paint_coil_turns(magnetic);
-//             painter.paint_coil_sections(magnetic);
-//             // painter.paint_coil_turns(magnetic);
-//             painter.export_svg();
-//         }
-//     }
-// }
+        // OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Wind_By_Round_Section.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+}
 
 SUITE(CoilSectionsDescriptionRectangular) {
     auto settings = OpenMagnetics::Settings::GetInstance();

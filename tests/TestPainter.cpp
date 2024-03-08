@@ -843,24 +843,58 @@ SUITE(CoilPainter) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
-    // TEST(Test_Painter_T_Core) {
-    //     std::vector<int64_t> numberTurns = {2};
-    //     std::vector<int64_t> numberParallels = {1};
-    //     uint8_t interleavingLevel = 1;
+    TEST(Test_Painter_T_Core) { 
+        settings->set_coil_try_rewind(false);
+        std::vector<int64_t> numberTurns = {52, 52};
+        std::vector<int64_t> numberParallels = {22, 22};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 80/20/50";
+        std::string coreMaterial = "3C97"; 
+        settings->set_coil_delimit_and_compact(false);
+        auto emptyGapping = json::array();
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel,
+                                                        OpenMagnetics::WindingOrientation::OVERLAPPING,
+                                                        OpenMagnetics::WindingOrientation::OVERLAPPING,
+                                                        OpenMagnetics::CoilAlignment::SPREAD,
+                                                        OpenMagnetics::CoilAlignment::SPREAD
+                                                        );
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_T_Core.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        // painter.paint_coil_sections(magnetic);
+        // painter.paint_coil_layers(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    // TEST(Test_Painter_T_Core_Overlapping) {
+    //     std::vector<int64_t> numberTurns = {2, 2};
+    //     std::vector<int64_t> numberParallels = {1, 1};
+    //     uint8_t interleavingLevel = 2;
     //     int64_t numberStacks = 1;
     //     std::string coreShape = "T 80/20/50";
     //     std::string coreMaterial = "3C97"; 
     //     settings->set_coil_delimit_and_compact(false);
     //     auto emptyGapping = json::array();
 
-    // std::cout << "Mierdonaco 0" << std::endl;
-    //     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
-    // std::cout << "Mierdonaco 1" << std::endl;
+    //     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::OVERLAPPING);
     //     auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-    // std::cout << "Mierdonaco 2" << std::endl;
 
     //     auto outFile = outputFilePath;
-    //     outFile.append("Test_Painter_T_Core.svg");
+    //     outFile.append("Test_Painter_T_Core_Overlapping.svg");
     //     std::filesystem::remove(outFile);
     //     OpenMagnetics::Painter painter(outFile);
     //     OpenMagnetics::Magnetic magnetic;
@@ -868,12 +902,77 @@ SUITE(CoilPainter) {
     //     magnetic.set_coil(coil);
 
     //     painter.paint_core(magnetic);
-    // std::cout << "Mierdonaco 2" << std::endl;
+    //     painter.paint_coil_sections(magnetic);
     //     painter.export_svg();
     //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     //     CHECK(std::filesystem::exists(outFile));
     //     settings->reset();
     // }
+
+
+    // TEST(Test_Painter_T_Core_Contiguous) {
+    //     std::vector<int64_t> numberTurns = {2, 2};
+    //     std::vector<int64_t> numberParallels = {1, 1};
+    //     uint8_t interleavingLevel = 2;
+    //     int64_t numberStacks = 1;
+    //     std::string coreShape = "T 80/20/50";
+    //     std::string coreMaterial = "3C97"; 
+    //     settings->set_coil_delimit_and_compact(false);
+    //     auto emptyGapping = json::array();
+
+    //     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
+    //     auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+    //     auto outFile = outputFilePath;
+    //     outFile.append("Test_Painter_T_Core_Contiguous.svg");
+    //     std::filesystem::remove(outFile);
+    //     OpenMagnetics::Painter painter(outFile);
+    //     OpenMagnetics::Magnetic magnetic;
+    //     magnetic.set_core(core);
+    //     magnetic.set_coil(coil);
+
+    //     painter.paint_core(magnetic);
+    //     painter.paint_coil_sections(magnetic);
+    //     painter.export_svg();
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    //     CHECK(std::filesystem::exists(outFile));
+    //     settings->reset();
+    // }
+
+    TEST(Test_Painter_T_Core_Contiguous_Sections_With_Margin) {
+        std::vector<int64_t> numberTurns = {2, 2};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 80/20/50";
+        std::string coreMaterial = "3C97"; 
+        settings->set_coil_delimit_and_compact(false);
+        auto emptyGapping = json::array();
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.005;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 1.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        coil.add_margin_to_section_by_index(3, std::vector<double>{margin * 3.5, margin * 3.5});
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_T_Core_Contiguous_Sections_With_Margin.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        painter.paint_coil_sections(magnetic);
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
 
     TEST(Test_Painter_Pq_Core_Distributed_Gap) {
         std::vector<int64_t> numberTurns = {42};
