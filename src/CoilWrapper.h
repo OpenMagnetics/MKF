@@ -74,7 +74,11 @@ class CoilWrapper : public Coil {
         bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_layers();
+        bool wind_by_rectangular_layers();
+        bool wind_by_round_layers();
         bool wind_by_turns();
+        bool wind_by_rectangular_turns();
+        bool wind_by_round_turns();
         bool calculate_insulation(bool simpleMode = false);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
