@@ -484,7 +484,7 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
         windingWindowElement.set_radial_height(bobbinWindingWindowDimensions[0]);
         windingWindowElement.set_angle(bobbinWindingWindowDimensions[1]);
         windingWindowElement.set_area(std::numbers::pi * pow(bobbinWindingWindowDimensions[0], 2) * bobbinWindingWindowDimensions[1] / 360);
-        windingWindowElement.set_coordinates(std::vector<double>({0, 0, 0}));
+        windingWindowElement.set_coordinates(std::vector<double>({bobbinWindingWindowDimensions[0], 0, 0}));
 
     }
     windingWindowElement.set_shape(bobbinWindingWindowShape);
@@ -517,9 +517,16 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
 }
 
 std::vector<double> BobbinWrapper::get_winding_window_dimensions(size_t windingWindowIndex) {
-    double width = get_processed_description()->get_winding_windows()[windingWindowIndex].get_width().value();
-    double height = get_processed_description()->get_winding_windows()[windingWindowIndex].get_height().value();
-    return {width, height};
+    if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
+        double width = get_processed_description()->get_winding_windows()[windingWindowIndex].get_width().value();
+        double height = get_processed_description()->get_winding_windows()[windingWindowIndex].get_height().value();
+        return {width, height};
+    }
+    else {
+        double radialHeight = get_processed_description()->get_winding_windows()[windingWindowIndex].get_radial_height().value();
+        double angle = get_processed_description()->get_winding_windows()[windingWindowIndex].get_angle().value();
+        return {radialHeight, angle};
+    }
 }
 
 std::vector<double> BobbinWrapper::get_winding_window_coordinates(size_t windingWindowIndex) {

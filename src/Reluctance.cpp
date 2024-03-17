@@ -161,22 +161,21 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
         perimeter = gapSectionWidth * 2 + gapSectionDepth * 2;
     }
 
+    double reluctance = 0;
     if (gapLength > 0) {
         reluctanceFringing = std::numbers::pi / (constants.vacuumPermeability * perimeter *
                                                   log((2 * distanceClosestNormalSurface + gapLength) / gapLength));
-    }
 
-    if (std::isnan(reluctanceInternal) || reluctanceInternal == 0) {
-        throw std::runtime_error("reluctanceInternal cannot be 0 or NaN");
-    }
+        if (std::isnan(reluctanceInternal) || reluctanceInternal == 0) {
+            throw std::runtime_error("reluctanceInternal cannot be 0 or NaN");
+        }
 
-    if (std::isnan(reluctanceFringing) || reluctanceFringing == 0) {
-        throw std::runtime_error("reluctanceFringing cannot be 0 or NaN");
-    }
+        if (std::isnan(reluctanceFringing) || reluctanceFringing == 0) {
+            throw std::runtime_error("reluctanceFringing cannot be 0 or NaN");
+        }
 
-    double reluctance = 1. / (1. / reluctanceInternal + 1. / reluctanceFringing);
+        reluctance = 1. / (1. / reluctanceInternal + 1. / reluctanceFringing);
 
-    if (gapLength > 0) {
         fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
     AirGapReluctanceOutput airGapReluctanceOutput;

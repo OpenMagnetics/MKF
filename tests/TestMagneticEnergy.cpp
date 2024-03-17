@@ -46,7 +46,7 @@ SUITE(MagneticEnergy) {
 
         double expectedValue = 1.34;
 
-        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operatingPoint);
+        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, &operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 
@@ -68,7 +68,7 @@ SUITE(MagneticEnergy) {
 
         double expectedValue = 0.124;
 
-        double totalMagneticEnergy = magneticEnergy.get_core_maximum_magnetic_energy(core, &operatingPoint);
+        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, &operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 
@@ -112,7 +112,7 @@ SUITE(MagneticEnergy) {
 
         double expectedValue = 0.0016;
 
-        double requiredMagneticEnergy = magneticEnergy.required_magnetic_energy(inputs).get_nominal().value();
+        double requiredMagneticEnergy = magneticEnergy.calculate_required_magnetic_energy(inputs).get_nominal().value();
         CHECK_CLOSE(expectedValue, requiredMagneticEnergy, max_error * expectedValue);
     }
 

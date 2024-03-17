@@ -64,8 +64,11 @@ class CoilWrapper : public Coil {
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         std::vector<double> get_proportion_per_winding_based_on_wires();
         void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
-        std::vector<double> get_aligned_section_dimensions(size_t sectionIndex);
+        std::vector<double> get_aligned_section_dimensions_rectangular_window(size_t sectionIndex);
+        std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
+        std::vector<double> cartesian_to_polar(std::vector<double> value);
+
         bool wind_by_sections();
         bool wind_by_sections(size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding);
@@ -82,6 +85,8 @@ class CoilWrapper : public Coil {
         bool calculate_insulation(bool simpleMode = false);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
+        bool delimit_and_compact_rectangular_window();
+        bool delimit_and_compact_round_window();
         void log(std::string entry) {
             coilLog += entry + "\n";
         }
@@ -192,13 +197,9 @@ class CoilWrapper : public Coil {
         WireWrapper resolve_wire(size_t windingIndex);
         static WireWrapper resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
 
-        double horizontal_filling_factor(Section section);
+        double overlapping_filling_factor(Section section);
 
-        double vertical_filling_factor(Section section);
-
-        double horizontal_filling_factor(Layer layer);
-
-        double vertical_filling_factor(Layer layer);
+        double contiguous_filling_factor(Section section);
 
         static BobbinWrapper resolve_bobbin(CoilWrapper coil);
         BobbinWrapper resolve_bobbin();

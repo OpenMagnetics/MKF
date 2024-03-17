@@ -40,6 +40,8 @@ extern double maxWindingWindowWidth;
 extern double minWindingWindowHeight;
 extern double maxWindingWindowHeight;
 
+extern bool _addInternalData;
+
 extern std::map<std::string, double> minWireConductingDimensions;
 extern std::map<std::string, double> maxWireConductingDimensions;
 extern std::map<std::string, int64_t> minLitzWireNumberConductors;
@@ -92,7 +94,7 @@ void load_wires();
 void load_bobbins();
 void load_insulation_materials();
 void load_wire_materials();
-void load_databases(json data, bool withAliases=true);
+void load_databases(json data, bool withAliases=true, bool addInternalData=true);
 
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_shape_names(bool includeToroidal = true);
@@ -135,7 +137,7 @@ double wound_distance_to_angle(double distance, double radius);
 double angle_to_wound_distance(double angle, double radius);
 
 
-bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName);
+bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundTurn = false);
 IsolationSide get_isolation_side_from_index(size_t index);
 
 } // namespace OpenMagnetics
