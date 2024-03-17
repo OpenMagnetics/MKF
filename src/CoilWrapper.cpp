@@ -978,6 +978,10 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
         if (currentRadius > wireWidth) {
             currentRadius -= wireWidth;
         }
+
+        std::cout << "wireHeight: " << wireHeight << std::endl;
+        std::cout << "currentRadius: " << currentRadius << std::endl;
+        std::cout << "numberTurnsFittingThisLayer: " << numberTurnsFittingThisLayer << std::endl;
     }
 
     int64_t numberTurnsToCorrect = -reaminingPhysicalTurnsInSection;
@@ -1442,11 +1446,11 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
             std::cout << "get_number_turns(windingIndex) * get_number_parallels(windingIndex): " <<  (get_number_turns(windingIndex) * get_number_parallels(windingIndex)) << std::endl;
 
             // If OVERLAPPING, we correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
-            if (_windingOrientation == WindingOrientation::OVERLAPPING) {
+            // if (_windingOrientation == WindingOrientation::OVERLAPPING) {
                 auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, windingWindowRadialHeight);
                 auto numberLayers = aux.first;
                 currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
-            }
+            // }
 
             partialWinding.set_parallels_proportion(sectionParallelsProportion);
             section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
@@ -2831,7 +2835,7 @@ std::vector<double> CoilWrapper::get_aligned_section_dimensions_round_window(siz
     else {
         switch (_sectionAlignment) {
             case CoilAlignment::INNER_OR_TOP:
-                currentCoilAngle = sections[sectionIndex].get_coordinates()[1] - sections[sectionIndex].get_dimensions()[1] / 2 + marginAngle1;
+                currentCoilAngle = sections[sectionIndex].get_coordinates()[1] - sections[sectionIndex].get_dimensions()[1] / 2 + marginAngle0;
                 break;
             case CoilAlignment::OUTER_OR_BOTTOM:
                 currentCoilAngle = windingWindowAngle - totalSectionsAngle - marginAngle1;
