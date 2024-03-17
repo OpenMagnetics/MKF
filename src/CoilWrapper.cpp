@@ -1421,6 +1421,8 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
             PartialWinding partialWinding;
             Section section;
             partialWinding.set_winding(get_name(windingIndex));
+            double marginAngle0 = 0;
+            double marginAngle1 = 0;
 
             auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
                                                                    numberSectionsPerWinding[windingIndex],
@@ -1460,8 +1462,8 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
             }
             else {
                 double firstLayerMinimumRadius = windingWindowRadialHeight - (currentSectionCenterRadialHeight - currentSectionRadialHeight / 2) - wirePerWinding[windingIndex].get_maximum_outer_dimension();
-                double marginAngle0 = wound_distance_to_angle(_marginsPerSection[sectionIndex][0], firstLayerMinimumRadius);
-                double marginAngle1 = wound_distance_to_angle(_marginsPerSection[sectionIndex][1], firstLayerMinimumRadius);
+                marginAngle0 = wound_distance_to_angle(_marginsPerSection[sectionIndex][0], firstLayerMinimumRadius);
+                marginAngle1 = wound_distance_to_angle(_marginsPerSection[sectionIndex][1], firstLayerMinimumRadius);
                 section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle - marginAngle0 - marginAngle1});
                 section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight, currentSectionCenterAngle  + currentSectionAngle / 2 - marginAngle0 / 2 + marginAngle1 / 2, 0});
             }
@@ -1492,7 +1494,7 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
                 currentSectionCenterRadialHeight += currentSectionRadialHeight + _marginsPerSection[sectionIndex][0] + _marginsPerSection[sectionIndex][1];
             }
             else {
-                currentSectionCenterAngle += currentSectionAngle;
+                currentSectionCenterAngle += currentSectionAngle + marginAngle0 + marginAngle1;
             }
 
             currentSectionPerWinding[windingIndex]++;
