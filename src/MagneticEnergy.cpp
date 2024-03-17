@@ -58,7 +58,7 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
 
 }
 
-double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
+double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
     double totalEnergy = 0;
     double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
@@ -73,7 +73,7 @@ double MagneticEnergy::get_core_maximum_magnetic_energy(CoreWrapper core, Operat
 
 }
 
-DimensionWithTolerance MagneticEnergy::required_magnetic_energy(InputsWrapper inputs){
+DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(InputsWrapper inputs){
     DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
     double magnetizingCurrentPeak = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {

@@ -15,6 +15,8 @@
 #include <time.h>
 using json = nlohmann::json;
 #include <typeinfo>
+#include <chrono>
+#include <thread>
 
 
 SUITE(CoilWeb) {
@@ -5101,41 +5103,10 @@ SUITE(CoilSectionsDescriptionMargins) {
     }
 }
 
-SUITE(CoilSectionsDescriptionRound) {
-    TEST(Wind_By_Round_Section) {
-        std::vector<int64_t> numberTurns = {2};
-        std::vector<int64_t> numberParallels = {1};
-        double bobbinRadialHeight = 0.01;
-        double bobbinAngle = 360;
-        double columnDepth = 0.01;
-        uint8_t interleavingLevel = 1;
-
-        std::cout << "Mierda 1" << std::endl;
-        auto coil = OpenMagneticsTesting::get_quick_toroidal_coil_no_compact(numberTurns, numberParallels, bobbinRadialHeight, bobbinAngle, columnDepth, interleavingLevel);
-        std::cout << "Mierda 9" << std::endl;
-
-        // OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
-        {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Wind_By_Round_Section.svg");
-            std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_coil(coil);
-            // painter.paint_bobbin(magnetic);
-            // painter.paint_coil_turns(magnetic);
-            painter.paint_coil_sections(magnetic);
-            // painter.paint_coil_turns(magnetic);
-            painter.export_svg();
-        }
-    }
-}
-
 SUITE(CoilSectionsDescriptionRectangular) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
-    TEST(Wind_By_Section_Wind_By_Consecutive_Parallels) {
+    TEST(Test_Wind_By_Section_Wind_By_Consecutive_Parallels) {
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {3};
         double bobbinHeight = 0.01;
@@ -5148,7 +5119,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
     }
 
-    TEST(Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced) {
+    TEST(Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced) {
         std::vector<int64_t> numberTurns = {41};
         std::vector<int64_t> numberParallels = {3};
         double bobbinHeight = 0.01;
@@ -5161,7 +5132,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
     }
 
-    TEST(Wind_By_Section_Wind_By_Full_Turns) {
+    TEST(Test_Wind_By_Section_Wind_By_Full_Turns) {
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {7};
         double bobbinHeight = 0.01;
@@ -5174,7 +5145,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
     }
 
-    TEST(Wind_By_Section_Wind_By_Full_Parallels) {
+    TEST(Test_Wind_By_Section_Wind_By_Full_Parallels) {
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {7};
         double bobbinHeight = 0.01;
@@ -5187,7 +5158,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
     }
 
-    TEST(Wind_By_Section_Wind_By_Full_Parallels_Multiwinding) {
+    TEST(Test_Wind_By_Section_Wind_By_Full_Parallels_Multiwinding) {
         std::vector<int64_t> numberTurns = {2, 5};
         std::vector<int64_t> numberParallels = {7, 7};
         double bobbinHeight = 0.01;
@@ -5200,7 +5171,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel);
     }
 
-    TEST(Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced_Vertical) {
+    TEST(Test_Wind_By_Section_Wind_By_Consecutive_Parallels_Not_Balanced_Vertical) {
         std::vector<int64_t> numberTurns = {41};
         std::vector<int64_t> numberParallels = {3};
         double bobbinHeight = 0.01;
@@ -5213,7 +5184,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_0) {
+    TEST(Test_Wind_By_Section_Random_0) {
         std::vector<int64_t> numberTurns = {9};
         std::vector<int64_t> numberParallels = {1};
         double bobbinHeight = 0.01;
@@ -5226,7 +5197,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_1) {
+    TEST(Test_Wind_By_Section_Random_1) {
         std::vector<int64_t> numberTurns = {6};
         std::vector<int64_t> numberParallels = {2};
         double bobbinHeight = 0.01;
@@ -5239,7 +5210,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_2) {
+    TEST(Test_Wind_By_Section_Random_2) {
         std::vector<int64_t> numberTurns = {5};
         std::vector<int64_t> numberParallels = {2};
         double bobbinHeight = 0.01;
@@ -5252,7 +5223,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_3) {
+    TEST(Test_Wind_By_Section_Random_3) {
         std::vector<int64_t> numberTurns = {5};
         std::vector<int64_t> numberParallels = {1};
         double bobbinHeight = 0.01;
@@ -5265,7 +5236,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_4) {
+    TEST(Test_Wind_By_Section_Random_4) {
         std::vector<int64_t> numberTurns = {91};
         std::vector<int64_t> numberParallels = {2};
         double bobbinHeight = 0.01;
@@ -5278,7 +5249,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_5) {
+    TEST(Test_Wind_By_Section_Random_5) {
         std::vector<int64_t> numberTurns = {23};
         std::vector<int64_t> numberParallels = {1};
         double bobbinHeight = 0.01;
@@ -5291,7 +5262,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random_6) {
+    TEST(Test_Wind_By_Section_Random_6) {
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {43};
         double bobbinHeight = 0.01;
@@ -5304,7 +5275,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
     }
 
-    TEST(Wind_By_Section_Random) {
+    TEST(Test_Wind_By_Section_Random) {
         settings->set_coil_try_rewind(false);
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
@@ -5325,7 +5296,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         settings->reset();
     }
 
-    TEST(Wind_By_Section_Random_Multiwinding) {
+    TEST(Test_Wind_By_Section_Random_Multiwinding) {
         settings->set_coil_try_rewind(false);
         srand (time(NULL));
         for (size_t i = 0; i < 1000; ++i)
@@ -5358,7 +5329,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         settings->reset();
     }
 
-    TEST(Wind_By_Section_With_Insulation_Sections) {
+    TEST(Test_Wind_By_Section_With_Insulation_Sections) {
         std::vector<int64_t> numberTurns = {23, 42};
         std::vector<int64_t> numberParallels = {2, 1};
         double bobbinHeight = 0.01;
@@ -5384,7 +5355,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, sectionOrientation);
     }
 
-    TEST(Wind_By_Section_Pattern) {
+    TEST(Test_Wind_By_Section_Pattern) {
         std::vector<int64_t> numberTurns = {21, 21};
         std::vector<int64_t> numberParallels = {2, 2};
         double bobbinHeight = 0.01;
@@ -5405,7 +5376,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
 SUITE(CoilLayersDescription) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
-    TEST(Wind_By_Layer_Wind_One_Section_One_Layer) {
+    TEST(Test_Wind_By_Layer_Wind_One_Section_One_Layer) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5424,7 +5395,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_One_Section_Two_Layers) {
+    TEST(Test_Wind_By_Layer_Wind_One_Section_Two_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5443,7 +5414,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_One_Section_One_Layer_Two_Parallels) {
+    TEST(Test_Wind_By_Layer_Wind_One_Section_One_Layer_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5462,7 +5433,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_One_Section_Two_Layers_Two_Parallels) {
+    TEST(Test_Wind_By_Layer_Wind_One_Section_Two_Layers_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5481,7 +5452,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_Two_Sections_Two_Layers_Two_Parallels) {
+    TEST(Test_Wind_By_Layer_Wind_Two_Sections_Two_Layers_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5500,7 +5471,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_Two_Sections_One_Layer_One_Parallel) {
+    TEST(Test_Wind_By_Layer_Wind_Two_Sections_One_Layer_One_Parallel) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5519,7 +5490,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_Two_Sections_One_Layer_Two_Parallels) {
+    TEST(Test_Wind_By_Layer_Wind_Two_Sections_One_Layer_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5538,7 +5509,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_Two_Sections_Two_Layers_One_Parallel) {
+    TEST(Test_Wind_By_Layer_Wind_Two_Sections_Two_Layers_One_Parallel) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5557,7 +5528,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Wind_Vertical_Winding_Horizontal_Layers) {
+    TEST(Test_Wind_By_Layer_Wind_Vertical_Winding_Horizontal_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5577,7 +5548,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Wind_By_Layer_Wind_Vertical_Winding_Vertical_Layers) {
+    TEST(Test_Wind_By_Layer_Wind_Vertical_Winding_Vertical_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5598,7 +5569,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Wind_By_Layer_Wind_Horizontal_Winding_Horizontal_Layers) {
+    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding_Horizontal_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5619,7 +5590,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Wind_By_Layer_Wind_Horizontal_Winding_Vertical_Layers) {
+    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding_Vertical_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5640,7 +5611,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Wind_By_Layer_Wind_Horizontal_Winding) {
+    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5660,7 +5631,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Random_0) {
+    TEST(Test_Wind_By_Layer_Random_0) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5679,7 +5650,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Wind_By_Layer_Random) {
+    TEST(Test_Wind_By_Layer_Random) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5703,7 +5674,7 @@ SUITE(CoilLayersDescription) {
         }
     }
 
-    TEST(Wind_By_Layer_With_Insulation_Layers) {
+    TEST(Test_Wind_By_Layer_With_Insulation_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5737,7 +5708,7 @@ SUITE(CoilTurnsDescription) {
 
     auto settings = OpenMagnetics::Settings::GetInstance();
 
-    TEST(Wind_By_Turn_Wind_One_Section_One_Layer) {
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
@@ -5754,7 +5725,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding) {
         settings->set_coil_wind_even_if_not_fit(false);
         srand (time(NULL));
         auto numberReallyTestedWound = std::vector<int>(2, 0);
@@ -5845,7 +5816,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_0) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_0) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns;
         std::vector<int64_t> numberParallels;
@@ -5875,7 +5846,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_1) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_1) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {80};
         std::vector<int64_t> numberParallels = {3};
@@ -5905,7 +5876,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_2) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_2) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {39};
         std::vector<int64_t> numberParallels = {8};
@@ -5949,7 +5920,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_3) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_3) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {33, 18};
         std::vector<int64_t> numberParallels = {8, 2};
@@ -5980,7 +5951,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_4) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_4) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {48, 68};
         std::vector<int64_t> numberParallels = {5, 2};
@@ -6023,7 +5994,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_5) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_5) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {16};
         std::vector<int64_t> numberParallels = {3};
@@ -6066,7 +6037,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_6) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_6) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {90, 37};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -6096,7 +6067,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Random_Multiwinding_7) {
+    TEST(Test_Wind_By_Turn_Random_Multiwinding_7) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {1, 8};
         std::vector<int64_t> numberParallels = {7, 30};
@@ -6140,7 +6111,7 @@ SUITE(CoilTurnsDescription) {
         settings->reset();
     }
 
-    TEST(Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin) {
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Rectangular_No_Bobbin) {
         settings->set_coil_wind_even_if_not_fit(false);
         std::vector<int64_t> numberTurns = {7};
         std::vector<int64_t> numberParallels = {1};
@@ -6175,5 +6146,1340 @@ SUITE(CoilTurnsDescription) {
         OpenMagneticsTesting::check_turns_description(coil);
         settings->reset();
     }
+}
 
+SUITE(CoilTurnsDescriptionToroidalNoCompact) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {42};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_EQUAL(1, coil.get_layers_description().value().size());
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {58};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_EQUAL(1, coil.get_layers_description().value().size());
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {59};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {3};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(180, coil.get_turns_description().value()[1].get_coordinates()[1], 0.001);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {3};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 0.5);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {3};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(357, coil.get_turns_description().value()[2].get_coordinates()[1], 0.5);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {3};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(60, coil.get_turns_description().value()[0].get_coordinates()[1], 0.5);
+        CHECK_CLOSE(180, coil.get_turns_description().value()[1].get_coordinates()[1], 0.5);
+        CHECK_CLOSE(300, coil.get_turns_description().value()[2].get_coordinates()[1], 0.5);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {3, 3};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        settings->set_coil_try_rewind(false);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(90, coil.get_turns_description().value()[1].get_coordinates()[1], 0.5);
+        CHECK_CLOSE(270, coil.get_turns_description().value()[4].get_coordinates()[1], 0.5);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {55, 55};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered) {
+        settings->set_coil_delimit_and_compact(false);
+        std::vector<int64_t> numberTurns = {42, 42};
+        std::vector<int64_t> numberParallels = {2, 2};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        // settings->set_coil_delimit_and_compact(false);
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+}
+
+SUITE(CoilTurnsDescriptionToroidal) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    bool plot = false;
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == 135);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(182, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(4.25, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(327, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
+        CHECK_CLOSE(5.5, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(299, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_layers(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == 135);
+        CHECK_CLOSE(160, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(357, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(32, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(356, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
+        CHECK_CLOSE(60, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(355, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_layers(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(81, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(173, coil.get_turns_description().value()[15].get_coordinates()[1], 1);
+        CHECK_CLOSE(180, coil.get_turns_description().value()[16].get_coordinates()[1], 1);
+        CHECK_CLOSE(272, coil.get_turns_description().value()[31].get_coordinates()[1], 1);
+        CHECK_CLOSE(327, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_layers(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        // settings->reset();
+        CHECK_CLOSE(5, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(353, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(354, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[18].get_coordinates()[1], 1);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
+        CHECK_CLOSE(317, coil.get_turns_description().value()[119].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(12, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(221, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        OpenMagneticsTesting::check_turns_description(coil);
+        // Not clearly what this combination should do, so I check nothing
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(42, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(147, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(43, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
+        CHECK_CLOSE(357, coil.get_turns_description().value()[119].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(42, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(147, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(44, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
+        CHECK_CLOSE(357, coil.get_turns_description().value()[119].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
+        CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(329, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
+        CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(336, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
+        CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(333, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(12, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(115, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(236, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
+        CHECK_CLOSE(356, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(109, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(223, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
+        CHECK_CLOSE(348, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
+        CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+}
+
+SUITE(CoilTurnsDescriptionToroidalMargin) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    bool plot = true;
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0001;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        std::cout << "coil.get_turns_description().value().size(): " << coil.get_turns_description().value().size() << std::endl;
+        CHECK(coil.get_turns_description().value().size() == 135);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(186, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
+        CHECK_CLOSE(4.25, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(175, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
+        CHECK_CLOSE(7, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        CHECK_CLOSE(261, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0001;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[18].get_coordinates()[1], 1);
+        CHECK_CLOSE(3, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
+        CHECK_CLOSE(317, coil.get_turns_description().value()[119].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
 }

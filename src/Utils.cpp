@@ -33,6 +33,8 @@ std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMateri
 std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 
+bool _addInternalData = true;
+
 namespace OpenMagnetics {
 
 void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
@@ -91,6 +93,9 @@ void clear_loaded_cores() {
 }
 
 void load_core_materials() {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/core_materials.ndjson");
@@ -112,6 +117,9 @@ void load_core_materials() {
 }
 
 void load_core_shapes(bool withAliases) {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/core_shapes.ndjson");
@@ -138,6 +146,9 @@ void load_core_shapes(bool withAliases) {
 }
 
 void load_wires() {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/wires.ndjson");
@@ -159,6 +170,9 @@ void load_wires() {
 }
 
 void load_bobbins() {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/bobbins.ndjson");
@@ -180,6 +194,9 @@ void load_bobbins() {
 }
 
 void load_insulation_materials() {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/insulation_materials.ndjson");
@@ -201,6 +218,9 @@ void load_insulation_materials() {
 }
 
 void load_wire_materials() {
+    if (!_addInternalData) {
+        return;
+    }
     auto fs = cmrc::data::get_filesystem();
     {
         auto data = fs.open("MAS/data/wire_materials.ndjson");
@@ -221,24 +241,27 @@ void load_wire_materials() {
     }
 }
 
-void load_databases(json data, bool withAliases) {
-    if (coreMaterialDatabase.empty()) {
-        load_core_materials();
-    }
-    if (coreShapeDatabase.empty()) {
-        load_core_shapes();
-    }
-    if (wireDatabase.empty()) {
-        load_wires();
-    }
-    if (bobbinDatabase.empty()) {
-        load_bobbins();
-    }
-    if (insulationMaterialDatabase.empty()) {
-        load_insulation_materials();
-    }
-    if (wireMaterialDatabase.empty()) {
-        load_wire_materials();
+void load_databases(json data, bool withAliases, bool addInternalData) {
+    _addInternalData = addInternalData;
+    if (addInternalData) {
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
+        if (coreShapeDatabase.empty()) {
+            load_core_shapes();
+        }
+        if (wireDatabase.empty()) {
+            load_wires();
+        }
+        if (bobbinDatabase.empty()) {
+            load_bobbins();
+        }
+        if (insulationMaterialDatabase.empty()) {
+            load_insulation_materials();
+        }
+        if (wireMaterialDatabase.empty()) {
+            load_wire_materials();
+        }
     }
 
     for (auto& element : data["coreMaterials"].items()) {
@@ -313,7 +336,6 @@ void load_databases(json data, bool withAliases) {
         wireMaterialDatabase[jf["name"]] = wireMaterial;
     }
 }
-
 
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
     if (coreMaterialDatabase.empty()) {
@@ -652,7 +674,7 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
     return false;
 }
 
-bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName){
+bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundTurn){
     for (auto& leftDimension : dimensionsByName) {
         std::string leftName = leftDimension.first;
         std::vector<double> leftDimensions = leftDimension.second;
@@ -664,10 +686,23 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
             }
             std::vector<double> rightDimensions = rightDimension.second;
             std::vector<double> rightCoordinates = coordinatesByName[rightName];
+            double distanceBetweenCenters = roundFloat(sqrt(pow(fabs(leftCoordinates[0] - rightCoordinates[0]), 2) + pow(fabs(leftCoordinates[1] - rightCoordinates[1]), 2)), 9);
 
-            if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
-                roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
-                return true;
+            if (roundTurn) {
+                if (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) < -1e-8) {
+                    std::cout << "leftName: " << leftName << std::endl;
+                    std::cout << "rightName: " << rightName << std::endl;
+                    std::cout << "distanceBetweenCenters: " << distanceBetweenCenters << std::endl;
+                    std::cout << "(distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)): " << (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9)) << std::endl;
+                    std::cout << "(leftDimensions[0] / 2 + rightDimensions[0] / 2): " << (leftDimensions[0] / 2 + rightDimensions[0] / 2) << std::endl;
+                    return true;
+                }
+            }
+            else {
+                if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
+                    roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
+                    return true;
+                }
             }
         }
     }

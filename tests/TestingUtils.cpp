@@ -566,6 +566,11 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
     std::map<std::string, std::vector<double>> dimensionsByName;
     std::map<std::string, std::vector<double>> coordinatesByName;
 
+    auto bobbin = coil.resolve_bobbin();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+
     int turnsIn0 = 0;
     for (auto& turn : turns){
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
@@ -574,19 +579,27 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
         }
         parallelProportion[windingIndex][turn.get_parallel()] += 1.0 / coil.get_number_turns(windingIndex);
         dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
-        coordinatesByName[turn.get_name()] = turn.get_coordinates();
-    }
-
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
-            bool equalToOne = OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1;
-            CHECK(equalToOne);
-            return equalToOne;
+        if (bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::RECTANGULAR) {
+            coordinatesByName[turn.get_name()] = turn.get_coordinates();
+        }
+        else {
+            double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+            double xCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * cos(turn.get_coordinates()[1] / 180 * std::numbers::pi);
+            double yCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * sin(turn.get_coordinates()[1] / 180 * std::numbers::pi);
+            coordinatesByName[turn.get_name()] = {xCoordinate, yCoordinate};
         }
     }
-    bool collides = !OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName);
+
+    bool equalToOne = true;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+            equalToOne &= OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1;
+        }
+    }
+    CHECK(equalToOne);
+    bool collides = !OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
     CHECK(collides);
-    return !collides;
+    return !collides && equalToOne;
 }
 
 } // namespace OpenMagneticsTesting
