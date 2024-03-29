@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-bool verboseTests = false;
+bool verboseTests = true;
 
 
 namespace OpenMagneticsTesting {
@@ -562,9 +562,12 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
         parallelProportion.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
     }
 
+    auto wires = coil.get_wires();
+
     auto turns = coil.get_turns_description().value();
     std::map<std::string, std::vector<double>> dimensionsByName;
     std::map<std::string, std::vector<double>> coordinatesByName;
+    std::map<std::string, std::vector<double>> additionalCoordinatesByName;
 
     auto bobbin = coil.resolve_bobbin();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -587,6 +590,15 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
             double xCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * cos(turn.get_coordinates()[1] / 180 * std::numbers::pi);
             double yCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * sin(turn.get_coordinates()[1] / 180 * std::numbers::pi);
             coordinatesByName[turn.get_name()] = {xCoordinate, yCoordinate};
+            if (turn.get_additional_coordinates()) {
+                auto additionalCoordinates = turn.get_additional_coordinates().value();
+
+                for (auto additionalCoordinate : additionalCoordinates){
+                    double xAdditionalCoordinate = (windingWindowRadialHeight - additionalCoordinate[0]) * cos(additionalCoordinate[1] / 180 * std::numbers::pi);
+                    double yAdditionalCoordinate = (windingWindowRadialHeight - additionalCoordinate[0]) * sin(additionalCoordinate[1] / 180 * std::numbers::pi);
+                    additionalCoordinatesByName[turn.get_name()] = {xAdditionalCoordinate, yAdditionalCoordinate};
+                }
+            }
         }
     }
 
@@ -599,6 +611,9 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
     CHECK(equalToOne);
     bool collides = !OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
     CHECK(collides);
+    if (additionalCoordinatesByName.size() > 0) {
+        collides |= !OpenMagnetics::check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
+    }
     return !collides && equalToOne;
 }
 

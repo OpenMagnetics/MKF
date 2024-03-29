@@ -4,6 +4,7 @@
 #include "Utils.h"
 #include "CoreWrapper.h"
 #include "InputsWrapper.h"
+#include "MagneticSimulator.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>
@@ -1904,5 +1905,4 @@ SUITE(WindingLossesFoil) {
         }
         settings->reset();
     }
-
 }

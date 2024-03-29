@@ -18,6 +18,7 @@ class Painter{
 
     protected:
         double _scale = 30000;
+        double _extraDimension = 1;
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
         std::filesystem::path _filepath;
         std::map<std::string, std::string> _postProcessingChanges;
@@ -49,8 +50,8 @@ class Painter{
     void export_png();
 
     void paint_core(MagneticWrapper magnetic);
-    void paint_toroidal_core(CoreWrapper core);
-    void paint_two_piece_set_core(CoreWrapper core);
+    void paint_toroidal_core(MagneticWrapper magnetic);
+    void paint_two_piece_set_core(MagneticWrapper magnetic);
 
     void paint_bobbin(MagneticWrapper magnetic);
     void paint_two_piece_set_bobbin(MagneticWrapper magnetic);
@@ -63,12 +64,17 @@ class Painter{
     void paint_two_piece_set_winding_layers(MagneticWrapper magnetic);
     void paint_toroidal_winding_layers(MagneticWrapper magnetic);
 
+    void paint_round_wire(double xCoordinate, double yCoordinate, WireWrapper wire);
+    void paint_rectangular_wire(double xCoordinate, double yCoordinate, WireWrapper wire, double angle=0, std::vector<double> center=std::vector<double>{});
     void paint_coil_turns(MagneticWrapper magnetic);
     void paint_two_piece_set_winding_turns(MagneticWrapper magnetic);
     void paint_toroidal_winding_turns(MagneticWrapper magnetic);
 
     void paint_two_piece_set_margin(MagneticWrapper magnetic);
     void paint_toroidal_margin(MagneticWrapper magnetic);
+
+    void calculate_extra_margin_for_toroidal_cores(MagneticWrapper magnetic);
+
 
 
 };

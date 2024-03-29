@@ -62,12 +62,16 @@ class CoilWrapper : public Coil {
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
+        void remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections);
+
         std::vector<double> get_proportion_per_winding_based_on_wires();
         void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
         std::vector<double> get_aligned_section_dimensions_rectangular_window(size_t sectionIndex);
         std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
         std::vector<double> cartesian_to_polar(std::vector<double> value);
+        std::vector<double> polar_to_cartesian(std::vector<double> value);
+        std::vector<std::pair<double, std::vector<double>>> get_collision_distances(std::vector<double> turnCoordinates, std::vector<std::vector<double>> placedTurnsCoordinates, double wireHeight);
 
         bool wind_by_sections();
         bool wind_by_sections(size_t repetitions);
@@ -82,6 +86,7 @@ class CoilWrapper : public Coil {
         bool wind_by_turns();
         bool wind_by_rectangular_turns();
         bool wind_by_round_turns();
+        bool wind_toroidal_additional_turns();
         bool calculate_insulation(bool simpleMode = false);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
@@ -177,12 +182,15 @@ class CoilWrapper : public Coil {
 
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
         const Section get_section_by_name(std::string name) const;
+        const Turn get_turn_by_name(std::string name) const;
         const std::vector<Section> get_sections_by_winding(std::string windingName) const;
 
         std::vector<Layer> get_layers_by_section(std::string sectionName);
         const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;
+        std::vector<Layer> get_layers_by_winding_index(size_t windingIndex);
 
         std::vector<Turn> get_turns_by_layer(std::string layerName);
+        std::vector<Turn> get_turns_by_section(std::string sectionName);
 
         std::vector<uint64_t> get_number_parallels();
         void set_number_parallels(std::vector<uint64_t> numberParallels);
@@ -190,6 +198,9 @@ class CoilWrapper : public Coil {
         CoilFunctionalDescription get_winding_by_name(std::string name);
 
         size_t get_winding_index_by_name(std::string name);
+        size_t get_turn_index_by_name(std::string name);
+        size_t get_layer_index_by_name(std::string name);
+        size_t get_section_index_by_name(std::string name);
 
         std::vector<WireWrapper> get_wires();
         WireType get_wire_type(size_t windingIndex);

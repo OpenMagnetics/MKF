@@ -35,6 +35,7 @@ class MagneticAdviser{
         std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults);
         std::vector<std::pair<MasWrapper, double>> score_magnetics(std::vector<MasWrapper> masMagneticsWithCoil, std::map<MagneticAdviserFilters, double> weights);
         void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration);
+        static void preview_magnetic(MasWrapper mas);
 
         std::map<std::string, std::map<MagneticAdviserFilters, double>> get_scorings(){
             return get_scorings(false);

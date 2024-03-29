@@ -216,6 +216,11 @@ void Painter::export_svg() {
                 }
 
                 lines[lineIndex] = replace_key(key, currentLine, _postProcessingColors[key]);
+
+                if (lines[lineIndex].contains(R"(polygon)")) {
+                    lines[lineIndex - 2] = replace_key(R"(<g )", lines[lineIndex - 2], _postProcessingChanges[key]);
+                }
+
             }
         }
     }
@@ -225,7 +230,6 @@ void Painter::export_svg() {
         finalFile << lines[lineIndex] << std::endl;
     }
     finalFile.close();
-
 }
 
 void Painter::export_png() {
@@ -240,10 +244,10 @@ void Painter::paint_core(MagneticWrapper magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            return paint_toroidal_core(magnetic.get_core());
+            return paint_toroidal_core(magnetic);
             break;
         default:
-            return paint_two_piece_set_core(magnetic.get_core());
+            return paint_two_piece_set_core(magnetic);
             break;
     }
 }
@@ -302,15 +306,47 @@ void Painter::paint_coil_turns(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_toroidal_core(CoreWrapper core) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::calculate_extra_margin_for_toroidal_cores(MagneticWrapper magnetic) {
+    CoilWrapper winding = magnetic.get_coil();
+    auto core = magnetic.get_core();
 
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto processedDescription = core.get_processed_description().value();
     auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
 
     double coreWidth = processedDescription.get_width();
-    double coreHeight = processedDescription.get_height();
+
+    if (!winding.get_turns_description()) {
+        return;
+    }
+
+    auto turns = winding.get_turns_description().value();
+    double maximumAdditionalRadialHeight = 0;
+    for (size_t i = 0; i < turns.size(); ++i){
+        if (turns[i].get_additional_coordinates()) {
+            auto additionalCoordinates = turns[i].get_additional_coordinates().value();
+            for (auto additionalCoordinate : additionalCoordinates){
+                maximumAdditionalRadialHeight = std::max(maximumAdditionalRadialHeight, fabs(additionalCoordinate[0]) + turns[i].get_dimensions().value()[0] / 2 - mainColumn.get_width());
+            }
+        }
+    }
+
+    _extraDimension = (coreWidth + 2 * maximumAdditionalRadialHeight) / coreWidth;
+
+}
+
+void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto core = magnetic.get_core();
+
+    calculate_extra_margin_for_toroidal_cores(magnetic);
+
+    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+    auto processedDescription = core.get_processed_description().value();
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+
+    double coreWidth = processedDescription.get_width() * _extraDimension;
+    double coreHeight = processedDescription.get_height() * _extraDimension;
 
     matplot::gcf()->size(coreWidth * _scale, coreHeight * _scale);
     matplot::xlim({-coreWidth / 2, coreWidth / 2});
@@ -332,8 +368,9 @@ void Painter::paint_toroidal_core(CoreWrapper core) {
     _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_ferrite(), 0, 16));
 }
 
-void Painter::paint_two_piece_set_core(CoreWrapper core) {
+void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
+    auto core = magnetic.get_core();
     std::vector<std::vector<double>> topPiecePoints = {};
     std::vector<std::vector<double>> bottomPiecePoints = {};
     std::vector<std::vector<std::vector<double>>> gapChunks = {};
@@ -591,7 +628,12 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
 
 void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
+    bool drawSpacer = settings->get_painter_painter_draw_spacer();
     auto sections = magnetic.get_coil().get_sections_description().value();
+
+    if (sections.size() == 1) {
+        return;
+    }
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
@@ -608,82 +650,100 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
     auto sectionOrientation = windingWindows[0].get_sections_orientation();
+    double largestThickness = 0;
 
-    double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
+    double windingWindowRadialHeight = processedDescription.get_width() / 2 - mainColumn.get_width();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
             auto margins = sections[i].get_margin().value();
 
+            if (sectionOrientation == WindingOrientation::CONTIGUOUS) {
 
-            if (margins[0] > 0) {
-
-                if (sectionOrientation == WindingOrientation::CONTIGUOUS) {
-                    double strokeWidth = sections[i].get_dimensions()[0];
-                    double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
-                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
-
-                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
-                    auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
-
-                    double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 + strokeWidth / 2);
-                    double angleProportion = angle / 360;
-                    std::string termination = angleProportion < 1? "butt" : "round";
-                    if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-
-                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
-                                                        R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
-             
+                if (drawSpacer) {
+                    size_t nextSectionIndex = 0;
+                    if (i < sections.size() - 2) {
+                        nextSectionIndex = i + 2;
                     }
+                    double leftMargin = sections[i].get_margin().value()[1];
+                    double rightMargin = sections[nextSectionIndex].get_margin().value()[0];
+                    double rectangleThickness = leftMargin + rightMargin;
+                    if (rectangleThickness == 0) {
+                        continue;
+                    }
+                    double leftAngle = sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2;
+                    double rightAngle = sections[nextSectionIndex].get_coordinates()[1] - sections[nextSectionIndex].get_dimensions()[1] / 2;
+                    largestThickness = std::max(largestThickness, rectangleThickness);
+
+                    if (i >= sections.size() - 2) {
+                        rightAngle += 360;
+                    }
+                    double rectangleAngleInRadians = (leftAngle + rightAngle) / 2 / 180 * std::numbers::pi;
+                    std::vector<double> centerRadialPoint = {windingWindowRadialHeight * cos(rectangleAngleInRadians), windingWindowRadialHeight * sin(rectangleAngleInRadians)};
+
+                    std::vector<std::vector<double>> marginPoints = {};
+                    marginPoints.push_back({centerRadialPoint[0] - rectangleThickness / 2 * sin(rectangleAngleInRadians), centerRadialPoint[1] + rectangleThickness / 2 * cos(rectangleAngleInRadians)});
+                    marginPoints.push_back({centerRadialPoint[0] + rectangleThickness / 2 * sin(rectangleAngleInRadians), centerRadialPoint[1] - rectangleThickness / 2 * cos(rectangleAngleInRadians)});
+                    marginPoints.push_back({0 + rectangleThickness / 2 * sin(rectangleAngleInRadians), 0 - rectangleThickness / 2 * cos(rectangleAngleInRadians)});
+                    marginPoints.push_back({0 - rectangleThickness / 2 * sin(rectangleAngleInRadians), 0 + rectangleThickness / 2 * cos(rectangleAngleInRadians)});
+
+                    std::vector<double> x, y;
+                    for (auto& point : marginPoints) {
+                        x.push_back(point[0]);
+                        y.push_back(point[1]);
+                    }
+                    matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
+
                 }
                 else {
-                    double strokeWidth = margins[0];
-                    double circleDiameter = (initialRadius - (sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2) + margins[0] / 2) * 2;
-                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
+                    if (margins[0] > 0) {
+                        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                        auto key = key_to_rgb_color(_currentMapIndex);
+                        _currentMapIndex++;
+                        double strokeWidth = sections[i].get_dimensions()[0];
+                        double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
+                        double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
-                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
-                    auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
+                        double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
+                        double angleProportion = angle / 360;
+                        std::string termination = angleProportion < 1? "butt" : "round";
 
-                    double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
-                    double angleProportion = angle / 360;
-                    std::string termination = angleProportion < 1? "butt" : "round";
-                    if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+                        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
-                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
-                                                        R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
+                            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+                                                            R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
+                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
+                 
+                        }
+                    }
+
+                    if (margins[1] > 0) {
+                        double strokeWidth = sections[i].get_dimensions()[0];
+                        double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
+                        double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
+
+                        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                        auto key = key_to_rgb_color(_currentMapIndex);
+                        _currentMapIndex++;
+
+                        double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
+                        double angleProportion = angle / 360;
+                        std::string termination = angleProportion < 1? "butt" : "round";
+                        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+
+                            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+                                                            R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
+                            _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
+                 
+                        }
                     }
                 }
             }
-            if (margins[1] > 0) {
-                if (sectionOrientation == WindingOrientation::CONTIGUOUS) {
-                    double strokeWidth = sections[i].get_dimensions()[0];
-                    double circleDiameter = (initialRadius - sections[i].get_coordinates()[0]) * 2;
-                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
-
-                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
-                    auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
-
-                    double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 + strokeWidth / 2);
-                    double angleProportion = angle / 360;
-                    std::string termination = angleProportion < 1? "butt" : "round";
-                    if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-
-                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
-                                                        R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
-                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
-             
-                    }
-                }
-                else {
-                    double strokeWidth = margins[1];
-                    double circleDiameter = (initialRadius - (sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2) - margins[1] / 2) * 2;
+            else {
+                if (margins[0] > 0) {
+                    double strokeWidth = margins[0];
+                    double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2) + margins[0] / 2) * 2;
                     double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
@@ -696,13 +756,38 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
                         matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
+                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+                                                        R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
+                        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
+                    }
+                }
+                if (margins[1] > 0) {
+
+                    double strokeWidth = margins[1];
+                    double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2) - margins[1] / 2) * 2;
+                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
+
+                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                    auto key = key_to_rgb_color(_currentMapIndex);
+                    _currentMapIndex++;
+
+                    double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
+                    double angleProportion = angle / 360;
+                    std::string termination = angleProportion < 1? "butt" : "round";
+                    if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+
+                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                        _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                         R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
                     }
                 }
             }
         }
+    }
+
+    if (drawSpacer) {
+        matplot::ellipse(-largestThickness * 2 / 2, -largestThickness * 2 / 2, largestThickness * 2, largestThickness * 2)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
     }
 }
 
@@ -774,7 +859,7 @@ void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
             matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
@@ -865,7 +950,7 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
@@ -877,6 +962,67 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
     }
 
     paint_toroidal_margin(magnetic);
+}
+
+void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapper wire) {
+    if (!wire.get_outer_diameter()) {
+        throw std::runtime_error("Wire is missing outerDiameter");
+    }
+    auto settings = OpenMagnetics::Settings::GetInstance();
+
+    double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+    matplot::ellipse(xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+
+    if (wire.get_conducting_diameter()) {
+        double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        matplot::ellipse(xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+    }
+}
+
+void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, WireWrapper wire, double angle, std::vector<double> center) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    std::vector<std::vector<double>> turnPoints = {};
+    turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+    turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+    turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+    turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+
+    auto currentMapIndex = uint_to_hex(_currentMapIndex);
+    auto key = key_to_rgb_color(_currentMapIndex);
+    _currentMapIndex++;
+
+    std::vector<double> x, y;
+    for (auto& point : turnPoints) {
+        x.push_back(point[0]);
+        y.push_back(point[1]);
+    }
+    matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
+
+    _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
+    _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0]) + " " + std::to_string(center[1]) + ")\" ";
+
+    if (wire.get_conducting_width() && wire.get_conducting_height()) {
+        std::vector<std::vector<double>> turnPoints = {};
+        turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
+        turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
+        turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
+        turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
+
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+
+        std::vector<double> x, y;
+        for (auto& point : turnPoints) {
+            x.push_back(point[0]);
+            y.push_back(point[1]);
+        }
+        matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
+
+        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
+        _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0]) + " " + std::to_string(center[1]) + ")\" ";
+
+    }
 }
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
@@ -896,13 +1042,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-            double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-            matplot::ellipse(turns[i].get_coordinates()[0] - outerDiameter / 2, turns[i].get_coordinates()[1] - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
-
-            if (wire.get_conducting_diameter()) {
-                double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-                matplot::ellipse(turns[i].get_coordinates()[0] - conductingDiameter / 2, turns[i].get_coordinates()[1] - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
-            }
+            paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
         }
         else {
             {
@@ -993,45 +1133,29 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
         double xCoordinate = (initialRadius - turns[i].get_coordinates()[0]) * cos(turns[i].get_coordinates()[1] / 180 * std::numbers::pi);
         double yCoordinate = (initialRadius - turns[i].get_coordinates()[0]) * sin(turns[i].get_coordinates()[1] / 180 * std::numbers::pi);
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-            double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-            matplot::ellipse(xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
-
-            if (wire.get_conducting_diameter()) {
-                double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-                matplot::ellipse(xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
-            }
+            paint_round_wire(xCoordinate, yCoordinate, wire);
         }
         else {
-            {
-                std::vector<std::vector<double>> turnPoints = {};
-                turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+            double turnAngle = turns[i].get_coordinates()[1];
+            std::vector<double> turnCenter = {(coreWidth / 2  * _extraDimension + xCoordinate) * _scale, (coreHeight / 2  * _extraDimension - yCoordinate) * _scale};
+            paint_rectangular_wire(xCoordinate, yCoordinate, wire, turnAngle, turnCenter);
+        }
 
-                std::vector<double> x, y;
-                for (auto& point : turnPoints) {
-                    x.push_back(point[0]);
-                    y.push_back(point[1]);
+        if (turns[i].get_additional_coordinates()) {
+            auto additionalCoordinates = turns[i].get_additional_coordinates().value();
+
+            for (auto additionalCoordinate : additionalCoordinates){
+                double xAdditionalCoordinate = (initialRadius - additionalCoordinate[0]) * cos(additionalCoordinate[1] / 180 * std::numbers::pi);
+                double yAdditionalCoordinate = (initialRadius - additionalCoordinate[0]) * sin(additionalCoordinate[1] / 180 * std::numbers::pi);
+                if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                    paint_round_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
-            }
-
-            if (wire.get_conducting_width() && wire.get_conducting_height()) {
-                std::vector<std::vector<double>> turnPoints = {};
-                turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-
-                std::vector<double> x, y;
-                for (auto& point : turnPoints) {
-                    x.push_back(point[0]);
-                    y.push_back(point[1]);
+                else {
+                    double turnAngle = turns[i].get_coordinates()[1];
+                    std::vector<double> turnCenter = {(coreWidth / 2  * _extraDimension + xAdditionalCoordinate) * _scale, (coreHeight / 2  * _extraDimension - yAdditionalCoordinate) * _scale};
+                    paint_rectangular_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire, turnAngle, turnCenter);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
             }
-            
         }
     }
 
@@ -1052,9 +1176,19 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale) + " " + std::to_string(coreHeight / 2 * _scale) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
+            
+            if (layers[i].get_additional_coordinates()) {
+                circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
+                matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+                                                R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
+                _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
+            }
+
+
         }
     }
 

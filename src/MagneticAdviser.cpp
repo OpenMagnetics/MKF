@@ -189,7 +189,7 @@ namespace OpenMagnetics {
     }
 
 
-void preview_magnetic(MasWrapper mas) {
+void MagneticAdviser::preview_magnetic(MasWrapper mas) {
     std::string text = "";
     text += "Core shape: " + mas.get_mutable_magnetic().get_mutable_core().get_shape_name() + "\n";
     text += "Core material: " + mas.get_mutable_magnetic().get_mutable_core().get_material_name() + "\n";
@@ -206,6 +206,7 @@ void preview_magnetic(MasWrapper mas) {
     for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
         auto output = mas.get_outputs()[operatingPointIndex];
         text += "Operating Point: " + std::to_string(operatingPointIndex + 1) + "\n";
+        text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_magnetizing_inductance().value().get_magnetizing_inductance())) + "\n";
         text += "\tCore losses: " + std::to_string(output.get_core_losses().value().get_core_losses()) + "\n";
         text += "\tCore temperature: " + std::to_string(output.get_core_losses().value().get_temperature().value()) + "\n";
         text += "\tWinding losses: " + std::to_string(output.get_winding_losses().value().get_winding_losses()) + "\n";
@@ -230,6 +231,7 @@ void preview_magnetic(MasWrapper mas) {
             text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
         }
     }
+    std::cout << text << std::endl;
 }
 
 std::map<std::string, std::map<MagneticAdviser::MagneticAdviserFilters, double>> MagneticAdviser::get_scorings(bool weighted){
@@ -347,7 +349,7 @@ int main(int argc, char* argv[]) {
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, numberMagnetics);
         for (size_t i = 0; i < masMagnetics.size(); ++i){
-            preview_magnetic(masMagnetics[i].first);
+            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetics[i].first);
 
             std::filesystem::path outputFilename = outputFilePath;
             outputFilename += inputFilepath.filename();
