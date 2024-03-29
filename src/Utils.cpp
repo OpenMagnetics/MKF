@@ -725,9 +725,6 @@ std::complex<double> modified_bessel_first_kind(double order, std::complex<doubl
         if (std::abs(inc) < std::abs(sum) * 0.0001){
             break;
         }
-        // if (std::isnan(sum.real())) {
-        //     break;
-        // }
     }
 
     auto bessel = sum * pow(0.5 * z, order);
@@ -750,9 +747,6 @@ std::complex<double> bessel_first_kind(double order, std::complex<double> z) {
         if (std::abs(inc) < std::abs(sum) * 0.0001){
             break;
         }
-        // if (std::isnan(sum.real())) {
-        //     break;
-        // }
     }
     auto bessel = sum * pow(0.5 * z, order);
     return bessel;

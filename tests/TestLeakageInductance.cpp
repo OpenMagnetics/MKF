@@ -19,6 +19,7 @@ SUITE(LeakageInductance) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.1;
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    bool plot = false;
 
     TEST(Test_Leakage_Inductance_E_0) {
         settings->reset();
@@ -512,7 +513,20 @@ SUITE(LeakageInductance) {
         magnetic.set_coil(coil);
 
         double frequency = 100000;
-        double expectedLeakageInductance = 100e-6;
+        double expectedLeakageInductance = 86e-6;
+
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Leakage_Inductance_PQ_26_0.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);

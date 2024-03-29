@@ -20,6 +20,7 @@ class Settings
         bool _coilWindEvenIfNotFit = false;
         bool _coilDelimitAndCompact = true;
         bool _coilTryRewind = true;
+        bool _coilIncludeAdditionalCoordinates = true;
 
         bool _useOnlyCoresInStock = true;
 
@@ -29,6 +30,7 @@ class Settings
         Painter::PainterModes _painterMode = Painter::PainterModes::CONTOUR;
         bool _painterLogarithmicScale = false;
         bool _painterIncludeFringing = true;
+        bool _painterDrawSpacer = true;
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
         std::string _painterColorFerrite = "0x007b7c7d";
@@ -36,6 +38,7 @@ class Settings
         std::string _painterColorCopper = "0x00b87333";
         std::string _painterColorInsulation = "0x18539796";
         std::string _painterColorMargin = "0x00fff05b";
+        std::string _painterColorSpacer = "0x003b3b3b";
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
@@ -80,6 +83,9 @@ class Settings
         bool get_coil_try_rewind() const;
         void set_coil_try_rewind(bool value);
 
+        bool get_coil_include_additional_coordinates() const;
+        void set_coil_include_additional_coordinates(bool value);
+
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);
 
@@ -97,6 +103,9 @@ class Settings
 
         bool get_painter_include_fringing() const;
         void set_painter_include_fringing(bool value);
+
+        bool get_painter_painter_draw_spacer() const;
+        void set_painter_painter_draw_spacer(bool value);
 
         std::optional<double> get_painter_maximum_value_colorbar() const;
         void set_painter_maximum_value_colorbar(std::optional<double> value);
@@ -118,6 +127,9 @@ class Settings
 
         std::string get_painter_color_margin() const;
         void set_painter_color_margin(std::string value);
+
+        std::string get_painter_color_spacer() const;
+        void set_painter_color_spacer(std::string value);
 
         int get_painter_mirroring_dimension() const;
         void set_painter_mirroring_dimension(int value);

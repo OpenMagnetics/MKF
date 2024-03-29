@@ -594,7 +594,7 @@ SUITE(CoilAdviser) {
             painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
             painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
             painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-            painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
+            // painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
             painter.export_svg();
         }
         settings->reset();
@@ -612,13 +612,13 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.5;
         double dcCurrent = 0;
 
-        std::vector<int64_t> numberTurns = {82, 5};
+        std::vector<int64_t> numberTurns = {82, 55};
         std::vector<int64_t> numberParallels = {1, 1};
         for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
             turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
         }
-        double frequency = 175590;
-        double peakToPeak = 26;
+        double frequency = 75590;
+        double peakToPeak = 13;
 
         auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 54", gapping, numberTurns, numberStacks, "3C91");
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
@@ -701,7 +701,7 @@ SUITE(CoilAdviser) {
             painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
             painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
             painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-            painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
+            // painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
             painter.export_svg();
         }
         settings->reset();

@@ -20,6 +20,7 @@ namespace OpenMagnetics {
         _coilWindEvenIfNotFit = false;
         _coilDelimitAndCompact = true;
         _coilTryRewind = true;
+        _coilIncludeAdditionalCoordinates = true;
 
         _useOnlyCoresInStock = true;
 
@@ -29,13 +30,15 @@ namespace OpenMagnetics {
         _painterMode = Painter::PainterModes::CONTOUR;
         _painterLogarithmicScale = false;
         _painterIncludeFringing = true;
+        _painterDrawSpacer = true;
         _painterMaximumValueColorbar = std::nullopt;
         _painterMinimumValueColorbar = std::nullopt;
         _painterColorFerrite = "0x007b7c7d";
-        _painterColorBobbin = "0x8F1b1b1b";
+        _painterColorBobbin = "0x8f1b1b1b";
         _painterColorCopper = "0x00b87333";
         _painterColorInsulation = "0x18539796";
-        _painterColorMargin = "0x8Ffff05b";
+        _painterColorMargin = "0x00fff05b";
+        _painterColorSpacer = "0x003b3b3b";
 
         _magneticFieldNumberPointsX = 25;
         _magneticFieldNumberPointsY = 50;
@@ -106,6 +109,13 @@ namespace OpenMagnetics {
         _coilTryRewind = value;
     }
 
+    bool Settings::get_coil_include_additional_coordinates() const {
+        return _coilIncludeAdditionalCoordinates;
+    }
+    void Settings::set_coil_include_additional_coordinates(bool value) {
+        _coilIncludeAdditionalCoordinates = value;
+    }
+
     bool Settings::get_use_only_cores_in_stock() const {
         return _useOnlyCoresInStock;
     }
@@ -146,6 +156,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_include_fringing(bool value) {
         _painterIncludeFringing = value;
+    }
+
+    bool Settings::get_painter_painter_draw_spacer() const {
+        return _painterDrawSpacer;
+    }
+    void Settings::set_painter_painter_draw_spacer(bool value) {
+        _painterDrawSpacer = value;
     }
 
     std::optional<double> Settings::get_painter_maximum_value_colorbar() const {
@@ -195,6 +212,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_margin(std::string value) {
         _painterColorMargin = value;
+    }
+
+    std::string Settings::get_painter_color_spacer() const {
+        return _painterColorSpacer;
+    }
+    void Settings::set_painter_color_spacer(std::string value) {
+        _painterColorSpacer = value;
     }
 
     int Settings::get_painter_mirroring_dimension() const {

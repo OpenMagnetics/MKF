@@ -20,6 +20,7 @@ using json = nlohmann::json;
 
 
 SUITE(CoilWeb) {
+    bool plot = false;
     auto settings = OpenMagnetics::Settings::GetInstance();
     TEST(Test_Coil_Json_0) {
         std::string coilString = R"({"bobbin":"Dummy","functionalDescription":[{"isolationSide":"Primary","name":"Primary","numberParallels":1,"numberTurns":23,"wire":"Dummy"}]})";
@@ -89,13 +90,13 @@ SUITE(CoilWeb) {
         auto section = coil.get_sections_description().value()[0];
         CHECK(!std::isnan(section.get_dimensions()[0]));
         CHECK(!std::isnan(section.get_dimensions()[1]));
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Coil_Json_2.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
@@ -138,13 +139,13 @@ SUITE(CoilWeb) {
         std::vector<int64_t> numberParallels = {88};
         uint8_t interleavingLevel = 7;
         OpenMagneticsTesting::check_sections_description(coil, numberTurns, numberParallels, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Coil_Json_3.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
@@ -152,9 +153,10 @@ SUITE(CoilWeb) {
             painter.export_svg();
         }
     }
-
 }
+
 SUITE(CoilSectionsDescriptionMargins) {
+    bool plot = false;
     auto settings = OpenMagnetics::Settings::GetInstance();
     TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
         settings->reset();
@@ -162,8 +164,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -196,13 +196,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -219,13 +219,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -252,8 +252,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -280,13 +278,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -311,13 +309,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -338,13 +336,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -379,8 +377,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -402,13 +398,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -429,13 +425,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -452,13 +448,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -485,8 +481,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -512,13 +506,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -544,13 +538,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -572,13 +566,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -616,8 +610,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -639,13 +631,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -666,13 +658,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -689,13 +681,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -722,8 +714,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -749,13 +739,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -781,13 +771,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -809,13 +799,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -853,8 +843,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -876,13 +864,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin = coil.get_sections_description_conduction()[0].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -903,13 +891,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -926,13 +914,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -959,8 +947,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -986,13 +972,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginBeforeMargin_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_No_Margin_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1018,13 +1004,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1046,13 +1032,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1090,8 +1076,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1124,13 +1108,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1147,13 +1131,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1180,8 +1164,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1206,13 +1188,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1237,13 +1219,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1264,13 +1246,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Inner_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1305,8 +1287,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1339,13 +1319,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowEndingWidth = windingWindowCoordinates[0] + windingWindowDimensions[0] / 2;
         auto sectionEndingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] + coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1362,13 +1342,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1395,8 +1375,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1421,13 +1399,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1452,13 +1430,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1479,13 +1457,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Outer_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1520,8 +1498,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.002;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1554,13 +1530,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1577,13 +1553,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1610,8 +1586,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.001;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1636,13 +1610,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1667,13 +1641,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1694,13 +1668,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Horizontal_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1735,8 +1709,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1764,13 +1736,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1788,13 +1760,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1821,8 +1793,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1847,13 +1817,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1879,13 +1849,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1907,13 +1877,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
         auto marginAfterMarginFill_2 = coil.get_sections_description_conduction()[2].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -1948,8 +1918,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -1977,13 +1945,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2001,13 +1969,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2033,8 +2001,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2059,13 +2025,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2090,13 +2056,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2117,13 +2083,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2158,8 +2124,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2187,13 +2151,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2211,13 +2175,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2243,8 +2207,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2269,13 +2231,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2300,13 +2262,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2327,13 +2289,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Bottom_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2368,8 +2330,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2397,13 +2357,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2421,13 +2381,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2453,8 +2413,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2479,13 +2437,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2510,13 +2468,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2537,13 +2495,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2578,8 +2536,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2607,13 +2563,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2631,13 +2587,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2664,8 +2620,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2690,13 +2644,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2721,13 +2675,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2748,13 +2702,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2789,8 +2743,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2818,13 +2770,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2842,13 +2794,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2875,8 +2827,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -2901,13 +2851,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2932,13 +2882,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -2959,13 +2909,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3000,8 +2950,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3029,13 +2977,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3053,13 +3001,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3086,8 +3034,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3112,13 +3058,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3143,13 +3089,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3170,13 +3116,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3211,8 +3157,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3240,13 +3184,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3264,13 +3208,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3297,8 +3241,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3323,13 +3265,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3354,13 +3296,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3381,13 +3323,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Top_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3422,8 +3364,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3451,13 +3391,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3475,13 +3415,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3508,8 +3448,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3534,13 +3472,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3565,13 +3503,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3592,13 +3530,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3630,8 +3568,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3659,13 +3595,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3683,13 +3619,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3716,8 +3652,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3742,13 +3676,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3773,13 +3707,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3800,13 +3734,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3841,8 +3775,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3870,13 +3802,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3894,13 +3826,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3927,8 +3859,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -3953,13 +3883,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -3984,13 +3914,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4011,13 +3941,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4052,8 +3982,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4081,13 +4009,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4105,13 +4033,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4138,8 +4066,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4164,13 +4090,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4195,13 +4121,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4222,13 +4148,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Bottom_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4263,8 +4189,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4292,13 +4216,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4316,13 +4240,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4349,8 +4273,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4375,13 +4297,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4406,13 +4328,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4433,13 +4355,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Centered_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4474,8 +4396,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4503,13 +4423,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4527,13 +4447,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4560,8 +4480,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4586,13 +4504,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4617,13 +4535,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4644,13 +4562,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Inner_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4685,8 +4603,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4714,13 +4630,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4738,13 +4654,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4771,8 +4687,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4797,13 +4711,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4828,13 +4742,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4855,13 +4769,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Outer_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4896,8 +4810,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -4925,13 +4837,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginNoFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4949,13 +4861,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto sectionDimensionsAfterMarginFill = coil.get_sections_description_conduction()[0].get_dimensions();
         auto marginAfterMarginFill = coil.get_sections_description_conduction()[0].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -4982,8 +4894,6 @@ SUITE(CoilSectionsDescriptionMargins) {
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
         double margin = 0.0005;
         
         settings->set_coil_fill_sections_with_margin_tape(false);
@@ -5008,13 +4918,13 @@ SUITE(CoilSectionsDescriptionMargins) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins_No_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -5039,13 +4949,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto windingWindowStartingWidth = windingWindowCoordinates[0] - windingWindowDimensions[0] / 2;
         auto sectionStartingWidth_0 = coil.get_sections_description_conduction()[0].get_coordinates()[0] - coil.get_sections_description_conduction()[0].get_dimensions()[0] / 2;
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -5066,13 +4976,13 @@ SUITE(CoilSectionsDescriptionMargins) {
         auto marginAfterMarginFill_0 = coil.get_sections_description_conduction()[0].get_margin().value();
         auto marginAfterMarginFill_1 = coil.get_sections_description_conduction()[1].get_margin().value();
 
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Spread_No_Filling_Then_Filling_Vertical_Spread_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
             painter.paint_core(magnetic);
@@ -5104,6 +5014,7 @@ SUITE(CoilSectionsDescriptionMargins) {
 }
 
 SUITE(CoilSectionsDescriptionRectangular) {
+    bool plot = false;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_Wind_By_Section_Wind_By_Consecutive_Parallels) {
@@ -5374,6 +5285,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
 }
 
 SUITE(CoilLayersDescription) {
+    bool plot = false;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_Wind_By_Layer_Wind_One_Section_One_Layer) {
@@ -5705,7 +5617,7 @@ SUITE(CoilLayersDescription) {
 }
 
 SUITE(CoilTurnsDescription) {
-
+    bool plot = false;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer) {
@@ -5903,13 +5815,13 @@ SUITE(CoilTurnsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
         OpenMagneticsTesting::check_turns_description(coil);
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Wind_By_Turn_Random_Multiwinding_2.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
@@ -5978,13 +5890,13 @@ SUITE(CoilTurnsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
         OpenMagneticsTesting::check_turns_description(coil);
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
@@ -6021,13 +5933,13 @@ SUITE(CoilTurnsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
         OpenMagneticsTesting::check_turns_description(coil);
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_sections(magnetic);
@@ -6094,13 +6006,13 @@ SUITE(CoilTurnsDescription) {
         auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
 
         OpenMagneticsTesting::check_turns_description(coil);
-        {
+        if (plot) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Wind_By_Turn_Random_Multiwinding_4.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_coil(coil);
             // painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
@@ -6151,6 +6063,7 @@ SUITE(CoilTurnsDescription) {
 SUITE(CoilTurnsDescriptionToroidalNoCompact) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    bool plot = false;
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal) {
         settings->set_coil_delimit_and_compact(false);
@@ -6165,12 +6078,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6197,12 +6110,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6230,12 +6143,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, OpenMagnetics::WindingOrientation::CONTIGUOUS);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6266,12 +6179,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6304,12 +6217,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6342,12 +6255,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6380,12 +6293,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6420,12 +6333,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6458,12 +6371,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6495,12 +6408,12 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        {
+        if (plot) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6546,7 +6459,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
@@ -6590,12 +6503,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6635,12 +6547,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6654,7 +6565,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
         CHECK_CLOSE(327, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
         OpenMagneticsTesting::check_turns_description(coil);
     }
-
+ 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread) {
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
@@ -6678,12 +6589,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6720,12 +6630,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6763,12 +6672,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6806,12 +6714,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6846,12 +6753,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6889,12 +6795,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6932,12 +6837,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -6975,12 +6879,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7014,12 +6917,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7057,12 +6959,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7100,12 +7001,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7143,12 +7043,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7186,12 +7085,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7229,12 +7127,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7271,12 +7168,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7314,12 +7210,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7357,12 +7252,11 @@ SUITE(CoilTurnsDescriptionToroidal) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -7376,12 +7270,224 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wires) {
+        std::vector<int64_t> numberTurns = {60, 20, 20};
+        std::vector<int64_t> numberParallels = {1, 5, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.1 - Grade 2")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("225x0.04 - Grade 1 - Double Served")});
+
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wires.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == 180);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wires) {
+        std::vector<int64_t> numberTurns = {60, 20, 20};
+        std::vector<int64_t> numberParallels = {1, 5, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.1 - Grade 2")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("225x0.04 - Grade 1 - Double Served")});
+
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wires.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == 180);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Huge_Wire) {
+        std::vector<int64_t> numberTurns = {3};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
+        // settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("200x0.2 - Grade 2 - Double Served")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Huge_Wire.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == numberTurns[0]);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire) {
+        std::vector<int64_t> numberTurns = {11, 90};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK(coil.get_turns_description().value().size() == 101);
+        // Check this one manually, checking collision between two rotated rectangles is not worth it
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire) {
+        std::vector<int64_t> numberTurns = {6, 90};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+
+        CHECK(coil.get_turns_description().value().size() == 96);
+        // Check this one manually, checking collision between two rotated rectangles is not worth it
+    }
 }
 
 SUITE(CoilTurnsDescriptionToroidalMargin) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
-    bool plot = true;
+    bool plot = false;
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin) {
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7412,19 +7518,17 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
-        std::cout << "coil.get_turns_description().value().size(): " << coil.get_turns_description().value().size() << std::endl;
         CHECK(coil.get_turns_description().value().size() == 135);
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(186, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
@@ -7454,7 +7558,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        double margin = 0.0001;
+        double margin = 0.0002;
         coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
         coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
         coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
@@ -7464,22 +7568,309 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
+            OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
 
             painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
-        CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
-        CHECK_CLOSE(3, coil.get_turns_description().value()[18].get_coordinates()[1], 1);
-        CHECK_CLOSE(3, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
-        CHECK_CLOSE(317, coil.get_turns_description().value()[119].get_coordinates()[1], 1);
+        CHECK_CLOSE(6, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(161, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(258, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0002;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(31, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(186, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(330, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0002;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(19, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(173, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(318, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0002;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(131, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(341, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.0002;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 2.5, margin * 2.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 2.5});
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(131, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(349, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+}
+
+SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    bool plot = false;
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        auto turns = coil.get_turns_description().value();
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        for (auto turn : turns) {
+            CHECK(turn.get_additional_coordinates());
+            if (turn.get_additional_coordinates()) {
+                auto additionalCoordinates = turn.get_additional_coordinates().value();
+
+                for (auto additionalCoordinate : additionalCoordinates){
+                    CHECK(additionalCoordinate[0] < 0);
+                }
+            }
+        }
+        OpenMagneticsTesting::check_turns_description(coil);
+    }
+
+    TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates) {
+        std::vector<int64_t> numberTurns = {60, 42, 33};
+        std::vector<int64_t> numberParallels = {1, 1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 20/10/7";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        auto turns = coil.get_turns_description().value();
+
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+        }
+        settings->reset();
+        for (auto turn : turns) {
+            CHECK(turn.get_additional_coordinates());
+            if (turn.get_additional_coordinates()) {
+                auto additionalCoordinates = turn.get_additional_coordinates().value();
+
+                for (auto additionalCoordinate : additionalCoordinates){
+                    CHECK(additionalCoordinate[0] < 0);
+                }
+            }
+        }
         OpenMagneticsTesting::check_turns_description(coil);
     }
 }

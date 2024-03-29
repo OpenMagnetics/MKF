@@ -577,4 +577,52 @@ SUITE(MagneticAdviser) {
         // }
     }
 
+    TEST(Test_MagneticAdviser_Inductor) {
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY};
+
+        double frequency = 50000;
+        double peakToPeak = 90;
+        double magnetizingInductance = 0.000110;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        inputs.process_waveforms();
+
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+
+        if (masMagnetics.size() > 0) {
+            auto masMagnetic = masMagnetics[0].first;
+            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_MagneticAdviser_Inductor.svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile);
+
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
+
 }

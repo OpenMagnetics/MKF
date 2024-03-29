@@ -22,6 +22,20 @@ SUITE(Utils) {
         OpenMagnetics::load_databases(masData, true);
     }
 
+    TEST(CeilFloat) {
+        double value = 1.263;
+        double calculatedValue = OpenMagnetics::ceilFloat(value, 2);
+        double expectedValue = 1.27;
+        CHECK_EQUAL(expectedValue, calculatedValue);
+    }
+
+    TEST(FloorFloat) {
+        double value = 1.263;
+        double calculatedValue = OpenMagnetics::floorFloat(value, 2);
+        double expectedValue = 1.26;
+        CHECK_EQUAL(expectedValue, calculatedValue);
+    }
+
     TEST(Modified_Bessel) {
         double calculatedValue = OpenMagnetics::modified_bessel_first_kind(0.0, std::complex<double>{1.0, 0.0}).real();
         double expectedValue = 1.2660658777520084;
