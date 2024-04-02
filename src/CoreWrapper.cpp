@@ -24,7 +24,7 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-double roundFloat(double value, size_t decimals) {
+double roundFloat(double value, int64_t decimals) {
     return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
@@ -2487,7 +2487,7 @@ bool CoreWrapper::process_gap() {
     auto columns = processedDescription.get_columns();
 
     if (family == CoreShapeFamily::T && gapping.size() > 0 ) {
-        throw std::runtime_error("Toroids cannot be gapped");
+        throw std::runtime_error("Toroids cannot be gapped: " + std::to_string(gapping[0].get_length()));
     }
 
     if (family != CoreShapeFamily::T) {

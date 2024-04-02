@@ -203,6 +203,17 @@ SUITE(LeakageInductance) {
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Leakage_Inductance_E_2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
         settings->reset();
     }
 
@@ -649,6 +660,7 @@ SUITE(LeakageInductance) {
         double expectedLeakageInductance = 40e-6;
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
 
@@ -716,6 +728,93 @@ SUITE(LeakageInductance) {
         auto leakageInductance_12 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 2).get_leakage_inductance_per_winding()[0].get_nominal().value();
         auto leakageInductance_21 = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 2, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(leakageInductance_12, leakageInductance_21 * pow(double(numberTurns[1]) / numberTurns[2], 2), leakageInductance_12 * 0.01);
+        settings->reset();
+    }
+
+    TEST(Test_Leakage_Inductance_T_0) {
+        settings->reset();
+        std::vector<int64_t> numberTurns({10, 200});
+        std::vector<int64_t> numberParallels({1, 1});
+        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
+        std::string shapeName = "T 48/28/16";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        settings->set_coil_try_rewind(false);
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireRound strand;
+        OpenMagnetics::WireWrapper wire;
+        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
+        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        strandConductingDiameter.set_nominal(0.00005);
+        strandOuterDiameter.set_nominal(0.000055);
+        strand.set_conducting_diameter(strandConductingDiameter);
+        strand.set_outer_diameter(strandOuterDiameter);
+        strand.set_number_conductors(1);
+        strand.set_material("copper");
+        strand.set_type(OpenMagnetics::WireType::ROUND);
+
+        wire.set_strand(strand);
+        wire.set_nominal_value_outer_diameter(0.001);
+        wire.set_nominal_value_conducting_diameter(0.00095);
+        wire.set_material("copper");
+        wire.set_number_conductors(1);
+        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wires.push_back(wire);
+        wire.set_strand(strand);
+        wire.set_nominal_value_outer_diameter(0.0008);
+        wire.set_nominal_value_conducting_diameter(0.00075);
+        wire.set_material("copper");
+        wire.set_number_conductors(1);
+        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wires.push_back(wire);
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires);
+
+        std::vector<double> proportionPerWinding = {16.185 / (222.42 + 16.185), 222.42 / (222.42 + 16.185)};
+        std::vector<size_t> pattern = {0, 1};
+        coil.wind(proportionPerWinding, pattern);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        double frequency = 100000;
+        double expectedLeakageInductance = 0.00143;
+
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageMagneticField = OpenMagnetics::LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
+        CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Leakage_Inductance_T_0.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
+            painter.paint_core(magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+
+
         settings->reset();
     }
 }

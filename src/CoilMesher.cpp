@@ -1,5 +1,6 @@
 #include "CoilMesher.h"
 #include "WindingOhmicLosses.h"
+#include "CoilWrapper.h"
 #include "Defaults.h"
 #include "Settings.h"
 
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <magic_enum.hpp>
 #include <numbers>
+#include <matplot/matplot.h>
 #include <streambuf>
 #include <vector>
 
@@ -60,6 +62,55 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(CoilWrapper coil, Op
     }
 }
 
+
+std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(MagneticWrapper magnetic, double frequency, size_t numberPointsX, size_t numberPointsY) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+
+    std::vector<FieldPoint> points;
+    auto extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+    std::vector<double> bobbinPointsX;
+    std::vector<double> bobbinPointsY;
+    double coreWidth = magnetic.get_mutable_core().get_width();
+    double coreHeight = magnetic.get_mutable_core().get_height();
+    double dA;
+
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
+        double bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
+        double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
+        double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
+
+        bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, numberPointsX);
+        bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, numberPointsY);
+
+        double dx = (bobbinWidthStart + bobbinWidth - coreColumnWidth / 2) / numberPointsX;
+        double dy = coreColumnHeight / numberPointsY;
+        dA = dx * dy;
+    }
+    else {
+        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+        bobbinPointsX = matplot::linspace(-coreWidth / 2 * extraDimension, coreWidth / 2 * extraDimension, numberPointsX);
+        bobbinPointsY = matplot::linspace(-coreHeight / 2 * extraDimension, coreHeight / 2 * extraDimension, numberPointsY);
+        double dx = coreWidth * extraDimension / numberPointsX;
+        double dy = coreHeight * extraDimension / numberPointsY;
+        dA = dx * dy;
+    }
+
+    for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
+        for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
+            OpenMagnetics::FieldPoint fieldPoint;
+            fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
+            points.push_back(fieldPoint);
+        }
+    }
+    Field inducedField;
+    inducedField.set_data(points);
+    inducedField.set_frequency(frequency);
+
+    return {inducedField, dA};
+}
 
 
 std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
@@ -240,45 +291,81 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     int N = mirroringDimension;
 
     double corePermeability = core.get_initial_permeability(Defaults().ambientTemperature);
+    if (!core.get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
 
-    WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0]; // Hardcoded
-    double A = windingWindow.get_width().value();
-    double B = windingWindow.get_height().value();
-    double coreColumnWidth = core.get_columns()[0].get_width();
+    auto processedDescription = core.get_processed_description().value();
+    auto coreFamily = core.get_shape_family();
 
-    double turn_a = turn.get_coordinates()[0] - coreColumnWidth / 2;
-    double turn_b = turn.get_coordinates()[1] + B / 2;
+    WindingWindowElement windingWindow = processedDescription.get_winding_windows()[0]; // Hardcoded
 
-    for (int m = -M; m <= M; ++m)
-    {
-        for (int n = -N; n <= N; ++n)
+    if (coreFamily != CoreShapeFamily::T) {
+        double A = windingWindow.get_width().value();
+        double B = windingWindow.get_height().value();
+        double coreColumnWidth = core.get_columns()[0].get_width();
+
+        double turn_a = turn.get_coordinates()[0] - coreColumnWidth / 2;
+        double turn_b = turn.get_coordinates()[1] + B / 2;
+
+        for (int m = -M; m <= M; ++m)
         {
-            FieldPoint mirroredFieldPoint;
-            double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
-            mirroredFieldPoint.set_value(currentMultiplier);  // Will be multiplied later
-            if (turnLength) {
-                mirroredFieldPoint.set_turn_length(turnLength.value());
+            for (int n = -N; n <= N; ++n)
+            {
+                FieldPoint mirroredFieldPoint;
+                double currentMultiplier = (corePermeability - std::max(fabs(m), fabs(n))) / (corePermeability + std::max(fabs(m), fabs(n)));
+                mirroredFieldPoint.set_value(currentMultiplier);  // Will be multiplied later
+                if (turnLength) {
+                    mirroredFieldPoint.set_turn_length(turnLength.value());
+                }
+                if (turnIndex) {
+                    mirroredFieldPoint.set_turn_index(turnIndex.value());
+                }
+                double a;
+                double b;
+                if (m % 2 == 0) {
+                    a = m * A + turn_a;
+                }
+                else {
+                    a = m * A + A - turn_a;
+                }
+                if (n % 2 == 0) {
+                    b = n * B + turn_b;
+                }
+                else {
+                    b = n * B + B - turn_b;
+                }
+                mirroredFieldPoint.set_point(std::vector<double>{a + coreColumnWidth / 2, b - B / 2});
+                fieldPoints.push_back(mirroredFieldPoint);
             }
-            if (turnIndex) {
-                mirroredFieldPoint.set_turn_index(turnIndex.value());
-            }
-            double a;
-            double b;
-            if (m % 2 == 0) {
-                a = m * A + turn_a;
-            }
-            else {
-                a = m * A + A - turn_a;
-            }
-            if (n % 2 == 0) {
-                b = n * B + turn_b;
-            }
-            else {
-                b = n * B + B - turn_b;
-            }
-            mirroredFieldPoint.set_point(std::vector<double>{a + coreColumnWidth / 2, b - B / 2});
-            fieldPoints.push_back(mirroredFieldPoint);
         }
+    }
+    else {
+        auto mainColumn = processedDescription.get_columns()[0];
+
+        FieldPoint fieldPoint;
+        fieldPoint.set_value(1);  // Will be multiplied later
+        if (!turn.get_rotation()) {
+            throw std::runtime_error("Toroidal cores should have rotation in the turn, even if it is 0");
+        }
+
+        fieldPoint.set_rotation(turn.get_rotation().value());
+        if (turnLength) {
+            fieldPoint.set_turn_length(turnLength.value());
+        }
+        if (turnIndex) {
+            fieldPoint.set_turn_index(turnIndex.value());
+        }
+
+        if (!turn.get_coordinate_system()) {
+            throw std::runtime_error("Turn is missing coordinate system");
+        }
+        if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+            throw std::runtime_error("Turn coordinates are not in cartesian");
+        }
+
+        fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});
+        fieldPoints.push_back(fieldPoint);
     }
 
     return fieldPoints;
@@ -287,6 +374,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
 std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
+
     fieldPoint.set_point(turn.get_coordinates());
 
     fieldPoint.set_value(0);
@@ -364,12 +452,19 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
 }
 
 
-std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, [[maybe_unused]] CoreWrapper core) {
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_value(0.5);
     double c;
     double h;
+
+    WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0]; // Hardcoded
+    auto bobbinColumnShape = core.get_processed_description().value().get_winding_windows()[0].get_shape();
+
+    if (bobbinColumnShape == WindingWindowShape::ROUND) {
+        throw std::runtime_error("Wang Mesher model not implemented yet for toroidal cores");
+    }
 
     if (wire.get_type() == WireType::FOIL) {
         c = wire.get_maximum_conducting_height();

@@ -21,8 +21,10 @@ namespace OpenMagnetics {
         auto settings = OpenMagnetics::Settings::GetInstance();
         std::vector<MasWrapper> masData;
 
+        settings->set_use_toroidal_cores(false);
+
         if (coreDatabase.empty()) {
-            load_cores(false, settings->get_use_only_cores_in_stock());
+            load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock());
         }
         if (wireDatabase.empty()) {
             load_wires();
@@ -35,7 +37,7 @@ namespace OpenMagnetics {
         coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = weights[MagneticAdviser::MagneticAdviserFilters::EFFICIENCY];
         coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = weights[MagneticAdviser::MagneticAdviserFilters::DIMENSIONS];
 
-        CoreAdviser coreAdviser(false);
+        CoreAdviser coreAdviser;
         coreAdviser.set_unique_core_shapes(true);
         CoilAdviser coilAdviser;
         MagneticSimulator magneticSimulator;

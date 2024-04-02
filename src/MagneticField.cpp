@@ -134,6 +134,24 @@ bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedF
     return false;
 }
 
+bool is_inside_core(FieldPoint inducedFieldPoint, CoreWrapper core) {
+    if (core.get_shape_family() != CoreShapeFamily::T) {
+        return false;
+    }
+    double radius = sqrt(pow(inducedFieldPoint.get_point()[0], 2) + pow(inducedFieldPoint.get_point()[1], 2));
+    double coreColumnWidth = core.get_columns()[0].get_width();
+    auto processedDescription = core.get_processed_description().value();
+    double coreWidth = processedDescription.get_width();
+
+    if (radius * 1.05 > coreWidth / 2) {
+        return false;
+    }
+    if (radius * 0.95 < (coreWidth / 2 - coreColumnWidth)) {
+        return false;
+    }
+    return true;
+}
+
 double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWrapper magnetic, double frequency) {
     auto numberTurns = magnetic.get_mutable_coil().get_number_turns(0);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
@@ -280,7 +298,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                             continue;
                         }
                     }
-                    else if (is_inside_inducing_turns(inducingFieldPoint, inducedFieldPoint, inducingWire.value())) {
+                    // else if (is_inside_inducing_turns(inducingFieldPoint, inducedFieldPoint, inducingWire.value())) {
+                    //     continue;
+                    // }
+                    else if (is_inside_core(inducedFieldPoint, magnetic.get_core())) {
                         continue;
                     }
                 }
@@ -316,9 +337,18 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
     double Hx;
     double Hy;
     if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {
-        double divisor = 2 * std::numbers::pi * (pow(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], 2) + pow(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], 2));
-        Hx = -inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1]) / divisor;
-        Hy = inducingFieldPoint.get_value() * (inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0]) / divisor;
+
+        double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
+        double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
+        if (hypot(distanceX, distanceY) < inducingWire.value().get_maximum_outer_width() / 2) {
+            Hx = 0;
+            Hy = 0;
+        }
+        else { 
+            double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
+            Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
+            Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
+        }
     }
     else {
         auto wire = inducingWire.value();
@@ -326,6 +356,20 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         double b = resolve_dimensional_values(wire.get_conducting_height().value()) / 2;
         double x = inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0];
         double y = inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1];
+
+        if (inducingFieldPoint.get_rotation()) {
+            double modulo = hypot(x, y);
+            double currentAngle = atan2(y, x);
+            double turnAngle = inducingFieldPoint.get_rotation().value() / 180 * std::numbers::pi;
+            if (currentAngle < 0) {
+                currentAngle += 2 * std::numbers::pi;
+            }
+            double totalAngle = currentAngle - turnAngle;
+
+            x = modulo * cos(totalAngle);
+            y = modulo * sin(totalAngle);
+        }
+
         double r1 = hypot(y + b, x - a);
         double r2 = hypot(y + b, x + a);
         double r3 = hypot(y - b, x + a);
@@ -335,7 +379,11 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         double tetha2 = atan((y + b) / (x + a));
         double tetha3 = atan((y - b) / (x + a));
         double tetha4 = atan((y - b) / (x - a));
-        if (std::isnan(tetha1) || std::isnan(tetha2) || std::isnan(tetha3) || std::isnan(tetha4)) {
+        if (fabs(x) < a && fabs(y) < b) {
+            Hx = 0;
+            Hy = 0;
+        }
+        else if (std::isnan(tetha1) || std::isnan(tetha2) || std::isnan(tetha3) || std::isnan(tetha4)) {
             Hx = 0;
             Hy = 0;
         } 
@@ -394,6 +442,20 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
 
         Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
     }
+
+
+    if (inducingFieldPoint.get_rotation()) {
+        double modulo = hypot(Hx, Hy);
+        double currentAngle = atan2(Hy, Hx);
+        if (currentAngle < 0) {
+            currentAngle += 2 * std::numbers::pi;
+        }
+        double turnAngle = inducingFieldPoint.get_rotation().value() / 180 * std::numbers::pi;
+        double totalAngle = currentAngle + turnAngle;
+        Hx = modulo * cos(totalAngle);
+        Hy = modulo * sin(totalAngle);
+    }
+
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
     complexFieldPoint.set_point(inducedFieldPoint.get_point());
@@ -417,11 +479,17 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         }
         double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
         double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);
-        double ex = cos(angle - std::numbers::pi / 2);
-        double ey = sin(angle - std::numbers::pi / 2);
-        double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
-        Hx = magneticFiledStrengthModule * ex;
-        Hy = magneticFiledStrengthModule * ey;
+        if (distance < inducingWire.value().get_maximum_outer_width() / 2) {
+            Hx = 0;
+            Hy = 0;
+        }
+        else {
+            double ex = cos(angle - std::numbers::pi / 2);
+            double ey = sin(angle - std::numbers::pi / 2);
+            double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
+            Hx = magneticFiledStrengthModule * ex;
+            Hy = magneticFiledStrengthModule * ey;
+        }
     }
     else {
         throw std::runtime_error("Rectangular wires not implemented yet");

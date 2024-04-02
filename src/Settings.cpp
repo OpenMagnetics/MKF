@@ -12,6 +12,10 @@ namespace OpenMagnetics {
     }
 
     void Settings::reset() {
+
+        _useToroidalCores = false;
+        _useConcentricCores = true;
+
         _magnetizingInductanceIncludeAirInductance = false;
 
         _coilAllowMarginTape = true;
@@ -58,6 +62,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_verbose(bool value) {
         _verbose = value;
+    }
+
+    bool Settings::get_use_toroidal_cores() const {
+        return _useToroidalCores;
+    }
+    void Settings::set_use_toroidal_cores(bool value) {
+        _useToroidalCores = value;
+    }
+
+    bool Settings::get_use_concentric_cores() const {
+        return _useConcentricCores;
+    }
+    void Settings::set_use_concentric_cores(bool value) {
+        _useConcentricCores = value;
     }
 
     bool Settings::get_magnetizing_inductance_include_air_inductance() const {

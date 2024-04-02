@@ -42,6 +42,17 @@ std::vector<double> CoilWrapper::cartesian_to_polar(std::vector<double> value) {
     }
 }
 
+std::vector<double> CoilWrapper::cartesian_to_polar(std::vector<double> value, double radialHeight) {
+    std::vector<double> convertedValue;
+    double angle = atan2(value[1], value[0]) * 180 / std::numbers::pi;
+    if (angle < 0) {
+        angle += 360;
+    }
+    double radius = hypot(value[0], value[1]);
+    double turnRadialHeight = radialHeight - radius;
+    return {turnRadialHeight, angle};
+}
+
 std::vector<double> CoilWrapper::polar_to_cartesian(std::vector<double> value) {
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
@@ -60,6 +71,79 @@ std::vector<double> CoilWrapper::polar_to_cartesian(std::vector<double> value) {
     }
 }
 
+std::vector<double> CoilWrapper::polar_to_cartesian(std::vector<double> value, double radialHeight) {
+    std::vector<double> convertedValue;
+    double radius = radialHeight - value[0];
+    double angleRadians = value[1] / 180 * std::numbers::pi;
+    double x = radius * cos(angleRadians);
+    double y = radius * sin(angleRadians);
+    return {x, y};
+}
+
+void CoilWrapper::convert_turns_to_cartesian_coordinates() {
+    auto bobbin = resolve_bobbin();
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+
+    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns");
+    }
+
+    auto turns = get_turns_description().value();
+    if (turns[0].get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
+        return;
+    }
+
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto cartesianCoordinates = polar_to_cartesian(turns[turnIndex].get_coordinates(), windingWindowRadialHeight);
+        turns[turnIndex].set_coordinates(cartesianCoordinates);
+        turns[turnIndex].set_coordinate_system(CoordinateSystem::CARTESIAN);
+        if (turns[turnIndex].get_additional_coordinates()) {
+            auto additionalCoordinates = turns[turnIndex].get_additional_coordinates().value();
+            for (size_t additionalTurnIndex = 0; additionalTurnIndex < additionalCoordinates.size(); ++additionalTurnIndex) {
+                additionalCoordinates[additionalTurnIndex] = polar_to_cartesian(additionalCoordinates[additionalTurnIndex], windingWindowRadialHeight);
+            }
+            turns[turnIndex].set_additional_coordinates(additionalCoordinates);
+        }
+    }
+
+    set_turns_description(turns);
+}
+
+void CoilWrapper::convert_turns_to_polar_coordinates() {
+    auto bobbin = resolve_bobbin();
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+
+    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns");
+    }
+
+    auto turns = get_turns_description().value();
+    if (turns[0].get_coordinate_system().value() == CoordinateSystem::POLAR) {
+        return;
+    }
+
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto cartesianCoordinates = cartesian_to_polar(turns[turnIndex].get_coordinates(), windingWindowRadialHeight);
+        turns[turnIndex].set_coordinates(cartesianCoordinates);
+        turns[turnIndex].set_coordinate_system(CoordinateSystem::POLAR);
+        if (turns[turnIndex].get_additional_coordinates()) {
+            auto additionalCoordinates = turns[turnIndex].get_additional_coordinates().value();
+            for (size_t additionalTurnIndex = 0; additionalTurnIndex < additionalCoordinates.size(); ++additionalTurnIndex) {
+                additionalCoordinates[additionalTurnIndex] = cartesian_to_polar(additionalCoordinates[additionalTurnIndex], windingWindowRadialHeight);
+            }
+            turns[turnIndex].set_additional_coordinates(additionalCoordinates);
+        }
+    }
+
+    set_turns_description(turns);
+}
+
 
 CoilWrapper::CoilWrapper(const json& j, size_t interleavingLevel,
                                WindingOrientation windingOrientation,
@@ -72,8 +156,6 @@ CoilWrapper::CoilWrapper(const json& j, size_t interleavingLevel,
     _turnsAlignment = turnsAlignment;
     _sectionAlignment = sectionAlignment;
     from_json(j, *this);
-
-    auto settings = Settings::GetInstance();
 
     wind();
 }
@@ -216,7 +298,6 @@ bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<siz
     }
     return are_sections_and_layers_fitting() && get_turns_description();
 }
-
 
 std::vector<WindingStyle> CoilWrapper::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
@@ -766,6 +847,7 @@ bool CoilWrapper::calculate_insulation(bool simpleMode) {
             auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
 
             CoilSectionInterface coilSectionInterface;
+            coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::INSULATING);
             InsulationMaterialWrapper chosenInsulationMaterial;
 
             if (simpleMode) {
@@ -2248,11 +2330,12 @@ bool CoilWrapper::wind_by_rectangular_turns() {
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         currentTurnIndex.push_back(std::vector<int64_t>(get_number_parallels(windingIndex), 0));
     }
-    auto bobbinColumnShape = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_shape();
-    auto bobbinColumnDepth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_depth();
+    auto bobbin = resolve_bobbin();
+    auto bobbinColumnShape = bobbin.get_processed_description().value().get_column_shape();
+    auto bobbinColumnDepth = bobbin.get_processed_description().value().get_column_depth();
     double bobbinColumnWidth;
-    if (std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_width()) {
-        bobbinColumnWidth = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_width().value();
+    if (bobbin.get_processed_description().value().get_column_width()) {
+        bobbinColumnWidth = bobbin.get_processed_description().value().get_column_width().value();
     }
     else {
         auto bobbinWindingWindow = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0];
@@ -2364,9 +2447,15 @@ bool CoilWrapper::wind_by_rectangular_turns() {
                                 //                          " layer.get_coordinates()[0]: " + std::to_string(layer.get_coordinates()[0]));
                             }
                         }
-                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                        else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                            turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                            if (turn.get_length() < 0) {
+                                return false;
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                             double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
-                            turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                            turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
 
                             if (turn.get_length() < 0) {
                                 return false;
@@ -2382,6 +2471,7 @@ bool CoilWrapper::wind_by_rectangular_turns() {
                         turn.set_section(layer.get_section().value());
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+                        turn.set_rotation(0);
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
                         turns.push_back(turn);
@@ -2410,9 +2500,16 @@ bool CoilWrapper::wind_by_rectangular_turns() {
                                         // throw std::runtime_error("Something wrong happened in turn length 3: " + std::to_string(turn.get_length()) + " currentTurnCenterWidth: " + std::to_string(currentTurnCenterWidth));
                                     }
                             }
-                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                            else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                                turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                                    if (turn.get_length() < 0) {
+                                        return false;
+                                        // throw std::runtime_error("Something wrong happened in turn length 3: " + std::to_string(turn.get_length()) + " currentTurnCenterWidth: " + std::to_string(currentTurnCenterWidth));
+                                    }
+                            }
+                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                 double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
-                                turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                                turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
                                 if (turn.get_length() < 0) {
                                     return false;
                                     // throw std::runtime_error("Something wrong happened in turn length 3: " + std::to_string(turn.get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
@@ -2427,6 +2524,7 @@ bool CoilWrapper::wind_by_rectangular_turns() {
                             turn.set_section(layer.get_section().value());
                             turn.set_winding(partialWinding.get_winding());
                             turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+                            turn.set_rotation(0);
                             turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
                             turns.push_back(turn);
@@ -2551,17 +2649,20 @@ bool CoilWrapper::wind_by_round_turns() {
                         turn.set_coordinates(std::vector<double>{currentTurnCenterRadialHeight, currentTurnCenterAngle});
                         turn.set_layer(layer.get_name());
                         if (bobbinColumnShape == ColumnShape::ROUND) {
-                            // TODO: Calculate proper turn length for overlapping layers
-                            turn.set_length(2 * std::numbers::pi * currentTurnCenterRadialHeight);
+                            turn.set_length(2 * std::numbers::pi * (currentTurnCenterRadialHeight + bobbinColumnWidth));
                             if (turn.get_length() < 0) {
                                 return false;
                             }
                         }
-                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
-                            // TODO: Calculate proper turn length for overlapping layers
-                            double currentTurnCornerRadius = currentTurnCenterRadialHeight - bobbinColumnWidth;
-                            turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
-
+                        else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                            turn.set_length(2 * std::numbers::pi * (currentTurnCenterRadialHeight + bobbinColumnWidth) + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                            if (turn.get_length() < 0) {
+                                return false;
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                            double currentTurnCornerRadius = turn.get_coordinates()[0];
+                            turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
                             if (turn.get_length() < 0) {
                                 return false;
                             }
@@ -2575,7 +2676,8 @@ bool CoilWrapper::wind_by_round_turns() {
                         turn.set_section(layer.get_section().value());
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
-                        turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                        turn.set_rotation(currentTurnCenterAngle);
+                        turn.set_coordinate_system(CoordinateSystem::POLAR);
 
                         turns.push_back(turn);
                         currentTurnCenterRadialHeight += currentTurnRadialHeightIncrement;
@@ -2597,16 +2699,20 @@ bool CoilWrapper::wind_by_round_turns() {
                             turn.set_coordinates(std::vector<double>{currentTurnCenterRadialHeight, currentTurnCenterAngle});
                             turn.set_layer(layer.get_name());
                             if (bobbinColumnShape == ColumnShape::ROUND) {
-                            // TODO: Calculate proper turn length for overlapping layers
                                 turn.set_length(2 * std::numbers::pi * currentTurnCenterRadialHeight);
                                     if (turn.get_length() < 0) {
                                         return false;
                                     }
                             }
-                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
-                            // TODO: Calculate proper turn length for overlapping layers
-                                double currentTurnCornerRadius = currentTurnCenterRadialHeight - bobbinColumnWidth;
-                                turn.set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                            else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                                turn.set_length(2 * std::numbers::pi * currentTurnCenterRadialHeight + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                                    if (turn.get_length() < 0) {
+                                        return false;
+                                    }
+                            }
+                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                                double currentTurnCornerRadius = currentTurnCenterRadialHeight;
+                                turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
                                 if (turn.get_length() < 0) {
                                     return false;
                                 }
@@ -2620,7 +2726,9 @@ bool CoilWrapper::wind_by_round_turns() {
                             turn.set_section(layer.get_section().value());
                             turn.set_winding(partialWinding.get_winding());
                             turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
-                            turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                            turn.set_rotation(currentTurnCenterAngle);
+                            turn.set_coordinate_system(CoordinateSystem::POLAR);
+
 
                             turns.push_back(turn);
                             currentTurnCenterRadialHeight += currentTurnRadialHeightIncrement;
@@ -2635,6 +2743,7 @@ bool CoilWrapper::wind_by_round_turns() {
 
     set_turns_description(turns);
 
+    convert_turns_to_cartesian_coordinates();
     return true;
 }
 
@@ -2680,6 +2789,8 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
         throw std::runtime_error("Toroids must have their bobbin column set");
     }
     double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+    auto bobbinColumnShape = bobbin.get_processed_description().value().get_column_shape();
+    auto bobbinColumnDepth = bobbin.get_processed_description().value().get_column_depth();
 
     auto sections = get_sections_description().value();
     auto layers = get_layers_description().value();
@@ -2687,7 +2798,7 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
     double currentBaseRadialHeight = -bobbinColumnWidth * 2;
     std::map<size_t, double> maximumAdditionalRadialHeightPerSectionByIndex;
 
-    for (auto section : sections) {
+    for (auto section : sections) { 
         if (section.get_type() == ElectricalType::CONDUCTION) {
             std::vector<std::vector<double>> placedTurnsCoordinates;
             auto turnsInSection = get_turns_by_section(section.get_name());
@@ -2849,6 +2960,42 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                 }
                 currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
                 turn.set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
+
+                if (bobbinColumnShape == ColumnShape::ROUND) {
+                    double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
+                    double a = turn.get_coordinates()[0];
+                    // Ramanujan  approximation for ellipse perimeter
+                    double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)));
+                    turns[turnIndex].set_length(perimeter);
+                    if (turns[turnIndex].get_length() < 0) {
+                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                    }
+                }
+                else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                    double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
+                    double a = turn.get_coordinates()[0];
+                    // Ramanujan  approximation for ellipse perimeter
+                    double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b))) + 4 * (bobbinColumnDepth - bobbinColumnWidth);
+                    turns[turnIndex].set_length(perimeter);
+                    if (turns[turnIndex].get_length() < 0) {
+                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                    }
+                }
+                else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                    double currentInternalTurnCornerRadius = turns[turnIndex].get_coordinates()[0];
+                    double currentExternalTurnCornerRadius = -turn.get_additional_coordinates().value()[0][0] - 2 * bobbinColumnWidth;
+                    double maximumVerticalDistance = currentInternalTurnCornerRadius * 2 + 2 * bobbinColumnDepth;
+                    double externalVerticalStraightDistance = maximumVerticalDistance - 2 * currentExternalTurnCornerRadius;
+                    turns[turnIndex].set_length(2 * bobbinColumnDepth + 4 * bobbinColumnWidth + externalVerticalStraightDistance + std::numbers::pi * currentInternalTurnCornerRadius + std::numbers::pi * currentExternalTurnCornerRadius);
+
+                    if (turns[turnIndex].get_length() < 0) {
+                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentExternalTurnCornerRadius: " + std::to_string(currentExternalTurnCornerRadius));
+                    }
+                }
+                else {
+                    throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                }
+
                 turns[turnIndex] = turn;
                 placedTurnsCoordinates.push_back(additionalCoordinates);
             }
@@ -2857,7 +3004,9 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                 currentSectionMaximumAdditionalRadialHeight -= turnsInSection[0].get_dimensions().value()[0] / 2;
                 auto sectionIndex = get_section_index_by_name(section.get_name());
                 currentBaseRadialHeight = currentSectionMaximumAdditionalRadialHeight;
-                maximumAdditionalRadialHeightPerSectionByIndex[sectionIndex + 1] = currentBaseRadialHeight;
+                if (sectionIndex < sections.size() - 1) {
+                    maximumAdditionalRadialHeightPerSectionByIndex[sectionIndex + 1] = currentBaseRadialHeight;
+                }
             }
         }
         else {
@@ -2887,7 +3036,6 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
 
     return true;
 }
-
 
 std::vector<double> CoilWrapper::get_aligned_section_dimensions_rectangular_window(size_t sectionIndex) {
     auto sections = get_sections_description().value();
@@ -3191,12 +3339,14 @@ std::vector<double> CoilWrapper::get_aligned_section_dimensions_round_window(siz
             }
         }
         else {
+            double marginAngle0 = 0;
+            double marginAngle1 = 0;
             if (sections[auxSectionIndex].get_type() == ElectricalType::CONDUCTION) {
                 totalSectionsRadialHeight = std::max(totalSectionsRadialHeight, sections[auxSectionIndex].get_dimensions()[0]);
+                double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[auxSectionIndex].get_coordinates()[0] + sections[auxSectionIndex].get_dimensions()[0] / 2);
+                marginAngle0 = wound_distance_to_angle(sections[auxSectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
+                marginAngle1 = wound_distance_to_angle(sections[auxSectionIndex].get_margin().value()[1], lastLayerMaximumRadius);
             }
-            double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
-            double marginAngle0 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
-            double marginAngle1 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[1], lastLayerMaximumRadius);
             totalSectionsAngle += sections[auxSectionIndex].get_dimensions()[1] + marginAngle0 + marginAngle1;
         }
     }
@@ -3206,12 +3356,10 @@ std::vector<double> CoilWrapper::get_aligned_section_dimensions_round_window(siz
     double paddingAmongSectionRadialHeight = 0;
     double paddingAmongSectionAngle = 0;
     double marginAngle0 = 0;
-    double marginAngle1 = 0;
 
     if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
         double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
         marginAngle0 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[0], lastLayerMaximumRadius);
-        marginAngle1 = wound_distance_to_angle(sections[sectionIndex].get_margin().value()[1], lastLayerMaximumRadius);
     }
 
     if (_windingOrientation == WindingOrientation::OVERLAPPING) {
@@ -3415,7 +3563,7 @@ bool CoilWrapper::delimit_and_compact_rectangular_window() {
                         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
                             if (turns[turnIndex].get_layer().value() == layers[layerIndex].get_name()){
 
-                                if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                                if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::OBLONG || bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                     if (turns[turnIndex].get_coordinates()[0] < compactingShiftWidth) {
                                         throw std::runtime_error("Something wrong happened with compactingShiftWidth: " + std::to_string(compactingShiftWidth) +
                                                                  "\nsections[sectionIndex].get_coordinates()[0]: " + std::to_string(sections[sectionIndex].get_coordinates()[0]) +
@@ -3439,9 +3587,15 @@ bool CoilWrapper::delimit_and_compact_rectangular_window() {
                                         throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
                                     }
                                 }
-                                else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
+                                else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                                    turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0] + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                                    if (turns[turnIndex].get_length() < 0) {
+                                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                    }
+                                }
+                                else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                     double currentTurnCornerRadius = turns[turnIndex].get_coordinates()[0] - bobbinColumnWidth;
-                                    turns[turnIndex].set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                                    turns[turnIndex].set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
 
                                     if (turns[turnIndex].get_length() < 0) {
                                         throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
@@ -3506,6 +3660,7 @@ bool CoilWrapper::delimit_and_compact_rectangular_window() {
 
 bool CoilWrapper::delimit_and_compact_round_window() {
     auto settings = Settings::GetInstance();
+    convert_turns_to_polar_coordinates();
 
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
@@ -3728,18 +3883,24 @@ bool CoilWrapper::delimit_and_compact_round_window() {
                                 turns[turnIndex].get_coordinates()[1] - compactingShiftAngle
                             }));
 
+
                             if (bobbinColumnShape == ColumnShape::ROUND) {
-                                turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0]);
+                                turns[turnIndex].set_length(2 * std::numbers::pi * (turns[turnIndex].get_coordinates()[0] + bobbinColumnWidth));
                                 if (turns[turnIndex].get_length() < 0) {
-                                    throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                                    return false;
                                 }
                             }
-                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR) {
-                                double currentTurnCornerRadius = turns[turnIndex].get_coordinates()[0] - bobbinColumnWidth;
-                                turns[turnIndex].set_length(2 * bobbinColumnDepth + 2 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
-
+                            else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                                turns[turnIndex].set_length(2 * std::numbers::pi * (turns[turnIndex].get_coordinates()[0] + bobbinColumnWidth) + 4 * (bobbinColumnDepth - bobbinColumnWidth));
                                 if (turns[turnIndex].get_length() < 0) {
-                                    throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentTurnCornerRadius: " + std::to_string(currentTurnCornerRadius));
+                                    return false;
+                                }
+                            }
+                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                                double currentTurnCornerRadius = turns[turnIndex].get_coordinates()[0];
+                                turns[turnIndex].set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                                if (turns[turnIndex].get_length() < 0) {
+                                    return false;
                                 }
                             }
                             else {
@@ -3770,6 +3931,7 @@ bool CoilWrapper::delimit_and_compact_round_window() {
         }
     }
 
+    convert_turns_to_cartesian_coordinates();
     return true;
 }
 
@@ -4116,6 +4278,41 @@ std::vector<Layer> CoilWrapper::get_layers_description_insulation() {
     }
 
     return layersInsulation;
+}
+
+double CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil) {
+    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+    auto processedDescription = core.get_processed_description().value();
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+
+    double coreWidth = processedDescription.get_width();
+
+    if (!coil.get_turns_description()) {
+        return 0;
+    }
+
+    auto turns = coil.get_turns_description().value();
+    double maximumAdditionalRadialCoordinate = 0;
+    for (size_t i = 0; i < turns.size(); ++i){
+        if (turns[i].get_additional_coordinates()) {
+            auto additionalCoordinates = turns[i].get_additional_coordinates().value();
+            for (auto additionalCoordinate : additionalCoordinates){
+                maximumAdditionalRadialCoordinate = std::max(maximumAdditionalRadialCoordinate, hypot(additionalCoordinate[0], additionalCoordinate[1]) + turns[i].get_dimensions().value()[0] / 2);
+            }
+        }
+    }
+    auto bobbin = coil.resolve_bobbin();
+
+    auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
+
+    if (sectionsOrientation == WindingOrientation::OVERLAPPING) {
+        auto sections = coil.get_sections_by_type(ElectricalType::INSULATION);
+        for (auto section : sections){
+            maximumAdditionalRadialCoordinate += section.get_dimensions()[0];
+        }
+    }
+
+    return (2 * maximumAdditionalRadialCoordinate) / coreWidth;
 }
 
 } // namespace OpenMagnetics

@@ -85,9 +85,12 @@ OpenMagnetics::WireWrapper find_wire_by_name(std::string name);
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name);
 OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name);
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
+OpenMagnetics::CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter);
+
 
 void clear_loaded_cores();
-void load_cores(bool includeToroids=true, bool useOnlyCoresInStock=false);
+void clear_databases();
+void load_cores(bool includeToroidalCores=true, bool useOnlyCoresInStock=false, bool includeConcentricCores=true);
 void load_core_materials();
 void load_core_shapes(bool withAliases=true);
 void load_wires();
@@ -114,7 +117,7 @@ template<int decimals> double roundFloat(double value);
 
 bool is_size_power_of_2(std::vector<double> data);
 
-double roundFloat(double value, size_t decimals);
+double roundFloat(double value, int64_t decimals);
 double ceilFloat(double value, size_t decimals);
 double floorFloat(double value, size_t decimals);
 

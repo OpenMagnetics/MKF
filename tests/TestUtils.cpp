@@ -1,4 +1,5 @@
 #include "Utils.h"
+#include "Settings.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>
@@ -101,5 +102,25 @@ SUITE(Utils) {
         double calculatedValue = OpenMagnetics::comp_ellint_2(std::sin(std::numbers::pi / 18 / 2));
         double expectedValue = std::comp_ellint_2(std::sin(std::numbers::pi / 18 / 2));
         CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
+    }
+
+    TEST(Test_Find_By_Perimeter) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(true);
+
+        auto shape = OpenMagnetics::find_core_shape_by_winding_window_perimeter(0.03487);
+
+        CHECK_EQUAL("UR 46/21/11", shape.get_name().value());
+    }
+
+    TEST(Test_Find_By_Perimeter_Only_Toroids) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(false);
+
+        auto shape = OpenMagnetics::find_core_shape_by_winding_window_perimeter(0.03487);
+
+        CHECK_EQUAL("T 22/12.4/12.8", shape.get_name().value());
     }
 }
