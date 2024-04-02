@@ -13,7 +13,7 @@ namespace OpenMagnetics {
 
     void Settings::reset() {
 
-        _useToroidalCores = false;
+        _useToroidalCores = true;
         _useConcentricCores = true;
 
         _magnetizingInductanceIncludeAirInductance = false;

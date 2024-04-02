@@ -12,7 +12,7 @@ class Settings
 
         static Settings* settings_;
 
-        bool _useToroidalCores = false;
+        bool _useToroidalCores = true;
         bool _useConcentricCores = true;
 
         bool _magnetizingInductanceIncludeAirInductance = false;

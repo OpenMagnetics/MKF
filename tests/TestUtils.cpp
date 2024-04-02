@@ -105,6 +105,7 @@ SUITE(Utils) {
     }
 
     TEST(Test_Find_By_Perimeter) {
+        OpenMagnetics::clear_databases();
         auto settings = OpenMagnetics::Settings::GetInstance();
         settings->set_use_toroidal_cores(true);
         settings->set_use_concentric_cores(true);
@@ -115,6 +116,7 @@ SUITE(Utils) {
     }
 
     TEST(Test_Find_By_Perimeter_Only_Toroids) {
+        OpenMagnetics::clear_databases();
         auto settings = OpenMagnetics::Settings::GetInstance();
         settings->set_use_toroidal_cores(true);
         settings->set_use_concentric_cores(false);
