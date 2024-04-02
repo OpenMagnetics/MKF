@@ -12,6 +12,9 @@ class Settings
 
         static Settings* settings_;
 
+        bool _useToroidalCores = false;
+        bool _useConcentricCores = true;
+
         bool _magnetizingInductanceIncludeAirInductance = false;
 
         bool _coilAllowMarginTape = true;
@@ -61,6 +64,12 @@ class Settings
 
         bool get_verbose() const;
         void set_verbose(bool value);
+
+        bool get_use_toroidal_cores() const;
+        void set_use_toroidal_cores(bool value);
+
+        bool get_use_concentric_cores() const;
+        void set_use_concentric_cores(bool value);
 
         bool get_magnetizing_inductance_include_air_inductance() const;
         void set_magnetizing_inductance_include_air_inductance(bool value);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Insulation.h"
+#include "CoreWrapper.h"
 #include "InputsWrapper.h"
 #include "WireWrapper.h"
 #include "BobbinWrapper.h"
@@ -70,7 +71,11 @@ class CoilWrapper : public Coil {
         std::vector<double> get_aligned_section_dimensions_round_window(size_t sectionIndex);
         size_t convert_conduction_section_index_to_global(size_t conductionSectionIndex);
         std::vector<double> cartesian_to_polar(std::vector<double> value);
+        static std::vector<double> cartesian_to_polar(std::vector<double> value, double radialHeight);
         std::vector<double> polar_to_cartesian(std::vector<double> value);
+        static std::vector<double> polar_to_cartesian(std::vector<double> value, double radialHeight);
+        void convert_turns_to_cartesian_coordinates();
+        void convert_turns_to_polar_coordinates();
         std::vector<std::pair<double, std::vector<double>>> get_collision_distances(std::vector<double> turnCoordinates, std::vector<std::vector<double>> placedTurnsCoordinates, double wireHeight);
 
         bool wind_by_sections();
@@ -216,6 +221,7 @@ class CoilWrapper : public Coil {
         BobbinWrapper resolve_bobbin();
 
         void add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins);
+        static double calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil);
 
 };
 } // namespace OpenMagnetics

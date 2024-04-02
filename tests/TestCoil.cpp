@@ -6060,12 +6060,14 @@ SUITE(CoilTurnsDescription) {
     }
 }
 
-SUITE(CoilTurnsDescriptionToroidalNoCompact) {
+SUITE(CoilTurnsDescriptionToroidalNoCompact) { 
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
     bool plot = false;
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Large_Layer_Toroidal) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {42};
         std::vector<int64_t> numberParallels = {1};
@@ -6094,11 +6096,14 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_EQUAL(1, coil.get_layers_description().value().size());
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Full_Layer_Toroidal) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {58};
         std::vector<int64_t> numberParallels = {1};
@@ -6126,11 +6131,14 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_EQUAL(1, coil.get_layers_description().value().size());
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_Two_Layers_Toroidal) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {59};
         std::vector<int64_t> numberParallels = {1};
@@ -6159,10 +6167,13 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {3};
         std::vector<int64_t> numberParallels = {1};
@@ -6194,12 +6205,15 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             CHECK(std::filesystem::exists(outFile));
         }
-        settings->reset();
+        settings->reset(); 
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(180, coil.get_turns_description().value()[1].get_coordinates()[1], 0.001);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {3};
         std::vector<int64_t> numberParallels = {1};
@@ -6233,11 +6247,14 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 0.5);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {3};
         std::vector<int64_t> numberParallels = {1};
@@ -6271,11 +6288,14 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(357, coil.get_turns_description().value()[2].get_coordinates()[1], 0.5);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer_Toroidal_Contiguous_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {3};
         std::vector<int64_t> numberParallels = {1};
@@ -6309,6 +6329,7 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(60, coil.get_turns_description().value()[0].get_coordinates()[1], 0.5);
         CHECK_CLOSE(180, coil.get_turns_description().value()[1].get_coordinates()[1], 0.5);
         CHECK_CLOSE(300, coil.get_turns_description().value()[2].get_coordinates()[1], 0.5);
@@ -6316,6 +6337,8 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
     }
 
     TEST(Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Contiguous_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {3, 3};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -6349,12 +6372,15 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(90, coil.get_turns_description().value()[1].get_coordinates()[1], 0.5);
         CHECK_CLOSE(270, coil.get_turns_description().value()[4].get_coordinates()[1], 0.5);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_Two_Sections_One_Layer_Toroidal_Overlapping_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {55, 55};
         std::vector<int64_t> numberParallels = {1, 1};
@@ -6387,10 +6413,13 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_By_Turn_Wind_Four_Sections_One_Layer_Toroidal_Overlapping_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         settings->set_coil_delimit_and_compact(false);
         std::vector<int64_t> numberTurns = {42, 42};
         std::vector<int64_t> numberParallels = {2, 2};
@@ -6425,6 +6454,7 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
@@ -6436,6 +6466,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     bool plot = false;
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6470,6 +6502,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 135);
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(182, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
@@ -6481,6 +6514,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6514,6 +6549,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 135);
         CHECK_CLOSE(160, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(357, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
@@ -6525,6 +6561,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6558,6 +6596,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(81, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(173, coil.get_turns_description().value()[15].get_coordinates()[1], 1);
         CHECK_CLOSE(180, coil.get_turns_description().value()[16].get_coordinates()[1], 1);
@@ -6567,6 +6606,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
  
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6600,6 +6641,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         // settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(5, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(353, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
         CHECK_CLOSE(354, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
@@ -6607,6 +6649,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6641,6 +6685,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(3, coil.get_turns_description().value()[18].get_coordinates()[1], 1);
         CHECK_CLOSE(3, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
@@ -6649,6 +6694,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6683,6 +6730,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(12, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
@@ -6691,6 +6739,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6725,11 +6775,14 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         OpenMagneticsTesting::check_turns_description(coil);
         // Not clearly what this combination should do, so I check nothing
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6764,6 +6817,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
@@ -6772,6 +6826,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6806,6 +6862,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(42, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(147, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(43, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
@@ -6814,6 +6871,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6848,6 +6907,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(42, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(147, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(44, coil.get_turns_description().value()[34].get_coordinates()[1], 1);
@@ -6856,6 +6916,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6890,10 +6952,13 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6928,6 +6993,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
@@ -6936,6 +7002,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -6970,6 +7038,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
         CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
@@ -6978,6 +7047,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7012,6 +7083,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
         CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
@@ -7020,6 +7092,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7054,6 +7128,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(23, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(177, coil.get_turns_description().value()[67].get_coordinates()[1], 1);
         CHECK_CLOSE(232, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
@@ -7062,6 +7137,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7096,6 +7173,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
@@ -7104,6 +7182,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7138,6 +7218,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
         CHECK_CLOSE(243, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
@@ -7145,6 +7226,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Bottom) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7179,6 +7262,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(12, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(115, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
         CHECK_CLOSE(236, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
@@ -7187,6 +7271,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Centered) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7221,6 +7307,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(109, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
         CHECK_CLOSE(223, coil.get_turns_description().value()[101].get_coordinates()[1], 1);
@@ -7229,6 +7316,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7263,6 +7352,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(117, coil.get_turns_description().value()[17].get_coordinates()[1], 1);
         CHECK_CLOSE(123, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
@@ -7271,6 +7361,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Different_Wires) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 20, 20};
         std::vector<int64_t> numberParallels = {1, 5, 1};
         uint8_t interleavingLevel = 1;
@@ -7311,11 +7403,14 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 180);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Different_Wires) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 20, 20};
         std::vector<int64_t> numberParallels = {1, 5, 1};
         uint8_t interleavingLevel = 1;
@@ -7356,6 +7451,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 180);
         OpenMagneticsTesting::check_turns_description(coil);
     }
@@ -7380,6 +7476,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
         wires.push_back({OpenMagnetics::find_wire_by_name("200x0.2 - Grade 2 - Double Served")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
         if (plot) {
@@ -7398,11 +7496,14 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
-        CHECK(coil.get_turns_description().value().size() == numberTurns[0]);
+        coil.convert_turns_to_polar_coordinates();
+        CHECK(coil.get_turns_description().value().size() == 3);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {11, 90};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 1;
@@ -7438,11 +7539,14 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 101);
         // Check this one manually, checking collision between two rotated rectangles is not worth it
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Rectangular_Wire) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {6, 90};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 1;
@@ -7478,6 +7582,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
 
         CHECK(coil.get_turns_description().value().size() == 96);
         // Check this one manually, checking collision between two rotated rectangles is not worth it
@@ -7490,6 +7595,8 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     bool plot = false;
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7529,6 +7636,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK(coil.get_turns_description().value().size() == 135);
         CHECK_CLOSE(3, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(186, coil.get_turns_description().value()[59].get_coordinates()[1], 1);
@@ -7540,6 +7648,8 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7579,6 +7689,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(6, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(161, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
         CHECK_CLOSE(258, coil.get_turns_description().value()[102].get_coordinates()[1], 1);
@@ -7586,6 +7697,8 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7625,13 +7738,16 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
-        CHECK_CLOSE(31, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
-        CHECK_CLOSE(186, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
-        CHECK_CLOSE(330, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
+        coil.convert_turns_to_polar_coordinates();
+        CHECK_CLOSE(33, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(188, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        CHECK_CLOSE(332, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7671,13 +7787,16 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
-        CHECK_CLOSE(19, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
-        CHECK_CLOSE(173, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
+        coil.convert_turns_to_polar_coordinates();
+        CHECK_CLOSE(20, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
+        CHECK_CLOSE(174, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
         CHECK_CLOSE(318, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7717,6 +7836,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(131, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
         CHECK_CLOSE(341, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
@@ -7724,6 +7844,8 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7763,6 +7885,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         CHECK_CLOSE(7, coil.get_turns_description().value()[0].get_coordinates()[1], 1);
         CHECK_CLOSE(131, coil.get_turns_description().value()[60].get_coordinates()[1], 1);
         CHECK_CLOSE(349, coil.get_turns_description().value()[134].get_coordinates()[1], 1);
@@ -7775,6 +7898,8 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
     bool plot = false;
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7811,20 +7936,16 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
         for (auto turn : turns) {
             CHECK(turn.get_additional_coordinates());
-            if (turn.get_additional_coordinates()) {
-                auto additionalCoordinates = turn.get_additional_coordinates().value();
-
-                for (auto additionalCoordinate : additionalCoordinates){
-                    CHECK(additionalCoordinate[0] < 0);
-                }
-            }
         }
         OpenMagneticsTesting::check_turns_description(coil);
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Spread_Top_Additional_Coordinates) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
         std::vector<int64_t> numberParallels = {1, 1, 1};
         uint8_t interleavingLevel = 1;
@@ -7843,7 +7964,6 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
-        auto turns = coil.get_turns_description().value();
 
         if (plot) {
             auto outFile = outputFilePath;
@@ -7861,6 +7981,8 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
             CHECK(std::filesystem::exists(outFile));
         }
         settings->reset();
+        coil.convert_turns_to_polar_coordinates();
+        auto turns = coil.get_turns_description().value();
         for (auto turn : turns) {
             CHECK(turn.get_additional_coordinates());
             if (turn.get_additional_coordinates()) {

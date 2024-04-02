@@ -14,11 +14,15 @@ class Painter{
         enum class PainterModes : int {
             CONTOUR,
             QUIVER,
+            SCATTER,
         };
 
     protected:
         double _scale = 30000;
+        double _fontSize = 10;
         double _extraDimension = 1;
+        double _offsetForColorBar = 0;
+        bool _addProportionForColorBar = true;
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
         std::filesystem::path _filepath;
         std::map<std::string, std::string> _postProcessingChanges;
@@ -44,7 +48,10 @@ class Painter{
         virtual ~Painter() = default;
     
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
+    ComplexField calculate_magnetic_field_additional_coordinates(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex);
     void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
+
+    std::vector<double> get_image_size(MagneticWrapper magnetic);
 
     void export_svg();
     void export_png();

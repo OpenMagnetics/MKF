@@ -1,3 +1,4 @@
+#include "Settings.h"
 #include "Defaults.h"
 #include "Constants.h"
 #include "Utils.h"
@@ -37,7 +38,7 @@ bool _addInternalData = true;
 
 namespace OpenMagnetics {
 
-void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
+void load_cores(bool includeToroidalCores, bool useOnlyCoresInStock, bool includeConcentricCores) {
     auto fs = cmrc::data::get_filesystem();
     if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
         auto data = fs.open("MAS/data/cores_stock.ndjson");
@@ -52,7 +53,7 @@ void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
             CoreWrapper core(jf, false, true, false);
-            if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+            if ((includeToroidalCores && core.get_type() == CoreType::TOROIDAL) || (includeConcentricCores && core.get_type() != CoreType::TOROIDAL)) {
                 coreDatabase.push_back(core);
             }
             database.erase(0, pos + delimiter.length());
@@ -80,7 +81,7 @@ void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
         //     token = database.substr(0, pos);
         //     json jf = json::parse(token);
         //     CoreWrapper core(jf, false, true, false);
-        //     if (includeToroids || core.get_type() != CoreType::TOROIDAL) {
+        //     if (includeToroidalCores || core.get_type() != CoreType::TOROIDAL) {
         //         coreDatabase.push_back(core);
         //     }
         //     database.erase(0, pos + delimiter.length());
@@ -90,6 +91,16 @@ void load_cores(bool includeToroids, bool useOnlyCoresInStock) {
 
 void clear_loaded_cores() {
     coreDatabase.clear();
+}
+
+void clear_databases() {
+    coreDatabase.clear();
+    coreMaterialDatabase.clear();
+    coreShapeDatabase.clear();
+    wireDatabase.clear();
+    bobbinDatabase.clear();
+    insulationMaterialDatabase.clear();
+    wireMaterialDatabase.clear();
 }
 
 void load_core_materials() {
@@ -122,6 +133,9 @@ void load_core_shapes(bool withAliases) {
     }
     auto fs = cmrc::data::get_filesystem();
     {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        bool includeToroidalCores = settings->get_use_toroidal_cores();
+        bool includeConcentricCores = settings->get_use_concentric_cores();
         auto data = fs.open("MAS/data/core_shapes.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
@@ -134,10 +148,12 @@ void load_core_shapes(bool withAliases) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
             CoreShape coreShape(jf);
-            coreShapeDatabase[jf["name"]] = coreShape;
-            if (withAliases) {
-                for (auto& alias : jf["aliases"]) {
-                    coreShapeDatabase[alias] = coreShape;
+            if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
+                coreShapeDatabase[jf["name"]] = coreShape;
+                if (withAliases) {
+                    for (auto& alias : jf["aliases"]) {
+                        coreShapeDatabase[alias] = coreShape;
+                    }
                 }
             }
             database.erase(0, pos + delimiter.length());
@@ -606,6 +622,41 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     else {
         return json::parse("{}");
     }
+}
+
+OpenMagnetics::CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    double minimumPerimeterError = DBL_MAX;
+    OpenMagnetics::CoreShape closestShape;
+    for (auto [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+            auto corePiece = OpenMagnetics::CorePiece::factory(shape);
+            auto mainColumn = corePiece->get_columns()[0];
+            double perimeter;
+            if (mainColumn.get_shape() == ColumnShape::RECTANGULAR || mainColumn.get_shape() == ColumnShape::IRREGULAR) {
+                perimeter = 2 * (mainColumn.get_width() + mainColumn.get_depth());
+            }
+            else if (mainColumn.get_shape() == ColumnShape::ROUND) {
+                perimeter = std::numbers::pi * mainColumn.get_width();
+            }
+            else if (mainColumn.get_shape() == ColumnShape::OBLONG) {
+                perimeter = std::numbers::pi * mainColumn.get_width() + 2 * (mainColumn.get_depth() - mainColumn.get_width());
+            }
+            else {
+                throw std::runtime_error("Unsupported column shape");
+            }
+ 
+            double perimeterError = fabs(perimeter - desiredPerimeter) / desiredPerimeter;
+            if (perimeterError < minimumPerimeterError) {
+                minimumPerimeterError = perimeterError;
+                closestShape = shape;
+            }
+        }
+    }
+    return closestShape;
 }
 
 double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue) {

@@ -39,51 +39,112 @@ std::string replace_key(std::string key, std::string line, std::string replaceme
 }
 
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
+    _addProportionForColorBar = true;
     auto settings = OpenMagnetics::Settings::GetInstance();
-    double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
-    double bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
-    double coreColumnWidth = magnetic.get_mutable_core().get_columns()[0].get_width();
-    double coreColumnHeight = magnetic.get_mutable_core().get_columns()[0].get_height();
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    size_t numberPointsX = settings->get_painter_number_points_x();
-    size_t numberPointsY = settings->get_painter_number_points_y();
     bool includeFringing = settings->get_painter_include_fringing();
     bool mirroringDimension = settings->get_painter_mirroring_dimension();
 
-    std::vector<double> bobbinPointsX = matplot::linspace(coreColumnWidth / 2, bobbinWidthStart + bobbinWidth, numberPointsX);
-    std::vector<double> bobbinPointsY = matplot::linspace(-coreColumnHeight / 2, coreColumnHeight / 2, numberPointsY);
-    std::vector<OpenMagnetics::FieldPoint> points;
-    for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
-        for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
-            OpenMagnetics::FieldPoint fieldPoint;
-            fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
-            points.push_back(fieldPoint);
-        }
-    }
+    _extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
 
-    Field inducedField;
-    inducedField.set_data(points);
-    inducedField.set_frequency(frequency);
+    size_t numberPointsX = settings->get_painter_number_points_x();
+    size_t numberPointsY = settings->get_painter_number_points_y();
+    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY).first;
 
     OpenMagnetics::MagneticField magneticField;
     settings->set_magnetic_field_include_fringing(includeFringing);
     settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
-    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+    ComplexField field;
+    {
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+        field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
-    auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+    }
+    auto turns = magnetic.get_coil().get_turns_description().value();
+
+    if (turns[0].get_additional_coordinates()) {
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            if (turns[turnIndex].get_additional_coordinates()) {
+                turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
+            }
+        }
+        magnetic.get_mutable_coil().set_turns_description(turns);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+        auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+        for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {
+            field.get_mutable_data()[pointIndex].set_real(field.get_mutable_data()[pointIndex].get_real() + additionalField.get_mutable_data()[pointIndex].get_real());
+            field.get_mutable_data()[pointIndex].set_imaginary(field.get_mutable_data()[pointIndex].get_imaginary() + additionalField.get_mutable_data()[pointIndex].get_imaginary());
+        }
+    }
+
+
     return field;
+}
+
+bool is_inside_inducing_turns(std::vector<double> point, CoilWrapper coil) {
+    auto turns = coil.get_turns_description().value();
+    auto wires = coil.get_wires();
+
+    for (auto turn : turns) {
+        double turnRadius = 0;
+
+        auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        if (wires[windingIndex].get_type() == WireType::ROUND || wires[windingIndex].get_type() == WireType::LITZ) {
+            turnRadius = wires[windingIndex].get_maximum_outer_width() / 2;
+        }
+        else {
+            // Not implemented here for rectangulars
+            return false;
+        }
+
+        double distanceX = fabs(point[0] - turn.get_coordinates()[0]);
+        double distanceY = fabs(point[1] - turn.get_coordinates()[1]);
+        if (hypot(distanceX, distanceY) < turnRadius) {
+            return true;
+        }
+
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoordinates = turn.get_additional_coordinates().value();
+            for (auto additionalCoordinate : additionalCoordinates) {
+                double distanceX = fabs(point[0] - additionalCoordinate[0]);
+                double distanceY = fabs(point[1] - additionalCoordinate[1]);
+                if (hypot(distanceX, distanceY) < turnRadius) {
+                    return true;
+                }
+
+            }
+        }
+    }
+
+    return false;
 }
 
 void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     matplot::gcf()->quiet_mode(true);
     matplot::cla();
-    double bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
-    double bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
-    double bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_height().value();
+
+    double bobbinWidthStart;
+    double bobbinWidth;
+    double bobbinHeight;
+
+    get_image_size(magnetic);
+
+    CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
+    if (shape.get_family() == CoreShapeFamily::T) {
+        bobbinWidthStart = 0;
+        bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_radial_height().value();
+        bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_radial_height().value();
+    }
+    else {
+        bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
+        bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
+        bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_height().value();
+    }
+
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
 
@@ -107,9 +168,10 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         std::vector<std::vector<double>> M(numberPointsY, std::vector<double>(numberPointsX, 0));
 
         for (size_t j = 0; j < numberPointsY; ++j) { 
-            for (size_t i = 0; i < numberPointsX; ++i) { 
-                X[j][i] = field.get_data()[numberPointsX * j + i].get_point()[0];
+            for (size_t i = 0; i < numberPointsX; ++i) {
+                X[j][i] = _offsetForColorBar + field.get_data()[numberPointsX * j + i].get_point()[0];
                 Y[j][i] = field.get_data()[numberPointsX * j + i].get_point()[1];
+
                 if (logarithmicScale) {
                     M[j][i] = hypot(log(fabs(field.get_data()[numberPointsX * j + i].get_real())), log(fabs(field.get_data()[numberPointsX * j + i].get_imaginary())));
                 }
@@ -122,19 +184,30 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             }
         }
         matplot::gcf()->quiet_mode(true);
-        matplot::contourf(X, Y, M);
+        auto c = matplot::contourf(X, Y, M);
+        c->font_size(99);
     }
-    else if (mode == PainterModes::QUIVER) {
+    else if (mode == PainterModes::QUIVER || mode == PainterModes::SCATTER) {
 
-        std::vector<double> X(numberPointsY * numberPointsX, 0);
-        std::vector<double> Y(numberPointsY * numberPointsX, 0);
-        std::vector<double> U(numberPointsY * numberPointsX, 0);
-        std::vector<double> V(numberPointsY * numberPointsX, 0);
-        std::vector<double> M(numberPointsY * numberPointsX, 0);
+        std::vector<double> X(field.get_data().size(), 0);
+        std::vector<double> Y(field.get_data().size(), 0);
+        std::vector<double> U(field.get_data().size(), 0);
+        std::vector<double> V(field.get_data().size(), 0);
+        std::vector<double> M(field.get_data().size(), 0); 
 
-        for (size_t i = 0; i < numberPointsY * numberPointsX; ++i) {
-            X[i] = field.get_data()[i].get_point()[0];
+        for (size_t i = 0; i < field.get_data().size(); ++i) {
+            if (is_inside_inducing_turns(field.get_data()[i].get_point(), magnetic.get_coil())) {
+                X[i] = std::numeric_limits<double>::quiet_NaN();;
+                Y[i] = std::numeric_limits<double>::quiet_NaN();;
+                U[i] = std::numeric_limits<double>::quiet_NaN();;
+                V[i] = std::numeric_limits<double>::quiet_NaN();;
+                M[i] = std::numeric_limits<double>::quiet_NaN();;
+                continue;
+            }
+
+            X[i] = _offsetForColorBar + field.get_data()[i].get_point()[0];
             Y[i] = field.get_data()[i].get_point()[1];
+
             if (logarithmicScale) {
                 U[i] = log(fabs(field.get_data()[i].get_real()));
                 if (field.get_data()[i].get_real() < 0) {
@@ -155,8 +228,24 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             maximumModule = std::max(maximumModule, M[i]);
         }
 
+        for (int i = field.get_data().size() - 1; i >= 0; --i) {
+            if (std::isnan(X[i])) {
+                X.erase(X.begin() + i);
+                Y.erase(Y.begin() + i);
+                U.erase(U.begin() + i);
+                V.erase(V.begin() + i);
+                M.erase(M.begin() + i);
+            }
+        }
+
         matplot::gcf()->quiet_mode(true);
-        auto q = matplot::quiver(X, Y, U, V, M, 0.0001)->normalize(true).line_width(1.5);
+        if (mode == PainterModes::QUIVER) {
+            auto q = matplot::quiver(X, Y, U, V, M, 0.0001)->normalize(true).line_width(1.5);
+        }
+        else {
+            auto c = matplot::scatter(X, Y, 6, M);
+            c->marker_face(true);
+        }
         matplot::colorbar();
     }
     else {
@@ -173,13 +262,28 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         minimumModule = maximumModule - 1;
     }
     matplot::colormap(matplot::palette::jet());
-    matplot::colorbar().label("Magnetic Field Strength (A/m)");
+
+    int maximumDecimals = ceil(log10(maximumModule));
+
+    std::vector<double> tickValues = {minimumModule};
+    std::ostringstream oss;
+    oss << std::setprecision(0) << std::fixed << roundFloat(minimumModule, 0);
+    std::vector<std::string> tickLabels = {oss.str() + " A/m"};
+    for (size_t value = minimumModule; value < maximumModule; value+=pow(10, maximumDecimals - 1)) {
+            if (value == 0) {
+                continue;
+            }
+            tickValues.push_back(roundFloat(value, -maximumDecimals + 1));
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(0) << std::scientific << (roundFloat(value, -maximumDecimals + 1));
+            auto label = replace_key("+0", oss.str(), "");
+            if (label == "0e0") {
+                label = "0";
+            }
+            tickLabels.push_back(label + " A/m");
+    }
+    auto cb = matplot::colorbar().tick_values({tickValues}).ticklabels({tickLabels});
     matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule});
-    matplot::gcf()->size(bobbinWidth * _scale / 0.7, bobbinHeight * _scale);
-    matplot::xlim({bobbinWidthStart, bobbinWidthStart + bobbinWidth});
-    matplot::ylim({-bobbinHeight / 2, bobbinHeight / 2});
-    matplot::gca()->position({0.0f, 0.0f, 0.7f, 1.0f});
-    matplot::gca()->cb_inside(false);
     matplot::xticks({});
     matplot::yticks({});
 }
@@ -223,6 +327,16 @@ void Painter::export_svg() {
 
             }
         }
+
+        if (lines[lineIndex].contains(R"(font-size="10.00")")) {
+            lines[lineIndex] = replace_key(R"(font-size="10.00")", lines[lineIndex], R"(font-size=")" + std::to_string(_fontSize) + "\"");
+        }
+
+        if (lines[lineIndex].contains(R"(font-size="11.00")")) {
+            lines[lineIndex] = replace_key(R"(font-size="11.00")", lines[lineIndex], R"(font-size=")" + std::to_string(_fontSize) + "\"");
+        }
+
+
     }
 
 
@@ -306,55 +420,72 @@ void Painter::paint_coil_turns(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::calculate_extra_margin_for_toroidal_cores(MagneticWrapper magnetic) {
-    CoilWrapper winding = magnetic.get_coil();
+std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     auto core = magnetic.get_core();
 
-    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
+
     auto processedDescription = core.get_processed_description().value();
     auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
-
-    double coreWidth = processedDescription.get_width();
-
-    if (!winding.get_turns_description()) {
-        return;
-    }
-
-    auto turns = winding.get_turns_description().value();
-    double maximumAdditionalRadialHeight = 0;
-    for (size_t i = 0; i < turns.size(); ++i){
-        if (turns[i].get_additional_coordinates()) {
-            auto additionalCoordinates = turns[i].get_additional_coordinates().value();
-            for (auto additionalCoordinate : additionalCoordinates){
-                maximumAdditionalRadialHeight = std::max(maximumAdditionalRadialHeight, fabs(additionalCoordinate[0]) + turns[i].get_dimensions().value()[0] / 2 - mainColumn.get_width());
+    
+    double showingCoreWidth;
+    auto family = core.get_shape_family();
+    switch (family) {
+        case OpenMagnetics::CoreShapeFamily::U:
+        case OpenMagnetics::CoreShapeFamily::UR:
+            _extraDimension = 1;
+            showingCoreWidth = (processedDescription.get_width() - mainColumn.get_width() / 2);
+            if (_addProportionForColorBar) {
+                double proportionForColorBar = 0.25;
+                showingCoreWidth *= (1 + proportionForColorBar);
             }
-        }
+            _offsetForColorBar = (showingCoreWidth - (processedDescription.get_width() - mainColumn.get_width() / 2)) / 2;
+            break;
+        case OpenMagnetics::CoreShapeFamily::T:
+            _extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+            showingCoreWidth = processedDescription.get_width() * _extraDimension;
+            if (_addProportionForColorBar) {
+                double proportionForColorBar = 0.25;
+                showingCoreWidth *= (1 + proportionForColorBar);
+            }
+            _offsetForColorBar = (showingCoreWidth - processedDescription.get_width() * _extraDimension) / 2;
+            break;
+        default:
+            _extraDimension = 1;
+            showingCoreWidth = processedDescription.get_width() / 2;
+            if (_addProportionForColorBar) {
+                double proportionForColorBar = 0.4;
+                showingCoreWidth *= (1 + proportionForColorBar);
+            }
+            _offsetForColorBar = (showingCoreWidth - processedDescription.get_width() / 2);
+            break;
     }
 
-    _extraDimension = (coreWidth + 2 * maximumAdditionalRadialHeight) / coreWidth;
 
+    double showingCoreHeight = processedDescription.get_height() * _extraDimension;
+
+    _fontSize = 10 * showingCoreHeight / 0.01 ;
+
+    return {showingCoreWidth, showingCoreHeight};
 }
 
 void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
-    auto core = magnetic.get_core();
 
-    calculate_extra_margin_for_toroidal_cores(magnetic);
+    auto aux = get_image_size(magnetic);
+    double imageWidth = aux[0];
+    double imageHeight = aux[1];
 
-    CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
-    auto processedDescription = core.get_processed_description().value();
-    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
-
-    double coreWidth = processedDescription.get_width() * _extraDimension;
-    double coreHeight = processedDescription.get_height() * _extraDimension;
-
-    matplot::gcf()->size(coreWidth * _scale, coreHeight * _scale);
-    matplot::xlim({-coreWidth / 2, coreWidth / 2});
-    matplot::ylim({-coreHeight / 2, coreHeight / 2});
+    matplot::gcf()->size(imageWidth * _scale, imageHeight * _scale);
+    matplot::xlim({-imageWidth / 2, imageWidth / 2});
+    matplot::ylim({-imageHeight / 2, imageHeight / 2});
     matplot::gca()->cb_inside(true);
-    matplot::gca()->cb_position({0.05f, 0.05f, 0.05f, 0.9f});
+    matplot::gca()->cb_position({0.01f, 0.05f, 0.05f, 0.9f});
     matplot::gca()->position({0.0f, 0.0f, 1.0f, 1.0f});
 
+
+    auto core = magnetic.get_core();
+    auto processedDescription = core.get_processed_description().value();
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
 
     double strokeWidth = mainColumn.get_width();
     double circleDiameter = processedDescription.get_width() - strokeWidth;
@@ -363,7 +494,7 @@ void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
     auto key = key_to_rgb_color(_currentMapIndex);
     _currentMapIndex++;
 
-    matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+    matplot::ellipse(_offsetForColorBar -circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
     _postProcessingChanges[key] = R"(stroke-linecap="round")";
     _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_ferrite(), 0, 16));
 }
@@ -394,12 +525,17 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
 
     double coreHeight = processedDescription.get_height();
 
-    matplot::gcf()->size(showingCoreWidth * _scale, coreHeight * _scale);
-    matplot::xlim({0, showingCoreWidth});
-    matplot::ylim({-coreHeight / 2, coreHeight / 2});
+    auto aux = get_image_size(magnetic);
+    double imageWidth = aux[0];
+    double imageHeight = aux[1];
+
+    matplot::gcf()->size(imageWidth * _scale, imageHeight * _scale);
+    matplot::xlim({0, imageWidth});
+    matplot::ylim({-imageHeight / 2, imageHeight / 2});
     matplot::gca()->cb_inside(true);
-    matplot::gca()->cb_position({0.05f, 0.05f, 0.05f, 0.9f});
+    matplot::gca()->cb_position({0.01f, 0.05f, 0.05f, 0.9f});
     matplot::gca()->position({0.0f, 0.0f, 1.0f, 1.0f});
+
 
     double rightColumnWidth;
     if (rightColumn.get_minimum_width()) {
@@ -478,7 +614,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     {
         std::vector<double> x, y;
         for (auto& point : topPiecePoints) {
-            x.push_back(point[0]);
+            x.push_back(point[0] + _offsetForColorBar);
             y.push_back(point[1]);
         }
 
@@ -488,7 +624,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     {
         std::vector<double> x, y;
         for (auto& point : bottomPiecePoints) {
-            x.push_back(point[0]);
+            x.push_back(point[0] + _offsetForColorBar);
             y.push_back(point[1]);
         }
 
@@ -498,7 +634,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     for (auto& chunk : gapChunks){
         std::vector<double> x, y;
         for (auto& point : chunk) {
-            x.push_back(point[0]);
+            x.push_back(point[0] + _offsetForColorBar);
             y.push_back(point[1]);
         }
 
@@ -546,7 +682,7 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
 
     std::vector<double> x, y;
     for (auto& point : bobbinPoints) {
-        x.push_back(point[0]);
+        x.push_back(point[0] + _offsetForColorBar);
         y.push_back(point[1]);
     }
 
@@ -585,7 +721,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
 
                 std::vector<double> x, y;
                 for (auto& point : marginPoints) {
-                    x.push_back(point[0]);
+                    x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
@@ -617,7 +753,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
 
                 std::vector<double> x, y;
                 for (auto& point : marginPoints) {
-                    x.push_back(point[0]);
+                    x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
@@ -688,7 +824,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
 
                     std::vector<double> x, y;
                     for (auto& point : marginPoints) {
-                        x.push_back(point[0]);
+                        x.push_back(point[0] + _offsetForColorBar);
                         y.push_back(point[1]);
                     }
                     matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
@@ -709,7 +845,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
 
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
-                            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
@@ -731,7 +867,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                         std::string termination = angleProportion < 1? "butt" : "round";
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
-                            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
@@ -755,7 +891,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                     std::string termination = angleProportion < 1? "butt" : "round";
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
-                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                        matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                         _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                         R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
@@ -776,7 +912,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                     std::string termination = angleProportion < 1? "butt" : "round";
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
 
-                        matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                        matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
                         _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2 - angle)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                         R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_margin(), 0, 16));
@@ -787,7 +923,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
     }
 
     if (drawSpacer) {
-        matplot::ellipse(-largestThickness * 2 / 2, -largestThickness * 2 / 2, largestThickness * 2, largestThickness * 2)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
+        matplot::ellipse(_offsetForColorBar -largestThickness * 2 / 2, -largestThickness * 2 / 2, largestThickness * 2, largestThickness * 2)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
     }
 }
 
@@ -812,7 +948,7 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
 
             std::vector<double> x, y;
             for (auto& point : sectionPoints) {
-                x.push_back(point[0]);
+                x.push_back(point[0] + _offsetForColorBar);
                 y.push_back(point[1]);
             }
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -858,7 +994,7 @@ void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
 
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
-            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -900,7 +1036,7 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
 
         std::vector<double> x, y;
         for (auto& point : layerPoints) {
-            x.push_back(point[0]);
+            x.push_back(point[0] + _offsetForColorBar);
             y.push_back(point[1]);
         }
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
@@ -949,7 +1085,7 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
-            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
@@ -971,11 +1107,11 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-    matplot::ellipse(xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
 
     if (wire.get_conducting_diameter()) {
         double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        matplot::ellipse(xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
     }
 }
 
@@ -993,13 +1129,13 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
 
     std::vector<double> x, y;
     for (auto& point : turnPoints) {
-        x.push_back(point[0]);
+        x.push_back(point[0] + _offsetForColorBar);
         y.push_back(point[1]);
     }
     matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
 
     _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
-    _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0]) + " " + std::to_string(center[1]) + ")\" ";
+    _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
 
     if (wire.get_conducting_width() && wire.get_conducting_height()) {
         std::vector<std::vector<double>> turnPoints = {};
@@ -1014,13 +1150,13 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
 
         std::vector<double> x, y;
         for (auto& point : turnPoints) {
-            x.push_back(point[0]);
+            x.push_back(point[0] + _offsetForColorBar);
             y.push_back(point[1]);
         }
         matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
 
         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
-        _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0]) + " " + std::to_string(center[1]) + ")\" ";
+        _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
 
     }
 }
@@ -1054,7 +1190,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
 
                 std::vector<double> x, y;
                 for (auto& point : turnPoints) {
-                    x.push_back(point[0]);
+                    x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
@@ -1069,7 +1205,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
 
                 std::vector<double> x, y;
                 for (auto& point : turnPoints) {
-                    x.push_back(point[0]);
+                    x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
                 matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
@@ -1091,7 +1227,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
 
             std::vector<double> x, y;
             for (auto& point : layerPoints) {
-                x.push_back(point[0]);
+                x.push_back(point[0] + _offsetForColorBar);
                 y.push_back(point[1]);
             }
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
@@ -1114,9 +1250,10 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
-    double coreWidth = processedDescription.get_width();
-    double coreHeight = processedDescription.get_height();
     auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
+    auto aux = get_image_size(magnetic);
+    double imageWidth = aux[0];
+    double imageHeight = aux[1];
 
     double initialRadius = processedDescription.get_width() / 2 - mainColumn.get_width();
 
@@ -1128,16 +1265,26 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
 
     for (size_t i = 0; i < turns.size(); ++i){
 
+        if (!turns[i].get_coordinate_system()) {
+            throw std::runtime_error("Turn is missing coordinate system");
+        }
+        if (!turns[i].get_rotation()) {
+            throw std::runtime_error("Turn is missing rotation");
+        }
+        if (turns[i].get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+            throw std::runtime_error("Turn coordinates are not in cartesian");
+        }
+
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        double xCoordinate = (initialRadius - turns[i].get_coordinates()[0]) * cos(turns[i].get_coordinates()[1] / 180 * std::numbers::pi);
-        double yCoordinate = (initialRadius - turns[i].get_coordinates()[0]) * sin(turns[i].get_coordinates()[1] / 180 * std::numbers::pi);
+        double xCoordinate = turns[i].get_coordinates()[0];
+        double yCoordinate = turns[i].get_coordinates()[1];
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
             paint_round_wire(xCoordinate, yCoordinate, wire);
         }
         else {
-            double turnAngle = turns[i].get_coordinates()[1];
-            std::vector<double> turnCenter = {(coreWidth / 2  * _extraDimension + xCoordinate) * _scale, (coreHeight / 2  * _extraDimension - yCoordinate) * _scale};
+            double turnAngle = turns[i].get_rotation().value();
+            std::vector<double> turnCenter = {(_offsetForColorBar + imageWidth / 2 + xCoordinate), (imageHeight / 2 - yCoordinate)};
             paint_rectangular_wire(xCoordinate, yCoordinate, wire, turnAngle, turnCenter);
         }
 
@@ -1145,14 +1292,14 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             auto additionalCoordinates = turns[i].get_additional_coordinates().value();
 
             for (auto additionalCoordinate : additionalCoordinates){
-                double xAdditionalCoordinate = (initialRadius - additionalCoordinate[0]) * cos(additionalCoordinate[1] / 180 * std::numbers::pi);
-                double yAdditionalCoordinate = (initialRadius - additionalCoordinate[0]) * sin(additionalCoordinate[1] / 180 * std::numbers::pi);
+                double xAdditionalCoordinate = additionalCoordinate[0];
+                double yAdditionalCoordinate = additionalCoordinate[1];
                 if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
                     paint_round_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire);
                 }
                 else {
-                    double turnAngle = turns[i].get_coordinates()[1];
-                    std::vector<double> turnCenter = {(coreWidth / 2  * _extraDimension + xAdditionalCoordinate) * _scale, (coreHeight / 2  * _extraDimension - yAdditionalCoordinate) * _scale};
+                    double turnAngle = turns[i].get_rotation().value();
+                    std::vector<double> turnCenter = {(_offsetForColorBar + imageWidth / 2 + xAdditionalCoordinate), (imageHeight / 2 - yAdditionalCoordinate)};
                     paint_rectangular_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire, turnAngle, turnCenter);
                 }
             }
@@ -1175,15 +1322,15 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
-            matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+            matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(_offsetForColorBar + imageWidth / 2 * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
             
             if (layers[i].get_additional_coordinates()) {
                 circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
-                matplot::ellipse(-circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(coreWidth / 2 * _scale * _extraDimension) + " " + std::to_string(coreHeight / 2 * _scale * _extraDimension) + ")\" " + 
+                matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+                _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(_offsetForColorBar + imageWidth / 2 * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
             }

@@ -176,6 +176,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             }
             proximityEffectLosses.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
             totalProximityEffectLosses += lossesThisHarmonic.first * wireLength;
+
             windingLossesPerWinding[windingIndex].set_proximity_effect_losses(proximityEffectLosses);
         }
 

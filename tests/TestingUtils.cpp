@@ -573,6 +573,10 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND) {
+        coil.convert_turns_to_cartesian_coordinates();
+    }
+
 
     int turnsIn0 = 0;
     for (auto& turn : turns){
@@ -586,16 +590,15 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
             coordinatesByName[turn.get_name()] = turn.get_coordinates();
         }
         else {
-            double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
-            double xCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * cos(turn.get_coordinates()[1] / 180 * std::numbers::pi);
-            double yCoordinate = (windingWindowRadialHeight - turn.get_coordinates()[0]) * sin(turn.get_coordinates()[1] / 180 * std::numbers::pi);
+            double xCoordinate = turn.get_coordinates()[0];
+            double yCoordinate = turn.get_coordinates()[1];
             coordinatesByName[turn.get_name()] = {xCoordinate, yCoordinate};
             if (turn.get_additional_coordinates()) {
                 auto additionalCoordinates = turn.get_additional_coordinates().value();
 
                 for (auto additionalCoordinate : additionalCoordinates){
-                    double xAdditionalCoordinate = (windingWindowRadialHeight - additionalCoordinate[0]) * cos(additionalCoordinate[1] / 180 * std::numbers::pi);
-                    double yAdditionalCoordinate = (windingWindowRadialHeight - additionalCoordinate[0]) * sin(additionalCoordinate[1] / 180 * std::numbers::pi);
+                    double xAdditionalCoordinate = additionalCoordinate[0];
+                    double yAdditionalCoordinate = additionalCoordinate[1];
                     additionalCoordinatesByName[turn.get_name()] = {xAdditionalCoordinate, yAdditionalCoordinate};
                 }
             }

@@ -23,7 +23,6 @@ class CoreAdviser {
         };
     protected:
         std::map<std::string, std::string> _models;
-        bool _includeToroids;
         std::string _log;
         bool _uniqueCoreShapes = false;
         std::map<CoreAdviserFilters, double> _weights;
@@ -44,17 +43,15 @@ class CoreAdviser {
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
-        CoreAdviser(std::map<std::string, std::string> models, bool includeToroids=true) {
+        CoreAdviser(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
-            _includeToroids = includeToroids;
             _models = models;
             if (models.find("gapReluctance") == models.end()) {
                 _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
             }
         }
-        CoreAdviser(bool includeToroids=true) {
+        CoreAdviser() {
             auto defaults = OpenMagnetics::Defaults();
-            _includeToroids = includeToroids;
             _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
             _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);

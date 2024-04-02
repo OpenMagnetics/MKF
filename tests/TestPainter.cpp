@@ -839,6 +839,415 @@ SUITE(FieldPainter) {
     }
 }
 
+
+SUITE(ToridalFieldPainter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+
+    TEST(Test_Painter_Toroid_Round_Wires) {
+
+        double temperature = 20;
+        std::vector<int64_t> numberTurns({100, 5});
+        std::vector<int64_t> numberParallels({1, 1});
+        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
+
+        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double offset = 0;
+        double peakToPeak = 2 * 1.73205;
+        double dutyCycle = 0.5;
+        double frequency = 100000;
+        double magnetizingInductance = 1e-3;
+        std::string shapeName = "T 20/10/7";
+
+        OpenMagnetics::Processed processed;
+        processed.set_label(label);
+        processed.set_offset(offset);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                         magnetizingInductance,
+                                                                                         temperature,
+                                                                                         label,
+                                                                                         peakToPeak,
+                                                                                         dutyCycle,
+                                                                                         offset,
+                                                                                         turnsRatios);
+
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+
+
+        settings->reset();
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroid_Round_Wires.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            // settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            settings->set_painter_logarithmic_scale(false);
+            settings->set_painter_include_fringing(true);
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(50);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Painter_Toroid_Quiver_One_Turn_Rectangular) {
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "T 20/10/7";
+
+        std::string coreMaterial = "3C97";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_number_points_x(100);
+        settings->set_painter_number_points_y(100);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner) {
+        std::vector<int64_t> numberTurns = {1};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "T 20/10/7";
+
+        std::string coreMaterial = "3C97";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_number_points_x(100);
+        settings->set_painter_number_points_y(100);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner) {
+        std::vector<int64_t> numberTurns = {4};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "T 20/10/7";
+
+        std::string coreMaterial = "3C97";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_number_points_x(100);
+        settings->set_painter_number_points_y(100);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread) {
+        std::vector<int64_t> numberTurns = {4};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "T 20/10/7";
+
+        std::string coreMaterial = "3C97";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_number_points_x(100);
+        settings->set_painter_number_points_y(100);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_Toroid_Quiver_Two_Turn_Rectangular) {
+        std::vector<int64_t> numberTurns = {2};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "T 20/10/7";
+
+        std::string coreMaterial = "3C97";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_number_points_x(100);
+        settings->set_painter_number_points_y(100);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        // painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_Toroid_Rectangular_Wires) {
+
+        double temperature = 20;
+        std::vector<int64_t> numberTurns = {11, 90};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
+        uint8_t interleavingLevel = 1;
+        std::string coreShape = "T 20/10/7";
+        auto emptyGapping = json::array();
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+
+
+        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double offset = 0;
+        double peakToPeak = 2 * 1.73205;
+        double dutyCycle = 0.5;
+        double frequency = 100000;
+        double magnetizingInductance = 1e-3;
+        std::string shapeName = "T 20/10/7";
+
+        OpenMagnetics::Processed processed;
+        processed.set_label(label);
+        processed.set_offset(offset);
+        processed.set_peak_to_peak(peakToPeak);
+        processed.set_duty_cycle(dutyCycle);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                         magnetizingInductance,
+                                                                                         temperature,
+                                                                                         label,
+                                                                                         peakToPeak,
+                                                                                         dutyCycle,
+                                                                                         offset,
+                                                                                         turnsRatios);
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         sectionOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+
+
+        settings->reset();
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroid_Rectangular_Wires.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            // settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            settings->set_painter_logarithmic_scale(false);
+            settings->set_painter_include_fringing(true);
+            settings->set_painter_number_points_x(50);
+            settings->set_painter_number_points_y(50);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+}
+
 SUITE(CoilPainterToroid) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");

@@ -489,7 +489,7 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
     }
     windingWindowElement.set_shape(bobbinWindingWindowShape);
     coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
-    coreBobbinProcessedDescription.set_column_shape(ColumnShape::ROUND);
+    coreBobbinProcessedDescription.set_column_shape(coreCentralColumn.get_shape());
     coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + bobbinColumnThickness);
     coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + bobbinColumnThickness);
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));

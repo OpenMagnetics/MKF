@@ -817,10 +817,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
-    std::vector<CoreWrapper> cores;
     auto settings = OpenMagnetics::Settings::GetInstance();
     if (coreDatabase.empty()) {
-        load_cores(_includeToroids, settings->get_use_only_cores_in_stock());
+        load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
     }
 
     return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
@@ -921,6 +920,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     CoilWrapper coil = get_dummy_coil(inputs);
     auto settings = Settings::GetInstance();
+    auto includeToroidalCores = settings->get_use_toroidal_cores();
     auto globalIncludeStacks = settings->get_core_include_stacks();
     auto globalIncludeDistributedGaps = settings->get_core_include_distributed_gaps();
 
@@ -933,7 +933,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     }
     magnetic.set_coil(std::move(coil));
     for (auto& core : *cores){
-        if (!_includeToroids && core.get_type() == CoreType::TOROIDAL) {
+        if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
             continue;
         }
 
@@ -982,6 +982,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
 void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vector<CoreWrapper>* cores, std::vector<std::pair<MasWrapper, double>>* masMagnetics) {
     auto defaults = Defaults();
     CoilWrapper coil = get_dummy_coil(inputs);
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto includeToroidalCores = settings->get_use_toroidal_cores();
 
     MagneticWrapper magnetic;
     MasWrapper mas;
@@ -992,7 +994,7 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
     }
     magnetic.set_coil(std::move(coil));
     for (auto& core : *cores){
-        if (!_includeToroids && core.get_type() == CoreType::TOROIDAL) {
+        if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
             continue;
         }
 
@@ -1219,6 +1221,5 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
 
     return masMagneticsWithScoring;
 }
-
 
 } // namespace OpenMagnetics
