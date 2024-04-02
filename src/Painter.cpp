@@ -126,24 +126,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     auto settings = OpenMagnetics::Settings::GetInstance();
     matplot::gcf()->quiet_mode(true);
     matplot::cla();
-
-    double bobbinWidthStart;
-    double bobbinWidth;
-    double bobbinHeight;
-
     get_image_size(magnetic);
-
-    CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
-    if (shape.get_family() == CoreShapeFamily::T) {
-        bobbinWidthStart = 0;
-        bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_radial_height().value();
-        bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_radial_height().value();
-    }
-    else {
-        bobbinWidthStart = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_coordinates().value()[0] - magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value() / 2;
-        bobbinWidth = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_width().value();
-        bobbinHeight = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_height().value();
-    }
 
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
@@ -463,7 +446,8 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
 
     double showingCoreHeight = processedDescription.get_height() * _extraDimension;
 
-    _fontSize = 10 * showingCoreHeight / 0.01 ;
+    _fontSize = std::max(1.0, 10 * showingCoreHeight / 0.01);
+    _fontSize = std::min(100.0, _fontSize);
 
     return {showingCoreWidth, showingCoreHeight};
 }
@@ -1323,14 +1307,14 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             std::string termination = angleProportion < 1? "butt" : "round";
 
             matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(_offsetForColorBar + imageWidth / 2 * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
+            _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
             
             if (layers[i].get_additional_coordinates()) {
                 circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
                 matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
-                _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string(_offsetForColorBar + imageWidth / 2 * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
+                _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
             }

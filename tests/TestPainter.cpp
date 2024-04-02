@@ -845,6 +845,7 @@ SUITE(ToridalFieldPainter) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_Painter_Toroid_Round_Wires) {
+        OpenMagnetics::clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({100, 5});
@@ -923,6 +924,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Quiver_One_Turn_Rectangular) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -971,6 +973,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {1};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1019,6 +1022,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1067,6 +1071,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1115,6 +1120,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Quiver_Two_Turn_Rectangular) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {2};
         std::vector<int64_t> numberParallels = {1};
         std::vector<double> turnsRatios = {};
@@ -1163,6 +1169,7 @@ SUITE(ToridalFieldPainter) {
     }
 
     TEST(Test_Painter_Toroid_Rectangular_Wires) {
+        OpenMagnetics::clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns = {11, 90};
@@ -1253,6 +1260,7 @@ SUITE(CoilPainterToroid) {
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
     TEST(Test_Painter_T_Core) { 
+        OpenMagnetics::clear_databases();
         settings->set_coil_try_rewind(false);
         std::vector<int64_t> numberTurns = {12, 12};
         std::vector<int64_t> numberParallels = {2, 2};
@@ -1290,6 +1298,7 @@ SUITE(CoilPainterToroid) {
     }
 
     TEST(Test_Painter_T_Core_Overlapping) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {2, 2};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 2;
@@ -1320,6 +1329,7 @@ SUITE(CoilPainterToroid) {
 
 
     TEST(Test_Painter_T_Core_Contiguous) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {72, 72};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 2;
@@ -1384,6 +1394,7 @@ SUITE(CoilPainterToroid) {
     }
 
     TEST(Test_Painter_T_Core_Contiguous_Sections_With_Margin) {
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns = {2, 2};
         std::vector<int64_t> numberParallels = {1, 1};
         uint8_t interleavingLevel = 2;

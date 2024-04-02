@@ -733,6 +733,7 @@ SUITE(LeakageInductance) {
 
     TEST(Test_Leakage_Inductance_T_0) {
         settings->reset();
+        OpenMagnetics::clear_databases();
         std::vector<int64_t> numberTurns({10, 200});
         std::vector<int64_t> numberParallels({1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
@@ -745,26 +746,15 @@ SUITE(LeakageInductance) {
         settings->set_coil_try_rewind(false);
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
         OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
-        strandConductingDiameter.set_nominal(0.00005);
-        strandOuterDiameter.set_nominal(0.000055);
-        strand.set_conducting_diameter(strandConductingDiameter);
-        strand.set_outer_diameter(strandOuterDiameter);
-        strand.set_number_conductors(1);
-        strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
 
-        wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.001);
         wire.set_nominal_value_conducting_diameter(0.00095);
         wire.set_material("copper");
         wire.set_number_conductors(1);
         wire.set_type(OpenMagnetics::WireType::ROUND);
         wires.push_back(wire);
-        wire.set_strand(strand);
+
         wire.set_nominal_value_outer_diameter(0.0008);
         wire.set_nominal_value_conducting_diameter(0.00075);
         wire.set_material("copper");
@@ -804,6 +794,82 @@ SUITE(LeakageInductance) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Leakage_Inductance_T_0.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
+            painter.paint_core(magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+
+
+        settings->reset();
+    }
+
+    TEST(Test_Leakage_Inductance_T_1) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        std::vector<int64_t> numberTurns({10, 5});
+        std::vector<int64_t> numberParallels({1, 1});
+        std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1]});
+        std::string shapeName = "T 48/28/16";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        settings->set_coil_try_rewind(false);
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_conducting_width(0.0038);
+        wire.set_nominal_value_conducting_height(0.002);
+        wire.set_nominal_value_outer_width(0.0039);
+        wire.set_nominal_value_outer_height(0.002076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wires.push_back(wire);
+
+        wire.set_nominal_value_conducting_width(0.0038);
+        wire.set_nominal_value_conducting_height(0.001);
+        wire.set_nominal_value_outer_width(0.0039);
+        wire.set_nominal_value_outer_height(0.001076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wires.push_back(wire);
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C97";
+        auto gapping = json::array();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        double frequency = 100000;
+        double expectedLeakageInductance = 5e-6;
+
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        auto leakageMagneticField = OpenMagnetics::LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
+        CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
+        if (true) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Leakage_Inductance_T_1.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
             painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);

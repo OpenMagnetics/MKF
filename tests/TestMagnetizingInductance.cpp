@@ -16,6 +16,7 @@
 using json = nlohmann::json;
 
 SUITE(MagnetizingInductance) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double max_error = 0.05;
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, double numberTurns,
                                  double desiredMagnetizingInductance, std::vector<OpenMagnetics::CoreGap> gapping,
@@ -722,6 +723,8 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance_Toroid) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 42;
@@ -748,6 +751,8 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance_Toroid_Stacks) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 42;
