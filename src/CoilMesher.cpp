@@ -1,6 +1,7 @@
 #include "CoilMesher.h"
 #include "WindingOhmicLosses.h"
 #include "CoilWrapper.h"
+#include "Utils.h"
 #include "Defaults.h"
 #include "Settings.h"
 
@@ -30,32 +31,11 @@ std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels model
 }
 
 
-std::vector<size_t> CoilMesher::get_common_harmonic_indexes(CoilWrapper coil, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
-    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(coil.get_functional_description().size(), 0);
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(pow(harmonics.get_amplitudes()[harmonicIndex], 2) * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
-        }
-    }
-
-
-    std::vector<size_t> commonHarmonicIndexes;
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-
-            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
-                continue;
-            }
-            if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex) == commonHarmonicIndexes.end()) {
-                commonHarmonicIndexes.push_back(harmonicIndex);
-            }
-        }
-    }
+std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    auto commonHarmonicIndexes = get_main_current_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     if (commonHarmonicIndexes.size() > operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size() * _quickModeForManyHarmonicsThreshold) {
-        return get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
+        return get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
     }
     else {
         return commonHarmonicIndexes;
@@ -172,7 +152,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
         breakdownModelPerWinding.push_back(model);
     }
 
-    auto commonHarmonicIndexes = get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold);
+    auto commonHarmonicIndexes = get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     std::vector<Field> tempFieldPerHarmonic;
     for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
@@ -249,7 +229,7 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
         breakdownModelPerWinding.push_back(model);
     }
 
-    auto commonHarmonicIndexes = get_common_harmonic_indexes(coil, operatingPoint, windingLossesHarmonicAmplitudeThreshold);
+    auto commonHarmonicIndexes = get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     std::vector<Field> tempFieldPerHarmonic;
     for (size_t harmonicIndex = 0; harmonicIndex < operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size(); ++harmonicIndex){
@@ -361,7 +341,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
             throw std::runtime_error("Turn is missing coordinate system");
         }
         if (turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-            throw std::runtime_error("Turn coordinates are not in cartesian");
+            throw std::runtime_error("CoilMesher: Turn coordinates are not in cartesian");
         }
 
         fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});

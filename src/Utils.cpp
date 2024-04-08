@@ -954,5 +954,63 @@ double angle_to_wound_distance(double angle, double radius) {
     return 2 * sin(angle / 2 / 180 * std::numbers::pi) * radius;
 }
 
+bool is_size_power_of_2(std::vector<double> data) {
+    return data.size() > 0 && ((data.size() & (data.size() - 1)) == 0);
+}
+
+size_t round_up_size_to_power_of_2(std::vector<double> data) {
+    return pow(2, ceil(log(data.size()) / log(2)));
+}
+
+size_t round_up_size_to_power_of_2(size_t size) {
+    return pow(2, ceil(log(size) / log(2)));
+}
+
+std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(operatingPoint.get_excitations_per_winding().size(), 0);
+    for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(pow(harmonics.get_amplitudes()[harmonicIndex], 2) * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
+        }
+    }
+
+    std::vector<size_t> mainHarmonicIndexes;
+    for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+
+            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+                continue;
+            }
+            if (std::find(mainHarmonicIndexes.begin(), mainHarmonicIndexes.end(), harmonicIndex) == mainHarmonicIndexes.end()) {
+                mainHarmonicIndexes.push_back(harmonicIndex);
+            }
+        }
+    }
+
+    return mainHarmonicIndexes;
+}
+
+std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windingLossesHarmonicAmplitudeThreshold) {
+    double maximumHarmonicAmplitudeTimesRootFrequencyPerWinding = 0;
+    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+        maximumHarmonicAmplitudeTimesRootFrequencyPerWinding = std::max(pow(harmonics.get_amplitudes()[harmonicIndex], 2) * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding);
+    }
+
+    std::vector<size_t> mainHarmonicIndexes;
+    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+
+        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding * windingLossesHarmonicAmplitudeThreshold) {
+            continue;
+        }
+        if (std::find(mainHarmonicIndexes.begin(), mainHarmonicIndexes.end(), harmonicIndex) == mainHarmonicIndexes.end()) {
+            mainHarmonicIndexes.push_back(harmonicIndex);
+        }
+    }
+    return mainHarmonicIndexes;
+}
+
+
 
 } // namespace OpenMagnetics

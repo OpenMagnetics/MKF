@@ -27,6 +27,7 @@ struct Defaults {
     const double magneticFluxDensitySaturation = 0.5;
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double windingLossesHarmonicAmplitudeThreshold = 0.05;
+    const double importedWaveformHarmonicAmplitudeThreshold = 0.01;
     const double ambientTemperature = 25;
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;

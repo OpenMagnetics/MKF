@@ -29,6 +29,9 @@ void NumberTurns::increment_number_turns() {
         for (auto& turnsRatioRequirement : _turnsRatios){
             auto turnsRatio = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::NOMINAL);
             uint64_t numberTurns = round(primaryNumberTurns / turnsRatio);
+            // std::cout << "numberTurns: " << numberTurns << std::endl;
+            // std::cout << "primaryNumberTurns: " << primaryNumberTurns << std::endl;
+            // std::cout << "turnsRatio: " << turnsRatio << std::endl;
 
             if (check_requirement(turnsRatioRequirement, double(primaryNumberTurns) / numberTurns)) {
                 _currentNumberTurns.push_back(numberTurns);

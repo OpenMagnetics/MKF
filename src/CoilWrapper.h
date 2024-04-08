@@ -35,6 +35,9 @@ class CoilWrapper : public Coil {
         std::vector<double> _currentProportionPerWinding;
         std::vector<size_t> _currentPattern;
         size_t _currentRepetitions;
+        bool _strict = true;
+        bool _bobbin_resolved = false;
+        BobbinWrapper _bobbin;
 
     public:
         size_t _interleavingLevel = 1;
@@ -64,6 +67,7 @@ class CoilWrapper : public Coil {
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
         void remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, double>> orderedSections);
+        void equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
 
         std::vector<double> get_proportion_per_winding_based_on_wires();
         void apply_margin_tape(std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> orderedSectionsWithInsulation);
@@ -104,6 +108,9 @@ class CoilWrapper : public Coil {
             return coilLog;
         }
 
+        void set_strict(bool value) {
+            _strict = value;
+        }
         void set_inputs(InputsWrapper inputs) {  // TODO: change to DesignRequirements?
             _inputs = inputs;
         }

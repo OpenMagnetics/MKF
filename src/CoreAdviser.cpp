@@ -5,6 +5,7 @@
 #include "MagnetizingInductance.h"
 #include "WindingSkinEffectLosses.h"
 #include "WindingOhmicLosses.h"
+#include "CoilMesher.h"
 #include "NumberTurns.h"
 #include "MagneticEnergy.h"
 #include "WireWrapper.h"
@@ -143,9 +144,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
 
     std::vector<double> areaProductRequiredPreCalculations;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        auto voltageWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_voltage().value().get_waveform().value();
-        auto currentWaveform = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_waveform().value();
-        double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
+        auto excitation = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
+        auto voltageWaveform = excitation.get_voltage().value().get_waveform().value();
+        auto currentWaveform = excitation.get_current().value().get_waveform().value();
+        double frequency = excitation.get_frequency();
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
             voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
             currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
@@ -160,7 +162,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             powerMean += fabs(voltageWaveformData[i] * currentWaveformData[i]);
         }
         powerMean /= voltageWaveformData.size();
-        areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * frequency * defaults.maximumCurrentDensity));
+
+        double switchingFrequency = InputsWrapper::get_switching_frequency(excitation);
+        // double switchingFrequency = frequency;
+
+        areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity));
     }
 
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
@@ -220,23 +226,36 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         }
         double windingWindowArea = windingWindow.get_area().value();
         if ((*_averageMarginInWindingWindow) > 0) {
-            if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
-                throw std::runtime_error("Not implemented margin for toroids yet");
-            }
-            if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
-                windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+            if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+                if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
+                    windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+                }
+                else {
+                    windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+                }
             }
             else {
-                windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+                auto radialHeight = windingWindow.get_radial_height().value();
+                if ((*_averageMarginInWindingWindow) > radialHeight / 2) {
+                    listOfIndexesToErase.push_back(masIndex);
+                    continue;
+                }
+                double wireAngle = wound_distance_to_angle((*_averageMarginInWindingWindow), radialHeight / 2);
+                if (std::isnan((wireAngle) / 360)) {
+                    throw std::runtime_error("wireAngle: " + std::to_string(wireAngle));
+                }
+                windingWindowArea *= (wireAngle) / 360;
             }
-
         }
         double areaProductCore = windingWindowArea * windingColumn.get_area();
         double maximumAreaProductRequired = 0;
 
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
             double temperature = inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature();
-            double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
+            // double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
+            double frequency = InputsWrapper::get_switching_frequency(InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)));
+            // double switchingFrequency = InputsWrapper::get_switching_frequency(excitation);
+
             auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
             double wireAirFillingFactor = OpenMagnetics::WireWrapper::get_filling_factor_round(2 * skinDepth);
             double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
@@ -244,6 +263,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+
 
 
                     double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
@@ -312,7 +332,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
         return *unfilteredMasMagnetics;
     }
     auto defaults = Defaults();
-    OpenMagnetics::MagneticEnergy magneticEnergy(models);    
+    OpenMagnetics::MagneticEnergy magneticEnergy(models);
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
@@ -397,7 +417,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
     double temperature = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
         primaryCurrentRms = std::max(primaryCurrentRms, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_processed().value().get_rms().value());
-        frequency = std::max(frequency, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency());
+        frequency = std::max(frequency, InputsWrapper::get_switching_frequency(InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex))));
         temperature = std::max(temperature, inputs.get_operating_point(operatingPointIndex).get_conditions().get_ambient_temperature());
     }
 
@@ -432,7 +452,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
         WindingWindowElement windingWindow;
 
         std::string shapeName = core.get_shape_name();
-        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
             auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
             windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
         }
@@ -442,14 +462,25 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterCost::
         }
         double windingWindowArea = windingWindow.get_area().value();
         if ((*_averageMarginInWindingWindow) > 0) {
-            if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
-                throw std::runtime_error("Not implemented margin for toroids yet");
-            }
-            if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
-                windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+            if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+                if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
+                    windingWindowArea -= windingWindow.get_width().value() * (*_averageMarginInWindingWindow);
+                }
+                else {
+                    windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+                }
             }
             else {
-                windingWindowArea -= windingWindow.get_height().value() * (*_averageMarginInWindingWindow);
+                auto radialHeight = windingWindow.get_radial_height().value();
+                if ((*_averageMarginInWindingWindow) > radialHeight / 2) {
+                    listOfIndexesToErase.push_back(masIndex);
+                    continue;
+                }
+                double wireAngle = wound_distance_to_angle((*_averageMarginInWindingWindow), radialHeight / 2);
+                if (std::isnan((wireAngle) / 360)) {
+                    throw std::runtime_error("wireAngle: " + std::to_string(wireAngle));
+                }
+                windingWindowArea *= (wireAngle) / 360;
             }
         }
 
@@ -560,16 +591,18 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         }
 
         std::string shapeName = core.get_shape_name();
-        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
             auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
             magnetic.get_mutable_coil().set_bobbin(bobbin);
             auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
 
-            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
-                throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
-                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
-                                         " shapeName: " + shapeName
-                                         );
+            if (windingWindows[0].get_width()) {
+                if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+                    throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
+                                             " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
+                                             " shapeName: " + shapeName
+                                             );
+                }
             }
         }
 
@@ -618,7 +651,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                     previousNumberTurnsPrimary = numberTurnsCombination[0];
                 }
 
-                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
                     if (!coil.get_turns_description()) {
                         newTotalLosses = coreLosses;
                         break;
@@ -648,7 +681,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                     break;
                 }
 
-                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("R ", 0) == 0) || (shapeName.rfind("T ", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
                     windingLossesOutput = windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
                     ohmicLosses = windingLossesOutput.get_winding_losses();
                     newTotalLosses = coreLosses + ohmicLosses;
@@ -1051,9 +1084,7 @@ void correct_windings(std::vector<std::pair<MasWrapper, double>> *masMagneticsWi
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 
         (*masMagneticsWithScoring)[i].first.set_inputs(inputs);
-        if ((*masMagneticsWithScoring)[i].first.get_magnetic().get_core().get_functional_description().get_type() != CoreType::TOROIDAL) {
-            (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().set_bobbin(BobbinWrapper::create_quick_bobbin((*masMagneticsWithScoring)[i].first.get_magnetic().get_core()));
-        }
+        (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().set_bobbin(BobbinWrapper::create_quick_bobbin((*masMagneticsWithScoring)[i].first.get_magnetic().get_core()));
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
             auto winding = coil.get_functional_description()[0];
             winding.set_number_turns(numberTurnsCombination[windingIndex]);
@@ -1111,6 +1142,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
             InputsWrapper::set_current_as_magnetizing_current(&inputs.get_mutable_operating_points()[operatingPointIndex]);
         }
         else if (!excitation.get_magnetizing_current()) {
+
             auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation,
                                                                                    resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()),
                                                                                    false);
@@ -1124,29 +1156,19 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
 
     switch (firstFilter) {
         case CoreAdviserFilters::AREA_PRODUCT: 
-
-
             masMagneticsWithScoring = filterAreaProduct.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::AREA_PRODUCT], true);
             break;
         case CoreAdviserFilters::ENERGY_STORED: 
-
-
             masMagneticsWithScoring = filterEnergyStored.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::ENERGY_STORED], true);
             break;
         case CoreAdviserFilters::COST: 
-
-
             masMagneticsWithScoring = filterCost.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::COST], true);
             break;
         case CoreAdviserFilters::EFFICIENCY: 
-
-
             add_initial_turns(masMagnetics, inputs);
             masMagneticsWithScoring = filterLosses.filter_magnetics(masMagnetics, inputs, _models, weights[CoreAdviserFilters::EFFICIENCY], true);
             break;
         case CoreAdviserFilters::DIMENSIONS: 
-
-
             masMagneticsWithScoring = filterDimensions.filter_magnetics(masMagnetics, weights[CoreAdviserFilters::DIMENSIONS], true);
             break;
     }

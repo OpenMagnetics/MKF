@@ -174,7 +174,7 @@ SUITE(FieldPainter) {
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(true);
-        settings->set_painter_maximum_value_colorbar(5500);
+        settings->set_painter_maximum_value_colorbar(25500);
         settings->set_painter_minimum_value_colorbar(0);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
@@ -1643,7 +1643,6 @@ SUITE(CoilPainter) {
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-        std::cout << coil.get_sections_description().value().size() << std::endl;
 
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Pq_Core_Bobbin_And_Section.svg");

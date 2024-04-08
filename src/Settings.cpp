@@ -16,6 +16,10 @@ namespace OpenMagnetics {
         _useToroidalCores = true;
         _useConcentricCores = true;
 
+        _inputsTrimHarmonics = true;
+
+        _inputsNumberPointsSampledWaveforms = Constants().numberPointsSampledWaveforms;
+
         _magnetizingInductanceIncludeAirInductance = false;
 
         _coilAllowMarginTape = true;
@@ -25,6 +29,7 @@ namespace OpenMagnetics {
         _coilDelimitAndCompact = true;
         _coilTryRewind = true;
         _coilIncludeAdditionalCoordinates = true;
+        _coilEqualizeMargins = true;
 
         _useOnlyCoresInStock = true;
 
@@ -76,6 +81,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_use_concentric_cores(bool value) {
         _useConcentricCores = value;
+    }
+
+    bool Settings::get_inputs_trim_harmonics() const {
+        return _inputsTrimHarmonics;
+    }
+    void Settings::set_inputs_trim_harmonics(bool value) {
+        _inputsTrimHarmonics = value;
+    }
+
+    size_t Settings::get_inputs_number_points_sampled_waveforms() const {
+        return _inputsNumberPointsSampledWaveforms;
+    }
+    void Settings::set_inputs_number_points_sampled_waveforms(size_t value) {
+        _inputsNumberPointsSampledWaveforms = value;
     }
 
     bool Settings::get_magnetizing_inductance_include_air_inductance() const {
@@ -132,6 +151,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_include_additional_coordinates(bool value) {
         _coilIncludeAdditionalCoordinates = value;
+    }
+
+    bool Settings::get_coil_equalize_margins() const {
+        return _coilEqualizeMargins;
+    }
+    void Settings::set_coil_equalize_margins(bool value) {
+        _coilEqualizeMargins = value;
     }
 
     bool Settings::get_use_only_cores_in_stock() const {

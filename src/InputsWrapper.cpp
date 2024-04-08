@@ -1,6 +1,8 @@
+#include "Settings.h"
 #include "InputsWrapper.h"
 
 #include "Constants.h"
+#include "Defaults.h"
 #include "Utils.h"
 #include "json.hpp"
 
@@ -140,7 +142,7 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
     else {
         sampledWaveform = waveform;
     }
-
+ 
     std::vector<double> data = sampledWaveform.get_data();
     std::vector<double> diff_data;
     std::vector<double> diff_diff_data;
@@ -151,21 +153,23 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
     for (size_t i = 0; i < diff_data.size() - 1; ++i) {
         diff_diff_data.push_back(fabs(roundFloat(diff_data[i + 1] - diff_data[i], 9)));
     }
+    for (size_t i = 0; i < diff_data.size() - 1; ++i) {
+    }
 
-    auto constants = Constants();
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximum = *max_element(diff_diff_data.begin(), diff_diff_data.end());
     size_t maximum_index = 0;
-    size_t distanceToMiddle = constants.numberPointsSamplesWaveforms;
+    size_t distanceToMiddle = settings->get_inputs_number_points_sampled_waveforms();
     for (size_t i = 0; i < diff_diff_data.size(); ++i)
     {
         if (diff_diff_data[i] == maximum) {
-            if (fabs(constants.numberPointsSamplesWaveforms / 2 - i) < distanceToMiddle) {
-                distanceToMiddle = fabs(constants.numberPointsSamplesWaveforms / 2 - i);
+            if (fabs(double(settings->get_inputs_number_points_sampled_waveforms()) / 2 - i) < distanceToMiddle) {
+                distanceToMiddle = fabs(double(settings->get_inputs_number_points_sampled_waveforms()) / 2 - i);
                 maximum_index = i;
             }
         }
     }
-    auto dutyCycle = roundFloat((maximum_index + 1.0) / constants.numberPointsSamplesWaveforms, 2);
+    auto dutyCycle = roundFloat((maximum_index + 1.0) / settings->get_inputs_number_points_sampled_waveforms(), 2);
     return dutyCycle;
 }
 std::vector<double> linear_spaced_array(double startingValue, double endingValue, std::size_t numberPoints) {
@@ -184,21 +188,46 @@ std::vector<double> linear_spaced_array(double startingValue, double endingValue
 SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, double frequency) {
     SignalDescriptor standardized_signal(signal);
     if (!signal.get_waveform()) {
-        if (!signal.get_processed()) {
+        if (!signal.get_processed() && !signal.get_harmonics()) {
             throw std::runtime_error("Signal is not processed");
         }
-        auto waveform = create_waveform(signal.get_processed().value(), frequency);
-        standardized_signal.set_waveform(waveform);
+        if (signal.get_processed()) {
+            auto waveform = create_waveform(signal.get_processed().value(), frequency);
+            standardized_signal.set_waveform(waveform);
+        }
+        else {
+            auto waveform = reconstruct_signal(signal.get_harmonics().value(), frequency);
+            standardized_signal.set_waveform(waveform);
+        }
     }
 
     if (standardized_signal.get_waveform() && !standardized_signal.get_waveform()->get_time()) {
-        auto time = linear_spaced_array(0, 1. / frequency, standardized_signal.get_waveform()->get_data().size());
+        auto time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), standardized_signal.get_waveform()->get_data().size());
         auto waveform = standardized_signal.get_waveform().value();
         waveform.set_time(time);
         standardized_signal.set_waveform(waveform);
     }
 
     return standardized_signal;
+}
+
+Waveform InputsWrapper::reconstruct_signal(Harmonics harmonics, double frequency) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    std::vector<double> data = std::vector<double>(settings->get_inputs_number_points_sampled_waveforms(), 0);
+    for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_frequencies().size(); ++harmonicIndex) {
+        auto amplitude = harmonics.get_amplitudes()[harmonicIndex];
+        auto frequencyMultiplier = harmonics.get_frequencies()[harmonicIndex] / frequency;
+        auto totalAngle = 2 * std::numbers::pi / (settings->get_inputs_number_points_sampled_waveforms() - 1) * frequencyMultiplier;
+        for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); ++i) {
+            double angle = i * totalAngle;
+            data[i] += sin(angle) * amplitude;
+        }
+    }
+    std::vector<double> time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), settings->get_inputs_number_points_sampled_waveforms());
+    Waveform waveform;
+    waveform.set_data(data);
+    waveform.set_time(time);
+    return waveform;
 }
 
 Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
@@ -297,10 +326,10 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
             break;
         }
         case WaveformLabel::SINUSOIDAL: {
-            auto constants = Constants();
-            for (size_t i = 0; i < constants.numberPointsSamplesWaveforms; ++i) {
-                double angle = i * 2 * std::numbers::pi / (constants.numberPointsSamplesWaveforms - 1);
-                time.push_back(i * period / (constants.numberPointsSamplesWaveforms - 1));
+            auto settings = OpenMagnetics::Settings::GetInstance();
+            for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); ++i) {
+                double angle = i * 2 * std::numbers::pi / (settings->get_inputs_number_points_sampled_waveforms() - 1);
+                time.push_back(i * period / (settings->get_inputs_number_points_sampled_waveforms() - 1));
                 data.push_back((sin(angle) * peakToPeak / 2) + offset);
             }
             break;
@@ -315,28 +344,35 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
     return waveform;
 }
 
-bool is_size_power_of_2(std::vector<double> data) {
-    return data.size() > 0 && ((data.size() & (data.size() - 1)) == 0);
-}
-
 bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
-    auto constants = Constants();
+    auto settings = OpenMagnetics::Settings::GetInstance();
     if (!waveform.get_time()) {
         return false;
     }
     else {
-        return waveform.get_data().size() == constants.numberPointsSamplesWaveforms;
+        return waveform.get_data().size() == settings->get_inputs_number_points_sampled_waveforms();
+    }
+
+}
+
+bool InputsWrapper::is_waveform_imported(Waveform waveform) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    if (!waveform.get_time()) {
+        return false;
+    }
+    else {
+        return waveform.get_data().size() > settings->get_inputs_number_points_sampled_waveforms();
     }
 
 }
 
 Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double frequency) {
-    auto constants = Constants();
+    auto settings = OpenMagnetics::Settings::GetInstance();
     std::vector<double> time;
     auto data = waveform.get_data();
 
     if (!waveform.get_time()) { // This means the waveform is equidistant
-        time = linear_spaced_array(0, 1. / frequency, data.size());
+        time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), data.size());
     }
     else {
         time = waveform.get_time().value();
@@ -351,11 +387,22 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
         }
     }
 
-    auto sampledTime = linear_spaced_array(0, 1. / frequency, constants.numberPointsSamplesWaveforms);
+    size_t numberPoints = settings->get_inputs_number_points_sampled_waveforms();
+
+    if (data.size() > numberPoints) {
+        if (is_size_power_of_2(data)) {
+            numberPoints = data.size();
+        }
+        else {
+            numberPoints = round_up_size_to_power_of_2(data);
+        }
+    }
+
+    auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPoints);
 
     std::vector<double> sampledData;
 
-    for (int i = 0; i < constants.numberPointsSamplesWaveforms; i++) {
+    for (size_t i = 0; i < numberPoints; i++) {
         bool found = false;
         for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
             if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
@@ -372,11 +419,11 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
             }
         }
         if (!found) {
-            throw std::invalid_argument("Error while sampling waveform");
+            throw std::invalid_argument("Error while sampling waveform in point: " + std::to_string(i));
         }
     }
 
-    if (sampledData.size() != constants.numberPointsSamplesWaveforms) {
+    if (sampledData.size() != numberPoints) {
         throw std::invalid_argument("Wrong number of sampled points");
     }
 
@@ -388,14 +435,13 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
 
 SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance) {
-    auto constants = Constants();
     if (!excitation.get_current()->get_waveform()) {
         throw std::runtime_error("Current waveform is missing");
     }
     Waveform sourceWaveform = excitation.get_current()->get_waveform().value();
     std::vector<double> source = sourceWaveform.get_data();
-    bool isWaveformSampled =
-        !bool(sourceWaveform.get_time()) || source.size() == constants.numberPointsSamplesWaveforms;
+    bool isWaveformSampled = is_waveform_sampled(sourceWaveform);
+    bool isWaveformImported = is_waveform_imported(sourceWaveform);
     std::vector<double> time = sourceWaveform.get_time().value();
     std::vector<double> derivative;
     std::vector<double> derivativeTime;
@@ -404,7 +450,6 @@ SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitati
     SignalDescriptor voltageSignalDescriptor;
     Waveform resultWaveform(sourceWaveform);
     auto originalTime = time;
-
 
     if (isWaveformSampled) {
         source.push_back(source[0]);
@@ -422,9 +467,19 @@ SignalDescriptor InputsWrapper::calculate_induced_voltage(OperatingPointExcitati
 
     derivativeTime = std::vector<double>(time.begin() + 1, time.end());
 
-    if (isWaveformSampled) {
+    if (isWaveformSampled || isWaveformImported) {
         for (size_t i = 0; i < derivative.size(); ++i) {
-            voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+            if (derivativeTime[i] == 0) {
+                if (i > 0) {
+                    voltageData.push_back(voltageData[i - 1]);
+                }
+                else {
+                    voltageData.push_back(0);
+                }
+            }
+            else { 
+                voltageData.push_back(magnetizingInductance * derivative[i] / derivativeTime[i]);
+            }
         }
         voltageWaveform.set_time(originalTime);
     }
@@ -770,7 +825,6 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
 }
 
 Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
-    auto constants = Constants();
     Processed processed;
     std::vector<double> dataToProcess;
     auto sampledWaveform = waveform;
@@ -819,10 +873,6 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
     processed.set_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
 
     processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
-    // }
-    // catch (...) {
-    //     throw std::invalid_argument("Unknown excitation label: " + std::string{magic_enum::enum_name(label)});
-    // }
 
     return processed;
 }
@@ -831,10 +881,10 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
                                             Waveform waveform,
                                             bool includeAdvancedData,
                                             std::optional<Processed> processed) {
-    auto constants = Constants();
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto sampledDataToProcess = waveform;
 
-    if (waveform.get_time() && waveform.get_data().size() < constants.numberPointsSamplesWaveforms) {
+    if (waveform.get_time() && waveform.get_data().size() < settings->get_inputs_number_points_sampled_waveforms()) {
         auto frequency = harmonics.get_frequencies()[1];
         sampledDataToProcess = calculate_sampled_waveform(waveform, frequency);
     }
@@ -909,6 +959,9 @@ Processed InputsWrapper::calculate_processed_data(Harmonics harmonics,
 }
 
 Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double frequency) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    bool trimHarmonics = settings->get_inputs_trim_harmonics();
+    bool isWaveformImported = is_waveform_imported(waveform);
     Harmonics harmonics;
 
     std::vector<std::complex<double>> data;
@@ -928,6 +981,24 @@ Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double freq
     }
     for (size_t i = 0; i < data.size() / 2; ++i) {
         harmonics.get_mutable_frequencies().push_back(frequency * i);
+    }
+
+
+    if (isWaveformImported && trimHarmonics) {
+        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, Defaults().importedWaveformHarmonicAmplitudeThreshold);
+        Harmonics reducedHarmonics;
+        reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[0]);
+        reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[1]);
+        reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[0]);
+        reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[1]);
+        for (auto harmonicIndex : mainHarmonicIndexes) {
+            if (harmonicIndex == 0 || harmonicIndex == 1) {
+                continue;
+            }
+            reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[harmonicIndex]);
+            reducedHarmonics.get_mutable_frequencies().push_back(harmonics.get_frequencies()[harmonicIndex]);
+        }
+        harmonics = reducedHarmonics;
     }
 
     return harmonics;
@@ -1402,12 +1473,12 @@ void InputsWrapper::make_waveform_size_power_of_two(OperatingPoint* operatingPoi
 }
 
 double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
-    auto constants = Constants();
+    auto settings = OpenMagnetics::Settings::GetInstance();
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
     double frequency = excitation.get_frequency();
     Waveform sampledWaveform = excitation.get_voltage()->get_waveform().value();
 
-    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < constants.numberPointsSamplesWaveforms) {
+    if (sampledWaveform.get_time() && sampledWaveform.get_data().size() < settings->get_inputs_number_points_sampled_waveforms()) {
         sampledWaveform = calculate_sampled_waveform(sampledWaveform, frequency);
     }
 
@@ -1431,6 +1502,7 @@ double InputsWrapper::calculate_waveform_coefficient(OperatingPoint* operatingPo
 }
 
 double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation excitation) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double frequency = excitation.get_frequency();
     if (!excitation.get_voltage()) {
         throw std::runtime_error("Voltage signal is missing");
@@ -1447,17 +1519,17 @@ double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation exc
     Waveform voltageSampledWaveform = excitation.get_voltage()->get_waveform().value();
     Waveform currentSampledWaveform = excitation.get_current()->get_waveform().value();
 
-    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != constants.numberPointsSamplesWaveforms) {
+    if (voltageSampledWaveform.get_time() && voltageSampledWaveform.get_data().size() != settings->get_inputs_number_points_sampled_waveforms()) {
         voltageSampledWaveform = calculate_sampled_waveform(voltageSampledWaveform, frequency);
     }
 
-    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != constants.numberPointsSamplesWaveforms) {
+    if (currentSampledWaveform.get_time() && currentSampledWaveform.get_data().size() != settings->get_inputs_number_points_sampled_waveforms()) {
         currentSampledWaveform = calculate_sampled_waveform(currentSampledWaveform, frequency);
     }
 
     std::vector<double> powerPoints;
 
-    for (size_t i = 0; i < constants.numberPointsSamplesWaveforms; i++) {
+    for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); i++) {
         powerPoints.push_back(fabs(voltageSampledWaveform.get_data()[i] * currentSampledWaveform.get_data()[i]));
     }
 
@@ -1470,8 +1542,8 @@ bool is_closed_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
-WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
-    auto constants = Constants();
+WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {;
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto compressedWaveform = waveform;
     if (is_waveform_sampled(waveform))
         compressedWaveform = compress_waveform(waveform);
@@ -1482,77 +1554,77 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
             return WaveformLabel::TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 4 &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
             return WaveformLabel::UNIPOLAR_TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         !is_closed_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::UNIPOLAR_RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         is_closed_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         is_closed_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 10 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-        is_closed_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
-        is_closed_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
             return WaveformLabel::BIPOLAR_RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 6 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
             return WaveformLabel::BIPOLAR_TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::FLYBACK_PRIMARY;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / constants.numberPointsSamplesWaveforms) &&
+        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
             return WaveformLabel::FLYBACK_SECONDARY;
     }
     else {
-        auto constants = Constants();
+        auto settings = OpenMagnetics::Settings::GetInstance();
         double error = 0;
         double area = 0;
         double maximum = *max_element(waveform.get_data().begin(), waveform.get_data().end());
@@ -1562,7 +1634,7 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
         double offset = (maximum - minimum) / 2;
 
         for (size_t i = 0; i < waveform.get_data().size(); ++i) {
-            double angle = i * 2 * std::numbers::pi / constants.numberPointsSamplesWaveforms;
+            double angle = i * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
             double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
             area += fabs(waveform.get_data()[i]);
             error += fabs(calculated_data - waveform.get_data()[i]);
@@ -1888,7 +1960,6 @@ std::vector<InsulationStandards> InputsWrapper::get_standards() {
     return get_design_requirements().get_insulation()->get_standards().value();
 }
 
-
 void InputsWrapper::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
     auto current = excitation.get_current().value();
@@ -1906,6 +1977,74 @@ void InputsWrapper::set_current_as_magnetizing_current(OperatingPoint* operating
     excitation.set_current(currentExcitation);
     excitation.set_magnetizing_current(excitation.get_current().value());
     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+}
+
+double InputsWrapper::get_switching_frequency(OperatingPointExcitation excitation) {
+    if (excitation.get_current()) {
+        if (excitation.get_current()->get_waveform()) {
+            auto waveform = excitation.get_current()->get_waveform().value();
+            if (waveform.get_data().size() > Constants().numberPointsSampledWaveforms) {
+                if (excitation.get_current()->get_harmonics()) {
+                    auto harmonics = excitation.get_current()->get_harmonics().value();
+                    double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
+                    double strongestHarmonicAmplitudeAfterMain = 0;
+                    double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
+                    for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+                        if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
+                            if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
+                                strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
+                                strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
+                            }
+                        }
+                    }
+                    return strongestHarmonicAmplitudeAfterMainFrequency;
+                }
+            }
+        }
+    }
+    return excitation.get_frequency();
+}
+
+double InputsWrapper::get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency) {
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+
+    if (excitation.get_frequency() != switchingFrequency) {
+        if (!excitation.get_magnetic_flux_density()->get_harmonics()) {
+            auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
+            magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            excitation.set_magnetic_flux_density(magneticFluxDensity);
+        }
+        auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
+        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
+                return harmonics.get_amplitudes()[harmonicIndex];
+            }
+        }
+    }
+
+    return magneticFluxDensity.get_processed().value().get_peak().value();
+}
+
+double InputsWrapper::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency) {
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+
+    if (excitation.get_frequency() != switchingFrequency) {
+        if (!excitation.get_magnetic_flux_density()->get_harmonics()) {
+            auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
+            magneticFluxDensity.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            excitation.set_magnetic_flux_density(magneticFluxDensity);
+        }
+        auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
+        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
+                return harmonics.get_amplitudes()[harmonicIndex] * 2;
+            }
+        }
+    }
+
+    return magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
 }
 
 } // namespace OpenMagnetics

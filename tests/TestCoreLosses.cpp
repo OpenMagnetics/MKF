@@ -1,5 +1,6 @@
 #include "Constants.h"
 #include "CoreLosses.h"
+#include "Settings.h"
 #include "InputsWrapper.h"
 #include "MagnetizingInductance.h"
 #include "Reluctance.h"
@@ -645,6 +646,11 @@ double run_test_core_losses(const OpenMagnetics::CoreLossesModels& modelName,
                             double temperature,
                             double expectedVolumetricLosses,
                             json steinmetzCoefficients = json({})) {
+
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    settings->reset();
+    OpenMagnetics::clear_databases();
+
     double maximumAdmittedErrorVolumetricCoreLossesValue = maximumAdmittedErrorVolumetricCoreLosses[modelName];
     OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
     auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(modelName);

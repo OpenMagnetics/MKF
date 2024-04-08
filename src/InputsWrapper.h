@@ -35,6 +35,7 @@ class InputsWrapper : public Inputs {
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance);
 
     static bool is_waveform_sampled(Waveform waveform);
+    static bool is_waveform_imported(Waveform waveform);
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency = 0);
     static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
@@ -43,6 +44,7 @@ class InputsWrapper : public Inputs {
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
 
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
+    static Waveform reconstruct_signal(Harmonics harmonics, double frequency);
     OperatingPoint get_operating_point(size_t index);
     OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex = 0, size_t windingIndex = 0);
     OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex = 0);
@@ -111,6 +113,10 @@ class InputsWrapper : public Inputs {
         get_mutable_operating_points()[index] = value;
     }
     static void set_current_as_magnetizing_current(OperatingPoint* operatingPoint);
+
+    static double get_switching_frequency(OperatingPointExcitation excitation);
+    static double get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency);
+    static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
 
     DimensionWithTolerance get_altitude();
     Cti get_cti();

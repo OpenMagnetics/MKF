@@ -49,9 +49,15 @@ namespace OpenMagnetics {
     std::vector<double> calculate_winding_window_proportion_per_winding(InputsWrapper& inputs) {
         auto averagePowerPerWinding = std::vector<double>(inputs.get_operating_points()[0].get_excitations_per_winding().size(), 0);
 
-        for (size_t operationPointIndex = 0; operationPointIndex < inputs.get_operating_points().size(); ++operationPointIndex) {
-            for (size_t windingIndex = 0; windingIndex < inputs.get_operating_points()[operationPointIndex].get_excitations_per_winding().size(); ++windingIndex) {
-                auto power = InputsWrapper::calculate_instantaneous_power(inputs.get_operating_points()[operationPointIndex].get_excitations_per_winding()[windingIndex]);
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+            for (size_t windingIndex = 0; windingIndex < inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding().size(); ++windingIndex) {
+
+                if (!inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_voltage()) {
+                    auto excitation = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
+                    inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance())));
+                }
+
+                auto power = InputsWrapper::calculate_instantaneous_power(inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex]);
                 averagePowerPerWinding[windingIndex] += power;
             }
         }
@@ -69,6 +75,7 @@ namespace OpenMagnetics {
 
         return proportions;
     }
+
 
     std::vector<IsolationSide> get_isolation_sides(InputsWrapper& inputs) {
         if (!inputs.get_design_requirements().get_isolation_sides()) {
@@ -159,7 +166,6 @@ namespace OpenMagnetics {
         auto repetitions = get_repetitions(inputs);
         mas.set_inputs(inputs);
 
-
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
 
         std::vector<MasWrapper> masMagneticsWithCoil;
@@ -192,6 +198,7 @@ namespace OpenMagnetics {
                         reference += ", Wire Insulated";
                     }
                     reference += " " + std::to_string(insulationIndex);
+
 
                     auto resultsPerPattern = get_advised_coil_for_pattern(wires, mas, pattern, repetition, solidInsulationRequirementsForWires, maximumNumberResultsPerPattern, reference);
                     std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masMagneticsWithCoil));
@@ -346,13 +353,36 @@ namespace OpenMagnetics {
         size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
         auto defaults = Defaults();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
-        size_t numberWindings = mas.get_mutable_magnetic().get_coil().get_functional_description().size();
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        size_t numberWindings = coil.get_functional_description().size();
+        if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+            coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
+            coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
+        }
+        else {
+            coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+            coil.set_section_alignment(CoilAlignment::SPREAD);
+        }
 
         auto needsMargin = needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
-        mas.get_mutable_magnetic().get_mutable_coil().set_inputs(mas.get_inputs());
-        mas.get_mutable_magnetic().get_mutable_coil().calculate_insulation(true);
-        mas.get_mutable_magnetic().get_mutable_coil().wind_by_sections(sectionProportions, pattern, repetitions);
-        mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
+        coil.set_strict(false);
+        coil.set_inputs(mas.get_inputs());
+        coil.calculate_insulation(true);
+        coil.wind_by_sections(sectionProportions, pattern, repetitions);
+        coil.delimit_and_compact();
+        coil.set_strict(true);
+
+        auto sections = coil.get_sections_description().value();
+
+        for (auto section : sections) {
+            if (section.get_dimensions()[0] < 0) {
+                throw std::runtime_error("section.get_dimensions()[0] cannot be negative");
+            }
+            if (section.get_dimensions()[1] < 0) {
+                throw std::runtime_error("section.get_dimensions()[1] cannot be negative: " + std::to_string(section.get_dimensions()[1]));
+            }
+        }
 
         OpenMagnetics::WireAdviser wireAdviser;
 
@@ -376,6 +406,7 @@ namespace OpenMagnetics {
             !mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current().value().get_waveform()) {
             throw std::runtime_error("Missing current harmonics, waveform and processed in excitaton");
         }
+
 
         int timeout = 1 - numberWindings;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -415,14 +446,14 @@ namespace OpenMagnetics {
                 wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
 
-                auto sectionIndex = mas.get_mutable_magnetic().get_mutable_coil().convert_conduction_section_index_to_global(windingIndex);
+                auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
 
                 auto wiresWithScoring = wireAdviser.get_advised_wire(wires,
-                                                                     mas.get_mutable_magnetic().get_coil().get_functional_description()[windingIndex],
-                                                                     mas.get_mutable_magnetic().get_coil().get_sections_description().value()[sectionIndex],
+                                                                     coil.get_functional_description()[windingIndex],
+                                                                     sections[sectionIndex],
                                                                      maximumCurrent,
                                                                      maximumTemperature,
-                                                                     mas.get_mutable_magnetic().get_mutable_coil().get_interleaving_level(),
+                                                                     coil.get_interleaving_level(),
                                                                      maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
@@ -436,7 +467,7 @@ namespace OpenMagnetics {
                 wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
             }
         }
-
+        mas.get_mutable_magnetic().set_coil(coil);
 
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             if (windingIndex >= wireCoilPerWinding.size()) {

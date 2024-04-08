@@ -1,4 +1,5 @@
 #include "MagneticEnergy.h"
+#include "Settings.h"
 #include "TestingUtils.h"
 #include "Utils.h"
 #include "json.hpp"
@@ -14,6 +15,7 @@
 using json = nlohmann::json;
 
 SUITE(MagneticEnergy) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     double max_error = 0.05;
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency,
                                  double desiredMagnetizingInductance, std::vector<OpenMagnetics::CoreGap> gapping,
@@ -29,6 +31,9 @@ SUITE(MagneticEnergy) {
     }
 
     TEST(Test_Magnetic_Energy_Iron_Powder_Core) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double ambientTemperature = 25;
         double frequency = 100000;
         std::string coreShape = "ETD 49";
@@ -51,6 +56,8 @@ SUITE(MagneticEnergy) {
     }
 
     TEST(Test_Magnetic_Energy_Ferrite_Core) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         double ambientTemperature = 25;
         double frequency = 100000;
         std::string coreShape = "ETD 49";
@@ -73,6 +80,8 @@ SUITE(MagneticEnergy) {
     }
 
     TEST(Test_Magnetic_Energy_Gap) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         int numberStacks = 1;
         double magneticFluxDensitySaturation = 0.42;
         std::string coreShape = "ETD 49";
@@ -94,6 +103,8 @@ SUITE(MagneticEnergy) {
     }
 
     TEST(Test_Magnetic_Energy_Input) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         double voltagePeakToPeak = 1000;
         double desiredMagnetizingInductance = 0.0002;
         double ambientTemperature = 25;
