@@ -15,6 +15,9 @@ class Settings
         bool _useToroidalCores = true;
         bool _useConcentricCores = true;
 
+        bool _inputsTrimHarmonics = true;
+        size_t _inputsNumberPointsSampledWaveforms = Constants().numberPointsSampledWaveforms;
+
         bool _magnetizingInductanceIncludeAirInductance = false;
 
         bool _coilAllowMarginTape = true;
@@ -24,6 +27,7 @@ class Settings
         bool _coilDelimitAndCompact = true;
         bool _coilTryRewind = true;
         bool _coilIncludeAdditionalCoordinates = true;
+        bool _coilEqualizeMargins = true;
 
         bool _useOnlyCoresInStock = true;
 
@@ -71,6 +75,12 @@ class Settings
         bool get_use_concentric_cores() const;
         void set_use_concentric_cores(bool value);
 
+        bool get_inputs_trim_harmonics() const;
+        void set_inputs_trim_harmonics(bool value);
+
+        size_t get_inputs_number_points_sampled_waveforms() const;
+        void set_inputs_number_points_sampled_waveforms(size_t value);
+
         bool get_magnetizing_inductance_include_air_inductance() const;
         void set_magnetizing_inductance_include_air_inductance(bool value);
 
@@ -94,6 +104,9 @@ class Settings
 
         bool get_coil_include_additional_coordinates() const;
         void set_coil_include_additional_coordinates(bool value);
+
+        bool get_coil_equalize_margins() const;
+        void set_coil_equalize_margins(bool value);
 
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);

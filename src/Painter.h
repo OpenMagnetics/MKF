@@ -42,8 +42,6 @@ class Painter{
             matplot::gcf()->quiet_mode(true);
             matplot::cla();
             matplot::hold(matplot::off);
-            matplot::xticks({});
-            matplot::yticks({});
         };
         virtual ~Painter() = default;
     
@@ -82,7 +80,7 @@ class Painter{
 
     void calculate_extra_margin_for_toroidal_cores(MagneticWrapper magnetic);
 
-
+    void paint_waveform(Waveform waveform);
 
 };
 } // namespace OpenMagnetics

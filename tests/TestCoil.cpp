@@ -7592,9 +7592,10 @@ SUITE(CoilTurnsDescriptionToroidal) {
 SUITE(CoilTurnsDescriptionToroidalMargin) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
-    bool plot = false;
+    bool plot = true;
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7648,6 +7649,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7697,6 +7699,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7746,6 +7749,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7795,6 +7799,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};
@@ -7844,6 +7849,7 @@ SUITE(CoilTurnsDescriptionToroidalMargin) {
     }
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin) {
+        settings->set_coil_equalize_margins(false);
         OpenMagnetics::clear_databases();
         settings->set_use_toroidal_cores(true);
         std::vector<int64_t> numberTurns = {60, 42, 33};

@@ -21,14 +21,15 @@ namespace OpenMagnetics {
         auto settings = OpenMagnetics::Settings::GetInstance();
         std::vector<MasWrapper> masData;
 
-        settings->set_use_toroidal_cores(false);
-
         if (coreDatabase.empty()) {
-            load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock());
+            load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
         }
         if (wireDatabase.empty()) {
             load_wires();
         }
+
+        bool previousCoilIncludeAdditionalCoordinates = settings->get_coil_include_additional_coordinates();
+        settings->set_coil_include_additional_coordinates(false);
 
         std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
         coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
@@ -68,7 +69,13 @@ namespace OpenMagnetics {
                     continue;
                 }
 
+                if (previousCoilIncludeAdditionalCoordinates) {
+                    settings->set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
+                    mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
+                    settings->set_coil_include_additional_coordinates(false);
+                }
                 mas = magneticSimulator.simulate(mas);
+
                 processedCoils++;
 
                 masData.push_back(mas);
@@ -81,6 +88,7 @@ namespace OpenMagnetics {
                 break;
             }
         }
+
 
         auto masMagneticsWithScoring = score_magnetics(masData, weights);
 
@@ -195,7 +203,10 @@ void MagneticAdviser::preview_magnetic(MasWrapper mas) {
     std::string text = "";
     text += "Core shape: " + mas.get_mutable_magnetic().get_mutable_core().get_shape_name() + "\n";
     text += "Core material: " + mas.get_mutable_magnetic().get_mutable_core().get_material_name() + "\n";
-    text += "Core gap: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping()[0].get_length()) + "\n";
+    if (mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping().size() > 0) {
+        text += "Core gap: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping()[0].get_length()) + "\n";
+    }
+    text += "Core stacks: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_number_stacks().value()) + "\n";
     for (size_t windingIndex = 0; windingIndex < mas.get_mutable_magnetic().get_mutable_coil().get_functional_description().size(); ++windingIndex) {
         auto winding = mas.get_mutable_magnetic().get_mutable_coil().get_functional_description()[windingIndex];
         auto wire = OpenMagnetics::CoilWrapper::resolve_wire(winding);

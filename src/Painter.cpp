@@ -226,7 +226,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             auto q = matplot::quiver(X, Y, U, V, M, 0.0001)->normalize(true).line_width(1.5);
         }
         else {
-            auto c = matplot::scatter(X, Y, 6, M);
+            auto c = matplot::scatter(X, Y, 30, M);
             c->marker_face(true);
         }
         matplot::colorbar();
@@ -239,7 +239,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         maximumModule = settings->get_painter_maximum_value_colorbar().value();
     }
     if (settings->get_painter_maximum_value_colorbar()) {
-        minimumModule = settings->get_painter_maximum_value_colorbar().value();
+        minimumModule = settings->get_painter_minimum_value_colorbar().value();
     }
     if (minimumModule == maximumModule) {
         minimumModule = maximumModule - 1;
@@ -252,21 +252,33 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     std::ostringstream oss;
     oss << std::setprecision(0) << std::fixed << roundFloat(minimumModule, 0);
     std::vector<std::string> tickLabels = {oss.str() + " A/m"};
-    for (size_t value = minimumModule; value < maximumModule; value+=pow(10, maximumDecimals - 1)) {
-            if (value == 0) {
-                continue;
-            }
-            tickValues.push_back(roundFloat(value, -maximumDecimals + 1));
-            std::ostringstream oss;
-            oss << std::fixed << std::setprecision(0) << std::scientific << (roundFloat(value, -maximumDecimals + 1));
-            auto label = replace_key("+0", oss.str(), "");
-            if (label == "0e0") {
-                label = "0";
-            }
-            tickLabels.push_back(label + " A/m");
+
+    double lastValue = 0;
+    int precision = 0;
+    while (tickLabels.size() < 3) {
+        tickLabels = {oss.str() + " A/m"};
+        for (size_t value = minimumModule; value < maximumModule; value+=pow(10, maximumDecimals - 1)) {
+                if (value == 0) {
+                    continue;
+                }
+                lastValue = value;
+                tickValues.push_back(roundFloat(value, -maximumDecimals + 1));
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(precision) << std::scientific << (roundFloat(value, -maximumDecimals + 1));
+                auto label = replace_key("+0", oss.str(), "");
+                if (label == "0e0") {
+                    label = "0";
+                }
+                tickLabels.push_back(label + " A/m");
+        }
+        maximumDecimals -= 1;
+        precision += 1;
+        if (maximumDecimals <=0) {
+            break;
+        }
     }
     auto cb = matplot::colorbar().tick_values({tickValues}).ticklabels({tickLabels});
-    matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule});
+    matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule * 0.99});
     matplot::xticks({});
     matplot::yticks({});
 }
@@ -353,8 +365,7 @@ void Painter::paint_bobbin(MagneticWrapper magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
-            throw std::runtime_error("T shapes does not have bobbins");
-            break;
+            return;
         default:
             return paint_two_piece_set_bobbin(magnetic);
             break;
@@ -1256,7 +1267,7 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             throw std::runtime_error("Turn is missing rotation");
         }
         if (turns[i].get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
-            throw std::runtime_error("Turn coordinates are not in cartesian");
+            throw std::runtime_error("Painter: Turn coordinates are not in cartesian");
         }
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
@@ -1324,6 +1335,19 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
     }
 
     paint_toroidal_margin(magnetic);
+}
+
+void Painter::paint_waveform(Waveform waveform) {
+    std::vector<double> x, y;
+    if (waveform.get_time()) {
+        x = waveform.get_time().value(); 
+    }
+    else {
+        x = matplot::linspace(0, 2 * std::numbers::pi, waveform.get_data().size());
+    }
+    y = waveform.get_data();
+
+    matplot::plot(x, y);
 }
 
 } // namespace OpenMagnetics

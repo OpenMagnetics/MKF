@@ -45,7 +45,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
         simulationTemperature = temperature.value();
     }
     WindingLosses windingLosses;
-    windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.05);
+    windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }
 
@@ -61,9 +61,11 @@ CoreLossesOutput MagneticSimulator::calculate_core_loses(OperatingPoint& operati
     CoreLossesOutput coreLossesOutput;
     std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
 
+    std::string debugModelName = "";
     auto availableMethodsForMaterial = CoreLossesModel::get_methods(magnetic.get_mutable_core().get_material_name());
     for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
         if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
+            debugModelName = magic_enum::enum_name(modelName);
             coreLossesModelForMaterial = coreLossesModel;
         }
     }

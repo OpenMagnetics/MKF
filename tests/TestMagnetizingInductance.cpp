@@ -48,6 +48,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Grinded) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 666;
@@ -74,6 +77,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Web) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
@@ -109,6 +115,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Powder_Web) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
@@ -163,6 +172,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_High_Flux_40_Web) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "High Flux 40", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "geometricalDescription": null, "manufacturerInfo": null, "name": "My Core", "processedDescription": null})");
@@ -180,6 +192,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Spacer) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 666;
@@ -205,6 +220,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Grinded_Few_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 42;
         double numberTurns = 9;
@@ -230,6 +248,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Powder) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 96;
         double ambientTemperature = 25;
         double numberTurns = 13;
@@ -255,6 +276,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_NumberTurns_Ferrite_Grinded) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 23.3e-3;
@@ -279,6 +303,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_NumberTurns_Powder) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 96;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 15.7e-6;
@@ -303,6 +330,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Ferrite_Grinded) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 23.3e-3;
@@ -328,6 +358,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_U_Shape_Ferrite_Grinded) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 23.3e-3;
@@ -353,6 +386,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Ferrite_Distributed) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 23.3e-3;
@@ -379,6 +415,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Ferrite_Distributed_More_Gap_Precision) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double desiredMagnetizingInductance = 23.3e-3;
@@ -405,6 +444,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Classic_Web) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
@@ -473,6 +515,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Web) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
@@ -518,6 +563,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 42;
@@ -576,6 +624,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Gapping_Web_No_Voltage) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
@@ -649,6 +700,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Ferrite_Web_No_Voltage) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
@@ -725,6 +779,9 @@ SUITE(MagnetizingInductance) {
     TEST(Test_Magnetizing_Inductance_Toroid) {
         settings->reset();
         OpenMagnetics::clear_databases();
+
+        settings->reset();
+        OpenMagnetics::clear_databases();
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 42;
@@ -751,6 +808,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance_Toroid_Stacks) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         settings->reset();
         OpenMagnetics::clear_databases();
         double dcCurrent = 0;
@@ -787,6 +847,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance_RM14_20) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 29;
@@ -808,6 +871,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Magnetizing_Inductance_Error_Web_0) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 10;
@@ -836,6 +902,9 @@ SUITE(MagnetizingInductance) {
     }
 
     TEST(Test_Inductance_Powder_E_65) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double max_error = 0.15;
         double dcCurrent = 0;
         double ambientTemperature = 25;
@@ -867,6 +936,9 @@ SUITE(MagnetizingInductance) {
 
 
     TEST(Test_Inductance_Powder_E_34) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
         double dcCurrent = 0;
         double ambientTemperature = 25;
         double numberTurns = 10;

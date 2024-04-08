@@ -1,3 +1,6 @@
+#include "CoilMesher.h"
+#include "Settings.h"
+#include "Painter.h"
 #include "InitialPermeability.h"
 #include "InputsWrapper.h"
 #include "Utils.h"
@@ -15,6 +18,8 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 SUITE(Inputs) {
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+
     TEST(Test_One_Operating_Point_One_Winding_Triangular) {
         json inputsJson;
 
@@ -1795,9 +1800,9 @@ SUITE(Inputs) {
         std::vector<double> time;
         double peakToPeak = 50;
         double offset = 0;
-        size_t numberPointsSamplesWaveforms = 69;
-        for (size_t i = 0; i < numberPointsSamplesWaveforms; ++i) {
-            double angle = i * 2 * std::numbers::pi / numberPointsSamplesWaveforms;
+        size_t numberPointsSampledWaveforms = 69;
+        for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
+            double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
             time.push_back(angle);
             data.push_back((sin(angle) * peakToPeak / 2) + offset);
         }
@@ -1944,10 +1949,10 @@ SUITE(Inputs) {
         double frequency = 100000;
         double offset = 0;
         double max_error = 0.02;
-        size_t numberPointsSamplesWaveforms = 69;
-        for (size_t i = 0; i < numberPointsSamplesWaveforms; ++i) {
-            double angle = i * 2 * std::numbers::pi / numberPointsSamplesWaveforms;
-            time.push_back(i / frequency / (numberPointsSamplesWaveforms - 1));
+        size_t numberPointsSampledWaveforms = 69;
+        for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
+            double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
+            time.push_back(i / frequency / (numberPointsSampledWaveforms - 1));
             data.push_back((sin(angle) * peakToPeak / 2) + offset);
         }
         waveform.set_data(data);
@@ -2001,10 +2006,10 @@ SUITE(Inputs) {
         double peakToPeak = 50;
         double offset = 0;
         double max_error = 0.01;
-        size_t numberPointsSamplesWaveforms = 69;
-        for (size_t i = 0; i < numberPointsSamplesWaveforms; ++i) {
-            double angle = i * 2 * std::numbers::pi / numberPointsSamplesWaveforms;
-            time.push_back(i * 1.0 / (numberPointsSamplesWaveforms - 1));
+        size_t numberPointsSampledWaveforms = 69;
+        for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
+            double angle = i * 2 * std::numbers::pi / numberPointsSampledWaveforms;
+            time.push_back(i * 1.0 / (numberPointsSampledWaveforms - 1));
             data.push_back((sin(angle) * peakToPeak / 2) + offset);
         }
         waveform.set_data(data);
@@ -2196,8 +2201,6 @@ SUITE(Inputs) {
         OpenMagnetics::OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
         auto currentSignalDescriptorProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
         auto reflectedCurrentSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
-        json mierda;
-        to_json(mierda, reflectedCurrentSignalDescriptor);
         auto processed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(reflectedCurrentSignalDescriptor.get_waveform().value());
         CHECK(processed.get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
     }
@@ -2220,5 +2223,142 @@ SUITE(Inputs) {
         CHECK_CLOSE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_peak().value(), 
                     inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()->get_peak().value(),
                     inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()->get_peak().value() * max_error);
+    }
+
+    TEST(Test_PFC_Json) {
+        std::string file_path = __FILE__;
+        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
+        std::ifstream ndjsonFile(inventory_path);
+        std::string jsonLine;
+
+
+        std::vector<double> turnsRatios;
+
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY};
+        json inputsJson;
+
+        inputsJson["operatingPoints"] = json::array();
+        json operatingPoint = json();
+        operatingPoint["name"] = "Nominal";
+        operatingPoint["conditions"] = json();
+        operatingPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["frequency"] = 50;
+        std::getline(ndjsonFile, jsonLine);
+        windingExcitation["current"]["waveform"]["time"] = json::parse(jsonLine);
+
+        std::getline(ndjsonFile, jsonLine);
+        windingExcitation["current"]["waveform"]["data"] = json::parse(jsonLine);
+
+        operatingPoint["excitationsPerWinding"] = json::array();
+        operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operatingPoints"].push_back(operatingPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 10e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        double max_error = 0.01;
+        auto excitation = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_mutable_operating_points()[0]);
+        auto voltage = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()));
+
+        excitation.set_voltage(voltage);
+        inputs.get_mutable_operating_points()[0].set_excitations_per_winding({excitation});
+
+        auto harmonics = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current()->get_harmonics().value();
+
+        CHECK_EQUAL(29847, voltage.get_waveform()->get_data().size());
+        CHECK_EQUAL(5, excitation.get_current()->get_harmonics().value().get_frequencies().size());
+    }
+
+    TEST(Test_Simplify_PFC_Json) {
+        std::string file_path = __FILE__;
+        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
+        std::ifstream ndjsonFile(inventory_path);
+        std::string jsonLine;
+
+
+        std::vector<double> turnsRatios;
+
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY};
+        json inputsJson;
+
+        inputsJson["operatingPoints"] = json::array();
+        json operatingPoint = json();
+        operatingPoint["name"] = "Nominal";
+        operatingPoint["conditions"] = json();
+        operatingPoint["conditions"]["ambientTemperature"] = 42;
+
+        json windingExcitation = json();
+        windingExcitation["frequency"] = 50;
+        std::getline(ndjsonFile, jsonLine);
+        windingExcitation["current"]["waveform"]["time"] = json::parse(jsonLine);
+
+        std::getline(ndjsonFile, jsonLine);
+        windingExcitation["current"]["waveform"]["data"] = json::parse(jsonLine);
+
+        operatingPoint["excitationsPerWinding"] = json::array();
+        operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
+        inputsJson["operatingPoints"].push_back(operatingPoint);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 10e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+        double max_error = 0.03;
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        {
+            settings->set_inputs_trim_harmonics(false);
+            OpenMagnetics::InputsWrapper inputs(inputsJson);
+            auto excitation = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_mutable_operating_points()[0]);
+            auto voltage = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()));
+
+            excitation.set_voltage(voltage);
+            inputs.get_mutable_operating_points()[0].set_excitations_per_winding({excitation});
+            auto currentWaveform = excitation.get_current()->get_waveform().value();
+
+            auto harmonics = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current()->get_harmonics().value();
+
+            auto reconstructedWaveform = OpenMagnetics::InputsWrapper::reconstruct_signal(harmonics, 50);
+            auto processed = OpenMagnetics::InputsWrapper::calculate_processed_data(harmonics, currentWaveform);
+            auto reconstructedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(harmonics, reconstructedWaveform);
+
+
+            CHECK_CLOSE(processed.get_peak_to_peak().value(), reconstructedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+            CHECK_CLOSE(processed.get_rms().value(), reconstructedProcessed.get_rms().value(), max_error * processed.get_rms().value());
+            CHECK_EQUAL(29847, voltage.get_waveform()->get_data().size());
+            CHECK_EQUAL(16384, excitation.get_current()->get_harmonics().value().get_frequencies().size());
+        }
+        {
+            settings->set_inputs_trim_harmonics(true);
+            OpenMagnetics::InputsWrapper inputs(inputsJson);
+            auto excitation = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_mutable_operating_points()[0]);
+            auto voltage = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()));
+
+            excitation.set_voltage(voltage);
+            inputs.get_mutable_operating_points()[0].set_excitations_per_winding({excitation});
+            auto currentWaveform = excitation.get_current()->get_waveform().value();
+
+            auto harmonics = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current()->get_harmonics().value();
+
+            auto reconstructedWaveform = OpenMagnetics::InputsWrapper::reconstruct_signal(harmonics, 50);
+            auto processed = OpenMagnetics::InputsWrapper::calculate_processed_data(harmonics, currentWaveform);
+            auto reconstructedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(harmonics, reconstructedWaveform);
+
+            // auto outFile = outputFilePath;
+            // outFile.append("Test_Simplify_PFC_Json.svg");
+            // std::filesystem::remove(outFile);
+            // OpenMagnetics::Painter painter(outFile);
+            // painter.paint_waveform(reconstructedWaveform);
+            // // painter.paint_waveform(currentWaveform);
+            // painter.export_svg();
+
+
+            CHECK_CLOSE(processed.get_peak_to_peak().value(), reconstructedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
+            CHECK_CLOSE(processed.get_rms().value(), reconstructedProcessed.get_rms().value(), max_error * processed.get_rms().value());
+            CHECK_EQUAL(29847, voltage.get_waveform()->get_data().size());
+            CHECK_EQUAL(5, excitation.get_current()->get_harmonics().value().get_frequencies().size());
+        }
+        settings->reset();
     }
 }

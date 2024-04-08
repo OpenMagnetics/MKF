@@ -49,7 +49,7 @@ struct Constants {
                                                                   "#fff1dc",
                                                                   "#ffa317"};
 
-    const double numberPointsSamplesWaveforms = 128;
+    const size_t numberPointsSampledWaveforms = 128;
     const double minimumDistributedFringingFactor = 1.05;
     const double maximumDistributedFringingFactor = 1.3;
     const double initialGapLengthForSearching = 0.001;

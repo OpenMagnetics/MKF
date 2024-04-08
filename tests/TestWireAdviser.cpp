@@ -1,4 +1,5 @@
 #include "CoreAdviser.h"
+#include "Settings.h"
 #include "WireAdviser.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
@@ -7,6 +8,7 @@
 #include <vector>
 
 SUITE(WireAdviser) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription;
     OpenMagnetics::Section section;
     OpenMagnetics::SignalDescriptor current;
@@ -37,6 +39,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_Round) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
@@ -54,6 +58,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_Litz) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
@@ -71,6 +77,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_Rectangular) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
@@ -88,6 +96,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_Foil) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 10;
         currentEffectiveFrequency = 134567;
@@ -106,6 +116,8 @@ SUITE(WireAdviser) {
 
 
     TEST(Test_WireAdviser_Low_Frequency_Few_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 100;
         currentEffectiveFrequency = 13456;
@@ -119,6 +131,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_Low_Frequency_Many_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 42;
         currentRms = 2;
         currentEffectiveFrequency = 13456;
@@ -137,6 +151,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_Low_Frequency_Gazillion_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 666;
         currentRms = 0.2;
         currentEffectiveFrequency = 13456;
@@ -156,6 +172,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_Medium_Frequency_Few_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 2;
         currentRms = 2;
         currentEffectiveFrequency = 213456;
@@ -176,6 +194,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_Medium_High_Frequency_Many_Turns) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 42;
         currentRms = 2;
         currentEffectiveFrequency = 613456;
@@ -195,6 +215,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_High_Frequency_Few_Turns_High_Current) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 5;
         currentRms = 50;
         currentEffectiveFrequency = 4613456;
@@ -213,6 +235,8 @@ SUITE(WireAdviser) {
     }
 
     TEST(Test_WireAdviser_High_Frequency_High_Current) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
         numberTurns = 10;
         currentRms = 50;
         currentEffectiveFrequency = 1613456;
