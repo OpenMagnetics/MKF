@@ -2520,17 +2520,20 @@ bool CoreWrapper::process_gap() {
     return true;
 }
 
-CoreMaterial CoreWrapper::get_material() {
+CoreMaterial CoreWrapper::resolve_material() {
+    return resolve_material(get_functional_description().get_material());
+}
+
+CoreMaterial CoreWrapper::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     // If the material is a string, we have to load its data from the database
-    if (std::holds_alternative<std::string>(get_functional_description().get_material())) {
-        auto material_data = OpenMagnetics::find_core_material_by_name(
-            std::get<std::string>(get_functional_description().get_material()));
-        return material_data;
+    if (std::holds_alternative<std::string>(coreMaterial)) {
+        auto coreMaterialData = OpenMagnetics::find_core_material_by_name(
+            std::get<std::string>(coreMaterial));
+        return coreMaterialData;
     }
     else {
-        return std::get<CoreMaterial>(get_functional_description().get_material());
+        return std::get<CoreMaterial>(coreMaterial);
     }
-
 }
 
 void CoreWrapper::process_data() {
@@ -2594,9 +2597,8 @@ void CoreWrapper::process_data() {
     scale_to_stacks(*(get_functional_description().get_number_stacks()));
 }
 
-double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
+double CoreWrapper::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion) {
     auto defaults = Defaults();
-    auto coreMaterial =  get_material();
     auto saturationData = coreMaterial.get_saturation();
     std::vector<std::pair<double, double>> data;
 
@@ -2614,12 +2616,20 @@ double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, boo
     else
         return saturationMagneticFluxDensity;
 }
+
+double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
+    auto coreMaterial = resolve_material();
+    return get_magnetic_flux_density_saturation(coreMaterial, temperature, proportion);
+}
+
+double CoreWrapper::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, bool proportion) {
+    return get_magnetic_flux_density_saturation(coreMaterial, 25, proportion);
+}
 double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
     return get_magnetic_flux_density_saturation(25, proportion);
 }
 
-double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
-    auto coreMaterial =  get_material();
+double CoreWrapper::get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature) {
     auto saturationData = coreMaterial.get_saturation();
     std::vector<std::pair<double, double>> data;
 
@@ -2635,8 +2645,15 @@ double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
     return saturationMagneticFieldStrength;
 }
 
-double CoreWrapper::get_remanence(double temperature) {
-    auto coreMaterial =  get_material();
+double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
+    auto coreMaterial = resolve_material();
+    return get_magnetic_field_strength_saturation(coreMaterial, temperature);
+}
+
+double CoreWrapper::get_remanence(CoreMaterial coreMaterial, double temperature) {
+    if (!coreMaterial.get_remanence()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     auto remanenceData = coreMaterial.get_remanence().value();
     std::vector<std::pair<double, double>> data;
 
@@ -2652,8 +2669,27 @@ double CoreWrapper::get_remanence(double temperature) {
     return remanence;
 }
 
-double CoreWrapper::get_coercive_force(double temperature) {
-    auto coreMaterial =  get_material();
+double CoreWrapper::get_remanence(double temperature) {
+    auto coreMaterial = resolve_material();
+    return get_remanence(coreMaterial, temperature);
+}
+
+double CoreWrapper::get_curie_temperature(CoreMaterial coreMaterial) {
+    if (!coreMaterial.get_curie_temperature()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return coreMaterial.get_curie_temperature().value();
+}
+
+double CoreWrapper::get_curie_temperature() {
+    auto coreMaterial = resolve_material();
+    return get_curie_temperature(coreMaterial);
+}
+
+double CoreWrapper::get_coercive_force(CoreMaterial coreMaterial, double temperature) {
+    if (!coreMaterial.get_coercive_force()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     auto coerciveForceData = coreMaterial.get_coercive_force().value();
     std::vector<std::pair<double, double>> data;
 
@@ -2669,8 +2705,14 @@ double CoreWrapper::get_coercive_force(double temperature) {
     return coerciveForce;
 }
 
+double CoreWrapper::get_coercive_force(double temperature) {
+    auto coreMaterial = resolve_material();
+    return get_coercive_force(coreMaterial, temperature);
+}
+
+
 double CoreWrapper::get_initial_permeability(double temperature){
-    auto coreMaterial =  get_material();
+    auto coreMaterial = resolve_material();
     InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     return initialPermeabilityValue;
@@ -2689,7 +2731,7 @@ double CoreWrapper::get_effective_permeability(double temperature){
 }
 
 double CoreWrapper::get_reluctance(double temperature){
-    auto coreMaterial =  get_material();
+    auto coreMaterial = resolve_material();
     InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
@@ -2700,10 +2742,26 @@ double CoreWrapper::get_reluctance(double temperature){
 }
 
 double CoreWrapper::get_resistivity(double temperature){
-    auto coreMaterial =  get_material();
+    auto coreMaterial = resolve_material();
+    return get_resistivity(coreMaterial, temperature);
+}
+
+double CoreWrapper::get_resistivity(CoreMaterial coreMaterial, double temperature){
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::CORE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(coreMaterial, temperature);
     return resistivity;
+}
+
+double CoreWrapper::get_density(CoreMaterial coreMaterial) {
+    if (!coreMaterial.get_density()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return coreMaterial.get_density().value();
+}
+
+double CoreWrapper::get_density() {
+    auto coreMaterial = resolve_material();
+    return get_density(coreMaterial);
 }
 
 std::vector<ColumnElement> CoreWrapper::get_columns() {
@@ -2742,12 +2800,12 @@ int64_t CoreWrapper::get_number_stacks() {
 }
 
 std::string CoreWrapper::get_material_name() {
-    return get_material().get_name();
+    return resolve_material().get_name();
 }
 
 std::vector<CoreLossesMethodType> CoreWrapper::get_available_core_losses_methods(){
     std::vector<CoreLossesMethodType> methods;
-    auto volumetricLossesMethodsVariants = get_material().get_volumetric_losses();
+    auto volumetricLossesMethodsVariants = resolve_material().get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {

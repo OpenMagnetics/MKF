@@ -18,12 +18,13 @@ double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper cor
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
     OpenMagnetics::InitialPermeability initialPermeability;
     double initialPermeabilityValue;
+    auto coreMaterial = core.resolve_material();
     if (operatingPoint != nullptr) {
         auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(core.get_functional_description().get_material(), temperature, std::nullopt, frequency);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, frequency);
     }
     else {
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(core.get_functional_description().get_material());
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
     }
 
     double effective_volume = core.get_processed_description()->get_effective_parameters().get_effective_volume();

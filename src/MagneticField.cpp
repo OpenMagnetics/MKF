@@ -156,7 +156,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     auto numberTurns = magnetic.get_mutable_coil().get_number_turns(0);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     OpenMagnetics::InitialPermeability initial_permeability;
-    double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_core().get_functional_description().get_material(), std::nullopt, std::nullopt, frequency);
+    double initialPermeability = initial_permeability.get_initial_permeability(magnetic.get_mutable_core().resolve_material(), std::nullopt, std::nullopt, frequency);
     double reluctance = reluctanceModel->get_core_reluctance(magnetic.get_core(), initialPermeability).get_core_reluctance();
     if (!operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
         throw std::runtime_error("Magnetizing current is missing");

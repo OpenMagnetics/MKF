@@ -353,6 +353,18 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
     }
 }
 
+OpenMagnetics::CoreWrapper find_core_by_name(std::string name) {
+    if (coreMaterialDatabase.empty()) {
+        load_cores();
+    }
+    for (auto core : coreDatabase) {
+        if (core.get_name() == name) {
+            return core;
+        }
+    }
+    throw std::runtime_error("Core not found: " + name);
+}
+
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();

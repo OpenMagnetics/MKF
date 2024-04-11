@@ -137,7 +137,8 @@ class CoreWrapper : public MagneticCore {
     bool process_gap();
     bool distribute_and_process_gap();
     void process_data();
-    CoreMaterial get_material();
+    CoreMaterial resolve_material();
+    static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion core);
     std::vector<ColumnElement> get_columns();
     std::vector<WindingWindowElement> get_winding_windows();
     double get_depth() { return get_processed_description().value().get_depth(); }
@@ -145,19 +146,29 @@ class CoreWrapper : public MagneticCore {
     double get_width() { return get_processed_description().value().get_width(); }
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
-    double get_magnetic_flux_density_saturation(bool proportion = true);
-    double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);
-    double get_magnetic_field_strength_saturation(double temperature);
     double get_initial_permeability(double temperature);
     double get_effective_permeability(double temperature);
     double get_reluctance(double temperature);
+    double get_density();
+    static double get_density(CoreMaterial coreMaterial);
     double get_resistivity(double temperature);
+    static double get_resistivity(CoreMaterial coreMaterial, double temperature);
+    double get_curie_temperature();
+    static double get_curie_temperature(CoreMaterial coreMaterial);
+    double get_remanence(double temperature);
+    static double get_remanence(CoreMaterial coreMaterial, double temperature);
+    double get_coercive_force(double temperature);
+    static double get_coercive_force(CoreMaterial coreMaterial, double temperature);
+    double get_magnetic_flux_density_saturation(bool proportion = true);
+    static double get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, bool proportion = true);
+    double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);
+    static double get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion = true);
+    double get_magnetic_field_strength_saturation(double temperature);
+    static double get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature);
     CoreShapeFamily get_shape_family();
     std::string get_shape_name();
     std::string get_material_name();
     int64_t get_number_stacks();
-    double get_remanence(double temperature);
-    double get_coercive_force(double temperature);
     std::vector<CoreLossesMethodType> get_available_core_losses_methods();
     OpenMagnetics::CoreType get_type();
 };
