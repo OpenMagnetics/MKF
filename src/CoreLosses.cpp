@@ -137,8 +137,26 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
 }
 
 CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
-                                                           OperatingPointExcitation excitation,
-                                                           double temperature) {
+                                                  OperatingPointExcitation excitation,
+                                                  double temperature) {
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+    auto volumetricLosses = get_core_volumetric_losses(core.resolve_material(), excitation, temperature);
+
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used(_modelName);
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
+
+    return result;
+};
+
+double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                            OperatingPointExcitation excitation,
+                                                            double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
@@ -147,14 +165,13 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
 
     magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
 
     OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
     double k = steinmetzDatum.get_k();
     double alpha = steinmetzDatum.get_alpha();
@@ -167,17 +184,8 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
         volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
     }
 
-    volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
+    return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("Steinmetz");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
 };
 
 double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
@@ -200,15 +208,14 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
     return ki;
 }
 
-CoreLossesOutput CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
-                                                      OperatingPointExcitation excitation,
-                                                      double temperature) {
+double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                       OperatingPointExcitation excitation,
+                                                       double temperature) {
 
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeakToPeak = magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
-    double magneticFluxDensityPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 
     magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -222,10 +229,9 @@ CoreLossesOutput CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double ki = get_ki(steinmetzDatum);
@@ -246,22 +252,12 @@ CoreLossesOutput CoreLossesIGSEModel::get_core_losses(CoreWrapper core,
     }
  
     double volumetricLosses = ki * pow(mainHarmonicMagneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
-    volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
-
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("iGSE");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
+    return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
-CoreLossesOutput CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
-                                                        OperatingPointExcitation excitation,
-                                                        double temperature) {
+double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                         OperatingPointExcitation excitation,
+                                                         double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
@@ -282,10 +278,9 @@ CoreLossesOutput CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double k = steinmetzDatum.get_k();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
@@ -317,22 +312,12 @@ CoreLossesOutput CoreLossesAlbachModel::get_core_losses(CoreWrapper core,
         volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
     }
 
-    volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
-
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("Albach");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
+    return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
-CoreLossesOutput CoreLossesMSEModel::get_core_losses(CoreWrapper core,
-                                                     OperatingPointExcitation excitation,
-                                                     double temperature) {
+double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                      OperatingPointExcitation excitation,
+                                                      double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -354,10 +339,9 @@ CoreLossesOutput CoreLossesMSEModel::get_core_losses(CoreWrapper core,
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double k = steinmetzDatum.get_k();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
@@ -388,17 +372,7 @@ CoreLossesOutput CoreLossesMSEModel::get_core_losses(CoreWrapper core,
         volumetricLosses = k * frequency * pow(equivalentSinusoidalFrequency, alpha - 1) * pow(magneticFluxDensityAcPeak, beta);
     }
 
-    volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
-
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("MSE");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
+    return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
 double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
@@ -419,14 +393,13 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
     return ki;
 }
 
-CoreLossesOutput CoreLossesNSEModel::get_core_losses(CoreWrapper core,
-                                                     OperatingPointExcitation excitation,
-                                                     double temperature) {
+double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                      OperatingPointExcitation excitation,
+                                                      double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-    double magneticFluxDensityPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 
     magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -440,10 +413,9 @@ CoreLossesOutput CoreLossesNSEModel::get_core_losses(CoreWrapper core,
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double kn = get_kn(steinmetzDatum);
@@ -463,19 +435,8 @@ CoreLossesOutput CoreLossesNSEModel::get_core_losses(CoreWrapper core,
             timeDifference;
     }
 
-    double volumetricLosses =
-        kn * pow(mainHarmonicMagneticFluxDensityAcPeak, beta - alpha) * frequency * volumetricLossesSum;
-    volumetricLosses = CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
-
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("NSE");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
+    double volumetricLosses = kn * pow(mainHarmonicMagneticFluxDensityAcPeak, beta - alpha) * frequency * volumetricLossesSum;
+    return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
 double get_plateau_duty_cycle(std::vector<double> data) {
@@ -490,7 +451,7 @@ double get_plateau_duty_cycle(std::vector<double> data) {
     return onPoints;
 }
 
-CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
+double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -512,10 +473,9 @@ CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
         steinmetzDatum = get_steinmetz_datum();
     }
     else {
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(coreMaterial, frequency);
     }
 
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
@@ -537,19 +497,9 @@ CoreLossesOutput CoreLossesBargModel::get_core_losses(CoreWrapper core,
     tk::spline interp(plateauDutyCycleValues, factorValues, tk::spline::cspline_hermite, true);
     double dutyCycleFactor = std::max(1., interp(dutyCycle));
 
-    double volumetricLosses = dutyCycleFactor * lossesFrameT1;
-
-    CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("Barg");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
-}
-
+    return dutyCycleFactor * lossesFrameT1;
+} 
+ 
 CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
@@ -563,8 +513,7 @@ CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
         excessEddyCurrentsVolumetricLosses = get_excess_eddy_current_losses_density(
             excitation, parameters["resistivity"], parameters["excessLossesCoefficient"]);
     }
-    double volumetricLosses =
-        hysteresisVolumetricLosses + eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses;
+    double volumetricLosses = hysteresisVolumetricLosses + eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses;
 
     CoreLossesOutput result;
     result.set_core_losses(volumetricLosses * effectiveVolume);
@@ -577,13 +526,19 @@ CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
     result.set_volumetric_losses(volumetricLosses);
 
     return result;
-}
-
+} 
+ 
+double CoreLossesRoshenModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                         OperatingPointExcitation excitation,
+                                                         double temperature) {
+    throw std::runtime_error("voluemtric losses are not vaid for Roshen's model");
+} 
+ 
 std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreWrapper core,
                                                                            OperatingPointExcitation excitation,
                                                                            double temperature) {
     std::map<std::string, double> roshenParameters;
-    auto materialData =  core.get_material();
+    auto materialData =  core.resolve_material();
 
     auto roshenData = get_method_data(materialData, "roshen");
 
@@ -847,7 +802,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
     return excessEddyCurrentLossesDensity;
 }
 
-CoreLossesOutput CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
+double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
                                                              double temperature) {
 
@@ -855,13 +810,11 @@ CoreLossesOutput CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency);
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     CoreLossesOutput result;
-    auto materialData = core.get_material();
     double volumetricLosses = -1;
 
-    if (materialData.get_manufacturer_info().get_name() == "Micrometals") {
-        auto micrometalsData = get_method_data(materialData, "micrometals");
+    if (coreMaterial.get_manufacturer_info().get_name() == "Micrometals") {
+        auto micrometalsData = get_method_data(coreMaterial, "micrometals");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -869,8 +822,8 @@ CoreLossesOutput CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
         volumetricLosses = frequency / (a / pow(magneticFluxDensityAcPeak, 3) + b / pow(magneticFluxDensityAcPeak, 2.3) + c / pow(magneticFluxDensityAcPeak, 1.65)) + d * pow(magneticFluxDensityAcPeak, 2) * pow(frequency, 2);
     }
 
-    if (materialData.get_manufacturer_info().get_name() == "Magnetics") {
-        auto micrometalsData = get_method_data(materialData, "magnetics");
+    if (coreMaterial.get_manufacturer_info().get_name() == "Magnetics") {
+        auto micrometalsData = get_method_data(coreMaterial, "magnetics");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -881,16 +834,9 @@ CoreLossesOutput CoreLossesProprietaryModel::get_core_losses(CoreWrapper core,
             volumetricLosses = a * pow(magneticFluxDensityAcPeak, b) * pow(frequency, c);
         }
     }
-    result.set_core_losses(volumetricLosses * effectiveVolume);
-    result.set_magnetic_flux_density(magneticFluxDensity);
-    result.set_method_used("Proprietary");
-    result.set_origin(ResultOrigin::SIMULATION);
-    result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
-
-    return result;
-}
-
+    return volumetricLosses;
+} 
+ 
 double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
                                                                 SignalDescriptor magneticFluxDensity,
                                                                 double temperature,
@@ -902,7 +848,7 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core
     OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     double frequency = 100000;
 
-    steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+    steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
     double alpha = steinmetzDatum.get_alpha();
     double convergeAlpha = 0;
 
@@ -913,7 +859,7 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core
         double volumetricLosses = coreLosses / effectiveVolume / CoreLossesModel::apply_temperature_coefficients(1, steinmetzDatum, temperature);
 
         frequency = pow(volumetricLosses / (k * pow(magneticFluxDensityAcPeak, beta)), 1 / alpha);
-        steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+        steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
         convergeAlpha = steinmetzDatum.get_alpha();
     }
     while (convergeAlpha != alpha);
@@ -935,7 +881,7 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
 
     OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
 
-    steinmetzDatum = get_steinmetz_coefficients(core.get_functional_description().get_material(), frequency);
+    steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
 
     double k = steinmetzDatum.get_k();
     double alpha = steinmetzDatum.get_alpha();
@@ -958,7 +904,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper co
     double frequency = -1;
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    auto materialData = core.get_material();
+    auto materialData = core.resolve_material();
     double volumetricLosses = coreLosses / effectiveVolume;
 
     if (materialData.get_manufacturer_info().get_name() == "Micrometals") {

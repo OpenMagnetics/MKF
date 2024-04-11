@@ -27,7 +27,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(const CoreWrapper& core, do
 double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
     OpenMagnetics::InitialPermeability initialPermeability;
 
-    auto coreMaterial = core.get_functional_description().get_material();
+    auto coreMaterial = core.resolve_material();
 
     double initialPermeabilityValue;
     if (operatingPoint != nullptr) {

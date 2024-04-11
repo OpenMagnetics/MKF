@@ -1897,6 +1897,18 @@ double InputsWrapper::get_maximum_frequency() {
     return maximumFrequency;
 }
 
+double InputsWrapper::get_maximum_temperature() {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumTemperature = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        maximumTemperature = std::max(maximumTemperature, operatingPoint.get_conditions().get_ambient_temperature());
+    }
+
+    return maximumTemperature;
+}
+
 DimensionWithTolerance InputsWrapper::get_altitude() {
     if (!get_design_requirements().get_insulation())
         throw std::invalid_argument("Missing insulation in designRequirements");

@@ -79,6 +79,7 @@ enum class OrderedIsolationSide : int {
 
 double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 bool check_requirement(DimensionWithTolerance requirement, double value);
+OpenMagnetics::CoreWrapper find_core_by_name(std::string name);
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireWrapper find_wire_by_name(std::string name);

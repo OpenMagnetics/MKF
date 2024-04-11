@@ -131,6 +131,7 @@ class InputsWrapper : public Inputs {
     double get_maximum_current_peak();
     double get_maximum_current_rms();
     double get_maximum_frequency();
+    double get_maximum_temperature();
     double get_maximum_voltage_peak(size_t windingIndex);
     double get_maximum_voltage_rms(size_t windingIndex);
     double get_maximum_current_peak(size_t windingIndex);
