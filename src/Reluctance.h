@@ -107,6 +107,7 @@ class ReluctanceModel {
 
 
     static std::shared_ptr<ReluctanceModel> factory(ReluctanceModels modelName);
+    static std::shared_ptr<ReluctanceModel> factory(std::map<std::string, std::string> models);
     static std::shared_ptr<ReluctanceModel> factory();
 };
 

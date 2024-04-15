@@ -21,6 +21,10 @@ class Stocker():
     def __init__(self):
         self.core_data = {}
 
+    def remove_current_inventory(self):
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            os.remove(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson")
+
     def verify_shape_is_in_database(self, family, shape, material, product):
         core_data = {
             "name": "temp",
@@ -33,7 +37,7 @@ class Stocker():
             }
         }
         try:
-            core_data = PyMKF.get_core_data(core_data, False)
+            core_data = PyMKF.calculate_core_data(core_data, False)
             return core_data
         except RuntimeError:
             pprint.pprint(product)
@@ -64,7 +68,7 @@ class Stocker():
     def find_shape_closest_dimensions(self, family, shape, limit=0.05):
         smallest_distance = math.inf
         smallest_distance_shape = None
-        core_data = PyMKF.get_available_core_shapes()
+        core_data = PyMKF.get_core_shape_names(True)
 
         dimensions = shape.split(" ")[1].split("/")
 
@@ -72,6 +76,8 @@ class Stocker():
         print(dimensions)
         try:
             for shape_name in core_data:
+                if 'X' in shape_name:
+                    continue
                 if family == shape_name.split(" ")[0]:
                     aux_dimensions = shape_name.split(" ")[1].split("/")
 
@@ -103,7 +109,7 @@ class Stocker():
     def find_shape_closest_effective_parameters(self, family, effective_length, effective_area, effective_volume, limit=0.05):
         smallest_distance = math.inf
         smallest_distance_shape = None
-        shape_names = PyMKF.get_available_core_shapes()
+        shape_names = PyMKF.get_core_shape_names(True)
         dummyCore = {
             "functionalDescription": {
                 "name": "dummy",
@@ -124,7 +130,7 @@ class Stocker():
                         core['functionalDescription']['type'] = "closed shape"
                     core['functionalDescription']['shape'] = shape_name
 
-                    core_data = PyMKF.get_core_data(core, False)
+                    core_data = PyMKF.calculate_core_data(core, False)
 
                     if abs(effective_length - core_data['processedDescription']['effectiveParameters']['effectiveLength']) / effective_length < 0.4:
                         if abs(effective_area - core_data['processedDescription']['effectiveParameters']['effectiveArea']) / effective_area < 0.4:
@@ -172,7 +178,7 @@ class Stocker():
                 }
             }
             if isinstance(shape, str):
-                shape = PyMKF.get_core_data(core, False)['functionalDescription']['shape']
+                shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
                 for dimension_key, dimension in shape['dimensions'].items():
                     new_dimension = {}
                     for key, value in dimension.items():
@@ -308,7 +314,7 @@ class Stocker():
 
     def process_gapping(self, core_data, gapping):
         core_data['functionalDescription']['gapping'] = gapping
-        core_data = PyMKF.get_core_data(core_data, False)
+        core_data = PyMKF.calculate_core_data(core_data, False)
         return core_data['functionalDescription']['gapping']
 
     def adaptive_round(self, value):
@@ -335,7 +341,7 @@ class Stocker():
 
         current_error = 1
         current_shape = None
-        for shape_name in PyMKF.get_available_core_shapes():
+        for shape_name in PyMKF.get_core_shape_names(True):
             error = abs(len(shape_name) - len(text)) / len(text)
             if shape_name in text and error < 0.3:
                 if error < current_error:
@@ -348,7 +354,7 @@ class Stocker():
         fixed_text = fix(text)
         current_error = 1
         current_shape = None
-        for shape_name in PyMKF.get_available_core_shapes():
+        for shape_name in PyMKF.get_core_shape_names(True):
             if (len(fixed_text) == 0):
                 return None
             error = abs(len(fix(shape_name)) - len(fixed_text)) / len(fixed_text)
@@ -376,7 +382,7 @@ class Stocker():
         def fix(text):
             return text.replace(" 0", " ").replace(" ", "").replace(",", ".").replace("Mµ", "Mu").replace("Hƒ", "Hf").upper()
 
-        materials = PyMKF.get_available_core_materials(manufacturer)
+        materials = PyMKF.get_core_material_names_by_manufacturer(manufacturer)
 
         materials.reverse()
         for material_name in materials:
@@ -398,7 +404,7 @@ class Stocker():
         max_ratio = 0
         best_fit = ""
 
-        for shape_name in PyMKF.get_available_core_shapes():
+        for shape_name in PyMKF.get_core_shape_names(True):
             s = SequenceMatcher(None, fix(shape_name), fixed_text)
             if s.ratio() > max_ratio:
                 max_ratio = s.ratio()
@@ -417,10 +423,6 @@ class Stocker():
 
 
 class FerroxcubeInventory(Stocker):
-    def remove_current_inventory(self):
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            os.remove(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson")
-
     def read_concentric_products(self, offset: int = 0):
         cookies = {}
 
@@ -1402,6 +1404,171 @@ class FairRiteInventory(Stocker):
         out_file.close()
 
 
+class MicrometalsInventory(Stocker):
+
+    def __init__(self):
+        self.core_data = {}
+        self.unfound_shapes = {}
+
+    def read_products(self, offset: int = 0):
+        response = requests.get("https://www.micrometals.com/api/v1/shapes/vw_plweb_t/products/?units=in&offset=10&limit=")
+        t_data = json.loads(response.text)['results']
+        print(t_data[0])
+        response = requests.get("https://www.micrometals.com/api/v1/shapes/vw_plweb_e/products/?units=in&offset=10&limit=")
+        e_data = json.loads(response.text)['results']
+        print(e_data[0])
+        response = requests.get("https://www.micrometals.com/api/v1/shapes/vw_plweb_pc/products/?units=in&offset=10&limit=")
+        p_data = json.loads(response.text)['results']
+        print(p_data[0])
+        response = requests.get("https://www.micrometals.com/api/v1/shapes/vw_plweb_pq/products/?units=in&offset=10&limit=")
+        pq_data = json.loads(response.text)['results']
+        print(pq_data[0])
+        response = requests.get("https://www.micrometals.com/api/v1/shapes/vw_plweb_eq/products/?units=in&offset=10&limit=")
+        eq_data = json.loads(response.text)['results']
+        print(eq_data[0])
+
+        for index, row in enumerate(t_data):
+            self.process(row, 'T')
+        for index, row in enumerate(e_data):
+            self.process(row, 'E')
+        for index, row in enumerate(p_data):
+            self.process(row, 'P')
+        for index, row in enumerate(eq_data):
+            self.process(row, 'EQ')
+        for index, row in enumerate(pq_data):
+            self.process(row, 'PQ')
+        pprint.pprint(self.unfound_shapes)
+        pprint.pprint(len(self.unfound_shapes))
+
+        return {
+            'current_offset': 0,
+            'total': 0
+        }
+
+    def process(self, data, family):
+        pprint.pprint("***********************************")
+        not_included_materials = ['Mix 0']
+
+        partnumber = data['partnumber']
+        if '-' in data['material']:
+            data['material'] = data['material'].replace('-', "Mix ")
+        else:
+            data['material'] = f"{data['material']} {int(data['permeability'])}"
+        material = self.try_get_material(data['material'], 'Micrometals')
+
+        if family == 'T':
+            temptative_shape = f"{family} {self.adaptive_round(float(data['od']) * 25.4)}/{self.adaptive_round(float(data['id']) * 25.4)}/{self.adaptive_round(float(data['ht']) * 25.4)}"
+        elif family in ['E', 'EQ']:
+            temptative_shape = f"{family} {self.adaptive_round(float(data['dima']) * 25.4)}/{self.adaptive_round(float(data['dimb']) * 25.4)}/{self.adaptive_round(float(data['dimc']) * 25.4)}"
+        elif family in ['PQ']:
+            temptative_shape = f"{family} {self.adaptive_round(float(data['dima']) * 25.4)}/{self.adaptive_round(float(data['dimc']) * 2 * 25.4)}"
+        elif family in ['P']:
+            temptative_shape = f"{family} {self.adaptive_round(float(data['dima']) * 25.4)}/{self.adaptive_round(float(data['dimc']) * 25.4)}"
+
+        try:
+            shape = self.find_shape_closest_dimensions(family, temptative_shape)
+        except ZeroDivisionError:
+            return 
+
+        if shape is None:
+            if temptative_shape not in self.unfound_shapes:
+                if family == 'T':
+                    t_data = {"magneticCircuit": "closed", "type": "standard", "family": "t", "aliases": [], "name": temptative_shape,
+                              "dimensions": {
+                                  "A": {"nominal": f"{round(float(data['od']) * 25.4 / 1000, 5):.5f}"},
+                                  "B": {"nominal": f"{round(float(data['id']) * 25.4 / 1000, 5):.5f}"},
+                                  "C": {"nominal": f"{round(float(data['ht']) * 25.4 / 1000, 5):.5f}"}}
+                              }
+
+                    self.unfound_shapes[temptative_shape] = (json.dumps(t_data), None, data['partnumber'])
+                elif family in ['E']:
+                    e_data = {"magneticCircuit": "open", "type": "standard", "family": "e", "aliases": [], "name": temptative_shape,
+                              "dimensions": {
+                                  "A": {"nominal": f"{round(float(data['dima']) * 25.4 / 1000, 5):.5f}"},
+                                  "B": {"nominal": f"{round(float(data['dimb']) * 25.4 / 1000, 5):.5f}"},
+                                  "C": {"nominal": f"{round(float(data['dimc']) * 25.4 / 1000, 5):.5f}"},
+                                  "D": {"nominal": f"{round(float(data['dimd']) * 25.4 / 1000, 5):.5f}"},
+                                  "E": {"nominal": f"{round(float(data['dime']) * 25.4 / 1000, 5):.5f}"},
+                                  "F": {"nominal": f"{round(float(data['dimf']) * 25.4 / 1000, 5):.5f}"}}
+                              }
+
+                    self.unfound_shapes[temptative_shape] = (json.dumps(e_data), None, data['partnumber'])
+                elif family in ['EQ']:
+                    self.unfound_shapes[temptative_shape] = (f"{family} {round(float(data['dima']) * 25.4 / 1000, 5):.5f}/{round(float(data['dimb']) * 25.4 / 1000, 5):.5f}/{round(float(data['dimc']) * 25.4 / 1000, 5):.5f}", None, data['partnumber'])
+                elif family in ['PQ']:
+                    self.unfound_shapes[temptative_shape] = (f"{family} {round(float(data['dima']) * 25.4 / 1000, 5):.5f}/{round(float(data['dimc']) * 2 * 25.4 / 1000, 5):.5f}", None, data['partnumber'])
+                elif family in ['P']:
+                    self.unfound_shapes[temptative_shape] = (f"{family} {round(float(data['dima']) * 25.4 / 1000, 5):.5f}/{round(float(data['dimc']) * 2 * 25.4 / 1000, 5):.5f}", None, data['partnumber'])
+
+        if material is None:
+            for not_included_material in not_included_materials:
+                if not_included_material in f"{data['material']}":
+                    return None
+            pprint.pprint(data)
+            assert 0, f"Unknown material in {data['material']}"
+            return
+
+        if shape is None:
+            return
+
+        core_data = self.verify_shape_is_in_database(family, shape, material, data)
+
+        status = 'production'
+        core_manufacturer = "Micrometals"
+        core_type = 'toroidal' if family == 'T' else 'two-piece set'
+        manufacturer_part_number = data['partnumber']
+        datasheet = f"https://datasheets.micrometals.com/{data['partnumber']}-DataSheet.pdf"
+        product_url = data['analyzer_url']
+        distributor_reference = data['partnumber']
+        quantity = data['qty']
+        cost = None
+        gapping = []
+
+        if family != 'T':
+            coating = None
+        else:
+            coating = 'parylene'
+
+        self.add_core(family=family,
+                      shape=shape,
+                      material=material,
+                      core_type=core_type,
+                      core_manufacturer=core_manufacturer,
+                      status=status,
+                      manufacturer_part_number=manufacturer_part_number,
+                      product_url=product_url,
+                      distributor_reference=distributor_reference,
+                      quantity=quantity,
+                      cost=cost,
+                      coating=coating,
+                      gapping=gapping,
+                      datasheet=datasheet,
+                      unique=False)
+
+    def get_cores_inventory(self):
+        remaining = 1
+        current_offset = 2
+
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson") as f:
+                previous_data = ndjson.load(f)
+                for row in previous_data:
+                    self.core_data[row['name']] = row
+
+        while remaining > 0:
+            pprint.pprint('==================================================================================================')
+            current_status = self.read_products(current_offset)
+            current_offset = current_status['current_offset']
+            remaining = current_status['total'] - current_status['current_offset']
+            pprint.pprint(f"remaining: {remaining}")
+            pprint.pprint(f"self.core_data: {len(self.core_data.values())}")
+
+        core_data = pandas.DataFrame(self.core_data.values())
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", "w")
+        ndjson.dump(core_data.to_dict('records'), out_file, ensure_ascii=False)
+        out_file.close()
+
+
 if __name__ == '__main__':  # pragma: no cover
     ferroxcube_inventory = FerroxcubeInventory()
     ferroxcube_inventory.remove_current_inventory()
@@ -1415,3 +1582,6 @@ if __name__ == '__main__':  # pragma: no cover
 
     fair_rite_inventory = FairRiteInventory()
     fair_rite_inventory.get_cores_inventory()
+
+    micrometals_inventory = MicrometalsInventory()
+    micrometals_inventory.get_cores_inventory()

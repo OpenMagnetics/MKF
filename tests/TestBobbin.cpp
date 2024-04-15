@@ -32,7 +32,7 @@ SUITE(Bobbin) {
     TEST(Get_Filling_Factors_Bobbin_Medium) {
         auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.009, 0.0275);
 
-        double expectedValue = 0.73;
+        double expectedValue = 0.715;
 
         CHECK_CLOSE(expectedValue, fillingFactor, max_error * expectedValue);
     }

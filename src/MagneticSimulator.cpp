@@ -19,7 +19,7 @@ MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const Magnet
         // std::cout << "Simulating magnetizing_inductance" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
         // std::cout << "Simulating core_losses" << std::endl;
-        output.set_core_losses(calculate_core_loses(operatingPoint, magnetic));
+        output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
         // std::cout << "Simulating winding_losses" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, output.get_core_losses().value().get_temperature()));
         outputs.push_back(output);
@@ -49,7 +49,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }
 
-CoreLossesOutput MagneticSimulator::calculate_core_loses(OperatingPoint& operatingPoint, MagneticWrapper magnetic) {
+CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic) {
     OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     if (!excitation.get_current()) {
         throw std::runtime_error("Missing current in operating point");
@@ -61,15 +61,15 @@ CoreLossesOutput MagneticSimulator::calculate_core_loses(OperatingPoint& operati
     CoreLossesOutput coreLossesOutput;
     std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
 
-    std::string debugModelName = "";
     auto availableMethodsForMaterial = CoreLossesModel::get_methods(magnetic.get_mutable_core().get_material_name());
     for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
+        for (auto& availableMethod : availableMethodsForMaterial) {
+        }
         if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
-            debugModelName = magic_enum::enum_name(modelName);
             coreLossesModelForMaterial = coreLossesModel;
+            break;
         }
     }
-
     if (coreLossesModelForMaterial == nullptr) {
         throw std::runtime_error("No model found for material: " + magnetic.get_mutable_core().get_material_name());
     }
