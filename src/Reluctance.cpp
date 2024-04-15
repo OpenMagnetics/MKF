@@ -475,6 +475,10 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
     return airGapReluctanceOutput;
 };
 
+std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(std::map<std::string, std::string> models) {
+    return factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(models["gapReluctance"]).value());
+}
+
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName) {
     if (modelName == ReluctanceModels::ZHANG) {
         return std::make_shared<ReluctanceZhangModel>();

@@ -40,6 +40,10 @@ class MagneticSimulator {
 
         void set_core_losses_model_name(CoreLossesModels model) {
             _coreLossesModelNames = {model, CoreLossesModels::PROPRIETARY, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+            _coreLossesModels.clear();
+            for (auto modelName : _coreLossesModelNames) {
+                _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
+            }
         }
         void set_core_temperature_model_name(CoreTemperatureModels model) {
             _coreTemperatureModelName = model;
@@ -50,7 +54,7 @@ class MagneticSimulator {
 
         MasWrapper simulate(MasWrapper mas);
         MasWrapper simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic);
-        CoreLossesOutput calculate_core_loses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
+        CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         WindingLossesOutput calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature = std::nullopt);
 

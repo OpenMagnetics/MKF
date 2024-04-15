@@ -179,7 +179,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 26 - Ungapped");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
         settings->reset();
     }
 
@@ -403,7 +403,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 22/6/16 - 3C95 - Gapped 0.24000000000000002 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 25.4/10/7 - N27 - Gapped 0.5 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
         settings->reset();
     }
@@ -437,7 +437,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
 
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "RM 10 - 3C95 - Gapped 0.29 mm");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C97 - Gapped 0.365 mm");
         settings->reset();
     }
 
@@ -696,7 +696,7 @@ SUITE(CoreAdviser) {
 
         auto scorings = coreAdviser.get_scorings();
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value() == "T 6.3/3.8/2.5 - parylene coated - N49 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value() == "EQ 13 - 3C95 - Ungapped");
         CHECK(scorings[masMagnetics[0].first.get_magnetic().get_manufacturer_info().value().get_reference().value()][OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] == 1);
 
         settings->reset();
