@@ -612,10 +612,10 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
         }
     }
     CHECK(equalToOne);
-    bool collides = !OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
-    CHECK(collides);
+    bool collides = OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
+    CHECK(!collides);
     if (additionalCoordinatesByName.size() > 0) {
-        collides |= !OpenMagnetics::check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
+        collides |= OpenMagnetics::check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
     }
     return !collides && equalToOne;
 }

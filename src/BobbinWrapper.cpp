@@ -241,11 +241,11 @@ void load_interpolators() {
 
         struct AuxWindingWindowWidth
         {
-            double windingWindowWidth, WindingWindow;
+            double windingWindowWidth, windingWindow;
         };
         struct AuxWindingWindowHeight
         {
-            double windingWindowHeight, WindingWindow;
+            double windingWindowHeight, windingWindow;
         };
         std::vector<AuxWindingWindowWidth> auxWindingWindowWidth;
         std::vector<AuxWindingWindowHeight> auxWindingWindowHeight;
@@ -318,7 +318,7 @@ void load_interpolators() {
             std::vector<double> x, y;
 
             std::sort(auxWindingWindowWidth.begin(), auxWindingWindowWidth.end(), [](const AuxWindingWindowWidth& b1, const AuxWindingWindowWidth& b2) {
-                return b1.windingWindowWidth < b2.windingWindowWidth;
+                return b1.windingWindow < b2.windingWindow;
             });
             minWindingWindowWidth = auxWindingWindowWidth[0].windingWindowWidth;
             maxWindingWindowWidth = auxWindingWindowWidth[n - 1].windingWindowWidth;
@@ -326,7 +326,7 @@ void load_interpolators() {
             for (size_t i = 0; i < n; i++) {
                 if (x.size() == 0 || auxWindingWindowWidth[i].windingWindowWidth != x.back()) {
                     x.push_back(auxWindingWindowWidth[i].windingWindowWidth);
-                    y.push_back(auxWindingWindowWidth[i].WindingWindow);
+                    y.push_back(auxWindingWindowWidth[i].windingWindow);
                 }
             }
 
@@ -337,7 +337,7 @@ void load_interpolators() {
             std::vector<double> x, y;
 
             std::sort(auxWindingWindowHeight.begin(), auxWindingWindowHeight.end(), [](const AuxWindingWindowHeight& b1, const AuxWindingWindowHeight& b2) {
-                return b1.windingWindowHeight < b2.windingWindowHeight;
+                return b1.windingWindow < b2.windingWindow;
             });
             minWindingWindowHeight = auxWindingWindowHeight[0].windingWindowHeight;
             maxWindingWindowHeight = auxWindingWindowHeight[n - 1].windingWindowHeight;
@@ -345,7 +345,7 @@ void load_interpolators() {
             for (size_t i = 0; i < n; i++) {
                 if (x.size() == 0 || auxWindingWindowHeight[i].windingWindowHeight != x.back()) {
                     x.push_back(auxWindingWindowHeight[i].windingWindowHeight);
-                    y.push_back(auxWindingWindowHeight[i].WindingWindow);
+                    y.push_back(auxWindingWindowHeight[i].windingWindow);
                 }
             }
 
@@ -396,6 +396,14 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWind
     }
     else {
         bobbinWindingWindowHeight = bobbinWindingWindowInterpHeight(coreWindingWindowHeight);
+    }
+
+    if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
+        throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
+    }
+
+    if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
+        throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
@@ -461,6 +469,9 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
         bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
         bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
+        if (bobbinWallThickness <= 0) {
+            throw std::runtime_error("bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
+        }
     }
 
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {

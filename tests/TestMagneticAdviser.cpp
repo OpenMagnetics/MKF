@@ -16,7 +16,6 @@ SUITE(MagneticAdviser) {
         std::vector<double> turnsRatios;
 
         std::vector<int64_t> numberTurns = {24, 78, 76};
-        std::vector<int64_t> numberParallels = {1, 1, 1};
 
         for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
             turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
@@ -45,12 +44,11 @@ SUITE(MagneticAdviser) {
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
 
-        for (auto masMagneticWithScoring : masMagnetics) {
-            auto masMagnetic = masMagneticWithScoring.first;
+        for (auto [masMagnetic, scoring] : masMagnetics) {
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "MagneticAdviser" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
