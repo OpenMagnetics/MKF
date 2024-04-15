@@ -215,7 +215,7 @@ OpenMagnetics::CoreWrapper get_quick_core(std::string shapeName,
     auto coreJson = json();
 
     std::string coreType;
-    if (shapeName[0] == 'T') {
+    if (shapeName[0] == 'T' || (shapeName[0] == 'R' && shapeName[1] == ' ')) {
         coreType = "toroidal";
     }
     else {

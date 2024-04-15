@@ -97,6 +97,11 @@ void CorePiece::process() {
     process_extra_data();
 
     auto [c1, c2, minimumArea] = get_shape_constants();
+
+    if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
+        throw std::runtime_error("Shape constans cannot be negative or 0");
+    }
+
     EffectiveParameters pieceEffectiveParameters;
     pieceEffectiveParameters.set_effective_length(pow(c1, 2) / c2);
     pieceEffectiveParameters.set_effective_area(c1 / c2);
@@ -269,6 +274,8 @@ class CorePieceEtd : public CorePieceE {
 
         double c1 = 0, c2 = 0;
         for (size_t i = 0; i < lengths.size(); ++i) {
+
+
             c1 += lengths[i] / areas[i];
             c2 += lengths[i] / pow(areas[i], 2);
         }

@@ -175,17 +175,21 @@ class Stocker():
                     "numberStacks": 1
                 }
             }
-            if isinstance(shape, str):
-                shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
-                for dimension_key, dimension in shape['dimensions'].items():
-                    new_dimension = {}
-                    for key, value in dimension.items():
-                        if value != None:
-                            new_dimension[key] = value
-                    shape['dimensions'][dimension_key] = new_dimension
-                core['functionalDescription']['shape'] = shape
+            # if isinstance(shape, str):
+            #     shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
+            #     for dimension_key, dimension in shape['dimensions'].items():
+            #         new_dimension = {}
+            #         for key, value in dimension.items():
+            #             if value != None:
+            #                 new_dimension[key] = value
+            #         shape['dimensions'][dimension_key] = new_dimension
+            #     core['functionalDescription']['shape'] = shape
+            if not isinstance(shape, str):
+                pprint.pprint(core)
+                assert 0
 
             print(f"Adding {core_name}")
+
             core['manufacturer_reference'] = manufacturer_part_number
             if coating is not None:
                 core['functionalDescription']['coating'] = coating
@@ -2077,7 +2081,7 @@ if __name__ == '__main__':  # pragma: no cover
             previous_data = ndjson.load(f)
             for row in previous_data:
                 cores[row['name']] = row
-                cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
+                # cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
 
     cores = pandas.DataFrame(cores.values())
     out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores.ndjson", "w")
