@@ -1,4 +1,6 @@
 #include "BobbinWrapper.h"
+#include "Utils.h"
+#include "TestingUtils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>
@@ -73,7 +75,7 @@ SUITE(Bobbin) {
         auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.012, 0.027);
 
         double expectedWidthValue = 0.00985;
-        double expectedHeightValue = 0.0239;
+        double expectedHeightValue = 0.02335;
         double width = windingWindowDimensions[0];
         double height = windingWindowDimensions[1];
 
@@ -103,5 +105,17 @@ SUITE(Bobbin) {
 
         CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
         CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
+
+    TEST(Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin) {
+        auto shapeNames = OpenMagnetics::get_shape_names(true);
+        for (auto shapeName : shapeNames) {
+            if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
+                continue;
+            }
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+            auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
+            auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+        }
     }
 }

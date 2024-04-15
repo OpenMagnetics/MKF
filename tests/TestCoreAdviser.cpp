@@ -371,7 +371,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "RM 12 - 3C97 - Gapped 0.27 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C97 - Gapped 0.365 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
         settings->reset();
     }

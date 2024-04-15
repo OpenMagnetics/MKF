@@ -1432,16 +1432,12 @@ double InsulationIEC61558Model::calculate_creepage_distance(InputsWrapper& input
 
     double creepageDistance = get_creepage_distance_table_21(cti, pollutionDegree, insulationType, workingVoltage);
 
-    std::cout << "creepageDistance: " << creepageDistance << std::endl;
-
     if (maximumFrequency > iec61558MaximumStandardFrequency) {
         creepageDistance = std::max(creepageDistance, calculate_creepage_distance_over_30kHz(insulationType, pollutionDegree, maximumFrequency, workingVoltagePeak));
-        std::cout << "calculate_creepage_distance_over_30kHz(insulationType, pollutionDegree, maximumFrequency, workingVoltagePeak): " << calculate_creepage_distance_over_30kHz(insulationType, pollutionDegree, maximumFrequency, workingVoltagePeak) << std::endl;
     }
 
     if (includeClearance) {
         creepageDistance = std::max(creepageDistance, calculate_clearance(inputs));
-    std::cout << "calculate_clearance(inputs): " << calculate_clearance(inputs) << std::endl;
     }
 
     return ceilFloat(creepageDistance, 5);

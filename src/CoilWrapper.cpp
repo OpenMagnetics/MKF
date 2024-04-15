@@ -2267,6 +2267,10 @@ bool CoilWrapper::wind_by_round_layers() {
             // We cannot have more layers than physical turns
             numberLayers = std::min(numberLayers, physicalTurnsInSection);
 
+            if (minimumNumberLayerNeeded > numberLayers) {
+                return false;
+            }
+
             double currentLayerCenterRadialHeight;
             double currentLayerCenterAngle;
             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {

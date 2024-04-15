@@ -764,6 +764,12 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
             else {
                 if (roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) < roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) &&
                     roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) < roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9)) {
+                    std::cout << "leftName: " << leftName << std::endl;
+                    std::cout << "rightName: " << rightName << std::endl;
+                    std::cout << "roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9): " << roundFloat(fabs(leftCoordinates[0] - rightCoordinates[0]), 9) << std::endl;
+                    std::cout << "roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9): " << roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) << std::endl;
+                    std::cout << "roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9): " << roundFloat(fabs(leftCoordinates[1] - rightCoordinates[1]), 9) << std::endl;
+                    std::cout << "roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9): " << roundFloat(leftDimensions[1] / 2 + rightDimensions[1] / 2, 9) << std::endl;
                     return true;
                 }
             }
