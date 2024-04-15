@@ -1,4 +1,6 @@
 #include "CoreWrapper.h"
+#include "TestingUtils.h"
+#include "Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>
@@ -1537,6 +1539,28 @@ SUITE(CoreProcessedDescription) {
         CHECK_CLOSE(core.get_processed_description()->get_effective_parameters().get_effective_area(), 0.0002756,
                     0.0002756 * 0.2);
         auto functionalDescription = core.get_functional_description();
+    }
+
+    TEST(Test_Core_All_Shapes) {
+        auto shapeNames = OpenMagnetics::get_shape_names(true);
+        for (auto shapeName : shapeNames) {
+            if (shapeName.contains("PQI") || shapeName.contains("UI ")) {
+                continue;
+            }
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+            if ((core.get_processed_description()->get_effective_parameters().get_effective_area() <= 0) ||
+                (core.get_processed_description()->get_effective_parameters().get_effective_length() <= 0) ||
+                (core.get_processed_description()->get_effective_parameters().get_effective_volume() <= 0) ||
+                (core.get_processed_description()->get_effective_parameters().get_minimum_area() <= 0)) {
+
+                std::cout << "shapeName: " << shapeName << std::endl;
+            }
+
+            CHECK(core.get_processed_description()->get_effective_parameters().get_effective_area() > 0);
+            CHECK(core.get_processed_description()->get_effective_parameters().get_effective_length() > 0);
+            CHECK(core.get_processed_description()->get_effective_parameters().get_effective_volume() > 0);
+            CHECK(core.get_processed_description()->get_effective_parameters().get_minimum_area() > 0);
+        }
     }
 }
 

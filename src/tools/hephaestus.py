@@ -177,15 +177,19 @@ class Stocker():
                     "numberStacks": 1
                 }
             }
-            if isinstance(shape, str):
-                shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
-                for dimension_key, dimension in shape['dimensions'].items():
-                    new_dimension = {}
-                    for key, value in dimension.items():
-                        if value != None:
-                            new_dimension[key] = value
-                    shape['dimensions'][dimension_key] = new_dimension
-                core['functionalDescription']['shape'] = shape
+            # if isinstance(shape, str):
+            #     shape = PyMKF.calculate_core_data(core, False)['functionalDescription']['shape']
+            #     for dimension_key, dimension in shape['dimensions'].items():
+            #         new_dimension = {}
+            #         for key, value in dimension.items():
+            #             if value != None:
+            #                 new_dimension[key] = value
+            #         shape['dimensions'][dimension_key] = new_dimension
+            #     core['functionalDescription']['shape'] = shape
+            if not isinstance(shape, str):
+                pprint.pprint(core)
+                assert 0
+                
 
             print(f"Adding {core_name}")
             if coating is not None:
