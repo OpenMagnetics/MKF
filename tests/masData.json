@@ -38187,24 +38187,6 @@
             "type": "standard",
             "family": "t",
             "aliases": [],
-            "name": "T 0.76/1.89/19",
-            "dimensions": {
-                "A": {
-                    "nominal": 0.00076
-                },
-                "B": {
-                    "nominal": 0.0018900000000000002
-                },
-                "C": {
-                    "nominal": 0.018920000000000003
-                }
-            }
-        },
-        {
-            "magneticCircuit": "closed",
-            "type": "standard",
-            "family": "t",
-            "aliases": [],
             "name": "T 10/4.4/3.63",
             "dimensions": {
                 "A": {

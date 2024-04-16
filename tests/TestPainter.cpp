@@ -44,7 +44,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(true);
@@ -86,7 +86,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(true);
         settings->set_painter_include_fringing(true);
@@ -128,7 +128,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -170,7 +170,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(true);
@@ -212,7 +212,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(true);
         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
@@ -249,7 +249,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(true);
@@ -291,7 +291,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(true);
         settings->set_painter_include_fringing(true);
@@ -334,7 +334,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_No_Fringing.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_include_fringing(false);
         settings->set_painter_logarithmic_scale(false);
@@ -377,7 +377,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Logarithmic_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(true);
         settings->set_painter_include_fringing(true);
@@ -420,7 +420,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Limit_Scale.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(true);
@@ -467,7 +467,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -514,7 +514,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -562,7 +562,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -609,7 +609,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -661,7 +661,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -714,7 +714,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_One_Turn_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -769,7 +769,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Quiver_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -823,7 +823,7 @@ SUITE(FieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Contour_Many_Turns_Foil.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -903,7 +903,7 @@ SUITE(ToridalFieldPainter) {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Toroid_Round_Wires.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
             OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -955,7 +955,7 @@ SUITE(ToridalFieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -1004,7 +1004,7 @@ SUITE(ToridalFieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Toroid_Quiver_One_Turn_Rectangular_Inner.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -1053,7 +1053,7 @@ SUITE(ToridalFieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Inner.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -1102,7 +1102,7 @@ SUITE(ToridalFieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Toroid_Quiver_Four_Turns_Rectangular_Spread.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -1151,7 +1151,7 @@ SUITE(ToridalFieldPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Toroid_Quiver_Two_Turn_Rectangular.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);
@@ -1234,7 +1234,7 @@ SUITE(ToridalFieldPainter) {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Toroid_Rectangular_Wires.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
             OpenMagnetics::MagneticWrapper magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -3175,7 +3175,7 @@ SUITE(CoilPainter) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_Planar.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_include_fringing(false);

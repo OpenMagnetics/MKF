@@ -99,7 +99,8 @@ void CorePiece::process() {
     auto [c1, c2, minimumArea] = get_shape_constants();
 
     if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
-        throw std::runtime_error("Shape constans cannot be negative or 0");
+        std::cout << get_shape().get_name().value() << std::endl;
+        throw std::runtime_error("Shape constants cannot be negative or 0");
     }
 
     EffectiveParameters pieceEffectiveParameters;
@@ -2546,6 +2547,7 @@ CoreMaterial CoreWrapper::resolve_material(CoreMaterialDataOrNameUnion coreMater
 void CoreWrapper::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
+
         auto shape_data = OpenMagnetics::find_core_shape_by_name(
             std::get<std::string>(get_functional_description().get_shape()));
         shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
