@@ -214,7 +214,6 @@ SUITE(CoreAdviser) {
         settings->reset();
     }
 
-
     TEST(Test_Only_Toroids_High_Power) {
         OpenMagnetics::clear_databases();
         double voltagePeakToPeak = 600;
@@ -246,7 +245,6 @@ SUITE(CoreAdviser) {
         }
         settings->reset();
     }
-
 
     TEST(Test_No_Toroids_High_Power_High_Frequency) {
         OpenMagnetics::clear_databases();

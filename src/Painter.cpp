@@ -39,7 +39,6 @@ std::string replace_key(std::string key, std::string line, std::string replaceme
 }
 
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
-    _addProportionForColorBar = true;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();

@@ -52,8 +52,10 @@ void load_cores(bool includeToroidalCores, bool useOnlyCoresInStock, bool includ
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            CoreWrapper core(jf, false, true, false);
-            if ((includeToroidalCores && core.get_type() == CoreType::TOROIDAL) || (includeConcentricCores && core.get_type() != CoreType::TOROIDAL)) {
+            CoreType type;
+            from_json(jf["functionalDescription"]["type"], type);
+            if ((includeToroidalCores && type == CoreType::TOROIDAL) || (includeConcentricCores && type != CoreType::TOROIDAL)) {
+                CoreWrapper core(jf, false, true, false);
                 coreDatabase.push_back(core);
             }
             database.erase(0, pos + delimiter.length());

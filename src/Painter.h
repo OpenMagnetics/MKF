@@ -37,10 +37,13 @@ class Painter{
 
     public:
 
-        Painter(std::filesystem::path filepath){
+        Painter(std::filesystem::path filepath, bool addProportionForColorBar = false){
+            _addProportionForColorBar = addProportionForColorBar;
             _filepath = filepath;
             matplot::gcf()->quiet_mode(true);
             matplot::cla();
+            matplot::xticks({});
+            matplot::yticks({});
             matplot::hold(matplot::off);
         };
         virtual ~Painter() = default;
