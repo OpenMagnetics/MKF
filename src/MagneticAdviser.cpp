@@ -58,6 +58,8 @@ namespace OpenMagnetics {
 
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(core, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
+                // std::cout << "Core wound!" << std::endl;
+
                 coresWound++;
             }
             size_t processedCoils = 0;

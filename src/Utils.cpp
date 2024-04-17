@@ -739,7 +739,7 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
     return false;
 }
 
-bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundTurn){
+bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundWindingWinw){
     for (auto& leftDimension : dimensionsByName) {
         std::string leftName = leftDimension.first;
         std::vector<double> leftDimensions = leftDimension.second;
@@ -753,7 +753,7 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
             std::vector<double> rightCoordinates = coordinatesByName[rightName];
             double distanceBetweenCenters = roundFloat(sqrt(pow(fabs(leftCoordinates[0] - rightCoordinates[0]), 2) + pow(fabs(leftCoordinates[1] - rightCoordinates[1]), 2)), 9);
 
-            if (roundTurn) {
+            if (roundWindingWinw) {
                 if (distanceBetweenCenters - roundFloat(leftDimensions[0] / 2 + rightDimensions[0] / 2, 9) < -1e-8) {
                     std::cout << "leftName: " << leftName << std::endl;
                     std::cout << "rightName: " << rightName << std::endl;
