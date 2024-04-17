@@ -11,6 +11,7 @@ class CoilAdviser : public WireAdviser {
     private:
         bool _allowMarginTape = true;
         bool _allowInsulatedWire = true;
+        OpenMagnetics::WireAdviser _wireAdviser;
     public:
 
         std::vector<MasWrapper> get_advised_coil(MasWrapper mas, size_t maximumNumberResults=1);

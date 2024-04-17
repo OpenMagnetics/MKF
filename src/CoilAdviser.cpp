@@ -98,7 +98,7 @@ namespace OpenMagnetics {
         return isolationSidesUsed;
     }
 
-    std::vector<std::vector<size_t>> get_patterns(InputsWrapper& inputs) {
+    std::vector<std::vector<size_t>> get_patterns(InputsWrapper& inputs, CoreType coreType) {
         auto isolationSidesRequired = get_isolation_sides(inputs);
 
         if (!inputs.get_design_requirements().get_isolation_sides()) {
@@ -125,12 +125,18 @@ namespace OpenMagnetics {
             std::next_permutation(isolationSidesRequired.begin(), isolationSidesRequired.end());
         }
 
+        if (coreType == CoreType::TOROIDAL) {
+            // We remove the last combination as in toroids they go around
+            size_t elementsToKeep = std::max(1UL, isolationSidesRequired.size() - 1);
+            sectionPatterns = std::vector<std::vector<size_t>>(sectionPatterns.begin(), sectionPatterns.end() - (sectionPatterns.size() - elementsToKeep));
+        }
+
         return sectionPatterns;
     }
 
 
-    std::vector<size_t> get_repetitions(InputsWrapper& inputs) {
-        if (inputs.get_design_requirements().get_turns_ratios().size() == 0) {
+    std::vector<size_t> get_repetitions(InputsWrapper& inputs, CoreType coreType) {
+        if (inputs.get_design_requirements().get_turns_ratios().size() == 0 || coreType == CoreType::TOROIDAL) {
             return {1};  // hardcoded
         }
         if (inputs.get_design_requirements().get_leakage_inductance()) {
@@ -160,10 +166,12 @@ namespace OpenMagnetics {
     }
 
     std::vector<MasWrapper> CoilAdviser::get_advised_coil(std::vector<WireWrapper>* wires, MasWrapper mas, size_t maximumNumberResults){
+        auto core = mas.get_magnetic().get_core();
+        auto coreType = core.get_functional_description().get_type();
 
         auto inputs = mas.get_mutable_inputs();
-        auto patterns = get_patterns(inputs);
-        auto repetitions = get_repetitions(inputs);
+        auto patterns = get_patterns(inputs, coreType);
+        auto repetitions = get_repetitions(inputs, coreType);
         mas.set_inputs(inputs);
 
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
@@ -384,8 +392,6 @@ namespace OpenMagnetics {
             }
         }
 
-        OpenMagnetics::WireAdviser wireAdviser;
-
         if (needsMargin) {
             // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -410,7 +416,7 @@ namespace OpenMagnetics {
 
         int timeout = 1 - numberWindings;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-            wireAdviser.set_wire_solid_insulation_requirements(solidInsulationRequirementsForWires[windingIndex]);
+            _wireAdviser.set_wire_solid_insulation_requirements(solidInsulationRequirementsForWires[windingIndex]);
 
             SignalDescriptor maximumCurrent;
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
@@ -443,12 +449,12 @@ namespace OpenMagnetics {
             };
             bool found = false;
             for (auto& wireConfiguration : wireConfigurations) {
-                wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
-                wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
+                _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
+                _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
 
                 auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
 
-                auto wiresWithScoring = wireAdviser.get_advised_wire(wires,
+                auto wiresWithScoring = _wireAdviser.get_advised_wire(wires,
                                                                      coil.get_functional_description()[windingIndex],
                                                                      sections[sectionIndex],
                                                                      maximumCurrent,

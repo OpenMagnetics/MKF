@@ -2975,13 +2975,16 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                             else if (tryAngularMove) {
                                 tryAngularMove = false;
                                 double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                double increment = ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
                                 if (collidedCoordinate[1] > newCoordinates[1]) {
                                     previouslyAdditionAngularMovement = false;
-                                    newCoordinates[1] -= ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
+                                    if (newCoordinates[1] - increment > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                        newCoordinates[1] -= increment;
                                 }
                                 else {
                                     previouslyAdditionAngularMovement = true;
-                                    newCoordinates[1] += ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
+                                    if (newCoordinates[1] + increment < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                        newCoordinates[1] += increment;
                                 }
                             }
                             else if (tryReversedAngularMove) {
@@ -2992,10 +2995,12 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                                 double currentAngleMovement = currentWireAngle + (currentWireAngle - currentAngleCollision);
 
                                 if (previouslyAdditionAngularMovement) {
-                                    newCoordinates[1] -= currentAngleMovement;
+                                    if (newCoordinates[1] - currentAngleMovement > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                        newCoordinates[1] -= currentAngleMovement;
                                 }
                                 else {
-                                    newCoordinates[1] += currentAngleMovement;
+                                    if (newCoordinates[1] + currentAngleMovement < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                        newCoordinates[1] += currentAngleMovement;
                                 }
                             }
                             else if (try0Degrees) {
@@ -3065,6 +3070,9 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                                 newCoordinates[0] -= turn.get_dimensions().value()[0] / 2;
                                 newCoordinates[1] = additionalCoordinates[1];
                             }
+                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                            double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+
                             collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
                             if (collisions.size() == 0) {
                                 break;

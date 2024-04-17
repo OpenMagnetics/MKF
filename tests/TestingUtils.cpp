@@ -585,14 +585,19 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
             turnsIn0++;
         }
         parallelProportion[windingIndex][turn.get_parallel()] += 1.0 / coil.get_number_turns(windingIndex);
-        dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
+
+        if (bobbinWindingWindowShape != OpenMagnetics::WindingWindowShape::ROUND || wires[windingIndex].get_type() != OpenMagnetics::WireType::RECTANGULAR) {
+            dimensionsByName[turn.get_name()] = turn.get_dimensions().value();
+        }
         if (bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::RECTANGULAR) {
             coordinatesByName[turn.get_name()] = turn.get_coordinates();
         }
         else {
             double xCoordinate = turn.get_coordinates()[0];
             double yCoordinate = turn.get_coordinates()[1];
-            coordinatesByName[turn.get_name()] = {xCoordinate, yCoordinate};
+            if (wires[windingIndex].get_type() != OpenMagnetics::WireType::RECTANGULAR) {
+                coordinatesByName[turn.get_name()] = {xCoordinate, yCoordinate};
+            }
             if (turn.get_additional_coordinates()) {
                 auto additionalCoordinates = turn.get_additional_coordinates().value();
 
@@ -611,12 +616,14 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil) {
             equalToOne &= OpenMagnetics::roundFloat(parallelProportion[windingIndex][parallelIndex], 9) == 1;
         }
     }
+
     CHECK(equalToOne);
     bool collides = OpenMagnetics::check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
     CHECK(!collides);
     if (additionalCoordinatesByName.size() > 0) {
         collides |= OpenMagnetics::check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == OpenMagnetics::WindingWindowShape::ROUND);
     }
+    CHECK(!collides);
     return !collides && equalToOne;
 }
 

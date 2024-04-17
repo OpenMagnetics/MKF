@@ -854,7 +854,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     if (coreDatabase.empty()) {
         load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
     }
-
     return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
 }
 

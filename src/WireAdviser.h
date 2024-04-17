@@ -44,6 +44,7 @@ class WireAdviser {
         bool _includeRound;
         double _maximumEffectiveCurrentDensity;
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
+        std::map<std::string, std::vector<std::pair<CoilFunctionalDescription, double>>> _coilFunctionalDescriptions;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
     public:
