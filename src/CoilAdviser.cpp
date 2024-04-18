@@ -208,7 +208,9 @@ namespace OpenMagnetics {
                     reference += " " + std::to_string(insulationIndex);
 
 
+
                     auto resultsPerPattern = get_advised_coil_for_pattern(wires, mas, pattern, repetition, solidInsulationRequirementsForWires, maximumNumberResultsPerPattern, reference);
+
                     std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masMagneticsWithCoil));
                 }
             }
@@ -464,6 +466,7 @@ namespace OpenMagnetics {
 
                 if (wiresWithScoring.size() != 0) {
                     timeout += wiresWithScoring.size();
+
                     wireCoilPerWinding.push_back(wiresWithScoring);
                     found = true;
                     break;

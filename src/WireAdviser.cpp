@@ -393,50 +393,44 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
                                                                                       double temperature){
     std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
 
-    if (_coilFunctionalDescriptions.contains(section.get_name())) {
-        coilFunctionalDescriptions = _coilFunctionalDescriptions[section.get_name()];
+    for (auto& wire : *wires){
+        if (wire.get_type() == WireType::LITZ) {
+            wire.set_strand(wire.resolve_strand());
+        }
     }
-    else {
-        for (auto& wire : *wires){
-            if (wire.get_type() == WireType::LITZ) {
-                wire.set_strand(wire.resolve_strand());
-            }
+
+    for (auto& wire : *wires){
+        if ((!_includeFoil && wire.get_type() == WireType::FOIL) ||
+            (!_includeRectangular && wire.get_type() == WireType::RECTANGULAR) ||
+            (!_includeLitz && wire.get_type() == WireType::LITZ) ||
+            (!_includeRound && wire.get_type() == WireType::ROUND)) {
+            continue;
+        }
+        int numberParallelsNeeded;
+        if (wire.get_type() == WireType::FOIL) {
+            wire.cut_foil_wire_to_section(section);
         }
 
-        for (auto& wire : *wires){
-            if ((!_includeFoil && wire.get_type() == WireType::FOIL) ||
-                (!_includeRectangular && wire.get_type() == WireType::RECTANGULAR) ||
-                (!_includeLitz && wire.get_type() == WireType::LITZ) ||
-                (!_includeRound && wire.get_type() == WireType::ROUND)) {
+
+        if (wire.get_type() == WireType::RECTANGULAR) {
+            numberParallelsNeeded = 1;
+        }
+        else {
+            numberParallelsNeeded = WireWrapper::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
+            if (numberParallelsNeeded > _maximumNumberParallels) {
                 continue;
             }
-            int numberParallelsNeeded;
-            if (wire.get_type() == WireType::FOIL) {
-                wire.cut_foil_wire_to_section(section);
-            }
-
-
-            if (wire.get_type() == WireType::RECTANGULAR) {
-                numberParallelsNeeded = 1;
-            }
-            else {
-                numberParallelsNeeded = WireWrapper::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
-                if (numberParallelsNeeded > _maximumNumberParallels) {
-                    continue;
-                }
-            }
-
-            coilFunctionalDescription.set_number_parallels(numberParallelsNeeded);
-            coilFunctionalDescription.set_wire(wire);
-            coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
-            if (numberParallelsNeeded < _maximumNumberParallels) {
-                coilFunctionalDescription.set_number_parallels(numberParallelsNeeded + 1);
-                coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
-            }
         }
 
-        _coilFunctionalDescriptions[section.get_name()] = coilFunctionalDescriptions;
+        coilFunctionalDescription.set_number_parallels(numberParallelsNeeded);
+        coilFunctionalDescription.set_wire(wire);
+        coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+        if (numberParallelsNeeded < _maximumNumberParallels) {
+            coilFunctionalDescription.set_number_parallels(numberParallelsNeeded + 1);
+            coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+        }
     }
+
     return coilFunctionalDescriptions;
 }
 

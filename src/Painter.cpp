@@ -286,6 +286,12 @@ void Painter::export_svg() {
     auto outFile = std::string {_filepath.string()};
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
 
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex(" "), "_")).string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\,"), "_")).string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\."), "_")).string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\:"), "_")).string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\/"), "_")).string();
+
     auto tempFile = outFile + "_temp.svg";
     matplot::save(tempFile);
     // TODO add more complex polling, check WebBackend

@@ -50,6 +50,7 @@ namespace OpenMagnetics {
         // std::cout << "Getting core" << std::endl;
         size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
+        
         size_t coresWound = 0;
         for (auto& [core, coreScoring] : masMagneticsWithCore) {
             // std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
@@ -103,8 +104,8 @@ namespace OpenMagnetics {
             masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
         }
 
+        settings->set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
         return masMagneticsWithScoring;
-
     }
 
     void MagneticAdviser::normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
