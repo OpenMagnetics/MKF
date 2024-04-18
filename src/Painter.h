@@ -54,6 +54,7 @@ class Painter{
 
     std::vector<double> get_image_size(MagneticWrapper magnetic);
 
+    static std::string fix_filename(std::string filename);
     void export_svg();
     void export_png();
 
