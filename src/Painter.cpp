@@ -160,6 +160,9 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 else {
                     M[j][i] = hypot(field.get_data()[numberPointsX * j + i].get_real(), field.get_data()[numberPointsX * j + i].get_imaginary());
                 }
+                // To avoid bug in library
+                M[j][i] = std::max(0.001, M[j][i]);
+
                 minimumModule = std::min(minimumModule, M[j][i]);
                 maximumModule = std::max(maximumModule, M[j][i]);
 
@@ -282,15 +285,18 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     matplot::yticks({});
 }
 
+std::string Painter::fix_filename(std::string filename) {
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\,"), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\."), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\:"), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\/"), "_")).string();
+    return filename;
+}
+
 void Painter::export_svg() {
     auto outFile = std::string {_filepath.string()};
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
-
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex(" "), "_")).string();
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\,"), "_")).string();
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\."), "_")).string();
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\:"), "_")).string();
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\/"), "_")).string();
 
     auto tempFile = outFile + "_temp.svg";
     matplot::save(tempFile);
