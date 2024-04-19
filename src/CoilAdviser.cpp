@@ -127,7 +127,7 @@ namespace OpenMagnetics {
 
         if (coreType == CoreType::TOROIDAL) {
             // We remove the last combination as in toroids they go around
-            size_t elementsToKeep = std::max(1UL, isolationSidesRequired.size() - 1);
+            size_t elementsToKeep = std::max(size_t(1), isolationSidesRequired.size() - 1);
             sectionPatterns = std::vector<std::vector<size_t>>(sectionPatterns.begin(), sectionPatterns.end() - (sectionPatterns.size() - elementsToKeep));
         }
 
