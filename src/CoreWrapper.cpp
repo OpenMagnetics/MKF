@@ -2535,8 +2535,8 @@ CoreMaterial CoreWrapper::resolve_material() {
 CoreMaterial CoreWrapper::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(coreMaterial)) {
-        auto coreMaterialData = OpenMagnetics::find_core_material_by_name(
-            std::get<std::string>(coreMaterial));
+        auto coreMaterialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(coreMaterial));
+        coreMaterial = coreMaterialData;
         return coreMaterialData;
     }
     else {
@@ -2544,12 +2544,27 @@ CoreMaterial CoreWrapper::resolve_material(CoreMaterialDataOrNameUnion coreMater
     }
 }
 
+CoreShape CoreWrapper::resolve_shape() {
+    return resolve_shape(get_functional_description().get_shape());
+}
+
+CoreShape CoreWrapper::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
+    // If the shape is a string, we have to load its data from the database
+    if (std::holds_alternative<std::string>(coreShape)) {
+        auto coreShapeData = OpenMagnetics::find_core_shape_by_name(std::get<std::string>(coreShape));
+        coreShape = coreShapeData;
+        return coreShapeData;
+    }
+    else {
+        return std::get<CoreShape>(coreShape);
+    }
+}
+
 void CoreWrapper::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
 
-        auto shape_data = OpenMagnetics::find_core_shape_by_name(
-            std::get<std::string>(get_functional_description().get_shape()));
+        auto shape_data = OpenMagnetics::find_core_shape_by_name(std::get<std::string>(get_functional_description().get_shape()));
         shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
         get_mutable_functional_description().set_shape(shape_data);
     }
@@ -2792,11 +2807,14 @@ std::vector<WindingWindowElement> CoreWrapper::get_winding_windows() {
 }
 
 CoreShapeFamily CoreWrapper::get_shape_family() {
-    return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
+    return resolve_shape().get_family();
 }
 
 std::string CoreWrapper::get_shape_name() {
-    return std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_name().value();
+    if (resolve_shape().get_name())
+        return resolve_shape().get_name().value();
+    else
+        return "Custom";
 }
 
 int64_t CoreWrapper::get_number_stacks() {

@@ -419,7 +419,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
         }
-        else if ((coreMagneticFluxDensitySaturationPeak < magneticFluxDensitySaturationPeak) && (fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1) {
+        else if ((coreMagneticFluxDensitySaturationPeak < magneticFluxDensitySaturationPeak) && ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
             double scoring = fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
@@ -454,13 +454,22 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
 }
 
 std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto defaults = Defaults();
     _weights = weights;
 
+    if (coreDatabase.empty()) {
+        load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
+    }
+
     std::vector<std::pair<CoreWrapper, double>> cores;
-    std::string referenceName = referenceCore.get_name().value();
+    std::string referenceShapeName = referenceCore.get_shape_name();
+    std::string referenceMaterialName = referenceCore.get_material_name();
+
     for (auto core : coreDatabase){
-        if (referenceName != core.get_name().value()) {
+        json mierda;
+        to_json(mierda, core);
+        if (referenceShapeName != core.get_shape_name() || referenceMaterialName != core.get_material_name()) {
             if (!_onlyManufacturer || core.get_manufacturer_info()->get_name() == _onlyManufacturer.value()) {
                 if (!core.get_processed_description()) {
                     core.process_data();
@@ -509,15 +518,12 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
         switch (filter) {
             case CoreCrossReferencerFilters::DIMENSIONS: 
                 rankedCores = filterDimensions.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::DIMENSIONS], limit);
-                std::cout << "DIMENSIONS rankedCores: " << rankedCores.size() << std::endl;
                 break;
             case CoreCrossReferencerFilters::WINDING_WINDOW_AREA: 
                 rankedCores = filterWindingWindowArea.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA], limit);
-                std::cout << "WINDING_WINDOW_AREA rankedCores: " << rankedCores.size() << std::endl;
                 break;
             case CoreCrossReferencerFilters::PERMEANCE: 
                 rankedCores = filterPermeance.filter_core(&rankedCores, referenceCore, inputs, _models, weights[CoreCrossReferencerFilters::PERMEANCE], limit);
-                std::cout << "PERMEANCE rankedCores: " << rankedCores.size() << std::endl;
                 break;
         }    
         std::string filterString = std::string{magic_enum::enum_name(filter)};
@@ -526,7 +532,6 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
 
     // We leave core losses for the last one, as it is the most computationally costly
     rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit);
-    std::cout << "CORE_LOSSES rankedCores: " << rankedCores.size() << std::endl;
         logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + std::string{magic_enum::enum_name(CoreCrossReferencerFilters::CORE_LOSSES)} + ".");
 
     if (rankedCores.size() > maximumNumberResults) {

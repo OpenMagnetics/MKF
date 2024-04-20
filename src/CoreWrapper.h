@@ -138,7 +138,9 @@ class CoreWrapper : public MagneticCore {
     bool distribute_and_process_gap();
     void process_data();
     CoreMaterial resolve_material();
-    static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion core);
+    static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);
+    CoreShape resolve_shape();
+    static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
     std::vector<ColumnElement> get_columns();
     std::vector<WindingWindowElement> get_winding_windows();
     double get_depth() { return get_processed_description().value().get_depth(); }
