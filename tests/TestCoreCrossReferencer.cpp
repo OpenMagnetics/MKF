@@ -201,6 +201,29 @@ SUITE(CoreCrossReferencer) {
         // for (auto [core, scoring] : crossReferencedCores) {
         //     std::cout << core.get_name().value() << std::endl;
         // }
+
+        auto scorings = coreCrossReferencer.get_scorings();
+        auto scoredValues = coreCrossReferencer.get_scored_values();
+        json results;
+        results["cores"] = json::array();
+        results["scorings"] = json::array();
+        for (auto& [core, scoring] : crossReferencedCores) {
+            std::string name = core.get_name().value();
+
+            json coreJson;
+            OpenMagnetics::to_json(coreJson, core);
+            results["cores"].push_back(coreJson);
+            results["scorings"].push_back(scoring);
+
+            results["scoringPerFilter"] = json();
+            results["scoredValuePerFilter"] = json();
+            for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>()) {
+                std::string filterString(filter);
+                results["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                results["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+            };
+        }
+
         settings->reset();
     }
 }
