@@ -148,6 +148,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     else {
         referenceReluctance = reluctanceModel->get_core_reluctance(referenceCore).get_core_reluctance();
     }
+    add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, referenceReluctance);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
@@ -167,6 +168,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
             double scoring = fabs(referenceReluctance - reluctance);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, reluctance);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -204,6 +206,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
         throw std::runtime_error("Winding windong is missing area");
     }
     double referenceWindingWindowArea = referenceCore.get_winding_windows()[0].get_area().value();
+    add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, referenceWindingWindowArea);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
@@ -217,6 +220,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
             double scoring = fabs(referenceWindingWindowArea - windingWindowArea);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, windingWindowArea);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -253,6 +257,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     double referenceDepth = referenceCore.get_depth();
     double referenceHeight = referenceCore.get_height();
     double referenceWidth = referenceCore.get_width();
+    add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
@@ -265,6 +270,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
             double scoring = fabs(referenceDepth - depth) + fabs(referenceHeight - height) + fabs(referenceWidth - width);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, std::max(depth, std::max(height, width)));
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -394,7 +400,11 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     }
     std::vector<double> newScoring;
 
+    auto temperature = inputs.get_maximum_temperature();
     auto [referenceCoreLossesWithTemperature, referenceCoreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(referenceCore, referenceNumberTurns, inputs, models);
+    auto referenceMaterialMagneticFluxDensitySaturationPeak = referenceCore.get_magnetic_flux_density_saturation(temperature, true);
+    add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, referenceCoreLossesWithTemperature);
+    add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::SATURATION, 1 + (referenceCoreMagneticFluxDensitySaturationPeak - referenceMaterialMagneticFluxDensitySaturationPeak) / referenceMaterialMagneticFluxDensitySaturationPeak);
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
@@ -408,18 +418,19 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         CoreWrapper core = (*unfilteredCores)[coreIndex].first;
-        auto temperature = inputs.get_maximum_temperature();
 
-        auto magneticFluxDensitySaturationPeak = core.get_magnetic_flux_density_saturation(temperature, true);
+        auto materialMagneticFluxDensitySaturationPeak = core.get_magnetic_flux_density_saturation(temperature, true);
 
         auto [coreLossesWithTemperature, coreMagneticFluxDensitySaturationPeak] = calculate_average_core_losses_and_magnetic_flux_density(core, referenceNumberTurns, inputs, models);
+        add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, coreLossesWithTemperature);
+        add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::SATURATION, 1 + (coreMagneticFluxDensitySaturationPeak - materialMagneticFluxDensitySaturationPeak) / materialMagneticFluxDensitySaturationPeak);
 
-        if ((coreMagneticFluxDensitySaturationPeak < magneticFluxDensitySaturationPeak) && (coreLossesWithTemperature < referenceCoreLossesWithTemperature)) {
+        if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && (coreLossesWithTemperature < referenceCoreLossesWithTemperature)) {
             double scoring = 0;
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
         }
-        else if ((coreMagneticFluxDensitySaturationPeak < magneticFluxDensitySaturationPeak) && ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
+        else if ((coreMagneticFluxDensitySaturationPeak < materialMagneticFluxDensitySaturationPeak) && ((fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature) / referenceCoreLossesWithTemperature < limit) || limit >= 1)) {
             double scoring = fabs(referenceCoreLossesWithTemperature - coreLossesWithTemperature);
             newScoring.push_back(scoring);
             add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES, scoring);
@@ -503,12 +514,16 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
     MagneticCoreFilterDimensions filterDimensions;
 
     filterPermeance.set_scorings(&_scorings);
+    filterPermeance.set_scored_value(&_scoredValues);
     filterPermeance.set_filter_configuration(&_filterConfiguration);
     filterVolumetricLosses.set_scorings(&_scorings);
+    filterVolumetricLosses.set_scored_value(&_scoredValues);
     filterVolumetricLosses.set_filter_configuration(&_filterConfiguration);
     filterWindingWindowArea.set_scorings(&_scorings);
+    filterWindingWindowArea.set_scored_value(&_scoredValues);
     filterWindingWindowArea.set_filter_configuration(&_filterConfiguration);
     filterDimensions.set_scorings(&_scorings);
+    filterDimensions.set_scored_value(&_scoredValues);
     filterDimensions.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<CoreWrapper, double>> rankedCores = *cores;
