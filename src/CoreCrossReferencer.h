@@ -52,6 +52,7 @@ class CoreCrossReferencer {
             }
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
+            _weights[CoreCrossReferencerFilters::SATURATION] = 0;
             _weights[CoreCrossReferencerFilters::CORE_LOSSES] = 0.5;
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::DIMENSIONS] = 0.1;
@@ -63,6 +64,7 @@ class CoreCrossReferencer {
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
+            _weights[CoreCrossReferencerFilters::SATURATION] = 0;
             _weights[CoreCrossReferencerFilters::CORE_LOSSES] = 0.5;
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::DIMENSIONS] = 0.1;
@@ -96,7 +98,8 @@ class CoreCrossReferencer {
                     (*_scorings)[filter][name] = scoring;
                 }
             }
-            void add_scored_value(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoredValues) {
+            void 
+            add_scored_value(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoredValues) {
                 if (scoredValues != -1) {
                     (*_scoredValues)[filter][name] = scoredValues;
                 }

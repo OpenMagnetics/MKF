@@ -161,6 +161,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     }
     add_scored_value(referenceCore.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE, referenceReluctance);
 
+
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         CoreWrapper core = (*unfilteredCores)[coreIndex].first;
@@ -488,9 +489,11 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
     std::string referenceShapeName = referenceCore.get_shape_name();
     std::string referenceMaterialName = referenceCore.get_material_name();
 
+    if (!referenceCore.get_name()) {
+        referenceCore.set_name("Custom");
+    }
+
     for (auto core : coreDatabase){
-        json mierda;
-        to_json(mierda, core);
         if (referenceShapeName != core.get_shape_name() || referenceMaterialName != core.get_material_name()) {
             if (!_onlyManufacturer || core.get_manufacturer_info()->get_name() == _onlyManufacturer.value()) {
                 if (!core.get_processed_description()) {
