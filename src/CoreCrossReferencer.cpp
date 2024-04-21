@@ -83,6 +83,17 @@ std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, 
     }
     return swappedScorings;
 }
+std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> CoreCrossReferencer::get_scored_values(){
+    std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, double>> swappedScoredValues;
+    for (auto& [filter, aux] : _scoredValues) {
+        auto filterConfiguration = _filterConfiguration[filter];
+
+        for (auto& [name, scoredValue] : aux) {
+            swappedScoredValues[name][filter] = scoredValue;
+        }
+    }
+    return swappedScoredValues;
+}
 
 void normalize_scoring(std::vector<std::pair<CoreWrapper, double>>* rankedCores, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());

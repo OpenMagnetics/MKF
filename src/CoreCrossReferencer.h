@@ -32,6 +32,7 @@ class CoreCrossReferencer {
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _filterConfiguration{
                 { CoreCrossReferencerFilters::PERMEANCE,            { {"invert", true}, {"log", true} } },
                 { CoreCrossReferencerFilters::CORE_LOSSES,          { {"invert", true}, {"log", true} } },
+                { CoreCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", true} } },
                 { CoreCrossReferencerFilters::WINDING_WINDOW_AREA,  { {"invert", true}, {"log", true} } },
                 { CoreCrossReferencerFilters::DIMENSIONS,           { {"invert", true}, {"log", true} } }
             };
@@ -73,7 +74,7 @@ class CoreCrossReferencer {
             return get_scorings(false);
         }
 
-        std::map<std::string, std::map<CoreCrossReferencerFilters, double>> get_scored_values(bool weighted);
+        std::map<std::string, std::map<CoreCrossReferencerFilters, double>> get_scored_values();
         std::map<std::string, std::map<CoreCrossReferencerFilters, double>> get_scorings(bool weighted);
 
         std::vector<std::pair<CoreWrapper, double>> get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, size_t maximumNumberResults=10);
