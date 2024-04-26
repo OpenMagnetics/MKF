@@ -228,7 +228,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     std::vector<double> newScoring;
     std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
     if (!referenceCore.get_winding_windows()[0].get_area()) {
-        throw std::runtime_error("Winding windong is missing area");
+        throw std::runtime_error("Winding window is missing area");
     }
     double referenceWindingWindowArea = referenceCore.get_winding_windows()[0].get_area().value();
     add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA, referenceWindingWindowArea);
@@ -249,7 +249,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
             }
         }
         if (!core.get_winding_windows()[0].get_area()) {
-            throw std::runtime_error("Winding windong is missing area");
+            throw std::runtime_error("Winding window is missing area");
         }
         double windingWindowArea = core.get_winding_windows()[0].get_area().value();
 
@@ -284,25 +284,27 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterDimensions::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
+std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterEffectiveArea::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
 
     std::vector<double> newScoring;
     std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
-    double referenceDepth = referenceCore.get_depth();
-    double referenceHeight = referenceCore.get_height();
-    double referenceWidth = referenceCore.get_width();
-    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
+    if (!referenceCore.get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    double referenceEffectiveArea = referenceCore.get_processed_description()->get_effective_parameters().get_effective_area();
+    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, referenceEffectiveArea);
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
         CoreWrapper core = (*unfilteredCores)[coreIndex].first;
-        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS)) {
-            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS].contains(core.get_name().value())) {
-                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS][core.get_name().value()]) {
-                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS][core.get_name().value()]);
+
+        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA)) {
+            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA][core.get_name().value()]);
                 }
                 else {
                     listOfIndexesToErase.push_back(coreIndex);
@@ -310,15 +312,16 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
                 continue;
             }
         }
-        double depth = core.get_depth();
-        double height = core.get_height();
-        double width = core.get_width();
+        if (!core.get_processed_description()) {
+            throw std::runtime_error("Core is not processed");
+        }
+        double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
 
-        if (fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
-            double scoring = fabs(referenceDepth - depth) + fabs(referenceHeight - height) + fabs(referenceWidth - width);
+        if (fabs(referenceEffectiveArea - effectiveArea) / referenceEffectiveArea < limit) {
+            double scoring = fabs(referenceEffectiveArea - effectiveArea);
             newScoring.push_back(scoring);
-            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, scoring);
-            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS, std::max(depth, std::max(height, width)));
+            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA, effectiveArea);
         }
         else {
             listOfIndexesToErase.push_back(coreIndex);
@@ -340,7 +343,68 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     }
 
     if (filteredCoresWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::DIMENSIONS]);
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA]);
+    }
+    return filteredCoresWithScoring;
+}
+
+std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterEnvelopingVolume::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
+    if (weight <= 0) {
+        return *unfilteredCores;
+    }
+
+    std::vector<double> newScoring;
+    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    double referenceDepth = referenceCore.get_depth();
+    double referenceHeight = referenceCore.get_height();
+    double referenceWidth = referenceCore.get_width();
+    add_scored_value("Reference", CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(referenceDepth, std::max(referenceHeight, referenceWidth)));
+
+    std::list<size_t> listOfIndexesToErase;
+    for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
+        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME)) {
+            if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME].contains(core.get_name().value())) {
+                if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]) {
+                    newScoring.push_back((*_scorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]);
+                }
+                else {
+                    listOfIndexesToErase.push_back(coreIndex);
+                }
+                continue;
+            }
+        }
+        double depth = core.get_depth();
+        double height = core.get_height();
+        double width = core.get_width();
+
+        if (fabs(referenceDepth - depth) / referenceDepth < limit && fabs(referenceHeight - height) / referenceHeight < limit && fabs(referenceWidth - width) / referenceWidth < limit) {
+            double scoring = fabs(referenceDepth - depth) + fabs(referenceHeight - height) + fabs(referenceWidth - width);
+            newScoring.push_back(scoring);
+            add_scoring(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, scoring);
+            add_scored_value(core.get_name().value(), CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME, std::max(depth, std::max(height, width)));
+        }
+        else {
+            listOfIndexesToErase.push_back(coreIndex);
+        }
+
+    }
+
+    for (size_t i = 0; i < (*unfilteredCores).size(); ++i) {
+        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
+            listOfIndexesToErase.pop_front();
+        }
+        else {
+            filteredCoresWithScoring.push_back((*unfilteredCores)[i]);
+        }
+    }
+
+    if (filteredCoresWithScoring.size() != newScoring.size()) {
+        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCores: " + std::to_string((*unfilteredCores).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredCoresWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoresWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME]);
     }
     return filteredCoresWithScoring;
 }
@@ -571,8 +635,9 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
 std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(std::vector<std::pair<CoreWrapper, double>>* cores, CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit) {
     MagneticCoreFilterPermeance filterPermeance;
     MagneticCoreFilterCoreLosses filterVolumetricLosses;
-    MagneticCoreFilterWindingWindowArea filterWindingWindowArea;
-    MagneticCoreFilterDimensions filterDimensions;
+    MagneticCoreFilterWindingWindowArea filterEffectiveArea;
+    MagneticCoreFilterEffectiveArea filterWindingWindowArea;
+    MagneticCoreFilterEnvelopingVolume filterEnvelopingVolume;
 
     filterPermeance.set_scorings(&_scorings);
     filterPermeance.set_valid_scorings(&_validScorings);
@@ -586,21 +651,28 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
     filterWindingWindowArea.set_valid_scorings(&_validScorings);
     filterWindingWindowArea.set_scored_value(&_scoredValues);
     filterWindingWindowArea.set_filter_configuration(&_filterConfiguration);
-    filterDimensions.set_scorings(&_scorings);
-    filterDimensions.set_valid_scorings(&_validScorings);
-    filterDimensions.set_scored_value(&_scoredValues);
-    filterDimensions.set_filter_configuration(&_filterConfiguration);
+    filterEffectiveArea.set_scorings(&_scorings);
+    filterEffectiveArea.set_valid_scorings(&_validScorings);
+    filterEffectiveArea.set_scored_value(&_scoredValues);
+    filterEffectiveArea.set_filter_configuration(&_filterConfiguration);
+    filterEnvelopingVolume.set_scorings(&_scorings);
+    filterEnvelopingVolume.set_valid_scorings(&_validScorings);
+    filterEnvelopingVolume.set_scored_value(&_scoredValues);
+    filterEnvelopingVolume.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<CoreWrapper, double>> rankedCores = *cores;
 
     magic_enum::enum_for_each<CoreCrossReferencerFilters>([&] (auto val) {
         CoreCrossReferencerFilters filter = val;
         switch (filter) {
-            case CoreCrossReferencerFilters::DIMENSIONS: 
-                rankedCores = filterDimensions.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::DIMENSIONS], limit);
+            case CoreCrossReferencerFilters::ENVELOPING_VOLUME: 
+                rankedCores = filterEnvelopingVolume.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME], limit);
                 break;
             case CoreCrossReferencerFilters::WINDING_WINDOW_AREA: 
                 rankedCores = filterWindingWindowArea.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA], limit);
+                break;
+            case CoreCrossReferencerFilters::EFFECTIVE_AREA: 
+                rankedCores = filterEffectiveArea.filter_core(&rankedCores, referenceCore, weights[CoreCrossReferencerFilters::EFFECTIVE_AREA], limit);
                 break;
             case CoreCrossReferencerFilters::PERMEANCE: 
                 rankedCores = filterPermeance.filter_core(&rankedCores, referenceCore, inputs, _models, weights[CoreCrossReferencerFilters::PERMEANCE], limit);

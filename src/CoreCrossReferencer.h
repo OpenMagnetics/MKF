@@ -16,7 +16,8 @@ class CoreCrossReferencer {
             CORE_LOSSES, 
             SATURATION, 
             WINDING_WINDOW_AREA, 
-            DIMENSIONS
+            ENVELOPING_VOLUME, 
+            EFFECTIVE_AREA
         };
     protected:
         std::map<std::string, std::string> _models;
@@ -34,7 +35,8 @@ class CoreCrossReferencer {
                 { CoreCrossReferencerFilters::CORE_LOSSES,          { {"invert", true}, {"log", true} } },
                 { CoreCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", true} } },
                 { CoreCrossReferencerFilters::WINDING_WINDOW_AREA,  { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::DIMENSIONS,           { {"invert", true}, {"log", true} } }
+                { CoreCrossReferencerFilters::EFFECTIVE_AREA,       { {"invert", true}, {"log", true} } },
+                { CoreCrossReferencerFilters::ENVELOPING_VOLUME,    { {"invert", true}, {"log", true} } }
             };
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scorings;
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _validScorings;
@@ -53,10 +55,11 @@ class CoreCrossReferencer {
             }
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
-            _weights[CoreCrossReferencerFilters::SATURATION] = 0;
+            _weights[CoreCrossReferencerFilters::SATURATION] = 0.5;
             _weights[CoreCrossReferencerFilters::CORE_LOSSES] = 0.5;
+            _weights[CoreCrossReferencerFilters::EFFECTIVE_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
-            _weights[CoreCrossReferencerFilters::DIMENSIONS] = 0.1;
+            _weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME] = 0.1;
         }
         CoreCrossReferencer() {
             auto defaults = OpenMagnetics::Defaults();
@@ -65,10 +68,11 @@ class CoreCrossReferencer {
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
 
             _weights[CoreCrossReferencerFilters::PERMEANCE] = 1;
-            _weights[CoreCrossReferencerFilters::SATURATION] = 0;
+            _weights[CoreCrossReferencerFilters::SATURATION] = 0.5;
             _weights[CoreCrossReferencerFilters::CORE_LOSSES] = 0.5;
+            _weights[CoreCrossReferencerFilters::EFFECTIVE_AREA] = 0.5;
             _weights[CoreCrossReferencerFilters::WINDING_WINDOW_AREA] = 0.5;
-            _weights[CoreCrossReferencerFilters::DIMENSIONS] = 0.1;
+            _weights[CoreCrossReferencerFilters::ENVELOPING_VOLUME] = 0.1;
         }
         std::string read_log() {
             return _log;
@@ -134,7 +138,12 @@ class CoreCrossReferencer {
             std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
     };
     
-    class MagneticCoreFilterDimensions : public MagneticCoreFilter {
+    class MagneticCoreFilterEffectiveArea : public MagneticCoreFilter {
+        public:
+            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
+    };
+    
+    class MagneticCoreFilterEnvelopingVolume : public MagneticCoreFilter {
         public:
             std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
     };
