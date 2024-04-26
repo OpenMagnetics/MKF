@@ -37,6 +37,7 @@ class CoreCrossReferencer {
                 { CoreCrossReferencerFilters::DIMENSIONS,           { {"invert", true}, {"log", true} } }
             };
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scorings;
+        std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _validScorings;
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scoredValues;
         CoreCrossReferencer(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
@@ -90,11 +91,13 @@ class CoreCrossReferencer {
     class MagneticCoreFilter {
         public:
             std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* _scorings;
+            std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
             std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
             void add_scoring(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoring) {
                 if (scoring != -1) {
+                    (*_validScorings)[filter][name] = true;
                     (*_scorings)[filter][name] = scoring;
                 }
             }
@@ -106,6 +109,9 @@ class CoreCrossReferencer {
             }
             void set_scorings(std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* scorings) {
                 _scorings = scorings;
+            }
+            void set_valid_scorings(std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* validScorings) {
+                _validScorings = validScorings;
             }
             void set_scored_value(std::map<CoreCrossReferencerFilters, std::map<std::string, double>>* scoredValues) {
                 _scoredValues = scoredValues;

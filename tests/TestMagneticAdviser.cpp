@@ -54,6 +54,7 @@ SUITE(MagneticAdviser) {
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile);
 
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -135,6 +136,7 @@ SUITE(MagneticAdviser) {
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile);
 
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -199,6 +201,7 @@ SUITE(MagneticAdviser) {
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile);
 
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -241,6 +244,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -282,6 +286,7 @@ SUITE(MagneticAdviser) {
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile);
 
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
                 painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
                 painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -413,6 +418,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -464,6 +470,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -515,6 +522,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -571,6 +579,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -602,6 +611,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
@@ -720,6 +730,7 @@ SUITE(MagneticAdviser) {
             outFile.append(filename);
             OpenMagnetics::Painter painter(outFile);
 
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());

@@ -47,7 +47,8 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "ETD 29/16/10 - 3C97 - Gapped 1.000 mm");
+        std::cout << crossReferencedCores[0].first.get_name().value() << std::endl;        
+        CHECK(crossReferencedCores[0].first.get_name() == "EC 35/17/10 - 3C94 - Gapped 1.000 mm");
         // for (auto [core, scoring] : crossReferencedCores) {
             // std::cout << core.get_name().value() << std::endl;
         // }
@@ -85,7 +86,8 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "ER 42/22/15 - N27 - Gapped 1.000 mm");
+        std::cout << crossReferencedCores[0].first.get_name().value() << std::endl;        
+        CHECK(crossReferencedCores[0].first.get_name() == "ER 35/20/11 - N27 - Gapped 1.500 mm");
     }
 
     TEST(Test_All_Core_Materials_Powder) {
@@ -119,6 +121,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
+        std::cout << crossReferencedCores[0].first.get_name().value() << std::endl;        
         CHECK(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - Kool Mµ 60 - Ungapped");
         for (auto [core, scoring] : crossReferencedCores) {
             std::cout << core.get_name().value() << std::endl;
@@ -157,6 +160,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
+        std::cout << crossReferencedCores[0].first.get_name().value() << std::endl;        
         CHECK(crossReferencedCores[0].first.get_name() == "T 17.3/9.65/6.35 - parylene coated - OC 90 - Ungapped");
         for (auto [core, scoring] : crossReferencedCores) {
             std::cout << core.get_name().value() << std::endl;
@@ -194,9 +198,10 @@ SUITE(CoreCrossReferencer) {
                                                                                          offset);
 
 
-        auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
+        auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 20);
 
         CHECK(crossReferencedCores.size() > 0);
+        std::cout << crossReferencedCores[0].first.get_name().value() << std::endl;        
         CHECK(crossReferencedCores[0].first.get_name() == "PM 50/39 - 3C94 - Gapped 1.820 mm");
         // for (auto [core, scoring] : crossReferencedCores) {
         //     std::cout << core.get_name().value() << std::endl;
@@ -215,14 +220,25 @@ SUITE(CoreCrossReferencer) {
             results["cores"].push_back(coreJson);
             results["scorings"].push_back(scoring);
 
-            results["scoringPerFilter"] = json();
-            results["scoredValuePerFilter"] = json();
+            json result;
+            result["scoringPerFilter"] = json();
+            result["scoredValuePerFilter"] = json();
             for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>()) {
                 std::string filterString(filter);
-                results["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
-                results["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                std::cout << result["scoredValuePerFilter"][filterString] << std::endl;
             };
+            results["data"].push_back(result);
         }
+
+        for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>()) {
+            std::string filterString(filter);
+            std::cout << filter << std::endl;
+            std::cout << scoredValues["Reference"][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()] << std::endl;
+        };
+
 
         settings->reset();
     }

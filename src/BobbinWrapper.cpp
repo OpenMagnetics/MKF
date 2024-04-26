@@ -252,25 +252,31 @@ void load_interpolators() {
 
 
         for (auto& datum : bobbinDatabase) {
-            auto coreShapeName = datum.second.get_functional_description()->get_shape();
-            auto coreShape = find_core_shape_by_name(coreShapeName);
-            auto corePiece = OpenMagnetics::CorePiece::factory(coreShape);
+            try {
+                auto coreShapeName = datum.second.get_functional_description()->get_shape();
+                auto coreShape = find_core_shape_by_name(coreShapeName);
+                auto corePiece = OpenMagnetics::CorePiece::factory(coreShape);
 
-            auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
-            auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
-            double bobbinFillingFactor = bobbinWindingWindowArea / coreShapeWindingWindowArea;
-            double bobbinWindingWindowWidth = datum.second.get_processed_description()->get_winding_windows()[0].get_width().value();
-            double bobbinWindingWindowHeight = datum.second.get_processed_description()->get_winding_windows()[0].get_height().value();
-            double coreWindingWindowWidth = corePiece->get_winding_window().get_width().value();
-            double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
-            AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
-            AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor };
-            auxFillingFactorWidth.push_back(bobbinAuxFillingFactorWidth);
-            auxFillingFactorHeight.push_back(bobbinAuxFillingFactorHeight);
-            AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidth };
-            AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeight };
-            auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
-            auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
+                auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
+                auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
+                double bobbinFillingFactor = bobbinWindingWindowArea / coreShapeWindingWindowArea;
+                double bobbinWindingWindowWidth = datum.second.get_processed_description()->get_winding_windows()[0].get_width().value();
+                double bobbinWindingWindowHeight = datum.second.get_processed_description()->get_winding_windows()[0].get_height().value();
+                double coreWindingWindowWidth = corePiece->get_winding_window().get_width().value();
+                double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
+                AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
+                AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor };
+                auxFillingFactorWidth.push_back(bobbinAuxFillingFactorWidth);
+                auxFillingFactorHeight.push_back(bobbinAuxFillingFactorHeight);
+                AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidth };
+                AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeight };
+                auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
+                auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
+            }
+            catch (const std::exception &e)
+            {
+                continue;
+            }
         }
 
         {
