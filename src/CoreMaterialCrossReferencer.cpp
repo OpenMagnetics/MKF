@@ -124,6 +124,18 @@ void normalize_scoring(std::vector<std::pair<CoreMaterial, double>>* rankedCoreM
     });
 }
 
+std::map<std::string, std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double>> CoreMaterialCrossReferencer::get_scored_values(){
+    std::map<std::string, std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double>> swappedScoredValues;
+    for (auto& [filter, aux] : _scoredValues) {
+        auto filterConfiguration = _filterConfiguration[filter];
+
+        for (auto& [name, scoredValue] : aux) {
+            swappedScoredValues[name][filter] = scoredValue;
+        }
+    }
+    return swappedScoredValues;
+}
+
 std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::MagneticCoreFilterInitialPermeability::filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight) {
     if (weight <= 0) {
         return *unfilteredCoreMaterials;
@@ -132,6 +144,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     OpenMagnetics::InitialPermeability initialPermeability;
 
     double referenceInitialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(referenceCoreMaterial, temperature, std::nullopt, std::nullopt);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, referenceInitialPermeabilityValueWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -141,6 +155,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceInitialPermeabilityValueWithTemperature - initialPermeabilityValueWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, initialPermeabilityValueWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -160,6 +175,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceRemanenceWithTemperature = CoreWrapper::get_remanence(referenceCoreMaterial, temperature);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE, referenceRemanenceWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -169,6 +186,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceRemanenceWithTemperature - remanenceWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE, remanenceWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -188,6 +206,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceCoerciveForceWithTemperature = CoreWrapper::get_coercive_force(referenceCoreMaterial, temperature);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE, referenceCoerciveForceWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -197,6 +217,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceCoerciveForceWithTemperature - coerciveForceWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE, coerciveForceWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -216,6 +237,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceSaturationWithTemperature = CoreWrapper::get_magnetic_flux_density_saturation(referenceCoreMaterial, temperature);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION, referenceSaturationWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -225,6 +248,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceSaturationWithTemperature - saturationWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION, saturationWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -244,6 +268,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceCurieTemperatureWithTemperature = CoreWrapper::get_curie_temperature(referenceCoreMaterial);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, referenceCurieTemperatureWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -253,6 +279,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceCurieTemperatureWithTemperature - curieTemperatureWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, curieTemperatureWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -320,6 +347,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, referenceVolumetricLossesWithTemperature);
+
 
     OperatingPointExcitation excitation;
     SignalDescriptor magneticFluxDensity;
@@ -335,6 +364,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceVolumetricLossesWithTemperature - volumetricLossesWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, volumetricLossesWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -354,6 +384,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceResistivityWithTemperature = CoreWrapper::get_resistivity(referenceCoreMaterial, temperature);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY, referenceResistivityWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -363,6 +395,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceResistivityWithTemperature - resistivityWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY, resistivityWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -382,6 +415,8 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     double referenceDensityWithTemperature = CoreWrapper::get_density(referenceCoreMaterial);
+    add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::DENSITY, referenceDensityWithTemperature);
+
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
@@ -391,6 +426,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         double scoring = fabs(referenceDensityWithTemperature - densityWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::DENSITY, scoring);
+        add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::DENSITY, densityWithTemperature);
     }
 
     if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
@@ -436,20 +472,28 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     MagneticCoreFilterDensity filterDensity;
 
     filterInitialPermeability.set_scorings(&_scorings);
+    filterInitialPermeability.set_scored_value(&_scoredValues);
     filterInitialPermeability.set_filter_configuration(&_filterConfiguration);
     filterRemanence.set_scorings(&_scorings);
+    filterRemanence.set_scored_value(&_scoredValues);
     filterRemanence.set_filter_configuration(&_filterConfiguration);
     filterCoerciveForce.set_scorings(&_scorings);
+    filterCoerciveForce.set_scored_value(&_scoredValues);
     filterCoerciveForce.set_filter_configuration(&_filterConfiguration);
     filterSaturation.set_scorings(&_scorings);
+    filterSaturation.set_scored_value(&_scoredValues);
     filterSaturation.set_filter_configuration(&_filterConfiguration);
     filterCurieTemperature.set_scorings(&_scorings);
+    filterCurieTemperature.set_scored_value(&_scoredValues);
     filterCurieTemperature.set_filter_configuration(&_filterConfiguration);
     filterVolumetricLosses.set_scorings(&_scorings);
+    filterVolumetricLosses.set_scored_value(&_scoredValues);
     filterVolumetricLosses.set_filter_configuration(&_filterConfiguration);
     filterResistivity.set_scorings(&_scorings);
+    filterResistivity.set_scored_value(&_scoredValues);
     filterResistivity.set_filter_configuration(&_filterConfiguration);
     filterDensity.set_scorings(&_scorings);
+    filterDensity.set_scored_value(&_scoredValues);
     filterDensity.set_filter_configuration(&_filterConfiguration);
 
     std::vector<std::pair<CoreMaterial, double>> rankedCoreMaterials = *coreMaterials;

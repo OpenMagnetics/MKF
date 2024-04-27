@@ -43,6 +43,7 @@ class CoreMaterialCrossReferencer {
                 { CoreMaterialCrossReferencerFilters::DENSITY,              { {"invert", true}, {"log", true} } },
             };
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scorings;
+        std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scoredValues;
         CoreMaterialCrossReferencer(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
@@ -87,6 +88,7 @@ class CoreMaterialCrossReferencer {
             return get_scorings(false);
         }
 
+        std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> get_scored_values();
         std::map<std::string, std::map<CoreMaterialCrossReferencerFilters, double>> get_scorings(bool weighted);
 
         std::vector<std::pair<CoreMaterial, double>> get_cross_referenced_core_material(CoreMaterial referenceCoreMaterial, double temperature, size_t maximumNumberResults=10);
@@ -100,6 +102,7 @@ class CoreMaterialCrossReferencer {
     class MagneticCoreFilter {
         public:
             std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* _scorings;
+            std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* _scoredValues;
             std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
             void add_scoring(std::string name, CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters filter, double scoring) {
@@ -107,8 +110,16 @@ class CoreMaterialCrossReferencer {
                     (*_scorings)[filter][name] = scoring;
                 }
             }
+            void add_scored_value(std::string name, CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters filter, double scoredValues) {
+                if (scoredValues != -1) {
+                    (*_scoredValues)[filter][name] = scoredValues;
+                }
+            }
             void set_scorings(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* scorings) {
                 _scorings = scorings;
+            }
+            void set_scored_value(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>>* scoredValues) {
+                _scoredValues = scoredValues;
             }
             void set_filter_configuration(std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* filterConfiguration) {
                 _filterConfiguration = filterConfiguration;

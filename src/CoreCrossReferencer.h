@@ -105,8 +105,7 @@ class CoreCrossReferencer {
                     (*_scorings)[filter][name] = scoring;
                 }
             }
-            void 
-            add_scored_value(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoredValues) {
+            void add_scored_value(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoredValues) {
                 if (scoredValues != -1) {
                     (*_scoredValues)[filter][name] = scoredValues;
                 }
