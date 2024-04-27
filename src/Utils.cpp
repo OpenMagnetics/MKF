@@ -65,29 +65,26 @@ void load_cores(bool includeToroidalCores, bool useOnlyCoresInStock, bool includ
         auto data = fs.open("MAS/data/cores.ndjson");
         std::string database = std::string(data.begin(), data.end());
         std::string delimiter = "\n";
-        // size_t pos = 0;
-        // std::string token;
-        // if (database.back() != delimiter.back()) {
-        //     database += delimiter;
-        // }
+
         if (database.back() == delimiter.back()) {
             database.pop_back();
         }
         database = std::regex_replace(database, std::regex("\n"), ", ");
         database = "[" + database + "]";
         json arr = json::parse(database);
-        coreDatabase = std::vector<CoreWrapper>(arr);
+        std::vector<OpenMagnetics::CoreWrapper> tempCoreDatabase;
 
-        // throw std::runtime_error("Ea");
-        // while ((pos = database.find(delimiter)) != std::string::npos) {
-        //     token = database.substr(0, pos);
-        //     json jf = json::parse(token);
-        //     CoreWrapper core(jf, false, true, false);
-        //     if (includeToroidalCores || core.get_type() != CoreType::TOROIDAL) {
-        //         coreDatabase.push_back(core);
-        //     }
-        //     database.erase(0, pos + delimiter.length());
-        // }
+        tempCoreDatabase = std::vector<CoreWrapper>(arr);
+        if (includeToroidalCores && includeConcentricCores) {
+            coreDatabase = tempCoreDatabase;
+        }
+        else {
+            for (auto core : tempCoreDatabase) {
+                if ((includeToroidalCores && core.get_type() == CoreType::TOROIDAL) || (includeConcentricCores && core.get_type() != CoreType::TOROIDAL)) {
+                    coreDatabase.push_back(core);
+                }
+            }
+        }
     }
 }
 
