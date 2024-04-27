@@ -455,6 +455,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
         for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
             if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
                 coreLossesModelForMaterial = coreLossesModel;
+                break;
             }
         }
 

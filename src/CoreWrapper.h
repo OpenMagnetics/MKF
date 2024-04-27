@@ -158,9 +158,9 @@ class CoreWrapper : public MagneticCore {
     double get_curie_temperature();
     static double get_curie_temperature(CoreMaterial coreMaterial);
     double get_remanence(double temperature);
-    static double get_remanence(CoreMaterial coreMaterial, double temperature);
+    static double get_remanence(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing = false);
     double get_coercive_force(double temperature);
-    static double get_coercive_force(CoreMaterial coreMaterial, double temperature);
+    static double get_coercive_force(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing = false);
     double get_magnetic_flux_density_saturation(bool proportion = true);
     static double get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, bool proportion = true);
     double get_magnetic_flux_density_saturation(double temperature, bool proportion = true);

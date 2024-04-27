@@ -31,12 +31,12 @@ class CoreCrossReferencer {
 
     public:
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _filterConfiguration{
-                { CoreCrossReferencerFilters::PERMEANCE,            { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::CORE_LOSSES,          { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::WINDING_WINDOW_AREA,  { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::EFFECTIVE_AREA,       { {"invert", true}, {"log", true} } },
-                { CoreCrossReferencerFilters::ENVELOPING_VOLUME,    { {"invert", true}, {"log", true} } }
+                { CoreCrossReferencerFilters::PERMEANCE,            { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::CORE_LOSSES,          { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::WINDING_WINDOW_AREA,  { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::EFFECTIVE_AREA,       { {"invert", true}, {"log", false} } },
+                { CoreCrossReferencerFilters::ENVELOPING_VOLUME,    { {"invert", true}, {"log", false} } }
             };
         std::map<CoreCrossReferencerFilters, std::map<std::string, double>> _scorings;
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _validScorings;
@@ -100,6 +100,10 @@ class CoreCrossReferencer {
             std::map<CoreCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
             void add_scoring(std::string name, CoreCrossReferencer::CoreCrossReferencerFilters filter, double scoring) {
+                if (std::isnan(scoring)) {
+                    throw std::invalid_argument("scoring cannot be nan");
+                }
+
                 if (scoring != -1) {
                     (*_validScorings)[filter][name] = true;
                     (*_scorings)[filter][name] = scoring;

@@ -31,16 +31,16 @@ SUITE(CoreCrossReferencer) {
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
         double frequency = 100000;
-        double magnetizingInductance = 100e-6   ;
+        double magnetizingInductance = 100e-6;
         int64_t numberTurns = 28;
 
         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
-                                                                                         magnetizingInductance,
-                                                                                         temperature,
-                                                                                         label,
-                                                                                         peakToPeak,
-                                                                                         dutyCycle,
-                                                                                         offset);
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              label,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              offset);
 
 
         auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
@@ -211,6 +211,8 @@ SUITE(CoreCrossReferencer) {
 
                 result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
                 result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
+                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }

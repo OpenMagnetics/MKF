@@ -531,7 +531,27 @@ CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
 double CoreLossesRoshenModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
-    throw std::runtime_error("voluemtric losses are not vaid for Roshen's model");
+    CoreWrapper ringCore;
+    ringCore.set_name("Dummy Ring Core");
+    ringCore.get_mutable_functional_description().set_material(coreMaterial);
+    ringCore.get_mutable_functional_description().set_shape("T 10/6/4");
+    ringCore.get_mutable_functional_description().set_number_stacks(1);
+    ringCore.get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+    ringCore.get_mutable_functional_description().set_gapping({});
+    ringCore.process_data();
+
+    double volumetricLosses = 0;
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    auto parameters = get_roshen_parameters(ringCore, excitation, temperature);
+    double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, excitation);
+    double eddyCurrentsVolumetricLosses = get_eddy_current_losses_density(ringCore, excitation, parameters["resistivity"]);
+    double excessEddyCurrentsVolumetricLosses = 0;
+    if (parameters.count("excessLossesCoefficient")) {
+        excessEddyCurrentsVolumetricLosses = get_excess_eddy_current_losses_density(
+            excitation, parameters["resistivity"], parameters["excessLossesCoefficient"]);
+    }
+    volumetricLosses = hysteresisVolumetricLosses + eddyCurrentsVolumetricLosses + excessEddyCurrentsVolumetricLosses;
+    return volumetricLosses;
 } 
  
 std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreWrapper core,
@@ -746,6 +766,10 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
     if (magneticFluxDensity.get_waveform().value().get_time()) {
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
+    if (!core.get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+
     double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
 
     double volumetricLossesIntegration = 0;
