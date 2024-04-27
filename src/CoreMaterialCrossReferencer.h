@@ -18,8 +18,7 @@ class CoreMaterialCrossReferencer {
             SATURATION,
             CURIE_TEMPERATURE,
             VOLUMETRIC_LOSSES,
-            RESISTIVITY,
-            DENSITY
+            RESISTIVITY
         };
     protected:
         std::map<std::string, std::string> _models;
@@ -33,14 +32,13 @@ class CoreMaterialCrossReferencer {
 
     public:
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>> _filterConfiguration{
-                { CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::REMANENCE,            { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::COERCIVE_FORCE,       { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE,    { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES,    { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::RESISTIVITY,          { {"invert", true}, {"log", true} } },
-                { CoreMaterialCrossReferencerFilters::DENSITY,              { {"invert", true}, {"log", true} } },
+                { CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::REMANENCE,            { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::COERCIVE_FORCE,       { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::SATURATION,           { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE,    { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES,    { {"invert", true}, {"log", false} } },
+                { CoreMaterialCrossReferencerFilters::RESISTIVITY,          { {"invert", true}, {"log", false} } },
             };
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scorings;
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, double>> _scoredValues;
@@ -58,13 +56,12 @@ class CoreMaterialCrossReferencer {
             }
 
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
-            _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-            _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+            _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0.01;
+            _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0.01;
             _weights[CoreMaterialCrossReferencerFilters::SATURATION] = 1;
-            _weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+            _weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0.01;
             _weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
             _weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0.2;
-            _weights[CoreMaterialCrossReferencerFilters::DENSITY] = 0;
         }
         CoreMaterialCrossReferencer() {
             auto defaults = OpenMagnetics::Defaults();
@@ -73,13 +70,12 @@ class CoreMaterialCrossReferencer {
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
 
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
-            _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-            _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+            _weights[CoreMaterialCrossReferencerFilters::REMANENCE] = 0.01;
+            _weights[CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0.01;
             _weights[CoreMaterialCrossReferencerFilters::SATURATION] = 1;
-            _weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+            _weights[CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0.01;
             _weights[CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
             _weights[CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0.2;
-            _weights[CoreMaterialCrossReferencerFilters::DENSITY] = 0;
         }
         std::string read_log() {
             return _log;
@@ -106,6 +102,10 @@ class CoreMaterialCrossReferencer {
             std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>>* _filterConfiguration;
 
             void add_scoring(std::string name, CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters filter, double scoring) {
+                if (std::isnan(scoring)) {
+                    throw std::invalid_argument("scoring cannot be nan");
+                }
+
                 if (scoring != -1) {
                     (*_scorings)[filter][name] = scoring;
                 }
@@ -173,11 +173,6 @@ class CoreMaterialCrossReferencer {
     };
     
     class MagneticCoreFilterResistivity : public MagneticCoreFilter {
-        public:
-            std::vector<std::pair<CoreMaterial, double>> filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight=1);
-    };
-    
-    class MagneticCoreFilterDensity : public MagneticCoreFilter {
         public:
             std::vector<std::pair<CoreMaterial, double>> filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight=1);
     };

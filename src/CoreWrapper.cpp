@@ -2674,9 +2674,14 @@ double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
     return get_magnetic_field_strength_saturation(coreMaterial, temperature);
 }
 
-double CoreWrapper::get_remanence(CoreMaterial coreMaterial, double temperature) {
+double CoreWrapper::get_remanence(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
     if (!coreMaterial.get_remanence()) {
-        return std::numeric_limits<double>::quiet_NaN();
+        if (returnZeroIfMissing) {
+            return 0;
+        }
+        else {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
     }
     auto remanenceData = coreMaterial.get_remanence().value();
     std::vector<std::pair<double, double>> data;
@@ -2710,9 +2715,14 @@ double CoreWrapper::get_curie_temperature() {
     return get_curie_temperature(coreMaterial);
 }
 
-double CoreWrapper::get_coercive_force(CoreMaterial coreMaterial, double temperature) {
+double CoreWrapper::get_coercive_force(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
     if (!coreMaterial.get_coercive_force()) {
-        return std::numeric_limits<double>::quiet_NaN();
+        if (returnZeroIfMissing) {
+            return 0;
+        }
+        else {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
     }
     auto coerciveForceData = coreMaterial.get_coercive_force().value();
     std::vector<std::pair<double, double>> data;
