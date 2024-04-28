@@ -149,6 +149,7 @@ class CoreWrapper : public MagneticCore {
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_initial_permeability(double temperature);
+    static double get_initial_permeability(CoreMaterial coreMaterial, double temperature);
     double get_effective_permeability(double temperature);
     double get_reluctance(double temperature);
     double get_density();

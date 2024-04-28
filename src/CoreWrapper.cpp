@@ -2747,6 +2747,10 @@ double CoreWrapper::get_coercive_force(double temperature) {
 
 double CoreWrapper::get_initial_permeability(double temperature){
     auto coreMaterial = resolve_material();
+    return get_initial_permeability(coreMaterial, temperature);
+}
+
+double CoreWrapper::get_initial_permeability(CoreMaterial coreMaterial, double temperature){
     InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     return initialPermeabilityValue;
