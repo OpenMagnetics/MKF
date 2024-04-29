@@ -628,8 +628,16 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
     double limit = 0;
     std::vector<std::pair<CoreWrapper, double>> filteredCores;
 
-    while (limit <= 1 && filteredCores.size() < maximumNumberResults) {
-        limit += 0.25;
+    while (limit <= _limit && filteredCores.size() < maximumNumberResults) {
+        if (limit < 1) {
+            limit += 0.25;
+        }
+        else if (limit < 10) {
+            limit += 2.5;
+        }
+        else {
+            limit += 25;
+        }
         filteredCores = apply_filters(&cores, referenceCore, referenceNumberTurns, inputs, weights, maximumNumberResults, limit);
     }
 

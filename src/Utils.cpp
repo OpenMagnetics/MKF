@@ -416,16 +416,50 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
     return materialNames;
 }
 
-std::vector<std::string> get_shape_names(bool includeToroidal) {
-    if (coreShapeDatabase.empty()) {
-        load_core_shapes(true);
+std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer) {
+    if (coreMaterialDatabase.empty()) {
+        load_cores();
     }
 
-    std::vector<std::string> shapeNames;
+    std::vector<std::string> coreNames;
 
-    for (auto& datum : coreShapeDatabase) {
-        if (includeToroidal || (datum.second.get_family() != CoreShapeFamily::T)) {
-            shapeNames.push_back(datum.first);
+    for (auto& core : coreDatabase) {
+        std::string coreShapeName = core.get_shape_name();
+        if (!manufacturer) {
+            if (std::find(coreNames.begin(), coreNames.end(), coreShapeName) == coreNames.end()) {
+                coreNames.push_back(coreShapeName);
+            }
+        }
+        else {
+            if (!core.get_manufacturer_info()) {
+                continue;
+            }
+            std::string manufacturerName = core.get_manufacturer_info()->get_name();
+
+            if (manufacturerName == manufacturer.value() || manufacturer.value() == "") {
+                if (std::find(coreNames.begin(), coreNames.end(), coreShapeName) == coreNames.end()) {
+                    coreNames.push_back(coreShapeName);
+                }
+            }
+        }
+    }
+
+    return coreNames;
+}
+
+std::vector<std::string> get_shape_names() {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+}
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    bool includeToroidalCores = settings->get_use_toroidal_cores();
+    bool includeConcentricCores = settings->get_use_concentric_cores();
+
+    std::vector<std::string> shapeNames;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if ((includeToroidalCores && shape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && shape.get_family() != CoreShapeFamily::T)) {
+            shapeNames.push_back(name);
         }
     }
 

@@ -1,5 +1,6 @@
 #include "BobbinWrapper.h"
 #include "Utils.h"
+#include "Settings.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 
@@ -16,6 +17,7 @@ using json = nlohmann::json;
 SUITE(Bobbin) {
     auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.01;
+    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Sample_Bobbin) {
         auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
@@ -108,7 +110,8 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin) {
-        auto shapeNames = OpenMagnetics::get_shape_names(true);
+        settings->set_use_toroidal_cores(true);
+        auto shapeNames = OpenMagnetics::get_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
                 continue;
