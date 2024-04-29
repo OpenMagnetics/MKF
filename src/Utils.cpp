@@ -417,7 +417,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
 }
 
 std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer) {
-    if (coreMaterialDatabase.empty()) {
+    if (coreDatabase.empty()) {
         load_cores();
     }
 
