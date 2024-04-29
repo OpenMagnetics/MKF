@@ -1,6 +1,7 @@
 #include "CoreWrapper.h"
 #include "TestingUtils.h"
 #include "Utils.h"
+#include "Settings.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>
@@ -14,6 +15,7 @@ using json = nlohmann::json;
 
 SUITE(CoreProcessedDescription) {
     auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
+    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(E_55_21) {
         auto coreFilePath = masPath + "samples/magnetic/core/core_E_55_21_N97_additive.json";
@@ -1542,7 +1544,8 @@ SUITE(CoreProcessedDescription) {
     }
 
     TEST(Test_Core_All_Shapes) {
-        auto shapeNames = OpenMagnetics::get_shape_names(true);
+        settings->set_use_toroidal_cores(true);
+        auto shapeNames = OpenMagnetics::get_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("UI ")) {
                 continue;
@@ -1565,6 +1568,7 @@ SUITE(CoreProcessedDescription) {
 }
 
 SUITE(CoreGeometricalDescription) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     std::string filePath = __FILE__;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");
 
@@ -1698,6 +1702,7 @@ SUITE(CoreGeometricalDescription) {
 }
 
 SUITE(CoreFunctionalDescription) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     std::string filePath = __FILE__;
     double maximumError = 0.05;
     auto masPath = filePath.substr(0, filePath.rfind("/")).append("/../../MAS/");

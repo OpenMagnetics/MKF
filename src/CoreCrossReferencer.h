@@ -24,6 +24,7 @@ class CoreCrossReferencer {
         std::string _log;
         std::optional<std::string> _onlyManufacturer;
         bool _onlyReferenceMaterial = false;
+        double _limit = 1;
         std::map<CoreCrossReferencerFilters, double> _weights;
 
         void logEntry(std::string entry) {
@@ -94,6 +95,9 @@ class CoreCrossReferencer {
         }
         void use_only_reference_material(bool value) {
             _onlyReferenceMaterial = value;
+        }
+        void set_limit(double value) {
+            _limit = value;
         }
 
     class MagneticCoreFilter {

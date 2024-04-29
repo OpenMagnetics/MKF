@@ -125,4 +125,13 @@ SUITE(Utils) {
 
         CHECK_EQUAL("T 22/12.4/12.8", shape.get_name().value());
     }
+
+    TEST(Test_Get_Shapes_By_Manufacturer) {
+        auto allShapeNames = OpenMagnetics::get_shape_names();
+        auto magneticsShapeNames = OpenMagnetics::get_shape_names("Magnetics");
+        auto ferroxcubeShapeNames = OpenMagnetics::get_shape_names("Ferroxcube");
+
+        CHECK(allShapeNames.size() > magneticsShapeNames.size());
+        CHECK(allShapeNames.size() > ferroxcubeShapeNames.size());
+    }
 }

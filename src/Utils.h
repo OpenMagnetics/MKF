@@ -100,8 +100,9 @@ void load_insulation_materials();
 void load_wire_materials();
 void load_databases(json data, bool withAliases=true, bool addInternalData=true);
 
+std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
-std::vector<std::string> get_shape_names(bool includeToroidal = true);
+std::vector<std::string> get_shape_names();
 std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();
 std::vector<std::string> get_insulation_material_names();
