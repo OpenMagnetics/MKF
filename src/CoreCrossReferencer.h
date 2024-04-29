@@ -23,6 +23,7 @@ class CoreCrossReferencer {
         std::map<std::string, std::string> _models;
         std::string _log;
         std::optional<std::string> _onlyManufacturer;
+        bool _onlyReferenceMaterial = false;
         std::map<CoreCrossReferencerFilters, double> _weights;
 
         void logEntry(std::string entry) {
@@ -90,6 +91,9 @@ class CoreCrossReferencer {
 
         void use_only_manufacturer(std::string onlyManufacturer) {
             _onlyManufacturer = onlyManufacturer;
+        }
+        void use_only_reference_material(bool value) {
+            _onlyReferenceMaterial = value;
         }
 
     class MagneticCoreFilter {
