@@ -41,6 +41,7 @@ std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, 
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
+        minimumScoring = std::max(0.0001, minimumScoring);
 
         for (auto& [name, scoring] : aux) {
             if (filterConfiguration["log"]){

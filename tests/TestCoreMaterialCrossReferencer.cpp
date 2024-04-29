@@ -113,6 +113,25 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "SM 26");
     }
 
+    TEST(Test_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        coreMaterialCrossReferencer.use_only_manufacturer("Micrometals");
+
+        std::string coreMaterialName = "3C95";
+        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+
+        auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
+
+
+        CHECK(crossReferencedCoreMaterials.size() > 0);
+
+        std::cout << crossReferencedCoreMaterials[0].first.get_name() << std::endl;
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
+    }
+
     TEST(Test_All_Core_Materials_Only_Volumetric_Losses) {
         settings->reset();
         OpenMagnetics::clear_databases();

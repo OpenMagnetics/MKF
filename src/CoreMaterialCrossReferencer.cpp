@@ -39,13 +39,16 @@ std::map<std::string, std::map<CoreMaterialCrossReferencer::CoreMaterialCrossRef
                                      {
                                          return p1.second < p2.second;
                                      })).second; 
+        minimumScoring = std::max(0.0001, minimumScoring);
 
         for (auto& [name, scoring] : aux) {
             if (std::isnan(scoring)) {
                 throw std::invalid_argument("scoring cannot be nan in get_scorings");
             }
-
-            if (filterConfiguration["log"]){
+            if (minimumScoring == maximumScoring) {
+                swappedScorings[name][filter] = 1;
+            }
+            else if (filterConfiguration["log"]){
                 if (filterConfiguration["invert"]) {
                     if (weighted) {
                         swappedScorings[name][filter] = _weights[filter] * (1 - (std::log10(scoring) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
