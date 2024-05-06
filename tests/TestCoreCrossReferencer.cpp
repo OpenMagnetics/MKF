@@ -85,6 +85,47 @@ SUITE(CoreCrossReferencer) {
         CHECK(crossReferencedCores[0].first.get_name() == "EC 41/19/12 - 3C91 - Gapped 1.000 mm");
     }
 
+    TEST(Test_All_Core_Materials_Same_Material_Maximum_Height) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        coreCrossReferencer.use_only_reference_material(true);
+
+        std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
+        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+
+        double temperature = 20;
+        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        double offset = 0;
+        double peakToPeak = 2 * 1.73205;
+        double dutyCycle = 0.5;
+        double frequency = 100000;
+        double magnetizingInductance = 100e-6;
+        int64_t numberTurns = 28;
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              label,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              offset);
+
+        OpenMagnetics::MaximumDimensions maximumDimensions;
+        maximumDimensions.set_depth(0.04);
+        maximumDimensions.set_height(0.025);
+        maximumDimensions.set_width(0.025);
+        inputs.get_mutable_design_requirements().set_maximum_dimensions(maximumDimensions);
+
+
+        auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 5);
+
+
+        CHECK(crossReferencedCores.size() > 0);
+        CHECK(crossReferencedCores[0].first.get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
+    }
+
     TEST(Test_All_Core_Materials_Only_TDK) {
         settings->reset();
         OpenMagnetics::clear_databases();

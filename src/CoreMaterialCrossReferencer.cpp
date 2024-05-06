@@ -439,6 +439,10 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cr
 
     std::vector<std::pair<CoreMaterial, double>> coreMaterials;
 
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+
     for (auto [name, coreMaterial] : coreMaterialDatabase){
         if (name != referenceCoreMaterial.get_name()) {
             if (!_onlyManufacturer || coreMaterial.get_manufacturer_info().get_name() == _onlyManufacturer.value()) {

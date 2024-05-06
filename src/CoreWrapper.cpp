@@ -2864,4 +2864,80 @@ std::vector<CoreLossesMethodType> CoreWrapper::get_available_core_losses_methods
 OpenMagnetics::CoreType CoreWrapper::get_type() {
     return get_functional_description().get_type();
 }
+
+bool fits_one_dimension(CoreProcessedDescription coreProcessedDescription, double dimension) {
+    if (coreProcessedDescription.get_depth() <= dimension || coreProcessedDescription.get_height() <= dimension || coreProcessedDescription.get_width() <= dimension) {
+        return true;
+    }
+    return false;
+}
+
+bool fits_two_dimensions(CoreProcessedDescription coreProcessedDescription, double firstDimension, double secondDimension) {
+    if ((coreProcessedDescription.get_depth() <= firstDimension && (coreProcessedDescription.get_height() <= secondDimension || coreProcessedDescription.get_width() <= secondDimension)) ||
+        (coreProcessedDescription.get_height() <= firstDimension && (coreProcessedDescription.get_depth() <= secondDimension || coreProcessedDescription.get_width() <= secondDimension)) ||
+        (coreProcessedDescription.get_width() <= firstDimension && (coreProcessedDescription.get_height() <= secondDimension || coreProcessedDescription.get_depth() <= secondDimension))) {
+        return true;
+    }
+    return false;
+}
+
+bool fits_three_dimensions(CoreProcessedDescription coreProcessedDescription, double firstDimension, double secondDimension, double thirdDimension) {
+    if ((coreProcessedDescription.get_depth() <= firstDimension && coreProcessedDescription.get_height() <= secondDimension && coreProcessedDescription.get_width() <= thirdDimension) ||
+        (coreProcessedDescription.get_depth() <= firstDimension && coreProcessedDescription.get_height() <= thirdDimension && coreProcessedDescription.get_width() <= secondDimension) ||
+        (coreProcessedDescription.get_depth() <= secondDimension && coreProcessedDescription.get_height() <= firstDimension && coreProcessedDescription.get_width() <= thirdDimension) ||
+        (coreProcessedDescription.get_depth() <= secondDimension && coreProcessedDescription.get_height() <= thirdDimension && coreProcessedDescription.get_width() <= firstDimension) ||
+        (coreProcessedDescription.get_depth() <= thirdDimension && coreProcessedDescription.get_height() <= firstDimension && coreProcessedDescription.get_width() <= secondDimension) ||
+        (coreProcessedDescription.get_depth() <= thirdDimension && coreProcessedDescription.get_height() <= secondDimension && coreProcessedDescription.get_width() <= firstDimension)){
+        return true;
+    }
+    return false;
+}
+
+bool CoreWrapper::fits(MaximumDimensions maximumDimensions) {
+    if (!get_processed_description()) {
+        process_data();
+    }
+
+    auto coreProcessedDescription = get_processed_description().value();
+
+    if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
+        return true;
+    }
+    else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
+        auto depth = maximumDimensions.get_depth().value();
+        return fits_one_dimension(coreProcessedDescription, depth);
+    }
+    else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
+        auto height = maximumDimensions.get_height().value();
+        return fits_one_dimension(coreProcessedDescription, height);
+    }
+    else if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
+        auto width = maximumDimensions.get_width().value();
+        return fits_one_dimension(coreProcessedDescription, width);
+    }
+    else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
+        auto depth = maximumDimensions.get_depth().value();
+        auto height = maximumDimensions.get_height().value();
+        return fits_two_dimensions(coreProcessedDescription, depth, height);
+    }
+    else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
+        auto width = maximumDimensions.get_width().value();
+        auto height = maximumDimensions.get_height().value();
+        return fits_two_dimensions(coreProcessedDescription, width, height);
+    }
+    else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
+        auto width = maximumDimensions.get_width().value();
+        auto depth = maximumDimensions.get_depth().value();
+        return fits_two_dimensions(coreProcessedDescription, width, depth);
+    }
+    else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
+        auto depth = maximumDimensions.get_depth().value();
+        auto height = maximumDimensions.get_height().value();
+        auto width = maximumDimensions.get_width().value();
+        return fits_three_dimensions(coreProcessedDescription, depth, height, width);
+    }
+    else {
+        throw std::runtime_error("Not sure how this happened");
+    }
+}
 } // namespace OpenMagnetics
