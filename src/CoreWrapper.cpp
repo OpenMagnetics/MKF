@@ -2893,7 +2893,7 @@ bool fits_three_dimensions(CoreProcessedDescription coreProcessedDescription, do
     return false;
 }
 
-bool CoreWrapper::fits(MaximumDimensions maximumDimensions) {
+bool CoreWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
     if (!get_processed_description()) {
         process_data();
     }
@@ -2905,36 +2905,71 @@ bool CoreWrapper::fits(MaximumDimensions maximumDimensions) {
     }
     else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
         auto depth = maximumDimensions.get_depth().value();
-        return fits_one_dimension(coreProcessedDescription, depth);
+        if (allowRotation) {
+            return fits_one_dimension(coreProcessedDescription, depth);
+        }
+        else {
+            return coreProcessedDescription.get_depth() <= depth;
+        }
     }
     else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
         auto height = maximumDimensions.get_height().value();
-        return fits_one_dimension(coreProcessedDescription, height);
+        if (allowRotation) {
+            return fits_one_dimension(coreProcessedDescription, height);
+        }
+        else {
+            return coreProcessedDescription.get_height() <= height;
+        }
     }
     else if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
         auto width = maximumDimensions.get_width().value();
-        return fits_one_dimension(coreProcessedDescription, width);
+        if (allowRotation) {
+            return fits_one_dimension(coreProcessedDescription, width);
+        }
+        else {
+            return coreProcessedDescription.get_width() <= width;
+        }
     }
     else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
         auto depth = maximumDimensions.get_depth().value();
         auto height = maximumDimensions.get_height().value();
-        return fits_two_dimensions(coreProcessedDescription, depth, height);
+        if (allowRotation) {
+            return fits_two_dimensions(coreProcessedDescription, depth, height);
+        }
+        else {
+            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_height() <= height;
+        }
     }
     else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
         auto width = maximumDimensions.get_width().value();
         auto height = maximumDimensions.get_height().value();
-        return fits_two_dimensions(coreProcessedDescription, width, height);
+        if (allowRotation) {
+            return fits_two_dimensions(coreProcessedDescription, width, height);
+        }
+        else {
+            return coreProcessedDescription.get_width() <= width && coreProcessedDescription.get_height() <= height;
+        }
     }
     else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
         auto width = maximumDimensions.get_width().value();
         auto depth = maximumDimensions.get_depth().value();
-        return fits_two_dimensions(coreProcessedDescription, width, depth);
+        if (allowRotation) {
+            return fits_two_dimensions(coreProcessedDescription, width, depth);
+        }
+        else {
+            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_width() <= width;
+        }
     }
     else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
         auto depth = maximumDimensions.get_depth().value();
         auto height = maximumDimensions.get_height().value();
         auto width = maximumDimensions.get_width().value();
-        return fits_three_dimensions(coreProcessedDescription, depth, height, width);
+        if (allowRotation) {
+            return fits_three_dimensions(coreProcessedDescription, depth, height, width);
+        }
+        else {
+            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_height() <= height && coreProcessedDescription.get_width() <= width;
+        }
     }
     else {
         throw std::runtime_error("Not sure how this happened");

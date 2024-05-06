@@ -174,6 +174,6 @@ class CoreWrapper : public MagneticCore {
     int64_t get_number_stacks();
     std::vector<CoreLossesMethodType> get_available_core_losses_methods();
     OpenMagnetics::CoreType get_type();
-    bool fits(MaximumDimensions maximumDimensions);
+    bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
 };
 } // namespace OpenMagnetics

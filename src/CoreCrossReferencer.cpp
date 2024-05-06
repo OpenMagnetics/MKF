@@ -621,7 +621,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
                         core.process_data();
                         core.process_gap();
                     }
-                    if (!useMaximumDimensions || core.fits(maximumDimensions)) {
+                    if (!useMaximumDimensions || core.fits(maximumDimensions, false)) {
                         cores.push_back({core, 0.0});
                     }
                 }
