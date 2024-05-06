@@ -606,6 +606,13 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
         referenceCore.set_name("Custom");
     }
 
+    MaximumDimensions maximumDimensions;
+    bool useMaximumDimensions = false;
+    if (inputs.get_design_requirements().get_maximum_dimensions()) {
+        maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
+        useMaximumDimensions = true;
+    }
+
     for (auto core : coreDatabase){
         if (referenceShapeName != core.get_shape_name() || referenceMaterialName != core.get_material_name()) {
             if (!_onlyManufacturer || core.get_manufacturer_info()->get_name() == _onlyManufacturer.value()) {
@@ -614,7 +621,9 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
                         core.process_data();
                         core.process_gap();
                     }
-                    cores.push_back({core, 0.0});
+                    if (!useMaximumDimensions || core.fits(maximumDimensions)) {
+                        cores.push_back({core, 0.0});
+                    }
                 }
             }
         }
