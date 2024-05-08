@@ -74,7 +74,10 @@ void load_cores(bool includeToroidalCores, bool useOnlyCoresInStock, bool includ
         json arr = json::parse(database);
         std::vector<OpenMagnetics::CoreWrapper> tempCoreDatabase;
 
-        tempCoreDatabase = std::vector<CoreWrapper>(arr);
+        for (auto elem : arr) {
+            tempCoreDatabase.push_back(OpenMagnetics::CoreWrapper(elem));
+        }
+
         if (includeToroidalCores && includeConcentricCores) {
             coreDatabase = tempCoreDatabase;
         }
