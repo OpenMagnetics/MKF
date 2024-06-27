@@ -78,6 +78,7 @@ class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 
 // Based on Analysis and Computation of Electric and Magnetic Field Problems By Kenneth John Binns and P. J. Lawrenson
 // https://library.lol/main/78A1F466FA9F3EFBCB6165283FC346B6
+// Equation 3.34 and 5.4
 class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthModel {
     public:
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);

@@ -182,11 +182,11 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
 
         for (size_t i = 0; i < field.get_data().size(); ++i) {
             if (is_inside_inducing_turns(field.get_data()[i].get_point(), magnetic.get_coil())) {
-                X[i] = std::numeric_limits<double>::quiet_NaN();;
-                Y[i] = std::numeric_limits<double>::quiet_NaN();;
-                U[i] = std::numeric_limits<double>::quiet_NaN();;
-                V[i] = std::numeric_limits<double>::quiet_NaN();;
-                M[i] = std::numeric_limits<double>::quiet_NaN();;
+                X[i] = std::numeric_limits<double>::quiet_NaN();
+                Y[i] = std::numeric_limits<double>::quiet_NaN();
+                U[i] = std::numeric_limits<double>::quiet_NaN();
+                V[i] = std::numeric_limits<double>::quiet_NaN();
+                M[i] = std::numeric_limits<double>::quiet_NaN();
                 continue;
             }
 
@@ -257,8 +257,9 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
 
     double lastValue = 0;
     int precision = 0;
-    while (tickLabels.size() < 3) {
+    while (tickLabels.size() < 5) {
         tickLabels = {oss.str() + " A/m"};
+        tickValues = {minimumModule};
         for (size_t value = minimumModule; value < maximumModule; value+=pow(10, maximumDecimals - 1)) {
                 if (value == 0) {
                     continue;
@@ -271,6 +272,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 if (label == "0e0") {
                     label = "0";
                 }
+                label = std::filesystem::path(std::regex_replace(std::string(label), std::regex(".0e"), "e")).string();
                 tickLabels.push_back(label + " A/m");
         }
         maximumDecimals -= 1;
@@ -279,8 +281,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             break;
         }
     }
-    auto cb = matplot::colorbar().tick_values({tickValues}).ticklabels({tickLabels});
-    matplot::gca()->cblim(std::array<double, 2>{minimumModule, maximumModule * 0.99});
+    auto cb = matplot::colorbar().tick_values({tickValues}).ticklabels({tickLabels}).limits(std::array<double, 2>{minimumModule, maximumModule * 0.99});
     matplot::xticks({});
     matplot::yticks({});
 }

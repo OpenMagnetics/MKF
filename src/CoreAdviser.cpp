@@ -164,7 +164,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         powerMean /= voltageWaveformData.size();
 
         double switchingFrequency = InputsWrapper::get_switching_frequency(excitation);
-        // double switchingFrequency = frequency;
 
         areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity));
     }

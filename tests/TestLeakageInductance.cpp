@@ -421,7 +421,7 @@ SUITE(LeakageInductance) {
             auto outFile = outputFilePath;
             outFile.append("Test_Leakage_Inductance_Parallels_Interleaving.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
             painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
             painter.paint_core(magnetic);
             painter.paint_core(magnetic);
@@ -549,26 +549,31 @@ SUITE(LeakageInductance) {
         auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
+
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
         double frequency = 100000;
         double expectedLeakageInductance = 86e-6;
 
+        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
 
         if (plot) {
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+
+            auto leakageMagneticField = OpenMagnetics::LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
+
             auto outFile = outputFilePath;
             outFile.append("Test_Leakage_Inductance_PQ_26_0.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
+            painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
         }
-
-        auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         settings->reset();
     }
@@ -698,7 +703,7 @@ SUITE(LeakageInductance) {
         std::vector<int64_t> numberTurns({50, 100, 25});
         std::vector<int64_t> numberParallels({1, 1, 1});
         std::vector<double> turnsRatios({double(numberTurns[0]) / numberTurns[1], double(numberTurns[0]) / numberTurns[2]});
-        std::string shapeName = "E 42/33/20";
+        std::string shapeName = "E 42/21/15";
         uint8_t interleavingLevel = 1;
         auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
@@ -817,14 +822,17 @@ SUITE(LeakageInductance) {
         double expectedLeakageInductance = 0.00143;
 
         auto leakageInductance = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
-        auto leakageMagneticField = OpenMagnetics::LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
         CHECK_CLOSE(expectedLeakageInductance, leakageInductance, expectedLeakageInductance * maximumError);
         if (plot) {
+
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            auto leakageMagneticField = OpenMagnetics::LeakageInductance().calculate_leakage_magnetic_field(magnetic, frequency, 0, 1);
+
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Leakage_Inductance_T_0.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
             painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
             painter.paint_core(magnetic);
             painter.paint_core(magnetic);
@@ -900,7 +908,7 @@ SUITE(LeakageInductance) {
             auto outFile = outputFilePath;
             outFile.append("Test_Leakage_Inductance_T_1.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
             painter.paint_magnetic_field(OpenMagnetics::OperatingPoint(), magnetic, 1, leakageMagneticField);
             painter.paint_core(magnetic);
             painter.paint_core(magnetic);

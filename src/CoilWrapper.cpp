@@ -2721,7 +2721,7 @@ bool CoilWrapper::wind_by_round_turns() {
                 wireRadius = windingWindowRadialHeight - layer.get_coordinates()[0];
             }
             double wireAngle = wound_distance_to_angle(wireHeight, wireRadius);
-            if (_strict && (wireRadius <= 0 || wireAngle > 180)) {
+            if (_strict && (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle))) {
                 // Turns won't fit
                 return false;
             }

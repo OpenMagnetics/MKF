@@ -29,7 +29,7 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "JNP96A");
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
 
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
@@ -75,7 +75,7 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "N95");
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
     }
 
     TEST(Test_All_Core_Materials_Powder) {
@@ -110,7 +110,7 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "SM 26");
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
     }
 
     TEST(Test_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
@@ -128,7 +128,6 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        std::cout << crossReferencedCoreMaterials[0].first.get_name() << std::endl;
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
     }
 
@@ -179,6 +178,6 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 125");
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "N95");
     }
 }

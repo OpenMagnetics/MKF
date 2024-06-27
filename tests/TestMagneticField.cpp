@@ -16,6 +16,7 @@ SUITE(MagneticField) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.05;
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    bool plot = false;
 
     std::vector<int64_t> numberTurns = {1};
     std::vector<int64_t> numberParallels = {1};
@@ -124,6 +125,26 @@ SUITE(MagneticField) {
         CHECK_CLOSE(field.get_data()[0].get_imaginary(), -field.get_data()[2].get_real(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[0].get_real(), field.get_data()[3].get_imaginary(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[0].get_imaginary(), field.get_data()[3].get_real(), expectedValue * maximumError);
+        if (plot) {
+
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+
+            settings->set_magnetic_field_number_points_x(50);
+            settings->set_magnetic_field_number_points_y(50);
+
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Magnetic_Field_One_Turn_Round.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+
  
         settings->reset();
     }
@@ -284,7 +305,7 @@ SUITE(MagneticField) {
         auto outFile = outputFilePath;
         outFile.append("Test_Magnetic_Image_Method.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_mirroring_dimension(1);
@@ -369,22 +390,24 @@ SUITE(MagneticField) {
 
         CHECK_CLOSE(field.get_data()[4].get_real(), -field.get_data()[5].get_real(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[4].get_imaginary(), field.get_data()[5].get_imaginary(), expectedValue * maximumError);
-        auto outFile = outputFilePath;
-        outFile.append("Test_Magnetic_Image_Method.svg");
-        std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
-        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
-        settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_mirroring_dimension(1);
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_maximum_value_colorbar(std::nullopt);
-        settings->set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-        settings->reset();
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Magnetic_Field_One_Turn_Rectangular.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            settings->set_painter_logarithmic_scale(false);
+            settings->set_painter_mirroring_dimension(0);
+            settings->set_painter_include_fringing(false);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
     }
 
 
@@ -457,5 +480,23 @@ SUITE(MagneticField) {
         CHECK_CLOSE(field.get_data()[4].get_real(), -field.get_data()[5].get_real(), expectedValue * maximumError);
         CHECK_CLOSE(field.get_data()[4].get_imaginary(), field.get_data()[5].get_imaginary(), expectedValue * maximumError);
         settings->reset();
+        if (plot) {
+            auto outFile = outputFilePath;
+            outFile.append("Test_Magnetic_Field_One_Turn_Foil.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            settings->set_painter_logarithmic_scale(false);
+            settings->set_painter_mirroring_dimension(0);
+            settings->set_painter_include_fringing(false);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            settings->reset();
+        }
     }
 }

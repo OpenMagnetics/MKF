@@ -127,6 +127,9 @@ SUITE(Utils) {
     }
 
     TEST(Test_Get_Shapes_By_Manufacturer) {
+        OpenMagnetics::clear_databases();
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->reset();
         auto allShapeNames = OpenMagnetics::get_shape_names();
         auto magneticsShapeNames = OpenMagnetics::get_shape_names("Magnetics");
         auto ferroxcubeShapeNames = OpenMagnetics::get_shape_names("Ferroxcube");

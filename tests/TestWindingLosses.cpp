@@ -719,6 +719,7 @@ SUITE(WindingLossesRound) {
 SUITE(WindingLossesLitz) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.15;
+    bool plot = false;
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal) {
         settings->reset();
@@ -1232,6 +1233,24 @@ SUITE(WindingLossesLitz) {
 
             auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
+            if (plot) {
+                auto outFile = outputFilePath;
+                outFile.append("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal_" + std::to_string(testPoint.first) +".svg");
+                std::filesystem::remove(outFile);
+                OpenMagnetics::Painter painter(outFile, true);
+                settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+                settings->set_painter_logarithmic_scale(false);
+                settings->set_painter_include_fringing(false);
+                settings->set_painter_number_points_x(200);
+                settings->set_painter_number_points_y(200);
+                settings->set_painter_maximum_value_colorbar(std::nullopt);
+                settings->set_painter_minimum_value_colorbar(std::nullopt);
+                painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+                painter.paint_core(magnetic);
+                painter.paint_bobbin(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+            }
         }
         settings->reset();
     }

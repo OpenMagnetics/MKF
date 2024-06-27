@@ -3190,4 +3190,38 @@ SUITE(CoilPainter) {
         settings->reset();
     }
 
+    TEST(Course0) {
+        for (size_t index = 1; index < 20; index++) {
+
+            std::vector<int64_t> numberTurns = {index, index * 10};
+            std::vector<int64_t> numberParallels = {1, 1};
+            uint8_t interleavingLevel = 1;
+            int64_t numberStacks = 1;
+            std::string coreShape = "PQ 26/25";
+            std::string coreMaterial = "3C97";
+            auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0001);
+
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+            auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+
+            auto outFile = outputFilePath;
+            outFile.append("Course" + std::to_string(index) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+
+            painter.export_svg();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            CHECK(std::filesystem::exists(outFile));
+            settings->reset();
+        }
+    }
+
+
 }

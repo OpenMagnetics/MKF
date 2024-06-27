@@ -455,6 +455,10 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(WireWr
 
     turnLosses *= wire.get_number_conductors().value();
 
+    if (std::isnan(turnLosses)) {
+        throw std::runtime_error("NaN found in Lammeraner's model for proximity effect losses");
+    }
+
     return turnLosses;
 }
 
