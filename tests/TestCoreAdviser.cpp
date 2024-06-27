@@ -179,7 +179,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 26 - Ungapped");
         settings->reset();
     }
 

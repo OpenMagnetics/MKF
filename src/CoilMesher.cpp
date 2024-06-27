@@ -161,6 +161,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
         tempFieldPerHarmonic.push_back(field);
     }
 
+
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         auto turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
@@ -172,6 +173,9 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
         for (auto harmonicIndex : commonHarmonicIndexes) {
             auto harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
             auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
+            if (std::isnan(harmonicCurrentPeakInTurn)) {
+                throw std::runtime_error("NaN found in harmonicCurrentPeakInTurn value");
+            }
             harmonicCurrentPeakInTurn *= currentDirectionPerWinding[windingIndex];
             for (auto& fieldPoint : fieldPoints) {
                 FieldPoint fieldPointThisHarmonic(fieldPoint);
@@ -184,6 +188,13 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+        }
+    }
+
+    for (auto& inducingFieldPoint : fieldPerHarmonic[0].get_data()) {
+        if (std::isnan(inducingFieldPoint.get_value())) {
+            std::cout << "inducingFieldPoint.get_value(): " << inducingFieldPoint.get_value() << std::endl;
+            throw std::runtime_error("NaN found in inducingFieldPoint value");
         }
     }
 

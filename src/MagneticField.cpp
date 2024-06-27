@@ -228,7 +228,6 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold);
     }
 
-
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
         if (includeFringing) {
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
@@ -349,6 +348,9 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
             Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
             Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
         }
+        if (std::isnan(Hx) || std::isnan(Hy)) {
+            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+        }
     }
     else {
         auto wire = inducingWire.value();
@@ -441,6 +443,9 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         Hx = common_part * ((y + b) * (tetha1 - tetha2) - (y - b) * (tetha4 - tetha3) + (x + a) * log(r2 / r3) - (x - a) * log(r1 / r4));
 
         Hy = -common_part * ((x + a) * (tetha2 - tetha3) - (x - a) * (tetha1 - tetha4) + (y + b) * log(r2 / r1) - (y - b) * log(r3 / r4));
+        if (std::isnan(Hx) || std::isnan(Hy)) {
+            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+        }
     }
 
 
@@ -454,6 +459,9 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
         double totalAngle = currentAngle + turnAngle;
         Hx = modulo * cos(totalAngle);
         Hy = modulo * sin(totalAngle);
+        if (std::isnan(Hx) || std::isnan(Hy)) {
+            throw std::runtime_error("NaN found in Binns Lawrenson's model for magnetic field");
+        }
     }
 
     ComplexFieldPoint complexFieldPoint;
@@ -494,6 +502,10 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
     else {
         throw std::runtime_error("Rectangular wires not implemented yet");
     }
+    if (std::isnan(Hx) || std::isnan(Hy)) {
+        throw std::runtime_error("NaN found in Lammeraner's model for magnetic field");
+    }
+
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
     complexFieldPoint.set_point(inducedFieldPoint.get_point());

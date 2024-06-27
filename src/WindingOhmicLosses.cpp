@@ -19,6 +19,9 @@ double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const WireWrapper&
 }
 
 double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const WireWrapper& wire, double temperature) {
+    if (std::isnan(wireLength)) {
+        throw std::runtime_error("NaN found in wireLength value");
+    }
     return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
 }
 
@@ -32,6 +35,9 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, d
     double wireConductingArea = wire.calculate_conducting_area();
 
     double dcResistancePerMeter = resistivity / wireConductingArea;
+    if (std::isnan(dcResistancePerMeter)) {
+        throw std::runtime_error("NaN found in dcResistancePerMeter value");
+    }
     return dcResistancePerMeter;
 };
 
@@ -100,6 +106,10 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
         ohmicLosses.set_origin(ResultOrigin::SIMULATION);
         windingLossesThisTurn.set_ohmic_losses(ohmicLosses);
         windingLossesPerTurn.push_back(windingLossesThisTurn);
+
+        if (std::isnan(currentDividerThisTurn)) {
+            throw std::runtime_error("NaN found in currentDividerThisTurn value");
+        }
         currentDividerPerTurn.push_back(currentDividerThisTurn);
     }
 

@@ -50,9 +50,10 @@ SUITE(MagneticAdviser) {
             if (plot) {
                 auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
                 auto outFile = outputFilePath;
-                std::string filename = "MagneticAdviser" + std::to_string(scoring) + ".svg";
+                std::string filename = "Test_MagneticAdviser_High_Current_" + std::to_string(scoring) + ".svg";
                 outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
+                settings->set_painter_include_fringing(false);
+                OpenMagnetics::Painter painter(outFile, true);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -61,6 +62,7 @@ SUITE(MagneticAdviser) {
                 painter.export_svg();
             }
         }
+        settings->reset();
     }
 
     TEST(Test_MagneticAdviser) {
@@ -134,7 +136,7 @@ SUITE(MagneticAdviser) {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
                 outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
+                OpenMagnetics::Painter painter(outFile, true);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -197,9 +199,9 @@ SUITE(MagneticAdviser) {
             if (plot) {
                 auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
                 auto outFile = outputFilePath;
-                std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+                std::string filename = "Test_MagneticAdviser_No_Insulation_Requirements_" + std::to_string(std::rand()) + ".svg";
                 outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
+                OpenMagnetics::Painter painter(outFile, true);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -242,7 +244,7 @@ SUITE(MagneticAdviser) {
             auto outFile = outputFilePath;
             std::string filename = "MagneticAdviser_MagneticAdviserJsonHV_" + std::to_string(scoring) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -284,7 +286,7 @@ SUITE(MagneticAdviser) {
                 auto outFile = outputFilePath;
                 std::string filename = "MagneticAdviser_MagneticAdviserJsonLV_" + std::to_string(scoring) + ".svg";
                 outFile.append(filename);
-                OpenMagnetics::Painter painter(outFile);
+                OpenMagnetics::Painter painter(outFile, true);
 
                 painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
                 painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -414,9 +416,9 @@ SUITE(MagneticAdviser) {
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "Test_MagneticAdviser_Random_0_" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -466,9 +468,9 @@ SUITE(MagneticAdviser) {
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "Test_MagneticAdviser_Random_1_" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -518,9 +520,9 @@ SUITE(MagneticAdviser) {
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "Test_MagneticAdviser_Random_2_" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -575,9 +577,9 @@ SUITE(MagneticAdviser) {
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "MagneticAdviser" + std::to_string(std::rand()) + ".svg";
+            std::string filename = "Test_MagneticAdviser_Random_3_" + std::to_string(std::rand()) + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -607,9 +609,9 @@ SUITE(MagneticAdviser) {
             name = std::filesystem::path(std::regex_replace(std::string(name), std::regex("\\."), "_")).string();
             name = std::filesystem::path(std::regex_replace(std::string(name), std::regex("\\:"), "_")).string();
             name = std::filesystem::path(std::regex_replace(std::string(name), std::regex("\\/"), "_")).string();
-            std::string filename = "MagneticAdviser_" + name + ".svg";
+            std::string filename = "Test_MagneticAdviser_Web_0_" + name + ".svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -677,7 +679,7 @@ SUITE(MagneticAdviser) {
             std::cout << "name: " << name << std::endl;
             if (name == "T 13/7.1/4.8 - 67 - Ungapped") {
                 // Check manually that the colors are distributed evenly
-                std::string filename = "MagneticAdviser_" + OpenMagnetics::Painter::fix_filename(name) + ".svg";
+                std::string filename = "Test_MagneticAdviser_Web_4_" + OpenMagnetics::Painter::fix_filename(name) + ".svg";
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile, true);
 
@@ -728,7 +730,7 @@ SUITE(MagneticAdviser) {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Inductor.svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
             painter.paint_core(masMagnetic.get_mutable_magnetic());
@@ -782,7 +784,7 @@ SUITE(MagneticAdviser) {
             auto outFile = outputFilePath;
             std::string filename = "Test_MagneticAdviser_Inductor_Only_Toroidal_Cores.svg";
             outFile.append(filename);
-            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::Painter painter(outFile, true);
 
             painter.paint_core(masMagnetic.get_mutable_magnetic());
             // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
@@ -841,7 +843,7 @@ SUITE(MagneticAdviser) {
         auto outFile = outputFilePath;
         outFile.append("Test_MagneticAdviser_Inductor_PFC.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
         painter.paint_waveform(reconstructedWaveform);
         // painter.paint_waveform(currentWaveform);
         painter.export_svg();

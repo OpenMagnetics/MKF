@@ -1001,7 +1001,11 @@ std::string to_title_case(std::string text) {
 }
 
 double wound_distance_to_angle(double distance, double radius) {
-    return 2 * asin((distance / 2) / radius) * 180 / std::numbers::pi;
+    double angle = 2 * asin((distance / 2) / radius) * 180 / std::numbers::pi;
+    if (std::isnan(angle)) {
+        return 360;
+    }
+    return angle;
 }
 
 double angle_to_wound_distance(double angle, double radius) {
