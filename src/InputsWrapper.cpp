@@ -2100,41 +2100,57 @@ double InputsWrapper::get_magnetic_flux_density_peak_to_peak(OperatingPointExcit
     return magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
 }
 
-InputsWrapper::CircuitSimulationReader::CircuitSimulationReader(std::string filePath) {
-    std::ifstream is(filePath);
+void InputsWrapper::CircuitSimulationReader::process_line(std::string line, char separator) {
+    std::stringstream ss(line);
+    std::string token;
 
+    if (_columns.size() == 0) {
+        // Getting column names
+        while(getline(ss, token, separator)) {
+            CircuitSimulationSignal circuitSimulationSignal;
+            circuitSimulationSignal.name = token;
+            _columns.push_back(circuitSimulationSignal);
+        }
+    }
+    else {
+        size_t currentColumnIndex = 0;
+        while(getline(ss, token, separator)) {
+            _columns[currentColumnIndex].data.push_back(stod(token));
+            currentColumnIndex++;
+        }
+    }
+}
+
+InputsWrapper::CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile) {
     char separator = '\0';
+    std::string line;
 
+    try {
+        std::filesystem::exists(filePathOrFile);
+        std::ifstream is(filePathOrFile);
+        if(is.is_open()) {
+            while(getline(is, line)) {
+                if (separator == '\0') {
+                    separator = guess_separator(line);
+                }
 
-    if(is.is_open()) {
-        std::string line;
-        while(getline(is, line)) {
-            std::stringstream ss(line);
-            std::string token;
+                process_line(line, separator);
+            }
+            is.close();
+        }
+        else {
+            throw std::runtime_error("File not found");
+        }
+    }
+    catch(const std::runtime_error& re) {
+        std::stringstream ss(filePathOrFile);
+        while(std::getline(ss, line, '\n')){
             if (separator == '\0') {
                 separator = guess_separator(line);
             }
 
-            if (_columns.size() == 0) {
-                // Getting column names
-                while(getline(ss, token, separator)) {
-                    CircuitSimulationSignal circuitSimulationSignal;
-                    circuitSimulationSignal.name = token;
-                    _columns.push_back(circuitSimulationSignal);
-                }
-            }
-            else {
-                size_t currentColumnIndex = 0;
-                while(getline(ss, token, separator)) {
-                    _columns[currentColumnIndex].data.push_back(stod(token));
-                    currentColumnIndex++;
-                }
-            }
+            process_line(line, separator);
         }
-        is.close();
-    }
-    else {
-        throw std::runtime_error("File not found");
     }
 
     _time = find_time(_columns);

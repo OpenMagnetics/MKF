@@ -188,8 +188,9 @@ class InputsWrapper : public Inputs {
         CircuitSimulationReader() = default;
         virtual ~CircuitSimulationReader() = default;
 
-        CircuitSimulationReader(std::string filePath);
+        CircuitSimulationReader(std::string filePathOrFile);
 
+        void process_line(std::string line, char separator);
         bool extract_winding_indexes(size_t numberWindings);
         bool extract_column_types(double frequency);
         OperatingPoint extract_operating_point(size_t numberWindings, double frequency);

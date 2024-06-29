@@ -2407,7 +2407,6 @@ SUITE(CircuitSimulationReader) {
         CHECK_EQUAL(128, waveformOnePeriod.get_data().size());
     }
 
-
     TEST(Test_Guess_Separator_Commas) {
         std::string row = "columns,separated,by,commas";
         CHECK_EQUAL(',', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(row));
@@ -2462,6 +2461,82 @@ SUITE(CircuitSimulationReader) {
         double turnsRatio = 1.0 / 0.3;
         double frequency = 100000;
         auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 220e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+        auto secondaryExcitation = operatingPoint.get_excitations_per_winding()[1];
+        auto secondaryFrequency = secondaryExcitation.get_frequency();
+        auto secondaryCurrent = secondaryExcitation.get_current().value();
+        auto secondaryVoltage = secondaryExcitation.get_voltage().value();
+
+        CHECK_EQUAL(frequency, primaryFrequency);
+        CHECK_EQUAL(frequency, secondaryFrequency);
+        CHECK_CLOSE(2.79694, primaryCurrent.get_processed().value().get_rms().value(), 2.79694 * max_error);
+        CHECK_CLOSE(primaryCurrent.get_processed().value().get_rms().value() / turnsRatio, secondaryCurrent.get_processed().value().get_rms().value(), primaryCurrent.get_processed().value().get_rms().value() / turnsRatio * max_error);
+        CHECK_CLOSE(13.1204, primaryVoltage.get_processed().value().get_rms().value(), 13.1204 * max_error);
+        CHECK_CLOSE(primaryVoltage.get_processed().value().get_rms().value() * turnsRatio, secondaryVoltage.get_processed().value().get_rms().value(), primaryVoltage.get_processed().value().get_rms().value() * turnsRatio * max_error);
+
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+
+    }
+
+    TEST(Test_Simba_File_Loaded) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+
+        std::string file = "";
+        std::string line;
+        std::ifstream is(simba_simulation_path);
+        if(is.is_open()) {
+            while(getline(is, line)) {
+                file += line;
+                file += "\n";
+            }
+            is.close();
+        }
+        else {
+            throw std::runtime_error("File not found");
+        }
+
+        double turnsRatio = 1.0 / 0.3;
+        double frequency = 100000;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(file);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 220e-6);
 
