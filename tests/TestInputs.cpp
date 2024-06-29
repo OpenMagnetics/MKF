@@ -2362,3 +2362,220 @@ SUITE(Inputs) {
         settings->reset();
     }
 }
+
+SUITE(CircuitSimulationReader) {
+    double max_error = 0.01;
+    bool plot = false;
+    TEST(Test_Guess_Periodicity_Simba) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+
+        std::ifstream is(simba_simulation_path);
+        std::vector<std::vector<double>> columns;
+        std::vector<std::string> column_names;
+
+        if(is.is_open()) {
+            std::string line;
+            while(getline(is, line)) {
+                std::stringstream ss(line);
+                std::string token;
+                if (column_names.size() == 0) {
+                    // Getting column names
+                    while(getline(ss, token, ',')) {
+                        column_names.push_back(token);
+                        columns.push_back({});
+                    }
+                }
+                else {
+                    size_t currentColumnIndex = 0;
+                    while(getline(ss, token, ',')) {
+                        columns[currentColumnIndex].push_back(stod(token));
+                        currentColumnIndex++;
+                    }
+
+                }
+            }
+            is.close();
+        }
+        else {
+            throw std::runtime_error("File not found");
+        }
+        OpenMagnetics::Waveform waveform;
+        waveform.set_time(columns[0]);
+        waveform.set_data(columns[1]);
+        auto waveformOnePeriod = OpenMagnetics::InputsWrapper::CircuitSimulationReader::get_one_period(waveform, 100000);
+        CHECK_EQUAL(128, waveformOnePeriod.get_data().size());
+    }
+
+
+    TEST(Test_Guess_Separator_Commas) {
+        std::string row = "columns,separated,by,commas";
+        CHECK_EQUAL(',', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(row));
+    }
+
+    TEST(Test_Guess_Separator_Semicolon) {
+        std::string row = "columns;separated;by;semicolon";
+        CHECK_EQUAL(';', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(row));
+    }
+
+    TEST(Test_Guess_Separator_Tabs) {
+        std::string row = "columns\tseparated\tby\ttabs";
+        CHECK_EQUAL('\t', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(row));
+    }
+
+    TEST(Test_Guess_Separator_Simba) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+
+        std::ifstream is(simba_simulation_path);
+        std::vector<std::vector<double>> columns;
+        std::vector<std::string> column_names;
+
+        if(is.is_open()) {
+            std::string line;
+            while(getline(is, line)) {
+                CHECK_EQUAL(',', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(line));
+            }
+        }
+    }
+
+    TEST(Test_Guess_Separator_Ltspice) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+
+        std::ifstream is(simba_simulation_path);
+        std::vector<std::vector<double>> columns;
+        std::vector<std::string> column_names;
+
+        if(is.is_open()) {
+            std::string line;
+            while(getline(is, line)) {
+                CHECK_EQUAL('\t', OpenMagnetics::InputsWrapper::CircuitSimulationReader::guess_separator(line));
+            }
+        }
+    }
+
+    TEST(Test_Simba) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+
+        double turnsRatio = 1.0 / 0.3;
+        double frequency = 100000;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 220e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+        auto secondaryExcitation = operatingPoint.get_excitations_per_winding()[1];
+        auto secondaryFrequency = secondaryExcitation.get_frequency();
+        auto secondaryCurrent = secondaryExcitation.get_current().value();
+        auto secondaryVoltage = secondaryExcitation.get_voltage().value();
+
+        CHECK_EQUAL(frequency, primaryFrequency);
+        CHECK_EQUAL(frequency, secondaryFrequency);
+        CHECK_CLOSE(2.79694, primaryCurrent.get_processed().value().get_rms().value(), 2.79694 * max_error);
+        CHECK_CLOSE(primaryCurrent.get_processed().value().get_rms().value() / turnsRatio, secondaryCurrent.get_processed().value().get_rms().value(), primaryCurrent.get_processed().value().get_rms().value() / turnsRatio * max_error);
+        CHECK_CLOSE(13.1204, primaryVoltage.get_processed().value().get_rms().value(), 13.1204 * max_error);
+        CHECK_CLOSE(primaryVoltage.get_processed().value().get_rms().value() * turnsRatio, secondaryVoltage.get_processed().value().get_rms().value(), primaryVoltage.get_processed().value().get_rms().value() * turnsRatio * max_error);
+
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+
+    }
+
+    TEST(Test_Ltspice) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+
+        double turnsRatio = 1 / 7.11;
+        double frequency = 372618;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+        auto secondaryExcitation = operatingPoint.get_excitations_per_winding()[1];
+        auto secondaryFrequency = secondaryExcitation.get_frequency();
+        auto secondaryCurrent = secondaryExcitation.get_current().value();
+        auto secondaryVoltage = secondaryExcitation.get_voltage().value();
+
+        CHECK_EQUAL(frequency, primaryFrequency);
+        CHECK_EQUAL(frequency, secondaryFrequency);
+        CHECK_CLOSE(0.0524431, primaryCurrent.get_processed().value().get_rms().value(), 0.0524431 * max_error);
+        CHECK_CLOSE(0.4, secondaryCurrent.get_processed().value().get_rms().value(), 0.4 * max_error);
+        CHECK_CLOSE(6, primaryVoltage.get_processed().value().get_rms().value(), 6 * max_error);
+        CHECK_CLOSE(64, secondaryVoltage.get_processed().value().get_rms().value(), 64 * max_error);
+
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+
+    }
+}
