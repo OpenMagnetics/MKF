@@ -149,5 +149,58 @@ class InputsWrapper : public Inputs {
         j["designRequirements"] = x.get_design_requirements();
         j["operatingPoints"] = x.get_operating_points();
     }
+
+
+    class CircuitSimulationReader {
+      public:
+        enum class DataType : int {
+            TIME,
+            VOLTAGE,
+            CURRENT
+        };
+
+      private:
+        class CircuitSimulationSignal {
+            public:
+                CircuitSimulationSignal() = default;
+                virtual ~CircuitSimulationSignal() = default;
+                std::string name;
+                std::vector<double> data;
+                DataType type;
+                size_t windingIndex;
+                size_t operatingPointIndex;
+
+            public:
+
+        };
+
+
+        std::vector<CircuitSimulationSignal> _columns;
+        std::vector<Waveform> _waveforms;
+        CircuitSimulationSignal _time;
+
+        std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
+        std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I", "current", "curr", "i", "[A]"};
+        std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V", "voltage", "volt", "v", "[V]"};
+
+      public:
+
+        CircuitSimulationReader() = default;
+        virtual ~CircuitSimulationReader() = default;
+
+        CircuitSimulationReader(std::string filePath);
+
+        bool extract_winding_indexes(size_t numberWindings);
+        bool extract_column_types(double frequency);
+        OperatingPoint extract_operating_point(size_t numberWindings, double frequency);
+        Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
+        static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
+        static Waveform get_one_period(Waveform waveform, double frequency, bool sample=true);
+        static char guess_separator(std::string line);
+        static bool can_be_voltage(std::vector<double> data, double limit=0.05);
+        static bool can_be_time(std::vector<double> data);
+        static bool can_be_current(std::vector<double> data, double limit=0.05);
+        std::optional<InputsWrapper::CircuitSimulationReader::DataType> guess_type_by_name(std::string name);
+    };
 };
 } // namespace OpenMagnetics

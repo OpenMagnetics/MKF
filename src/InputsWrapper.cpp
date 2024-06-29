@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "InputsWrapper.h"
+#include "Painter.h"
 
 #include "Constants.h"
 #include "Defaults.h"
@@ -28,10 +29,24 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+template<typename T> std::vector<T> convolution_valid(std::vector<T> const &f, std::vector<T> const &g) {
+    int const nf = f.size();
+    int const ng = g.size();
+    std::vector<T> const &min_v = (nf < ng)? f : g;
+    std::vector<T> const &max_v = (nf < ng)? g : f;
+    int const n  = std::max(nf, ng) - std::min(nf, ng) + 1;
+    std::vector<T> out(n, T());
+    for(auto i(0); i < n; ++i) {
+        for(int j(min_v.size() - 1), k(i); j >= 0; --j) {
+            out[i] += min_v[j] * max_v[k];
+            ++k;
+        }
+    }
+    return out;
+}
+
 // Cooley-Tukey FFT (in-place, breadth-first, decimation-in-frequency)
 // Better optimized but less intuitive
-// !!! Warning : in some cases this code make result different from not optimased version above (need to fix bug)
-// The bug is now fixed @2017/05/30
 // from https://rosettacode.org/wiki/Fast_Fourier_transform#C++
 void fft(std::vector<std::complex<double>>& x) {
     // DFT
@@ -68,6 +83,28 @@ void fft(std::vector<std::complex<double>>& x) {
             x[a] = x[b];
             x[b] = t;
         }
+    }
+}
+
+// inverse fft (in-place)
+void ifft(std::vector<std::complex<double>>& x)
+{
+    // conjugate the complex numbers
+    for (size_t i = 0; i < x.size(); i++) {
+        x[i] = std::conj(x[i]);
+    }
+
+    // forward fft
+    fft( x );
+
+    // conjugate the complex numbers again
+    for (size_t i = 0; i < x.size(); i++) {
+        x[i] = std::conj(x[i]);
+    }
+
+    // scale the numbers
+    for (size_t i = 0; i < x.size(); i++) {
+        x[i] /= x.size();
     }
 }
 
@@ -405,7 +442,11 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
     for (size_t i = 0; i < numberPoints; i++) {
         bool found = false;
         for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
-            if (time[interpIndex] <= sampledTime[i] && sampledTime[i] <= time[interpIndex + 1]) {
+            if (sampledTime[i] > time[interpIndex + 1]) {
+                continue;
+            }
+
+            if (time[interpIndex] <= sampledTime[i]) {
                 if (time[interpIndex + 1] == time[interpIndex]) {
                     sampledData.push_back(data[interpIndex]);
                 }
@@ -1538,7 +1579,7 @@ double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation exc
     return instantaneousPower;
 }
 
-bool is_closed_enough(double x, double y, double error){
+bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
@@ -1554,72 +1595,72 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {;
             return WaveformLabel::TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 4 &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
             return WaveformLabel::UNIPOLAR_TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
-        !is_closed_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::UNIPOLAR_RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
-        is_closed_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
-        is_closed_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
+        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 10 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-        is_closed_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
-        is_closed_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
             return WaveformLabel::BIPOLAR_RECTANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 6 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
         compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
             return WaveformLabel::BIPOLAR_TRIANGULAR;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
-        is_closed_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
-        is_closed_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
             return WaveformLabel::FLYBACK_PRIMARY;
     }
     else if (compressedWaveform.get_data().size() == 5 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_closed_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
-        is_closed_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
         compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
             return WaveformLabel::FLYBACK_SECONDARY;
     }
@@ -2058,5 +2099,396 @@ double InputsWrapper::get_magnetic_flux_density_peak_to_peak(OperatingPointExcit
 
     return magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
 }
+
+InputsWrapper::CircuitSimulationReader::CircuitSimulationReader(std::string filePath) {
+    std::ifstream is(filePath);
+
+    char separator = '\0';
+
+
+    if(is.is_open()) {
+        std::string line;
+        while(getline(is, line)) {
+            std::stringstream ss(line);
+            std::string token;
+            if (separator == '\0') {
+                separator = guess_separator(line);
+            }
+
+            if (_columns.size() == 0) {
+                // Getting column names
+                while(getline(ss, token, separator)) {
+                    CircuitSimulationSignal circuitSimulationSignal;
+                    circuitSimulationSignal.name = token;
+                    _columns.push_back(circuitSimulationSignal);
+                }
+            }
+            else {
+                size_t currentColumnIndex = 0;
+                while(getline(ss, token, separator)) {
+                    _columns[currentColumnIndex].data.push_back(stod(token));
+                    currentColumnIndex++;
+                }
+            }
+        }
+        is.close();
+    }
+    else {
+        throw std::runtime_error("File not found");
+    }
+
+    _time = find_time(_columns);
+
+}
+
+bool InputsWrapper::CircuitSimulationReader::can_be_time(std::vector<double> data) {
+    if (data.size() == 0) {
+        throw std::invalid_argument("vector data cannot be empty");
+    }
+    if (data.size() == 1) {
+        return false;
+    }
+
+    for (size_t index = 1; index < data.size(); index++) {
+        if (data[index - 1] >= data[index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool InputsWrapper::CircuitSimulationReader::can_be_voltage(std::vector<double> data, double limit) {
+    if (data.size() == 0) {
+        throw std::invalid_argument("vector data cannot be empty");
+    }
+    if (data.size() == 1) {
+        return false;
+    }
+
+    std::vector<double> distinctValues;
+    std::vector<size_t> distinctValuesCount;
+    for (size_t index = 0; index < data.size(); index++) {
+        bool isDistinct = true;
+        for (size_t distincIndex = 0; distincIndex < distinctValues.size(); distincIndex++) {
+            double distinctValue = distinctValues[distincIndex];
+            double error = fabs(distinctValue - data[index]) / std::max(fabs(data[index]), fabs(distinctValue));
+            if (std::isnan(error)) {
+                error = fabs(distinctValue - data[index]);
+            }
+            if (error <= limit) {
+                isDistinct = false;
+                distinctValuesCount[distincIndex]++;
+            }
+        }
+        if (isDistinct) {
+            distinctValues.push_back(data[index]);
+            distinctValuesCount.push_back(1);
+        }
+    }
+
+
+
+    size_t significantDistinctValues = 0;
+    for (size_t distincIndex = 0; distincIndex < distinctValuesCount.size(); distincIndex++) {
+        if (distinctValuesCount[distincIndex] > data.size() * limit) {
+            significantDistinctValues++;
+        }
+    }
+
+    bool result = significantDistinctValues == 2 || significantDistinctValues == 3;
+    return result;
+}
+
+bool InputsWrapper::CircuitSimulationReader::can_be_current(std::vector<double> data, double limit) {
+    std::vector<double> diffValues;
+    for (size_t index = 0; index < data.size(); index++) {
+        double diff;
+        if (index == 0) {
+            diff = data[index] - data[data.size() - 1];
+        }
+        else {
+            diff = data[index] - data[index - 1];
+        }
+        diffValues.push_back(diff);
+    }
+
+    return can_be_voltage(diffValues, limit);
+}
+
+char InputsWrapper::CircuitSimulationReader::guess_separator(std::string line){
+    std::vector<char> possibleSeparators = {',', ';', '\t'};
+
+    for (auto separator : possibleSeparators) {
+        std::stringstream ss(line);
+        std::string token;
+        size_t numberColumns = 0;
+        while(getline(ss, token, separator)) {
+            numberColumns++;
+        }
+
+        if (numberColumns >= 2 && numberColumns <= 30) {
+            return separator;
+        }
+    }
+
+    throw std::runtime_error("No column separator found");
+}
+
+
+Waveform InputsWrapper::CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample) {
+    double period = 1.0 / frequency;
+    if (!waveform.get_time()) {
+        throw std::runtime_error("Missing time data");
+    }
+    auto time = waveform.get_time().value();
+    auto data = waveform.get_data();
+
+    double periodEnd = time.back();
+    double periodStart = periodEnd - period;
+    int periodStartIndex = -1;
+    int periodStopIndex = -1;
+
+    for (int i = time.size() - 1; i >= 0; --i)
+    {
+        if (time[i] <= periodStart) {
+            periodStartIndex = i;
+            break;
+        }
+    }
+
+    double previousData = data[periodStartIndex];
+    for (int i = periodStartIndex - 1; i >= 0; --i)
+    {
+        if ((data[i] >= 0 && previousData < 0) || (data[i] <= 0 && previousData > 0)) {
+            periodStartIndex = i;
+            periodStart = time[i];
+            break;
+        }
+        previousData = data[i];
+    }
+
+
+    for (int i = periodStartIndex; i < time.size(); ++i)
+    {
+        if (time[i] >= periodStart + period) {
+            periodStopIndex = i + 1;
+            break;
+        }
+    }
+
+    auto periodData = std::vector<double>(data.begin() + periodStartIndex, data.begin() + periodStopIndex);
+    auto periodTime = std::vector<double>(time.begin() + periodStartIndex, time.begin() + periodStopIndex);
+
+
+    double offset = periodTime[0];
+    for (size_t index = 0; index < periodTime.size(); index++) {
+        periodTime[index] -= offset;
+    }
+
+
+    Waveform newWaveform;
+    newWaveform.set_data(periodData);
+    newWaveform.set_time(periodTime);
+
+    if (sample) {
+        auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(newWaveform, frequency);
+        return sampledWaveform;
+    }
+    else {
+        return newWaveform;
+    }
+
+}
+
+InputsWrapper::CircuitSimulationReader::CircuitSimulationSignal InputsWrapper::CircuitSimulationReader::find_time(std::vector<InputsWrapper::CircuitSimulationReader::CircuitSimulationSignal> columns) {
+    for (auto column : columns) {
+        if (can_be_time(column.data)) {
+            column.type = DataType::TIME;
+            return column;
+        }
+    }
+    throw std::runtime_error("no time column found");
+}
+
+Waveform InputsWrapper::CircuitSimulationReader::extract_waveform(InputsWrapper::CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
+    Waveform waveform;
+    waveform.set_data(signal.data);
+    waveform.set_time(_time.data);
+    return get_one_period(waveform, frequency, sample);
+}
+
+std::vector<int> get_numbers_in_string(std::string s) {
+    std::regex regex(R"(\d+)");   // matches a sequence of digits
+    std::vector<int> numbers;
+    std::smatch match;
+    while (std::regex_search(s, match, regex)) {
+        numbers.push_back(std::stoi(match.str()));
+        s = match.suffix();
+    }
+
+    return numbers;
+}
+
+bool InputsWrapper::CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
+    bool result = true;
+    size_t numberFoundIndexes = 0;
+    std::vector<size_t> indexes;
+
+    std::vector<CircuitSimulationSignal> columnsWithIndexes;
+    std::vector<CircuitSimulationSignal> columnsWithResetIndexes;
+
+    for (auto column : _columns) {
+        if (!can_be_time(column.data)) {
+            auto numbersInColumnName = get_numbers_in_string(column.name);
+            if (numbersInColumnName.size() > 0) {
+                numberFoundIndexes++;
+                indexes.push_back(numbersInColumnName.back());
+                column.windingIndex = numbersInColumnName.back();
+            }
+        }
+        columnsWithIndexes.push_back(column);
+    }
+    for (auto column : columnsWithIndexes) {
+    }
+
+    std::sort(indexes.begin(),indexes.end());
+    indexes.resize(distance(indexes.begin(),std::unique(indexes.begin(),indexes.end())));
+
+    for (size_t index = 0; index < indexes.size(); index++) {
+    }
+    for (size_t index = 0; index < indexes.size(); index++) {
+        for (auto column : columnsWithIndexes) {
+            if (column.windingIndex == indexes[index]) {
+                column.windingIndex = index;
+                columnsWithResetIndexes.push_back(column);
+            }
+        }
+    }
+
+    _columns = columnsWithResetIndexes;
+    return numberFoundIndexes >= numberWindings;
+}
+
+std::vector<double> rolling_window_filter(std::vector<double> data) {
+
+    size_t rollingFactorDividend = 192;
+    size_t rollingFactor = std::max(data.size() / rollingFactorDividend, 1UL);
+    for (size_t i = 0; i < rollingFactor - 1; ++i) {
+        data.push_back(data[i]);
+    }
+    std::vector<double> ones(rollingFactor, 1.0);
+
+    auto cleanData = convolution_valid(data, ones);
+    for (size_t i = 0; i < cleanData.size(); ++i) {
+        cleanData[i] /= rollingFactor;
+    }
+    return cleanData;
+}
+
+std::optional<InputsWrapper::CircuitSimulationReader::DataType> InputsWrapper::CircuitSimulationReader::guess_type_by_name(std::string name) {
+    for (auto timeAlias : _timeAliases) {
+        if (name.find(timeAlias) != std::string::npos)  {
+            return InputsWrapper::CircuitSimulationReader::DataType::TIME;
+        }
+    }
+    for (auto currentAlias : _currentAliases) {
+        if (name.find(currentAlias) != std::string::npos)  {
+            return InputsWrapper::CircuitSimulationReader::DataType::CURRENT;
+        }
+    }
+    for (auto voltageAlias : _voltageAliases) {
+        if (name.find(voltageAlias) != std::string::npos)  {
+            return InputsWrapper::CircuitSimulationReader::DataType::VOLTAGE;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequency) {
+    bool result = true;
+    std::vector<CircuitSimulationSignal> columnsWithTypes;
+    for (auto column : _columns) {
+        if (can_be_time(column.data)) {
+            column.type = DataType::TIME;
+        }
+        else {
+
+            auto waveform = extract_waveform(column, frequency, false);
+            auto data = waveform.get_data();
+            int timeout = 100;
+
+            auto guessedType = guess_type_by_name(column.name);
+
+            if (guessedType) {
+                column.type = guessedType.value();
+            }
+            else {
+                while (timeout > 0) {
+
+                    // if (column.name.find("I(L2)") != std::string::npos) {
+                    //     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+                    //     auto outFile = outputFilePath;
+                    //     outFile.append("debug_waveform" + std::to_string(timeout) + ".svg");
+                    //     OpenMagnetics::Painter painter(outFile, false, true);
+                    //     painter.paint_waveform(data);
+                    //     painter.export_svg();
+                    // }
+
+                    if (can_be_current(data)) {
+                        column.type = DataType::CURRENT;
+                        break;
+                    }
+                    else if (can_be_voltage(data)) {
+                        column.type = DataType::VOLTAGE;
+                        break;
+                    }
+                    else {
+                        data = rolling_window_filter(data);
+                    }
+                    timeout--;
+                } 
+                if (timeout == 0) {
+                    throw std::runtime_error("Unknown type");
+                }
+            }
+            columnsWithTypes.push_back(column);
+        }
+    }
+    _columns = columnsWithTypes;
+    return result;
+}
+
+OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency) {
+    OperatingPoint operatingPoint;
+    std::vector<OperatingPointExcitation> excitationsPerWinding;
+
+    extract_winding_indexes(numberWindings);
+    extract_column_types(frequency);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+        OperatingPointExcitation excitation;
+        for (auto column : _columns) {
+            excitation.set_frequency(frequency);
+            if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
+                auto waveform = extract_waveform(column, frequency);
+                SignalDescriptor current;
+                current.set_waveform(waveform);
+                excitation.set_current(current);
+            }
+            if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
+                auto waveform = extract_waveform(column, frequency);
+                SignalDescriptor voltage;
+                voltage.set_waveform(waveform);
+                excitation.set_voltage(voltage);
+            }
+        }
+        excitationsPerWinding.push_back(excitation);
+    }
+
+    operatingPoint.set_excitations_per_winding(excitationsPerWinding);
+    return operatingPoint;
+}
+
 
 } // namespace OpenMagnetics

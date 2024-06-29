@@ -1350,14 +1350,19 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
 }
 
 void Painter::paint_waveform(Waveform waveform) {
+    paint_waveform(waveform.get_data(), waveform.get_time());
+}
+
+
+void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
     std::vector<double> x, y;
-    if (waveform.get_time()) {
-        x = waveform.get_time().value(); 
+    if (time) {
+        x = time.value(); 
     }
     else {
-        x = matplot::linspace(0, 2 * std::numbers::pi, waveform.get_data().size());
+        x = matplot::linspace(0, 2 * std::numbers::pi, data.size());
     }
-    y = waveform.get_data();
+    y = data;
 
     matplot::plot(x, y);
 }

@@ -37,13 +37,15 @@ class Painter{
 
     public:
 
-        Painter(std::filesystem::path filepath, bool addProportionForColorBar = false){
+        Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false){
             _addProportionForColorBar = addProportionForColorBar;
             _filepath = filepath;
             matplot::gcf()->quiet_mode(true);
             matplot::cla();
-            matplot::xticks({});
-            matplot::yticks({});
+            if (!showTicks) {
+                matplot::xticks({});
+                matplot::yticks({});
+            }
             matplot::hold(matplot::off);
         };
         virtual ~Painter() = default;
@@ -85,6 +87,7 @@ class Painter{
     void calculate_extra_margin_for_toroidal_cores(MagneticWrapper magnetic);
 
     void paint_waveform(Waveform waveform);
+    void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt);
 
 };
 } // namespace OpenMagnetics
