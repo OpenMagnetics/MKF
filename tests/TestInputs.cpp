@@ -2513,7 +2513,6 @@ SUITE(CircuitSimulationReader) {
             painter.paint_waveform(secondaryVoltage.get_waveform().value());
             painter.export_svg();
         }
-
     }
 
     TEST(Test_Simba_File_Loaded) {
@@ -2589,7 +2588,6 @@ SUITE(CircuitSimulationReader) {
             painter.paint_waveform(secondaryVoltage.get_waveform().value());
             painter.export_svg();
         }
-
     }
 
     TEST(Test_Ltspice) {
@@ -2649,6 +2647,44 @@ SUITE(CircuitSimulationReader) {
             outFile.append("secondaryVoltage.svg");
             OpenMagnetics::Painter painter(outFile, false, true);
             painter.paint_waveform(secondaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Plecs) {
+        std::string file_path = __FILE__;
+        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+
+        double frequency = 50;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto operatingPoint = reader.extract_operating_point(1, frequency);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 1);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+
+        CHECK_EQUAL(frequency, primaryFrequency);
+        CHECK_CLOSE(11.3, primaryCurrent.get_processed().value().get_rms().value(), 11.3 * max_error);
+        CHECK_CLOSE(324, primaryVoltage.get_processed().value().get_rms().value(), 324 * max_error);
+
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (plot) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
             painter.export_svg();
         }
 

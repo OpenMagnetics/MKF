@@ -2478,6 +2478,7 @@ bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequen
 
 OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency) {
     OperatingPoint operatingPoint;
+
     std::vector<OperatingPointExcitation> excitationsPerWinding;
 
     extract_winding_indexes(numberWindings);
