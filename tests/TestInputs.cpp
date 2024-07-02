@@ -2368,9 +2368,9 @@ SUITE(CircuitSimulationReader) {
     bool plot = false;
     TEST(Test_Guess_Periodicity_Simba) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
 
-        std::ifstream is(simba_simulation_path);
+        std::ifstream is(simulation_path);
         std::vector<std::vector<double>> columns;
         std::vector<std::string> column_names;
 
@@ -2424,9 +2424,9 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Guess_Separator_Simba) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
 
-        std::ifstream is(simba_simulation_path);
+        std::ifstream is(simulation_path);
         std::vector<std::vector<double>> columns;
         std::vector<std::string> column_names;
 
@@ -2440,9 +2440,9 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Guess_Separator_Ltspice) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
 
-        std::ifstream is(simba_simulation_path);
+        std::ifstream is(simulation_path);
         std::vector<std::vector<double>> columns;
         std::vector<std::string> column_names;
 
@@ -2456,11 +2456,11 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Simba) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
 
         double turnsRatio = 1.0 / 0.3;
         double frequency = 100000;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 220e-6);
 
@@ -2517,11 +2517,11 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Simba_File_Loaded) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
 
         std::string file = "";
         std::string line;
-        std::ifstream is(simba_simulation_path);
+        std::ifstream is(simulation_path);
         if(is.is_open()) {
             while(getline(is, line)) {
                 file += line;
@@ -2592,11 +2592,11 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Ltspice) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
 
         double turnsRatio = 1 / 7.11;
         double frequency = 372618;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
 
@@ -2653,10 +2653,10 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_Plecs) {
         std::string file_path = __FILE__;
-        auto simba_simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
 
         double frequency = 50;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simba_simulation_path);
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(1, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
@@ -2686,6 +2686,64 @@ SUITE(CircuitSimulationReader) {
             OpenMagnetics::Painter painter(outFile, false, true);
             painter.paint_waveform(primaryVoltage.get_waveform().value());
             painter.export_svg();
+        }
+    }
+
+    TEST(Test_Plecs_Missing_Windings) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
+
+        double frequency = 50;
+        {
+            auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+            auto operatingPoint = reader.extract_operating_point(1, frequency);
+
+            operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
+
+            CHECK(operatingPoint.get_excitations_per_winding().size() == 1);
+            CHECK(!operatingPoint.get_excitations_per_winding()[0].get_current());
+            CHECK(!operatingPoint.get_excitations_per_winding()[0].get_voltage());
+        }
+        {
+            auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+            std::vector<std::map<std::string, std::string>> mapColumnNames;
+            std::map<std::string, std::string> primaryColumnNames;
+            primaryColumnNames["time"] = "IHave";
+            primaryColumnNames["current"] = "no";
+            primaryColumnNames["voltage"] = "idea";
+            mapColumnNames.push_back(primaryColumnNames);
+            auto operatingPoint = reader.extract_operating_point(1, frequency, mapColumnNames);
+            operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
+
+            CHECK(operatingPoint.get_excitations_per_winding().size() == 1);
+            CHECK(operatingPoint.get_excitations_per_winding()[0].get_current());
+            CHECK(operatingPoint.get_excitations_per_winding()[0].get_voltage());
+
+            auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+            auto primaryFrequency = primaryExcitation.get_frequency();
+            auto primaryCurrent = primaryExcitation.get_current().value();
+            auto primaryVoltage = primaryExcitation.get_voltage().value();
+
+            CHECK_EQUAL(frequency, primaryFrequency);
+            CHECK_CLOSE(11.3, primaryCurrent.get_processed().value().get_rms().value(), 11.3 * max_error);
+            CHECK_CLOSE(324, primaryVoltage.get_processed().value().get_rms().value(), 324 * max_error);
+
+            if (plot) {
+                auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                outFile.append("primaryCurrent.svg");
+                OpenMagnetics::Painter painter(outFile, false, true);
+                painter.paint_waveform(primaryCurrent.get_waveform().value());
+                painter.export_svg();
+            }
+            if (plot) {
+                auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                outFile.append("primaryVoltage.svg");
+                OpenMagnetics::Painter painter(outFile, false, true);
+                painter.paint_waveform(primaryVoltage.get_waveform().value());
+                painter.export_svg();
+            }
         }
     }
 
@@ -2735,6 +2793,21 @@ SUITE(CircuitSimulationReader) {
         CHECK(!mapColumnNames[0]["time"].compare("Time / s"));
         CHECK(!mapColumnNames[0]["current"].compare("L2:Inductor current"));
         CHECK(!mapColumnNames[0]["voltage"].compare("L2:Inductor voltage"));
+    }
+
+    TEST(Test_Plecs_Column_Names_Missing_Windings) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
+
+        double frequency = 50;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto mapColumnNames = reader.extract_map_column_names(2, frequency);
+
+        CHECK(mapColumnNames.size() == 2);
+        CHECK(!mapColumnNames[0]["current"].compare(""));
+        CHECK(!mapColumnNames[0]["voltage"].compare(""));
+        CHECK(!mapColumnNames[1]["current"].compare(""));
+        CHECK(!mapColumnNames[1]["voltage"].compare(""));
     }
 
 }
