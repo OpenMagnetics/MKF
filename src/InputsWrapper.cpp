@@ -2108,6 +2108,8 @@ void InputsWrapper::CircuitSimulationReader::process_line(std::string line, char
         // Getting column names
         while(getline(ss, token, separator)) {
             CircuitSimulationSignal circuitSimulationSignal;
+            token.erase(std::remove(token.begin(), token.end(), (char)13), token.end());
+            token.erase(std::remove(token.begin(), token.end(), '\"'), token.end());
             circuitSimulationSignal.name = token;
             _columns.push_back(circuitSimulationSignal);
         }
@@ -2478,9 +2480,8 @@ std::vector<std::map<std::string, std::string>> InputsWrapper::CircuitSimulation
     extract_column_types(frequency);
     for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
         std::map<std::string, std::string> columnNameToSignal;
-        OperatingPointExcitation excitation;
+        columnNameToSignal["time"] = _time.name;
         for (auto column : _columns) {
-            excitation.set_frequency(frequency);
             if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
                 columnNameToSignal["current"] = column.name;
             }

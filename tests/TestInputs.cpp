@@ -2687,6 +2687,54 @@ SUITE(CircuitSimulationReader) {
             painter.paint_waveform(primaryVoltage.get_waveform().value());
             painter.export_svg();
         }
-
     }
+
+    TEST(Test_Simba_Column_Names) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+
+        double frequency = 100000;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto mapColumnNames = reader.extract_map_column_names(2, frequency);
+
+        CHECK(mapColumnNames.size() == 2);
+        CHECK(!mapColumnNames[0]["time"].compare("Time [s]"));
+        CHECK(!mapColumnNames[0]["current"].compare("TX1 - W2 - Current [A]"));
+        CHECK(!mapColumnNames[0]["voltage"].compare("TX1 - W2 - Voltage [V]"));
+        CHECK(!mapColumnNames[1]["time"].compare("Time [s]"));
+        CHECK(!mapColumnNames[1]["current"].compare("TX1 - W5 - Current [A]"));
+        CHECK(!mapColumnNames[1]["voltage"].compare("TX1 - W5 - Voltage [V]"));
+    }
+
+    TEST(Test_Ltspice_Column_Names) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+
+        double frequency = 372618;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto mapColumnNames = reader.extract_map_column_names(2, frequency);
+
+        CHECK(mapColumnNames.size() == 2);
+        CHECK(!mapColumnNames[0]["time"].compare("time"));
+        CHECK(!mapColumnNames[0]["current"].compare("I(L1)"));
+        CHECK(!mapColumnNames[0]["voltage"].compare("V(n001)"));
+        CHECK(!mapColumnNames[1]["time"].compare("time"));
+        CHECK(!mapColumnNames[1]["current"].compare("I(L2)"));
+        CHECK(!mapColumnNames[1]["voltage"].compare("V(n002)"));
+    }
+
+    TEST(Test_Plecs_Column_Names) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+
+        double frequency = 50;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto mapColumnNames = reader.extract_map_column_names(1, frequency);
+
+        CHECK(mapColumnNames.size() == 1);
+        CHECK(!mapColumnNames[0]["time"].compare("Time / s"));
+        CHECK(!mapColumnNames[0]["current"].compare("L2:Inductor current"));
+        CHECK(!mapColumnNames[0]["voltage"].compare("L2:Inductor voltage"));
+    }
+
 }
