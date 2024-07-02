@@ -1,3 +1,4 @@
+#include "Settings.h"
 #include "WindingLosses.h"
 #include "MAS.hpp"
 #include "MagneticField.h"
@@ -8,8 +9,9 @@
 namespace OpenMagnetics {
 
 WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, _windingLossesHarmonicAmplitudeThreshold);
+    windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
 
     MagneticField magneticField(_magneticFieldStrengthModel, OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
 
@@ -17,16 +19,18 @@ WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, Op
     for (auto winding : magnetic.get_coil().get_functional_description()) {
         totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
     }
-    if (_quickModeForManyTurns && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
-        magneticField.set_winding_losses_harmonic_amplitude_threshold(_windingLossesHarmonicAmplitudeThreshold * 2);
-    }
-    else {
-        magneticField.set_winding_losses_harmonic_amplitude_threshold(_windingLossesHarmonicAmplitudeThreshold);
+
+    auto previoustHarmonicAmplitudeThreshold = settings->get_harmonic_amplitude_threshold();
+    if (settings->get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
+        settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
     }
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
 
     windingLossesOutput = WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput);
 
+    if (settings->get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold) {
+        settings->set_harmonic_amplitude_threshold(previoustHarmonicAmplitudeThreshold);
+    }
     return windingLossesOutput;
 }
 

@@ -10,9 +10,7 @@ namespace OpenMagnetics {
 class WindingLosses
 {
     private:
-        bool _quickModeForManyTurns = true;
         int64_t _quickModeForManyTurnsThreshold = 1000;
-        double _windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold;
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
         MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
 
@@ -22,14 +20,6 @@ class WindingLosses
                       MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModel = Defaults().magneticFieldStrengthFringingEffectModelDefault) {
             _magneticFieldStrengthModel = magneticFieldStrengthModel;
             _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
-        }
-
-        void set_quick_mode_for_many_turns(bool value) {
-            _quickModeForManyTurns = value;
-        }
-
-        void set_winding_losses_harmonic_amplitude_threshold(double windingLossesHarmonicAmplitudeThreshold) {
-            _windingLossesHarmonicAmplitudeThreshold = windingLossesHarmonicAmplitudeThreshold;
         }
 
         WindingLossesOutput calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature);

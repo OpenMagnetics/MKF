@@ -56,6 +56,9 @@ class Settings
         bool _coreIncludeStacks = true;
         bool _coreIncludeDistributedGaps = true;
 
+        bool _harmonicAmplitudeThresholdQuickMode = true;
+        double _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
+
         bool _verbose = false;
 
     public:
@@ -176,6 +179,12 @@ class Settings
 
         bool get_core_include_distributed_gaps() const;
         void set_core_include_distributed_gaps(bool value);
+
+        bool get_harmonic_amplitude_threshold_quick_mode() const;
+        void set_harmonic_amplitude_threshold_quick_mode(bool value);
+
+        double get_harmonic_amplitude_threshold() const;
+        void set_harmonic_amplitude_threshold(double value);
 
     };
 } // namespace OpenMagnetics

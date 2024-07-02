@@ -1026,7 +1026,7 @@ Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double freq
 
 
     if (isWaveformImported && trimHarmonics) {
-        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, Defaults().importedWaveformHarmonicAmplitudeThreshold);
+        auto mainHarmonicIndexes = get_main_harmonic_indexes(harmonics, settings->get_harmonic_amplitude_threshold());
         Harmonics reducedHarmonics;
         reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[0]);
         reducedHarmonics.get_mutable_amplitudes().push_back(harmonics.get_amplitudes()[1]);
@@ -2424,6 +2424,7 @@ std::optional<InputsWrapper::CircuitSimulationReader::DataType> InputsWrapper::C
 
 bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequency) {
     bool result = true;
+    std::vector<std::map<std::string, std::string>> columnNameToSignalPerWinding;
     std::vector<CircuitSimulationSignal> columnsWithTypes;
     for (auto column : _columns) {
         if (can_be_time(column.data)) {
@@ -2442,16 +2443,6 @@ bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequen
             }
             else {
                 while (timeout > 0) {
-
-                    // if (column.name.find("I(L2)") != std::string::npos) {
-                    //     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
-                    //     auto outFile = outputFilePath;
-                    //     outFile.append("debug_waveform" + std::to_string(timeout) + ".svg");
-                    //     OpenMagnetics::Painter painter(outFile, false, true);
-                    //     painter.paint_waveform(data);
-                    //     painter.export_svg();
-                    // }
-
                     if (can_be_current(data)) {
                         column.type = DataType::CURRENT;
                         break;
@@ -2474,6 +2465,34 @@ bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequen
     }
     _columns = columnsWithTypes;
     return result;
+}
+
+
+std::vector<std::map<std::string, std::string>> InputsWrapper::CircuitSimulationReader::extract_map_column_names(size_t numberWindings, double frequency) {
+    OperatingPoint operatingPoint;
+    std::vector<std::map<std::string, std::string>> columnNameToSignalPerWinding;
+
+    std::vector<OperatingPointExcitation> excitationsPerWinding;
+
+    extract_winding_indexes(numberWindings);
+    extract_column_types(frequency);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+        std::map<std::string, std::string> columnNameToSignal;
+        OperatingPointExcitation excitation;
+        for (auto column : _columns) {
+            excitation.set_frequency(frequency);
+            if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
+                columnNameToSignal["current"] = column.name;
+            }
+            if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
+                columnNameToSignal["voltage"] = column.name;
+            }
+        }
+
+        columnNameToSignalPerWinding.push_back(columnNameToSignal);
+    }
+
+    return columnNameToSignalPerWinding;
 }
 
 OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency) {

@@ -194,6 +194,7 @@ class InputsWrapper : public Inputs {
         bool extract_winding_indexes(size_t numberWindings);
         bool extract_column_types(double frequency);
         OperatingPoint extract_operating_point(size_t numberWindings, double frequency);
+        std::vector<std::map<std::string, std::string>> extract_map_column_names(size_t numberWindings, double frequency);
         Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
         static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
         static Waveform get_one_period(Waveform waveform, double frequency, bool sample=true);

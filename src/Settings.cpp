@@ -58,6 +58,9 @@ namespace OpenMagnetics {
         _coreIncludeStacks = true;
         _coreIncludeDistributedGaps = true;
 
+        _harmonicAmplitudeThresholdQuickMode = true;
+        _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
+
         _verbose = false;
 
     }
@@ -319,6 +322,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_include_distributed_gaps(bool value) {
         _coreIncludeDistributedGaps = value;
+    }
+
+    bool Settings::get_harmonic_amplitude_threshold_quick_mode() const {
+        return _harmonicAmplitudeThresholdQuickMode;
+    }
+    void Settings::set_harmonic_amplitude_threshold_quick_mode(bool value) {
+        _harmonicAmplitudeThresholdQuickMode = value;
+    }
+
+    double Settings::get_harmonic_amplitude_threshold() const {
+        return _harmonicAmplitudeThreshold;
+    }
+    void Settings::set_harmonic_amplitude_threshold(double value) {
+        _harmonicAmplitudeThreshold = value;
     }
 
 } // namespace OpenMagnetics
