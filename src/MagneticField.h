@@ -36,7 +36,6 @@ class MagneticField {
         MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
         std::shared_ptr<MagneticFieldStrengthModel>  _model;
         std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
-        double _windingLossesHarmonicAmplitudeThreshold = Defaults().windingLossesHarmonicAmplitudeThreshold;
     public:
 
         MagneticField(MagneticFieldStrengthModels magneticFieldStrengthModel = Defaults().magneticFieldStrengthModelDefault,
@@ -45,10 +44,6 @@ class MagneticField {
             _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
             _model = factory(_magneticFieldStrengthModel);
             _fringingEffectModel = factory(_magneticFieldStrengthFringingEffectModel);
-        }
-
-        void set_winding_losses_harmonic_amplitude_threshold(double windingLossesHarmonicAmplitudeThreshold) {
-            _windingLossesHarmonicAmplitudeThreshold = windingLossesHarmonicAmplitudeThreshold;
         }
 
         static SignalDescriptor calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,

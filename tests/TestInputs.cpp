@@ -2269,7 +2269,7 @@ SUITE(Inputs) {
         auto harmonics = OpenMagnetics::InputsWrapper::get_primary_excitation(inputs.get_operating_point(0)).get_current()->get_harmonics().value();
 
         CHECK_EQUAL(29847, voltage.get_waveform()->get_data().size());
-        CHECK_EQUAL(5, excitation.get_current()->get_harmonics().value().get_frequencies().size());
+        CHECK_EQUAL(22, excitation.get_current()->get_harmonics().value().get_frequencies().size());
     }
 
     TEST(Test_Simplify_PFC_Json) {
@@ -2357,7 +2357,7 @@ SUITE(Inputs) {
             CHECK_CLOSE(processed.get_peak_to_peak().value(), reconstructedProcessed.get_peak_to_peak().value(), max_error * processed.get_peak_to_peak().value());
             CHECK_CLOSE(processed.get_rms().value(), reconstructedProcessed.get_rms().value(), max_error * processed.get_rms().value());
             CHECK_EQUAL(29847, voltage.get_waveform()->get_data().size());
-            CHECK_EQUAL(5, excitation.get_current()->get_harmonics().value().get_frequencies().size());
+            CHECK_EQUAL(22, excitation.get_current()->get_harmonics().value().get_frequencies().size());
         }
         settings->reset();
     }

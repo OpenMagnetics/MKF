@@ -45,7 +45,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
         simulationTemperature = temperature.value();
     }
     WindingLosses windingLosses;
-    windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
+    // windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }
 

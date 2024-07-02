@@ -51,6 +51,7 @@ SUITE(MagneticField) {
         numberParallels = {1};
         turnsRatios = {};
         interleavingLevel = 2;
+        settings->set_harmonic_amplitude_threshold(0.01);
 
         sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
@@ -59,10 +60,9 @@ SUITE(MagneticField) {
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-
         OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_include_fringing(false);
-        magneticField.set_winding_losses_harmonic_amplitude_threshold(0.01);
+
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic);
         auto field_0 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         auto field_1 = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[1];

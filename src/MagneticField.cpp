@@ -204,7 +204,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         }
     }
     else {
-        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold, currentDirectionPerWinding);
+        inducingFields = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
     }
 
     if (!magnetic.get_coil().get_turns_description()) {
@@ -225,7 +225,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
         inducedFields.push_back(externalInducedField.value());
     }
     else {
-        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, _windingLossesHarmonicAmplitudeThreshold);
+        inducedFields = coilMesher.generate_mesh_induced_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold());
     }
 
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
