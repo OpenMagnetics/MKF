@@ -2367,14 +2367,10 @@ bool InputsWrapper::CircuitSimulationReader::extract_winding_indexes(size_t numb
         }
         columnsWithIndexes.push_back(column);
     }
-    for (auto column : columnsWithIndexes) {
-    }
 
     std::sort(indexes.begin(),indexes.end());
     indexes.resize(distance(indexes.begin(),std::unique(indexes.begin(),indexes.end())));
 
-    for (size_t index = 0; index < indexes.size(); index++) {
-    }
     for (size_t index = 0; index < indexes.size(); index++) {
         for (auto column : columnsWithIndexes) {
             if (column.windingIndex == indexes[index]) {
@@ -2428,6 +2424,7 @@ bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequen
     bool result = true;
     std::vector<std::map<std::string, std::string>> columnNameToSignalPerWinding;
     std::vector<CircuitSimulationSignal> columnsWithTypes;
+
     for (auto column : _columns) {
         if (can_be_time(column.data)) {
             column.type = DataType::TIME;
@@ -2496,13 +2493,49 @@ std::vector<std::map<std::string, std::string>> InputsWrapper::CircuitSimulation
     return columnNameToSignalPerWinding;
 }
 
-OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency) {
+bool InputsWrapper::CircuitSimulationReader::assign_column_names(std::vector<std::map<std::string, std::string>> columnNames) {
+    std::vector<CircuitSimulationSignal> assignedColumns;
+    for (size_t windingIndex = 0; windingIndex < columnNames.size(); windingIndex++) {
+        for (auto [columnType, columnName] : columnNames[windingIndex]) {
+
+            for (auto column : _columns) {
+                if (column.name == columnName && columnType == "current") {
+                    column.type = DataType::CURRENT;
+                    column.windingIndex = windingIndex;
+                    assignedColumns.push_back(column);
+                }
+                if (column.name == columnName && columnType == "voltage") {
+                    column.type = DataType::VOLTAGE;
+                    column.windingIndex = windingIndex;
+                    assignedColumns.push_back(column);
+                }
+                if (column.name == columnName && columnType == "time") {
+                    column.type = DataType::TIME;
+                    column.windingIndex = windingIndex;
+                    assignedColumns.push_back(column);
+                }
+            }
+        }
+    }
+
+    _columns = assignedColumns;
+
+    return true;
+}
+
+OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames) {
     OperatingPoint operatingPoint;
 
     std::vector<OperatingPointExcitation> excitationsPerWinding;
 
-    extract_winding_indexes(numberWindings);
-    extract_column_types(frequency);
+    if (!mapColumnNames) {
+        extract_winding_indexes(numberWindings);
+        extract_column_types(frequency);
+    }
+    else {
+        assign_column_names(mapColumnNames.value());
+    }
+
     for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
         OperatingPointExcitation excitation;
         for (auto column : _columns) {
