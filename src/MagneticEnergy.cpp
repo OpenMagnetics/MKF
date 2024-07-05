@@ -1,4 +1,5 @@
 #include "MagneticEnergy.h"
+#include "Defaults.h"
 
 #include <cmath>
 #include <filesystem>
@@ -14,7 +15,7 @@ namespace OpenMagnetics {
 
 double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
     auto constants = Constants();
-    double temperature = 25;
+    double temperature = Defaults().ambientTemperature;
     if (operatingPoint != nullptr) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     }
@@ -64,7 +65,7 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
 
 double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
     double totalEnergy = 0;
-    double temperature = 25;
+    double temperature = Defaults().ambientTemperature;
     if (operatingPoint != nullptr) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     }
