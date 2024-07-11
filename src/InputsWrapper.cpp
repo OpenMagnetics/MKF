@@ -2159,6 +2159,16 @@ InputsWrapper::CircuitSimulationReader::CircuitSimulationReader(std::string file
 
 }
 
+std::vector<std::string> InputsWrapper::CircuitSimulationReader::extract_column_names() {
+    std::vector<std::string> names;
+    for (auto column : _columns) {
+        names.push_back(column.name);
+    }
+
+    return names;
+}
+
+
 bool InputsWrapper::CircuitSimulationReader::can_be_time(std::vector<double> data) {
     if (data.size() == 0) {
         throw std::invalid_argument("vector data cannot be empty");
