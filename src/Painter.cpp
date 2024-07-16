@@ -129,6 +129,8 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
 
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
+    double forceMinimumModule = 0;
+    double forceMaximumModule = DBL_MAX;
 
     size_t numberPointsX = settings->get_painter_number_points_x();
     size_t numberPointsY = settings->get_painter_number_points_y();
@@ -141,6 +143,15 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     }
     else {
         field = calculate_magnetic_field(operatingPoint, magnetic, harmonicIndex);
+    }
+    if (settings->get_painter_maximum_value_colorbar()) {
+        forceMaximumModule = settings->get_painter_maximum_value_colorbar().value();
+    }
+    if (settings->get_painter_minimum_value_colorbar()) {
+        forceMinimumModule = settings->get_painter_minimum_value_colorbar().value();
+    }
+    if (forceMinimumModule == forceMaximumModule) {
+        forceMinimumModule = forceMaximumModule - 1;
     }
 
     if (mode == PainterModes::CONTOUR) {
@@ -162,6 +173,8 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 }
                 // To avoid bug in library
                 M[j][i] = std::max(0.001, M[j][i]);
+                M[j][i] = std::min(forceMaximumModule, M[j][i]);
+                M[j][i] = std::max(forceMinimumModule, M[j][i]);
 
                 minimumModule = std::min(minimumModule, M[j][i]);
                 maximumModule = std::max(maximumModule, M[j][i]);
@@ -209,6 +222,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 V[i] = field.get_data()[i].get_imaginary();
                 M[i] = hypot(field.get_data()[i].get_real(), field.get_data()[i].get_imaginary());
             }
+
             minimumModule = std::min(minimumModule, M[i]);
             maximumModule = std::max(maximumModule, M[i]);
         }
@@ -237,15 +251,15 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         throw std::runtime_error("Unknown field painter mode");
     }
 
-    if (settings->get_painter_maximum_value_colorbar()) {
-        maximumModule = settings->get_painter_maximum_value_colorbar().value();
-    }
-    if (settings->get_painter_maximum_value_colorbar()) {
-        minimumModule = settings->get_painter_minimum_value_colorbar().value();
-    }
-    if (minimumModule == maximumModule) {
-        minimumModule = maximumModule - 1;
-    }
+    // if (settings->get_painter_maximum_value_colorbar()) {
+    //     maximumModule = settings->get_painter_maximum_value_colorbar().value();
+    // }
+    // if (settings->get_painter_minimum_value_colorbar()) {
+    //     minimumModule = settings->get_painter_minimum_value_colorbar().value();
+    // }
+    // if (minimumModule == maximumModule) {
+    //     minimumModule = maximumModule - 1;
+    // }
     matplot::colormap(matplot::palette::jet());
 
     int maximumDecimals = ceil(log10(maximumModule));
@@ -255,19 +269,22 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     oss << std::setprecision(0) << std::fixed << roundFloat(minimumModule, 0);
     std::vector<std::string> tickLabels = {oss.str() + " A/m"};
 
-    double lastValue = 0;
     int precision = 0;
     while (tickLabels.size() < 5) {
-        tickLabels = {oss.str() + " A/m"};
-        tickValues = {minimumModule};
+        tickLabels = {};
+        tickValues = {};
         for (size_t value = minimumModule; value < maximumModule; value+=pow(10, maximumDecimals - 1)) {
                 if (value == 0) {
                     continue;
                 }
-                lastValue = value;
+                double processedValue = value;
+
+                if (logarithmicScale) {
+                    processedValue = pow(10, processedValue);
+                }
                 tickValues.push_back(roundFloat(value, -maximumDecimals + 1));
                 std::ostringstream oss;
-                oss << std::fixed << std::setprecision(precision) << std::scientific << (roundFloat(value, -maximumDecimals + 1));
+                oss << std::fixed << std::setprecision(precision) << std::scientific << (roundFloat(processedValue, -maximumDecimals + 1));
                 auto label = replace_key("+0", oss.str(), "");
                 if (label == "0e0") {
                     label = "0";

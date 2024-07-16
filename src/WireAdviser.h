@@ -38,28 +38,18 @@ class WireSolidInsulationRequirements {
 
 class WireAdviser {
     protected:
-        bool _includeFoil;
-        bool _includeRectangular;
-        bool _includeLitz;
-        bool _includeRound;
         double _maximumEffectiveCurrentDensity;
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
     public:
 
-        WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels, bool includeRectangular=true, bool includeFoil=false) {
-            _includeFoil = includeFoil;
-            _includeRectangular = includeRectangular;
+        WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;
             _maximumNumberParallels = maximumNumberParallels;
         }
-        WireAdviser(bool includeRectangular=true, bool includeFoil=false, bool includeLitz=true, bool includeRound=true) {
+        WireAdviser() {
             auto defaults = Defaults();
-            _includeFoil = includeFoil;
-            _includeRectangular = includeRectangular;
-            _includeLitz = includeLitz;
-            _includeRound = includeRound;
             _maximumEffectiveCurrentDensity = defaults.maximumEffectiveCurrentDensity;
             _maximumNumberParallels = defaults.maximumNumberParallels;
         }
@@ -73,18 +63,6 @@ class WireAdviser {
         }
         void set_maximum_number_parallels(int maximumNumberParallels) {
             _maximumNumberParallels = maximumNumberParallels;
-        }
-        void enableFoil(bool enable) {
-            _includeFoil = enable;
-        }
-        void enableRectangular(bool enable) {
-            _includeRectangular = enable;
-        }
-        void enableLitz(bool enable) {
-            _includeLitz = enable;
-        }
-        void enableRound(bool enable) {
-            _includeRound = enable;
         }
         double get_maximum_area_proportion() {
             return _maximumOuterAreaProportion;

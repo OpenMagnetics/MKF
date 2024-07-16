@@ -167,8 +167,8 @@ class InputsWrapper : public Inputs {
                 std::string name;
                 std::vector<double> data;
                 DataType type;
-                size_t windingIndex;
-                size_t operatingPointIndex;
+                int windingIndex;
+                int operatingPointIndex;
 
             public:
 
@@ -180,8 +180,8 @@ class InputsWrapper : public Inputs {
         CircuitSimulationSignal _time;
 
         std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
-        std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]"};
-        std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]"};
+        std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It"};
+        std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt"};
 
       public:
 

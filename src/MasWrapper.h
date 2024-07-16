@@ -38,11 +38,14 @@ class MasWrapper : public Mas {
         const std::vector<OutputsWrapper> & get_outputs() const { return outputs; }
         std::vector<OutputsWrapper> & get_mutable_outputs() { return outputs; }
         void set_outputs(const std::vector<OutputsWrapper> & value) { this->outputs = value; }
+
+
 };
 
 
 void from_json(const json & j, MasWrapper & x);
 void to_json(json & j, const MasWrapper & x);
+void to_file(std::filesystem::path filepath, const MasWrapper & x);
 
 inline void from_json(const json & j, MasWrapper& x) {
     x.set_inputs(j.at("inputs").get<InputsWrapper>());
@@ -55,5 +58,13 @@ inline void to_json(json & j, const MasWrapper & x) {
     j["inputs"] = x.get_inputs();
     j["magnetic"] = x.get_magnetic();
     j["outputs"] = x.get_outputs();
+}
+inline void to_file(std::filesystem::path filepath, const MasWrapper & x) {
+    json masJson;
+    to_json(masJson, x);
+
+    std::ofstream myfile;
+    myfile.open(filepath);
+    myfile << masJson;
 }
 } // namespace OpenMagnetics

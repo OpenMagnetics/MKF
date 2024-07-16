@@ -82,9 +82,7 @@ CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string meth
     throw std::runtime_error("Material " + materialData.get_name() + " does not have method:" + method);
 }
 
-OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
-    CoreMaterialDataOrNameUnion material,
-    double frequency) {
+OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
     OpenMagnetics::CoreMaterial materialData;
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operatings)

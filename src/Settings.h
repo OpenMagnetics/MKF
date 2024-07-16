@@ -56,12 +56,18 @@ class Settings
         bool _coreIncludeStacks = true;
         bool _coreIncludeDistributedGaps = true;
 
+        bool _wireAdviserIncludeFoil = false;
+        bool _wireAdviserIncludeRectangular = true;
+        bool _wireAdviserIncludeLitz = true;
+        bool _wireAdviserIncludeRound = true;
+
         bool _harmonicAmplitudeThresholdQuickMode = true;
         double _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
 
         bool _verbose = false;
 
     public:
+        bool _debug = false;
         Settings(Settings &other) = delete;
         void operator=(const Settings &) = delete;
 
@@ -179,6 +185,18 @@ class Settings
 
         bool get_core_include_distributed_gaps() const;
         void set_core_include_distributed_gaps(bool value);
+
+        bool get_wire_adviser_include_foil() const;
+        void set_wire_adviser_include_foil(bool value);
+
+        bool get_wire_adviser_include_rectangular() const;
+        void set_wire_adviser_include_rectangular(bool value);
+
+        bool get_wire_adviser_include_litz() const;
+        void set_wire_adviser_include_litz(bool value);
+
+        bool get_wire_adviser_include_round() const;
+        void set_wire_adviser_include_round(bool value);
 
         bool get_harmonic_amplitude_threshold_quick_mode() const;
         void set_harmonic_amplitude_threshold_quick_mode(bool value);

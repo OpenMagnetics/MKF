@@ -65,7 +65,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -128,7 +128,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -192,7 +192,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -267,7 +267,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -329,7 +329,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -404,7 +404,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -481,7 +481,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -546,7 +546,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
 
@@ -624,7 +624,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -684,7 +684,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -743,7 +743,7 @@ SUITE(LeakageInductance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(2e-5);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);

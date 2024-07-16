@@ -2362,17 +2362,34 @@ bool InputsWrapper::CircuitSimulationReader::extract_winding_indexes(size_t numb
     bool result = true;
     size_t numberFoundIndexes = 0;
     std::vector<size_t> indexes;
+    std::map<std::string, size_t> windingLabels = {
+        {"pri", 0},
+        {"sec", 1},
+        {"aux", 2},
+        {"ter", 2},
+    };
 
     std::vector<CircuitSimulationSignal> columnsWithIndexes;
     std::vector<CircuitSimulationSignal> columnsWithResetIndexes;
 
     for (auto column : _columns) {
+        column.windingIndex = -1;
         if (!can_be_time(column.data)) {
             auto numbersInColumnName = get_numbers_in_string(column.name);
             if (numbersInColumnName.size() > 0) {
                 numberFoundIndexes++;
                 indexes.push_back(numbersInColumnName.back());
                 column.windingIndex = numbersInColumnName.back();
+            }
+            else {
+                for (auto [label, windingIndex] : windingLabels) {
+                    if (column.name.find(label) != std::string::npos)  {
+                        numberFoundIndexes++;
+                        indexes.push_back(windingIndex);
+                        column.windingIndex = windingIndex;
+                        break;
+                    }
+                }
             }
         }
         columnsWithIndexes.push_back(column);
@@ -2475,7 +2492,6 @@ bool InputsWrapper::CircuitSimulationReader::extract_column_types(double frequen
     _columns = columnsWithTypes;
     return result;
 }
-
 
 std::vector<std::map<std::string, std::string>> InputsWrapper::CircuitSimulationReader::extract_map_column_names(size_t numberWindings, double frequency) {
     OperatingPoint operatingPoint;

@@ -22,7 +22,8 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
                                           OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
                                           OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
                                           std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}),
-                                          bool useBobbin = true);
+                                          bool useBobbin = true,
+                                          int numberStacks = 1);
 
 OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
                                           std::vector<int64_t> numberParallels,
@@ -91,7 +92,7 @@ OpenMagnetics::MagneticWrapper get_quick_magnetic(std::string shapeName,
                                                   std::vector<int64_t> numberTurns,
                                                   int numberStacks = 1,
                                                   std::string materialName = "N87");
-json get_grinded_gap(double gapLength);
+json get_ground_gap(double gapLength);
 json get_distributed_gap(double gapLength, int numberGaps);
 json get_spacer_gap(double gapLength);
 json get_residual_gap();

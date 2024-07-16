@@ -47,19 +47,19 @@ namespace OpenMagnetics {
         double clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
         coreAdviser.set_average_margin_in_winding_window(clearanceAndCreepageDistance);
 
-        // std::cout << "Getting core" << std::endl;
+        std::cout << "Getting core" << std::endl;
         size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
         
         size_t coresWound = 0;
         for (auto& [core, coreScoring] : masMagneticsWithCore) {
-            // std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
-            // std::cout << "Getting coil" << std::endl;
+            std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
+            std::cout << "Getting coil" << std::endl;
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
 
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(core, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
-                // std::cout << "Core wound!" << std::endl;
+                std::cout << "Core wound!" << std::endl;
 
                 coresWound++;
             }
@@ -204,6 +204,7 @@ namespace OpenMagnetics {
 
 void MagneticAdviser::preview_magnetic(MasWrapper mas) {
     std::string text = "";
+
     text += "Core shape: " + mas.get_mutable_magnetic().get_mutable_core().get_shape_name() + "\n";
     text += "Core material: " + mas.get_mutable_magnetic().get_mutable_core().get_material_name() + "\n";
     if (mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_gapping().size() > 0) {
@@ -216,7 +217,14 @@ void MagneticAdviser::preview_magnetic(MasWrapper mas) {
         text += "Winding: " + winding.get_name() + "\n";
         text += "\tNumber Turns: " + std::to_string(winding.get_number_turns()) + "\n";
         text += "\tNumber Parallels: " + std::to_string(winding.get_number_parallels()) + "\n";
-        text += "\tWire: " + std::string(magic_enum::enum_name(wire.get_type())) + " " + std::string(magic_enum::enum_name(wire.get_standard().value())) + " " + wire.get_name().value() + "\n";
+        text += "\tWire: " + std::string(magic_enum::enum_name(wire.get_type()));
+        if (wire.get_standard()) {
+            text += " " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+        }
+        if (wire.get_name()) {
+            text += " " + wire.get_name().value();
+        }
+        text += "\n";
     }
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
@@ -224,6 +232,7 @@ void MagneticAdviser::preview_magnetic(MasWrapper mas) {
         text += "Operating Point: " + std::to_string(operatingPointIndex + 1) + "\n";
         text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_magnetizing_inductance().value().get_magnetizing_inductance())) + "\n";
         text += "\tCore losses: " + std::to_string(output.get_core_losses().value().get_core_losses()) + "\n";
+        text += "\tMagnetic flux density: " + std::to_string(output.get_core_losses().value().get_magnetic_flux_density()->get_processed()->get_peak().value()) + "\n";
         text += "\tCore temperature: " + std::to_string(output.get_core_losses().value().get_temperature().value()) + "\n";
         text += "\tWinding losses: " + std::to_string(output.get_winding_losses().value().get_winding_losses()) + "\n";
         for (size_t windingIndex = 0; windingIndex < output.get_winding_losses().value().get_winding_losses_per_winding().value().size(); ++windingIndex) {
@@ -241,10 +250,17 @@ void MagneticAdviser::preview_magnetic(MasWrapper mas) {
                 proximityEffectLosses += windingLosses.get_proximity_effect_losses().value().get_losses_per_harmonic()[i];
             }
 
-
+            text += "\t\t\tDC resistance: " + std::to_string(output.get_winding_losses().value().get_dc_resistance_per_winding().value()[windingIndex]) + "\n";
             text += "\t\t\tOhmic losses: " + std::to_string(windingLosses.get_ohmic_losses().value().get_losses()) + "\n";
             text += "\t\t\tSkin effect losses: " + std::to_string(skinEffectLosses) + "\n";
             text += "\t\t\tProximity effect losses: " + std::to_string(proximityEffectLosses) + "\n";
+
+            if (windingIndex > 0) {
+                std::cout <<  output.get_leakage_inductance().value().get_leakage_inductance_per_winding().size() << std::endl;
+                // output.get_leakage_inductance().value().get_leakage_inductance_per_winding();
+                double value = output.get_leakage_inductance().value().get_leakage_inductance_per_winding()[windingIndex - 1].get_nominal().value();
+                text += "\t\t\tLeakage inductance referred to primary: " + std::to_string(value) + "\n";
+            }
         }
     }
     std::cout << text << std::endl;

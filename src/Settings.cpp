@@ -58,6 +58,11 @@ namespace OpenMagnetics {
         _coreIncludeStacks = true;
         _coreIncludeDistributedGaps = true;
 
+        _wireAdviserIncludeFoil = false;
+        _wireAdviserIncludeRectangular = true;
+        _wireAdviserIncludeLitz = true;
+        _wireAdviserIncludeRound = true;
+
         _harmonicAmplitudeThresholdQuickMode = true;
         _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
 
@@ -322,6 +327,34 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_include_distributed_gaps(bool value) {
         _coreIncludeDistributedGaps = value;
+    }
+
+    bool Settings::get_wire_adviser_include_foil() const {
+        return _wireAdviserIncludeFoil;
+    }
+    void Settings::set_wire_adviser_include_foil(bool value) {
+        _wireAdviserIncludeFoil = value;
+    }
+
+    bool Settings::get_wire_adviser_include_rectangular() const {
+        return _wireAdviserIncludeRectangular;
+    }
+    void Settings::set_wire_adviser_include_rectangular(bool value) {
+        _wireAdviserIncludeRectangular = value;
+    }
+
+    bool Settings::get_wire_adviser_include_litz() const {
+        return _wireAdviserIncludeLitz;
+    }
+    void Settings::set_wire_adviser_include_litz(bool value) {
+        _wireAdviserIncludeLitz = value;
+    }
+
+    bool Settings::get_wire_adviser_include_round() const {
+        return _wireAdviserIncludeRound;
+    }
+    void Settings::set_wire_adviser_include_round(bool value) {
+        _wireAdviserIncludeRound = value;
     }
 
     bool Settings::get_harmonic_amplitude_threshold_quick_mode() const {
