@@ -46,10 +46,10 @@ SUITE(WireAdviser) {
         currentEffectiveFrequency = 134567;
         setup();
         OpenMagnetics::WireAdviser wireAdviser;
-        wireAdviser.enableFoil(false);
-        wireAdviser.enableRectangular(false);
-        wireAdviser.enableLitz(false);
-        wireAdviser.enableRound(true);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_rectangular(false);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_wire_adviser_include_round(true);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
@@ -65,10 +65,10 @@ SUITE(WireAdviser) {
         currentEffectiveFrequency = 134567;
         setup();
         OpenMagnetics::WireAdviser wireAdviser;
-        wireAdviser.enableFoil(false);
-        wireAdviser.enableRectangular(false);
-        wireAdviser.enableLitz(true);
-        wireAdviser.enableRound(false);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_rectangular(false);
+        settings->set_wire_adviser_include_litz(true);
+        settings->set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
@@ -84,10 +84,10 @@ SUITE(WireAdviser) {
         currentEffectiveFrequency = 134567;
         setup();
         OpenMagnetics::WireAdviser wireAdviser;
-        wireAdviser.enableFoil(false);
-        wireAdviser.enableRectangular(true);
-        wireAdviser.enableLitz(false);
-        wireAdviser.enableRound(false);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_rectangular(true);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
@@ -103,10 +103,10 @@ SUITE(WireAdviser) {
         currentEffectiveFrequency = 134567;
         setup();
         OpenMagnetics::WireAdviser wireAdviser;
-        wireAdviser.enableFoil(true);
-        wireAdviser.enableRectangular(false);
-        wireAdviser.enableLitz(false);
-        wireAdviser.enableRound(false);
+        settings->set_wire_adviser_include_foil(true);
+        settings->set_wire_adviser_include_rectangular(false);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_wire_adviser_include_round(false);
         auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 

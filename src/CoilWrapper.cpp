@@ -279,6 +279,10 @@ bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<siz
         }
 
         if (wind) {
+            set_sections_description(std::nullopt);
+            set_layers_description(std::nullopt);
+            set_turns_description(std::nullopt);
+
             if (_inputs) {
                 calculate_insulation();
             }
@@ -1935,6 +1939,7 @@ bool CoilWrapper::wind_by_rectangular_layers() {
     std::vector<Layer> layers;
     for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
         if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
+
             uint64_t maximumNumberLayersFittingInSection;
             uint64_t maximumNumberPhysicalTurnsPerLayer;
             uint64_t minimumNumberLayerNeeded;
@@ -3072,6 +3077,13 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                             }
                             double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
                             double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+
+                            if (newCoordinates[1] - currentWireAngle / 2 < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2)) {
+                                newCoordinates[1] = additionalCoordinates[1];
+                            }
+                            if (newCoordinates[1] + currentWireAngle / 2 > (section.get_coordinates()[1] + section.get_dimensions()[1] / 2)) {
+                                newCoordinates[1] = additionalCoordinates[1];
+                            }
 
                             collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
                             if (collisions.size() == 0) {

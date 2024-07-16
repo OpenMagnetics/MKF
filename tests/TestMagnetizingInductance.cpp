@@ -57,7 +57,7 @@ SUITE(MagnetizingInductance) {
         double frequency = 20000;
         std::string coreShape = "ETD 29";
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
 
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
@@ -229,7 +229,7 @@ SUITE(MagnetizingInductance) {
         double frequency = 100000;
         std::string coreShape = "E 47/20/16";
         std::string coreMaterial = "N87";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.0004);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0004);
         double expectedValue = 63e-6;
 
         OpenMagnetics::CoreWrapper core;
@@ -285,7 +285,7 @@ SUITE(MagnetizingInductance) {
         double frequency = 20000;
         std::string coreShape = "ETD 29";
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.003);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
 
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
@@ -572,7 +572,7 @@ SUITE(MagnetizingInductance) {
         double frequency = 20000;
         std::string coreShape = "ETD 29";
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
 
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
@@ -856,7 +856,7 @@ SUITE(MagnetizingInductance) {
         double frequency = 100000;
         std::string coreShape = "RM 14/20";
         std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
 
         OpenMagnetics::CoreWrapper core = json::parse(R"({"name": "My Core", "functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": {"aliases": ["RM 14LP", "RM 14/ILP", "RM 14/LP"], "dimensions": {"A": {"minimum": 0.0408, "maximum": 0.0422 }, "B": {"minimum": 0.010150000000000001, "maximum": 0.01025 }, "C": {"minimum": 0.018400000000000003, "maximum": 0.019000000000000003 }, "D": {"minimum": 0.00555, "maximum": 0.00585 }, "E": {"minimum": 0.029, "maximum": 0.0302 }, "F": {"minimum": 0.014400000000000001, "maximum": 0.015000000000000001 }, "G": {"minimum": 0.017 }, "H": {"minimum": 0.0054, "maximum": 0.005600000000000001 }, "J": {"minimum": 0.0335, "maximum": 0.0347 }, "R": {"maximum": 0.00030000000000000003 } }, "family": "rm", "familySubtype": "3", "name": "RM 14/20", "type": "standard", "magneticCircuit": "open"}, "gapping": [{"type": "subtractive", "length": 0.001 }, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"}, {"length": 0.000005, "type": "residual"} ], "numberStacks": 1 }, "geometricalDescription": null, "processedDescription": null })");
         OpenMagnetics::CoilWrapper winding; 

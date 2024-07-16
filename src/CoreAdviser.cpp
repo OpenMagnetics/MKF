@@ -1067,9 +1067,14 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
             core.process_data();
             core.process_gap();
         }
-        double numberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        double initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
+            OpenMagnetics::NumberTurns numberTurns(initialNumberTurns, inputs.get_design_requirements());
+            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            initialNumberTurns = numberTurnsCombination[0];
+        }
 
-        (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(numberTurns);
+        (*masMagneticsWithScoring)[i].first.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
     }
 }
 

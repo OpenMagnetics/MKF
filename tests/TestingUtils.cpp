@@ -23,11 +23,12 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
                                                 OpenMagnetics::CoilAlignment turnsAlignment,
                                                 OpenMagnetics::CoilAlignment sectionsAlignment,
                                                 std::vector<OpenMagnetics::WireWrapper> wires,
-                                                bool useBobbin){
+                                                bool useBobbin,
+                                                int numberStacks){
     json coilJson;
     coilJson["functionalDescription"] = json::array();
 
-    auto core = get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+    auto core = get_quick_core(shapeName, json::parse("[]"), numberStacks, "Dummy");
     auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core, !useBobbin);
     json bobbinJson;
     OpenMagnetics::to_json(bobbinJson, bobbin);
@@ -333,7 +334,7 @@ OpenMagnetics::InsulationRequirements get_quick_insulation_requirements(OpenMagn
     return insulationRequirements;
 }
 
-json get_grinded_gap(double gapLength) {
+json get_ground_gap(double gapLength) {
     auto constants = OpenMagnetics::Constants();
     auto basicGapping = json::array();
     auto basicCentralGap = json();

@@ -9,11 +9,19 @@ namespace OpenMagnetics {
 class NumberTurns {
     private:
         std::vector<uint64_t> _currentNumberTurns;
-        std::vector<DimensionWithTolerance> _turnsRatios;
+        std::vector<DimensionWithTolerance> _turnsRatiosRequirements;
+        std::vector<double> _turnsRatios;
     protected:
     public:
         NumberTurns(double initialPrimaryNumberTurns, DesignRequirements designRequirements) {
-            _turnsRatios = designRequirements.get_turns_ratios();
+            _turnsRatiosRequirements = designRequirements.get_turns_ratios();
+            for (auto& turnsRatioRequirement : _turnsRatiosRequirements) {
+                auto turnsRatio = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::NOMINAL);
+                if (turnsRatio <= 0) {
+                    throw std::invalid_argument("turns ratio  must be greater than 0: " + std::to_string(turnsRatio));
+                }
+                _turnsRatios.push_back(turnsRatio);
+            }
             uint64_t InitialPrimaryNumberTurnsMinusOne = initialPrimaryNumberTurns - 1; // Because looking afor a new one will increment turns by one
             _currentNumberTurns.push_back(InitialPrimaryNumberTurnsMinusOne);
             increment_number_turns();

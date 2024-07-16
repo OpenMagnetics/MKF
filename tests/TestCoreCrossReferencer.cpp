@@ -239,7 +239,7 @@ SUITE(CoreCrossReferencer) {
 
         std::string shapeName = "PQ 40/40";
         std::string materialName = "3C97";
-        auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, materialName);
 
 

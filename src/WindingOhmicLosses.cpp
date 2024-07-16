@@ -22,6 +22,7 @@ double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const Wire
     if (std::isnan(wireLength)) {
         throw std::runtime_error("NaN found in wireLength value");
     }
+
     return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
 }
 
@@ -30,11 +31,12 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, d
     WireMaterial wireMaterial = wire.resolve_material();
 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
-    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
+    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, 25);
 
     double wireConductingArea = wire.calculate_conducting_area();
 
     double dcResistancePerMeter = resistivity / wireConductingArea;
+
     if (std::isnan(dcResistancePerMeter)) {
         throw std::runtime_error("NaN found in dcResistancePerMeter value");
     }
@@ -157,6 +159,7 @@ double WindingOhmicLosses::calculate_ohmic_losses_per_meter(WireWrapper wire, Si
         throw std::runtime_error("Current processed is missing field RMS");
     }
     auto currentRms = current.get_processed()->get_rms().value();
+
     double windingOhmicLossesPerMeter = pow(currentRms, 2) * dcResistancePerMeter;
 
     return windingOhmicLossesPerMeter;

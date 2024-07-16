@@ -27,7 +27,7 @@ SUITE(MagneticField) {
     double frequency = 125000;
     std::string coreShape = "PQ 26/25";
     std::string coreMaterial = "3C97";
-    auto gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
     OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
     OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
     OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
@@ -332,7 +332,7 @@ SUITE(MagneticField) {
         frequency = 125000;
         coreShape = "PQ 26/25";
         coreMaterial = "3C97";
-        gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
@@ -421,7 +421,7 @@ SUITE(MagneticField) {
         frequency = 125000;
         coreShape = "PQ 26/25";
         coreMaterial = "3C97";
-        gapping = OpenMagneticsTesting::get_grinded_gap(0.001);
+        gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;

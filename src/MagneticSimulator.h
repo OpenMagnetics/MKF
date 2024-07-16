@@ -55,6 +55,7 @@ class MagneticSimulator {
         MasWrapper simulate(MasWrapper mas);
         MasWrapper simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
+        LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         WindingLossesOutput calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature = std::nullopt);
 

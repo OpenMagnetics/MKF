@@ -301,7 +301,8 @@ namespace OpenMagnetics {
             }
         }
         if (interpolatorData.size() == 0) {
-            throw std::runtime_error("No wires with that specification");
+            // throw std::runtime_error("No wires with that specification");
+            return;
         }
 
         size_t n = interpolatorData.size();
@@ -403,7 +404,8 @@ namespace OpenMagnetics {
             }
         }
         if (interpolatorData.size() == 0) {
-            throw std::runtime_error("No wires with that specification");
+            // throw std::runtime_error("No wires with that specification");
+            return;
         }
 
         size_t n = interpolatorData.size();

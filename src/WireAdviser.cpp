@@ -3,6 +3,7 @@
 #include "CoilWrapper.h"
 #include "WindingLosses.h"
 #include "WindingSkinEffectLosses.h"
+#include "Settings.h"
 #include <list>
 
 
@@ -40,6 +41,11 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
         auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+
+        if (wire.get_type() == WireType::FOIL && (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() > _maximumNumberParallels) {
+            listOfIndexesToErase.push_back(coilIndex);
+            continue;
+        }
 
         if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
             if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1]) {
@@ -281,6 +287,12 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
         auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        bool isValid = true;
+
+        if (wire.get_type() == WireType::FOIL) {
+            newScoring.push_back(0);
+            continue;
+        }
 
         if (!wire.resolve_coating()) {
             listOfIndexesToErase.push_back(coilIndex);
@@ -298,7 +310,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
             throw std::runtime_error("Wire " + wire.get_name().value() + " is missing breakdown voltage");
         }
 
-        bool isValid = true;
 
         if (coating.get_breakdown_voltage().value() < wireSolidInsulationRequirements.get_minimum_breakdown_voltage()) {
             isValid = false;
@@ -333,7 +344,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
         }
 
         if (isValid) {
-            double scoring = wireSolidInsulationRequirements.get_minimum_breakdown_voltage() - coating.get_breakdown_voltage().value();
+            double scoring = 0;
+            if (wireSolidInsulationRequirements.get_minimum_breakdown_voltage() > 0) {
+                scoring = wireSolidInsulationRequirements.get_minimum_breakdown_voltage() - coating.get_breakdown_voltage().value();
+            }
             newScoring.push_back(scoring);
         }
         else {
@@ -367,6 +381,8 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
+
+    auto settings = Settings::GetInstance();
     std::string file_path = __FILE__;
     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
     std::ifstream ndjsonFile(inventory_path);
@@ -375,10 +391,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
     while (std::getline(ndjsonFile, jsonLine)) {
         json jf = json::parse(jsonLine);
         WireWrapper wire(jf);
-        if ((_includeFoil || wire.get_type() != WireType::FOIL) &&
-            (_includeRectangular || wire.get_type() != WireType::RECTANGULAR) &&
-            (_includeLitz || wire.get_type() != WireType::LITZ) &&
-            (_includeRound || wire.get_type() != WireType::ROUND)) {
+        if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+            (settings->get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
+            (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
+            (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
             wires.push_back(wire);
         }
     }
@@ -391,6 +407,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
                                                                                       Section section,
                                                                                       SignalDescriptor current,
                                                                                       double temperature){
+    auto settings = Settings::GetInstance();
     std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
 
     for (auto& wire : *wires){
@@ -400,10 +417,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
     }
 
     for (auto& wire : *wires){
-        if ((!_includeFoil && wire.get_type() == WireType::FOIL) ||
-            (!_includeRectangular && wire.get_type() == WireType::RECTANGULAR) ||
-            (!_includeLitz && wire.get_type() == WireType::LITZ) ||
-            (!_includeRound && wire.get_type() == WireType::ROUND)) {
+        if ((!settings->get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
+            (!settings->get_wire_adviser_include_rectangular() && wire.get_type() == WireType::RECTANGULAR) ||
+            (!settings->get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
+            (!settings->get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
             continue;
         }
         int numberParallelsNeeded;
@@ -473,15 +490,12 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
 
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
 
-
-
-
-
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
-
     }
+
     auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
+
     if (tempCoilsWithScoring.size() == 0) {
         coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
     }
@@ -493,7 +507,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
 
-    
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));

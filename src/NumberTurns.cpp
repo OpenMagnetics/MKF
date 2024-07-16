@@ -1,4 +1,5 @@
 #include "NumberTurns.h"
+#include "Settings.h"
 
 #include <cmath>
 #include <filesystem>
@@ -19,6 +20,7 @@ std::vector<uint64_t> NumberTurns::get_next_number_turns_combination() {
 }
 
 void NumberTurns::increment_number_turns() {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     uint64_t primaryNumberTurns = _currentNumberTurns[0];
     bool allRequirementsPassed = false;
     while (!allRequirementsPassed) {
@@ -26,13 +28,11 @@ void NumberTurns::increment_number_turns() {
         allRequirementsPassed = true;
         primaryNumberTurns++;
         _currentNumberTurns.push_back(primaryNumberTurns);
-        for (auto& turnsRatioRequirement : _turnsRatios){
-            auto turnsRatio = resolve_dimensional_values(turnsRatioRequirement, DimensionalValues::NOMINAL);
-            uint64_t numberTurns = round(primaryNumberTurns / turnsRatio);
-            // std::cout << "numberTurns: " << numberTurns << std::endl;
-            // std::cout << "primaryNumberTurns: " << primaryNumberTurns << std::endl;
-            // std::cout << "turnsRatio: " << turnsRatio << std::endl;
+        for (size_t turnsRatioIndex = 0; turnsRatioIndex < _turnsRatios.size(); ++turnsRatioIndex) {
+            auto turnsRatioRequirement = _turnsRatiosRequirements[turnsRatioIndex];
+            auto turnsRatio = _turnsRatios[turnsRatioIndex];
 
+            uint64_t numberTurns = round(primaryNumberTurns / turnsRatio);
             if (check_requirement(turnsRatioRequirement, double(primaryNumberTurns) / numberTurns)) {
                 _currentNumberTurns.push_back(numberTurns);
             }
