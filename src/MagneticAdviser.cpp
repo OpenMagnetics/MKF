@@ -47,19 +47,19 @@ namespace OpenMagnetics {
         double clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
         coreAdviser.set_average_margin_in_winding_window(clearanceAndCreepageDistance);
 
-        std::cout << "Getting core" << std::endl;
+        // std::cout << "Getting core" << std::endl;
         size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
         
         size_t coresWound = 0;
         for (auto& [core, coreScoring] : masMagneticsWithCore) {
-            std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
-            std::cout << "Getting coil" << std::endl;
+            // std::cout << "core:                                                                 " << core.get_magnetic().get_core().get_name().value() << std::endl;
+            // std::cout << "Getting coil" << std::endl;
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
 
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(core, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
             if (masMagneticsWithCoreAndCoil.size() > 0) {
-                std::cout << "Core wound!" << std::endl;
+                // std::cout << "Core wound!" << std::endl;
 
                 coresWound++;
             }

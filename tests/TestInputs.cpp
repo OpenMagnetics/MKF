@@ -2806,6 +2806,21 @@ SUITE(CircuitSimulationReader) {
     }
 
 
+    TEST(Test_Psim_Harmonics_Size_Error) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
+
+        double frequency = 100000;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 0.0001);
+
+        auto commonHarmonicIndexes = OpenMagnetics::get_main_current_harmonic_indexes(operatingPoint, 0.05);
+        CHECK_EQUAL(49, commonHarmonicIndexes.back());
+    }
+
+
     TEST(Test_Simba_Column_Names) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");

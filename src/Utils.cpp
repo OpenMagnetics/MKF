@@ -1042,9 +1042,11 @@ size_t round_up_size_to_power_of_2(size_t size) {
 
 
 std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    size_t maximumCommonIndex = SIZE_MAX;
     std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(operatingPoint.get_excitations_per_winding().size(), 0);
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
         auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        maximumCommonIndex = std::min(maximumCommonIndex, harmonics.get_amplitudes().size());
         for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
         }
@@ -1053,11 +1055,11 @@ std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPo
     std::vector<size_t> mainHarmonicIndexes;
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
         auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
-        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+        for (size_t harmonicIndex = 1; harmonicIndex < maximumCommonIndex; ++harmonicIndex) {
 
-            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
-                continue;
-            }
+            // if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+            //     continue;
+            // }
             if (std::find(mainHarmonicIndexes.begin(), mainHarmonicIndexes.end(), harmonicIndex) == mainHarmonicIndexes.end()) {
 
                 mainHarmonicIndexes.push_back(harmonicIndex);
