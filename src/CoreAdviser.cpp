@@ -262,9 +262,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             if (!materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
                 auto coreLossesMethods = core.get_available_core_losses_methods();
                 if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), CoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-
-
-
                     double referenceCoreLosses = coreLossesModelSteinmetz->get_core_losses(core, operatingPointExcitation, temperature).get_core_losses();
                     auto aux = coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
                     magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
@@ -543,6 +540,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
+    bool largeWaveform = false;
 
     std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
@@ -556,6 +554,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         }
         std::vector<double> voltageWaveformData = voltageWaveform.get_data();
         std::vector<double> currentWaveformData = currentWaveform.get_data();
+        if (currentWaveformData.size() > settings->get_inputs_number_points_sampled_waveforms() * 2) {
+            largeWaveform = true;
+        }
         for (size_t i = 0; i < voltageWaveformData.size(); ++i)
         {
             powerMeans[operatingPointIndex] += fabs(voltageWaveformData[i] * currentWaveformData[i]);
@@ -563,6 +564,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         powerMeans[operatingPointIndex] /= voltageWaveformData.size();
     }
 
+
+    if (largeWaveform) {
+        models["coreLosses"] = magic_enum::enum_name(OpenMagnetics::CoreLossesModels::STEINMETZ);
+    }
 
     auto coreLossesModelSteinmetz = OpenMagnetics::CoreLossesModel::factory(models);
     auto coreLossesModelProprietary = OpenMagnetics::CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
