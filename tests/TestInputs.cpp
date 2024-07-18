@@ -1620,7 +1620,7 @@ SUITE(Inputs) {
         auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
         auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
 
-        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(waveform, frequency);
 
         double expectedAverage = (peakToPeak * dutyCycle / 2);
         CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
@@ -1648,7 +1648,7 @@ SUITE(Inputs) {
         auto waveform = OpenMagnetics::InputsWrapper::create_waveform(processed, frequency);
         auto guessedLabel = OpenMagnetics::InputsWrapper::try_guess_waveform_label(waveform);
 
-        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(waveform);
+        auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(waveform, frequency);
 
         double expectedAverage = peakToPeak * dutyCycle;
         CHECK_EQUAL(magic_enum::enum_name(label), magic_enum::enum_name(guessedLabel));
@@ -2107,10 +2107,10 @@ SUITE(Inputs) {
 
         OpenMagnetics::SignalDescriptor signal;
         signal.set_waveform(waveform);
-        auto processed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(signal.get_waveform().value());
+        auto processed = OpenMagnetics::InputsWrapper::calculate_processed_data(signal.get_waveform().value());
         
         auto reflectedSignal = OpenMagnetics::InputsWrapper::reflect_waveform(signal, ratio, OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR);
-        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(reflectedSignal.get_waveform().value());
+        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(reflectedSignal.get_waveform().value());
 
         CHECK_CLOSE(-processed.get_average().value() * ratio, reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio);
     }
@@ -2126,10 +2126,10 @@ SUITE(Inputs) {
 
         OpenMagnetics::SignalDescriptor signal;
         signal.set_waveform(waveform);
-        auto processed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(signal.get_waveform().value());
+        auto processed = OpenMagnetics::InputsWrapper::calculate_processed_data(signal.get_waveform().value());
         
         auto reflectedSignal = OpenMagnetics::InputsWrapper::reflect_waveform(signal, ratio, OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR);
-        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(reflectedSignal.get_waveform().value());
+        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(reflectedSignal.get_waveform().value());
 
         CHECK_CLOSE(-processed.get_average().value() * ratio, reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio);
     }
@@ -2145,10 +2145,10 @@ SUITE(Inputs) {
 
         OpenMagnetics::SignalDescriptor signal;
         signal.set_waveform(waveform);
-        auto processed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(signal.get_waveform().value());
+        auto processed = OpenMagnetics::InputsWrapper::calculate_processed_data(signal.get_waveform().value());
         
         auto reflectedSignal = OpenMagnetics::InputsWrapper::reflect_waveform(signal, ratio, OpenMagnetics::WaveformLabel::UNIPOLAR_TRIANGULAR);
-        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(reflectedSignal.get_waveform().value());
+        auto reflectedProcessed = OpenMagnetics::InputsWrapper::calculate_processed_data(reflectedSignal.get_waveform().value());
 
         CHECK_CLOSE(processed.get_average().value() * ratio, reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio);
     }

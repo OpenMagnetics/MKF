@@ -183,7 +183,6 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     }
 
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
-
 };
 
 double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {

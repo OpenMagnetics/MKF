@@ -40,7 +40,13 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
 
     magneticFluxWaveform.set_data(magneticFluxData);
     magneticFlux.set_waveform(magneticFluxWaveform);
-
+    if (magnetizingCurrent.get_harmonics()) {
+        auto harmonics = magnetizingCurrent.get_harmonics().value();
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            harmonics.get_mutable_amplitudes()[harmonicIndex] *= numberTurns / reluctance;
+        }
+        magneticFlux.set_harmonics(harmonics);
+    }
     return magneticFlux;
 }
 SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
@@ -60,6 +66,13 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor
 
     magneticFluxDensityWaveform.set_data(magneticFluxDensityData);
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
+    if (magneticFlux.get_harmonics()) {
+        auto harmonics = magneticFlux.get_harmonics().value();
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            harmonics.get_mutable_amplitudes()[harmonicIndex] /= area;
+        }
+        magneticFluxDensity.set_harmonics(harmonics);
+    }
     magneticFluxDensity.set_processed(
         InputsWrapper::calculate_basic_processed_data(magneticFluxDensityWaveform));
 
@@ -84,6 +97,13 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescript
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
+    if (magneticFluxDensity.get_harmonics()) {
+        auto harmonics = magneticFluxDensity.get_harmonics().value();
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            harmonics.get_mutable_amplitudes()[harmonicIndex] /= (initialPermeability * constants.vacuumPermeability);
+        }
+        magneticFieldStrength.set_harmonics(harmonics);
+    }
     magneticFieldStrength.set_processed(
         InputsWrapper::calculate_basic_processed_data(magneticFieldStrengthWaveform));
 

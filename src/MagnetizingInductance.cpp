@@ -44,6 +44,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
+    double numberWindings = winding.get_functional_description().size();
     double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
     double temperature = operatingPoint->get_conditions().get_ambient_temperature();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
@@ -104,6 +105,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
             modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
 
+            // if (numberWindings == 1 && excitation.get_current()) {
+            //     InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
+            // }
+            // else 
             if (excitation.get_voltage()) {
                 auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
                 auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);

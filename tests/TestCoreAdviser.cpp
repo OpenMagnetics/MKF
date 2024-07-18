@@ -179,7 +179,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 26 - Ungapped");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ 125 - Ungapped");
         settings->reset();
     }
 
@@ -273,7 +273,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Gapped 4.0 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Distributed gapped 0.79 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
         settings->reset();
     }
