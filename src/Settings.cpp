@@ -62,6 +62,7 @@ namespace OpenMagnetics {
         _wireAdviserIncludeRectangular = true;
         _wireAdviserIncludeLitz = true;
         _wireAdviserIncludeRound = true;
+        _wireAdviserAllowRectangularInToroidalCores = false;
 
         _harmonicAmplitudeThresholdQuickMode = true;
         _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
@@ -355,6 +356,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_wire_adviser_include_round(bool value) {
         _wireAdviserIncludeRound = value;
+    }
+
+    bool Settings::get_wire_adviser_allow_rectangular_in_toroidal_cores() const {
+        return _wireAdviserAllowRectangularInToroidalCores;
+    }
+    void Settings::set_wire_adviser_allow_rectangular_in_toroidal_cores(bool value) {
+        _wireAdviserAllowRectangularInToroidalCores = value;
     }
 
     bool Settings::get_harmonic_amplitude_threshold_quick_mode() const {

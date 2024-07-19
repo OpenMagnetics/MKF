@@ -60,6 +60,7 @@ class Settings
         bool _wireAdviserIncludeRectangular = true;
         bool _wireAdviserIncludeLitz = true;
         bool _wireAdviserIncludeRound = true;
+        bool _wireAdviserAllowRectangularInToroidalCores = false;
 
         bool _harmonicAmplitudeThresholdQuickMode = true;
         double _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
@@ -197,6 +198,9 @@ class Settings
 
         bool get_wire_adviser_include_round() const;
         void set_wire_adviser_include_round(bool value);
+
+        bool get_wire_adviser_allow_rectangular_in_toroidal_cores() const;
+        void set_wire_adviser_allow_rectangular_in_toroidal_cores(bool value);
 
         bool get_harmonic_amplitude_threshold_quick_mode() const;
         void set_harmonic_amplitude_threshold_quick_mode(bool value);

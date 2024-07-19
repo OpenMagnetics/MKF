@@ -2493,9 +2493,7 @@ SUITE(FrequencyFromCoreLosses) {
                         "\"layersDescription\": null, \"sectionsDescription\": null, \"turnsDescription\": null}"));
         auto operatingPoint = OpenMagnetics::OperatingPoint(json::parse(
             "{\"conditions\": {\"ambientRelativeHumidity\": null, \"ambientTemperature\": 37.0, \"cooling\": null, "
-            "\"name\": null}, \"excitationsPerWinding\": [{\"current\": {\"harmonics\": null, \"processed\": null, "
-            "\"waveform\": {\"ancillaryLabel\": null, \"data\": [-5.0, 5.0, -5.0], \"numberPeriods\": null, \"time\": "
-            "[0.0, 2.4999999999999998e-06, 1e-05]}}, \"frequency\": 100000.0, \"magneticFieldStrength\": null, "
+            "\"name\": null}, \"excitationsPerWinding\": [{\"current\": null, \"frequency\": 100000.0, \"magneticFieldStrength\": null, "
             "\"magneticFluxDensity\": null, \"magnetizingCurrent\": null, \"name\": \"My Operating Point\", "
             "\"voltage\": {\"harmonics\": null, \"processed\": null, \"waveform\": {\"ancillaryLabel\": null, "
             "\"data\": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996, 7.5], \"numberPeriods\": null, \"time\": "
@@ -2511,6 +2509,7 @@ SUITE(FrequencyFromCoreLosses) {
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+
 
         auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);

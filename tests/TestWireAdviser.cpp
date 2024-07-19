@@ -31,6 +31,7 @@ SUITE(WireAdviser) {
         coilFunctionalDescription.set_wire("Dummy");
 
         section.set_dimensions({windingWindowWidth, windingWindowHeight});
+        section.set_coordinate_system(OpenMagnetics::CoordinateSystem::CARTESIAN);
 
         OpenMagnetics::Processed processed;
         processed.set_rms(currentRms);

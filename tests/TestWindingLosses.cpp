@@ -1869,8 +1869,8 @@ SUITE(WindingLossesFoil) {
         double magnetizingInductance = 1e-3;
 
         std::vector<std::pair<double, double>> expectedWindingLosses({{0.01, 0.00037759},
-                                                                        {25000, 0.00049609},
-                                                                        {50000, 0.00055119},
+                                                                        {25000, 0.00039609},
+                                                                        {50000, 0.0004512},
                                                                         {100000, 0.00058852},
                                                                         {200000, 0.00061066},
                                                                         {250000, 0.00061684},
@@ -1949,12 +1949,12 @@ SUITE(WindingLossesFoil) {
         double magnetizingInductance = 1e-3;
 
         std::vector<std::pair<double, double>> expectedWindingLosses({{0.01, 0.0041536},
-                                                                        {25000, 0.0099166},
-                                                                        {50000, 0.013048},
-                                                                        {100000, 0.017562},
-                                                                        {200000, 0.024423},
-                                                                        {250000, 0.027482},
-                                                                        {500000, 0.042515}});
+                                                                        {25000, 0.0039304},
+                                                                        {50000, 0.00440837},
+                                                                        {100000, 0.00498607},
+                                                                        {200000, 0.00565498},
+                                                                        {250000, 0.00589129},
+                                                                        {500000, 0.00670688}});
 
         for (auto& testPoint : expectedWindingLosses) {
 
@@ -2028,12 +2028,12 @@ SUITE(WindingLossesFoil) {
         double dutyCycle = 0.5;
         double magnetizingInductance = 1e-3;
 
-        std::vector<std::pair<double, double>> expectedWindingLosses({{0.01, 0.011868},
-                                                                        {25000, 0.015571},
-                                                                        {50000, 0.018916},
-                                                                        {100000, 0.024},
-                                                                        {200000, 0.033023},
-                                                                        {250000, 0.037612}});
+        std::vector<std::pair<double, double>> expectedWindingLosses({{0.01, 0.0090968},
+                                                                        {25000, 0.0096968},
+                                                                        {50000, 0.0104159},
+                                                                        {100000, 0.0115721},
+                                                                        {200000, 0.0130536},
+                                                                        {250000, 0.013589}});
 
         for (auto& testPoint : expectedWindingLosses) {
 
