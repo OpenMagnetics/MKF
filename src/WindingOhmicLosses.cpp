@@ -31,7 +31,7 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, d
     WireMaterial wireMaterial = wire.resolve_material();
 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
-    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, 25);
+    auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
     double wireConductingArea = wire.calculate_conducting_area();
 

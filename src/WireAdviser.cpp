@@ -392,9 +392,10 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
         json jf = json::parse(jsonLine);
         WireWrapper wire(jf);
         if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
-            (settings->get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
+            ((settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&
             (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
             (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
+
             wires.push_back(wire);
         }
     }
@@ -418,7 +419,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
 
     for (auto& wire : *wires){
         if ((!settings->get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
-            (!settings->get_wire_adviser_include_rectangular() && wire.get_type() == WireType::RECTANGULAR) ||
+            (!(settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||
             (!settings->get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
             (!settings->get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
             continue;

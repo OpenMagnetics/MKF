@@ -794,11 +794,9 @@ SUITE(CoreAdviser) {
 
         auto scorings = coreAdviser.get_scorings();
 
-
-        CHECK(bool(masMagnetics[0].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
-        CHECK(bool(masMagnetics[1].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
-        CHECK(bool(masMagnetics[2].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
-        CHECK(bool(masMagnetics[3].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
+        for (size_t i = 0; i < masMagnetics.size(); ++i ){
+            CHECK(bool(masMagnetics[i].first.get_outputs()[0].get_winding_losses().value().get_dc_resistance_per_turn()));
+        }
 
         settings->reset();
     }

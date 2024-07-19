@@ -312,9 +312,12 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
         double w = resolve_dimensional_values(wire.get_conducting_width().value());
         double h = resolve_dimensional_values(wire.get_conducting_height().value());
 
-        double xi = h / skinDepth;
+        double xi = std::min(h, w) / skinDepth;
 
         factor = w * xi * resistivity * (sinh(xi) - sin(xi)) / (cosh(xi) + cos(xi));
+        if (std::isnan(factor)) {
+            throw std::runtime_error("NaN found in Ferreira's proximity factor");
+        }
     }
     else if (wire.get_type() == WireType::ROUND ||wire.get_type() == WireType::LITZ) {
         double wireDiameter;
@@ -327,6 +330,8 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
         }
         double gamma = wireDiameter / (skinDepth * sqrt(2));
         factor = - 2 * gamma * resistivity * (kelvin_function_real(2, gamma) * derivative_kelvin_function_real(0, gamma) + kelvin_function_imaginary(2, gamma) * derivative_kelvin_function_imaginary(0, gamma)) / (pow(kelvin_function_real(0, gamma), 2) + pow(kelvin_function_imaginary(0, gamma), 2));
+
+
     }
     else {
         throw std::runtime_error("Unknown type of wire");

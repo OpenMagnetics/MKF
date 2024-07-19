@@ -47,7 +47,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "EC 35/17/10 - 3C94 - Gapped 0.500 mm");
+        CHECK(crossReferencedCores[0].first.get_name() == "EC 35/17/10 - 3C94 - Gapped 1.000 mm");
     }
 
     TEST(Test_All_Core_Materials_Same_Material) {
@@ -82,7 +82,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "EC 41/19/12 - 3C91 - Gapped 1.000 mm");
+        CHECK(crossReferencedCores[0].first.get_name() == "EP 20 - 3C91 - Gapped 0.605 mm");
     }
 
     TEST(Test_All_Core_Materials_Same_Material_Maximum_Height) {
@@ -158,7 +158,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "ETD 34/17/11 - N27 - Gapped 2.500 mm");
+        CHECK(crossReferencedCores[0].first.get_name() == "ETD 34/17/11 - N87 - Gapped 2.500 mm");
     }
 
     TEST(Test_All_Core_Materials_Powder) {
@@ -192,7 +192,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - Kool Mµ 90 - Ungapped");
+        CHECK(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped");
     }
 
     TEST(Test_All_Core_Materials_Only_Micrometals) {
@@ -227,7 +227,7 @@ SUITE(CoreCrossReferencer) {
 
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - Mix 70 - Ungapped");
+        CHECK(crossReferencedCores[0].first.get_name() == "E 25/9.5/6.3 - FS 26 - Ungapped");
     }
 
     TEST(Test_Cross_Reference_Core_Web_0) {
@@ -264,7 +264,7 @@ SUITE(CoreCrossReferencer) {
         auto crossReferencedCores = coreCrossReferencer.get_cross_referenced_core(core, numberTurns, inputs, 20);
 
         CHECK(crossReferencedCores.size() > 0);
-        CHECK(crossReferencedCores[0].first.get_name() == "EQ 42/20/28 - Edge 40 - Ungapped");
+        CHECK(crossReferencedCores[0].first.get_name() == "EQ 42/20/28 - Kool Mµ MAX 26 - Ungapped");
 
         auto scorings = coreCrossReferencer.get_scorings();
         auto scoredValues = coreCrossReferencer.get_scored_values();
