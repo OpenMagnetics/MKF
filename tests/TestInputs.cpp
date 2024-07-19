@@ -2594,7 +2594,7 @@ SUITE(CircuitSimulationReader) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
 
-        double turnsRatio = 1 / 7.11;
+        double turnsRatio = 1.0 / 7.11;
         double frequency = 372618;
         auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
