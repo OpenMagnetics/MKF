@@ -88,7 +88,10 @@ class CoreLossesModel {
             double ct0 = steinmetzDatum.get_ct0().value();
             double ct1 = steinmetzDatum.get_ct1().value();
             double ct2 = steinmetzDatum.get_ct2().value();
-            volumetricLossesWithTemperature *= (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+            double scale = (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
+            if (scale > 0) {
+                volumetricLossesWithTemperature *= scale;
+            }
         }
         return volumetricLossesWithTemperature;
     }
