@@ -2869,6 +2869,26 @@ SUITE(CircuitSimulationReader) {
         CHECK(!mapColumnNames[0]["voltage"].compare("L2:Inductor voltage"));
     }
 
+    TEST(Test_Plecs_Web) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+
+        double frequency = 50;
+        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path); 
+        std::string mapColumnNamesString = R"([{"current":"L2:Inductor current","time":"Time / s","voltage":"L2:Inductor voltage"}])";
+
+        std::vector<std::map<std::string, std::string>> mapColumnNames = json::parse(mapColumnNamesString).get<std::vector<std::map<std::string, std::string>>>();
+
+
+        auto operatingPoint = reader.extract_operating_point(1, frequency, mapColumnNames);
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
+
+        CHECK(mapColumnNames.size() == 1);
+        CHECK(!mapColumnNames[0]["time"].compare("Time / s"));
+        CHECK(!mapColumnNames[0]["current"].compare("L2:Inductor current"));
+        CHECK(!mapColumnNames[0]["voltage"].compare("L2:Inductor voltage"));
+    }
+
     TEST(Test_Plecs_Column_Names_Missing_Windings) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/wrong_plecs_simulation.csv");
