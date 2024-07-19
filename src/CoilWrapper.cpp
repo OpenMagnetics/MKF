@@ -1471,21 +1471,26 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
             }
 
             if (_windingOrientation == WindingOrientation::OVERLAPPING) {
+
                 if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
-                    throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                                             std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
-                                             ", wire height:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) + 
-                                             ", section height:" + std::to_string(currentSectionHeight)
-                                             );
+                    std::string wireType = std::string(magic_enum::enum_name(wirePerWinding[windingIndex].get_type()));
+                    return false;
+                    // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
+                    //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                    //                          ", wire type: " + wireType + 
+                    //                          ", wire height: " + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) + 
+                    //                          ", section height: " + std::to_string(currentSectionHeight)
+                    //                          );
                 }
             }
             else {
                 if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) > currentSectionWidth) {
-                    throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                                             std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
-                                             ", wire width:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) + 
-                                             ", section width:" + std::to_string(currentSectionWidth)
-                                             );
+                    return false;
+                    // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
+                    //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                    //                          ", wire width:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) + 
+                    //                          ", section width:" + std::to_string(currentSectionWidth)
+                    //                          );
                 }
             }
 
