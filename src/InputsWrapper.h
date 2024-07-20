@@ -194,7 +194,7 @@ class InputsWrapper : public Inputs {
         void process_line(std::string line, char separator);
         bool extract_winding_indexes(size_t numberWindings);
         bool extract_column_types(double frequency);
-        OperatingPoint extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames = std::nullopt);
+        OperatingPoint extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames = std::nullopt, double ambientTemperature = 25);
         std::vector<std::map<std::string, std::string>> extract_map_column_names(size_t numberWindings, double frequency);
         bool assign_column_names(std::vector<std::map<std::string, std::string>> columnNames);
         std::vector<std::string> extract_column_names();

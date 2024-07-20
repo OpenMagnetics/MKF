@@ -2583,7 +2583,7 @@ bool InputsWrapper::CircuitSimulationReader::assign_column_names(std::vector<std
     return true;
 }
 
-OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames) {
+OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(size_t numberWindings, double frequency, std::optional<std::vector<std::map<std::string, std::string>>> mapColumnNames, double ambientTemperature) {
     OperatingPoint operatingPoint;
 
     std::vector<OperatingPointExcitation> excitationsPerWinding;
@@ -2617,6 +2617,10 @@ OperatingPoint InputsWrapper::CircuitSimulationReader::extract_operating_point(s
     }
 
     operatingPoint.set_excitations_per_winding(excitationsPerWinding);
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(ambientTemperature);
+    operatingPoint.set_conditions(conditions);
+
     return operatingPoint;
 }
 
