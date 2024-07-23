@@ -2448,7 +2448,12 @@ bool InputsWrapper::CircuitSimulationReader::extract_winding_indexes(size_t numb
 std::vector<double> rolling_window_filter(std::vector<double> data) {
 
     size_t rollingFactorDividend = 192;
-    size_t rollingFactor = std::max(data.size() / rollingFactorDividend, 1UL);
+    size_t rollingFactor = data.size() / rollingFactorDividend;
+
+    if (rollingFactor < 1){
+        rollingFactor = 1;
+    }
+
     for (size_t i = 0; i < rollingFactor - 1; ++i) {
         data.push_back(data[i]);
     }
