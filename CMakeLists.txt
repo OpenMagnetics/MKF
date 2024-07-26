@@ -69,9 +69,9 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 
 FetchContent_Declare(magic-enum
     GIT_REPOSITORY https://github.com/Neargye/magic_enum
-    GIT_TAG  tags/v0.9.3)
+    GIT_TAG  tags/v0.9.6)
 FetchContent_MakeAvailable(magic-enum)
-include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include")
+include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
 
 FetchContent_Declare(matplotplusplus
     GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
