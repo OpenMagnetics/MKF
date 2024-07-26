@@ -472,7 +472,7 @@ std::vector<std::string> get_shape_names() {
     return shapeNames;
 }
 
-std::vector<std::string> get_wire_names() {
+std::vector<std::string> get_wire_names(bool includeType) {
     if (wireDatabase.empty()) {
         load_wires();
     }
@@ -480,7 +480,16 @@ std::vector<std::string> get_wire_names() {
     std::vector<std::string> wireNames;
 
     for (auto& datum : wireDatabase) {
-        wireNames.push_back(datum.first);
+        json wireTypeJson;
+        OpenMagnetics::to_json(wireTypeJson, datum.second.get_type());
+        std::string wireTypeString = std::string{magic_enum::enum_name(datum.second.get_type())};
+        std::transform(wireTypeString.begin(), wireTypeString.end(), wireTypeString.begin(), [&](int ch) {return std::tolower(ch);});
+        if (includeType) {
+            wireNames.push_back(to_title_case(wireTypeString) + " " + datum.first);
+        }
+        else {
+            wireNames.push_back(datum.first);
+        }
     }
 
     return wireNames;
