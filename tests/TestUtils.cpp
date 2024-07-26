@@ -137,4 +137,19 @@ SUITE(Utils) {
         CHECK(allShapeNames.size() > magneticsShapeNames.size());
         CHECK(allShapeNames.size() > ferroxcubeShapeNames.size());
     }
+
+    TEST(Test_Wire_Names_With_Types) {
+        OpenMagnetics::clear_databases();
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->reset();
+        auto allWireNames = OpenMagnetics::get_wire_names(true);
+        for (auto wire : allWireNames) {
+            CHECK(
+                wire.starts_with("Round ") ||
+                wire.starts_with("Litz ") ||
+                wire.starts_with("Rectangular ") ||
+                wire.starts_with("Foil ")
+                );
+        }
+    }
 }
