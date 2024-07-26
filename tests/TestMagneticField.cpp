@@ -286,7 +286,7 @@ SUITE(MagneticField) {
         inducedField.set_frequency(frequency);
 
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("0.475 - Grade 1");
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
         coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         coil.delimit_and_compact();

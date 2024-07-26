@@ -103,7 +103,7 @@ void load_databases(json data, bool withAliases=true, bool addInternalData=true)
 std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_shape_names();
-std::vector<std::string> get_wire_names(bool includeType=false);
+std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();
 std::vector<std::string> get_insulation_material_names();
 std::vector<std::string> get_wire_material_names();
