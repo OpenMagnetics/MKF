@@ -105,11 +105,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
             modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
 
-            // if (numberWindings == 1 && excitation.get_current()) {
-            //     InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
-            // }
-            // else 
-            if (excitation.get_voltage()) {
+            if (numberWindings == 1 && excitation.get_current()) {
+                InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
+            }
+            else if (excitation.get_voltage()) {
                 auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
                 auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
