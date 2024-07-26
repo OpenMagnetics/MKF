@@ -30,7 +30,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_1) {
-        std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":3,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":1,"numberTurns":9,"wire":"Round 0.475 - Grade 1"}]})";
 
         auto coilJson = json::parse(coilString);
         auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
@@ -61,7 +61,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_2) {
-        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"overlapping","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"overlapping","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":27,"numberTurns":36,"wire":"Round 0.475 - Grade 1"}]})";
         settings->set_coil_wind_even_if_not_fit(false);
 
         auto coilJson = json::parse(coilString);
@@ -106,7 +106,7 @@ SUITE(CoilWeb) {
     }
 
     TEST(Test_Coil_Json_3) {
-        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"0.475 - Grade 1"}]})";
+        std::string coilString = R"({"_interleavingLevel":7,"_windingOrientation":"contiguous","_layersOrientation":"overlapping","_turnsAlignment":"centered","_sectionAlignment":"centered","bobbin":{"processedDescription":{"columnDepth":0.005,"columnShape":"round","columnThickness":0.001,"wallThickness":0.001,"windingWindows":[{"coordinates":[0.01,0.0,0.0],"height":0.01,"width":0.01}]}},"functionalDescription":[{"isolationSide":"primary","name":"winding 0","numberParallels":88,"numberTurns":1,"wire":"Round 0.475 - Grade 1"}]})";
         settings->set_coil_delimit_and_compact(false);
 
         auto coilJson = json::parse(coilString);
@@ -5249,7 +5249,7 @@ SUITE(CoilSectionsDescriptionRectangular) {
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
         uint8_t interleavingLevel = 2;
 
-        auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("0.014 - Grade 1")});
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("Round 0.014 - Grade 1")});
 
         OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
@@ -5598,7 +5598,7 @@ SUITE(CoilLayersDescription) {
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
         uint8_t interleavingLevel = 2;
 
-        auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("0.014 - Grade 1")});
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({OpenMagnetics::find_wire_by_name("Round 0.014 - Grade 1")});
 
         OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
         OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
@@ -7379,9 +7379,9 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.1 - Grade 2")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("225x0.04 - Grade 1 - Double Served")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.1 - Grade 2")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Litz 225x0.04 - Grade 1 - Double Served")});
 
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -7427,9 +7427,9 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.1 - Grade 2")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("225x0.04 - Grade 1 - Double Served")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.1 - Grade 2")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Litz 225x0.04 - Grade 1 - Double Served")});
 
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -7473,7 +7473,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("200x0.2 - Grade 2 - Double Served")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Litz 200x0.2 - Grade 2 - Double Served")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         OpenMagnetics::clear_databases();
@@ -7517,8 +7517,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -7560,8 +7560,8 @@ SUITE(CoilTurnsDescriptionToroidal) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1")});
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);

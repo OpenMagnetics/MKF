@@ -941,7 +941,7 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -990,7 +990,7 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -1039,7 +1039,7 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -1088,7 +1088,7 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -1137,7 +1137,7 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
         std::vector<OpenMagnetics::WireWrapper> wires;
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
@@ -1184,8 +1184,8 @@ SUITE(ToridalFieldPainter) {
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         std::vector<OpenMagnetics::WireWrapper> wires;
 
-        wires.push_back({OpenMagnetics::find_wire_by_name("2.50x1.18 - Grade 1")});
-        wires.push_back({OpenMagnetics::find_wire_by_name("0.335 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Rectangular 2.50x1.18 - Grade 1")});
+        wires.push_back({OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1")});
 
 
         auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;

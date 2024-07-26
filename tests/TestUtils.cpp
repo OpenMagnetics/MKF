@@ -14,15 +14,6 @@ using json = nlohmann::json;
 #include <typeinfo>
 
 SUITE(Utils) {
-    TEST(LoadDatabaseJson) {
-        std::string filePath = __FILE__;
-        auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("masData.json");
-        std::ifstream ifs(masPath);
-        json masData = json::parse(ifs);
-
-        OpenMagnetics::load_databases(masData, true);
-    }
-
     TEST(CeilFloat) {
         double value = 1.263;
         double calculatedValue = OpenMagnetics::ceilFloat(value, 2);
@@ -142,7 +133,7 @@ SUITE(Utils) {
         OpenMagnetics::clear_databases();
         auto settings = OpenMagnetics::Settings::GetInstance();
         settings->reset();
-        auto allWireNames = OpenMagnetics::get_wire_names(true);
+        auto allWireNames = OpenMagnetics::get_wire_names();
         for (auto wire : allWireNames) {
             CHECK(
                 wire.starts_with("Round ") ||

@@ -45,7 +45,7 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
             individualcoilJson["wire"] = wires[i];
         }
         else {
-            individualcoilJson["wire"] = "0.475 - Grade 1";
+            individualcoilJson["wire"] = "Round 0.475 - Grade 1";
         }
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
@@ -95,7 +95,7 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
             individualcoilJson["wire"] = wires[i];
         }
         else {
-            individualcoilJson["wire"] = "0.475 - Grade 1";
+            individualcoilJson["wire"] = "Round 0.475 - Grade 1";
         }
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
@@ -146,7 +146,7 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> number
             individualcoilJson["wire"] = wires[i];
         }
         else {
-            individualcoilJson["wire"] = "0.475 - Grade 1";
+            individualcoilJson["wire"] = "Round 0.475 - Grade 1";
         }
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
@@ -197,7 +197,7 @@ OpenMagnetics::CoilWrapper get_quick_toroidal_coil_no_compact(std::vector<int64_
             individualcoilJson["wire"] = wires[i];
         }
         else {
-            individualcoilJson["wire"] = "0.475 - Grade 1";
+            individualcoilJson["wire"] = "Round 0.475 - Grade 1";
         }
         coilJson["functionalDescription"].push_back(individualcoilJson);
     }
