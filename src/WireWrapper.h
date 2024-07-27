@@ -202,6 +202,8 @@ class WireWrapper : public Wire {
         double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();
 
+        std::string get_coating_label();
+
         void cut_foil_wire_to_section(Section section);
         double get_relative_cost();
 
