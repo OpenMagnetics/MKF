@@ -1271,5 +1271,112 @@ namespace OpenMagnetics {
         return cost;
     }
 
+    std::string WireWrapper::get_coating_label() {
+        auto coating = resolve_coating();
+        if (!coating) {
+            return " bare";
+        }
+        std::string text = "";
+        if (coating->get_type().value() == InsulationWireCoatingType::INSULATED) {
+            if (!coating->get_number_layers()) {
+                throw std::invalid_argument("Missing number of layers in insulated wire");
+            }
+            if (coating->get_number_layers().value() == 1) {
+                text += "SIW";
+            }
+            else if (coating->get_number_layers().value() == 2) {
+                text += "DIW";
+            }
+            else if (coating->get_number_layers().value() == 3) {
+                text += "TIW";
+            }
+
+            if (coating->get_temperature_rating()) {
+                std::ostringstream auxStream;
+                auxStream << std::fixed << std::setprecision(0) << coating->get_temperature_rating().value();
+                text += ", TR " + auxStream.str();
+            }
+
+            if (coating->get_breakdown_voltage()) {
+                if (coating->get_breakdown_voltage().value() > 1000) {
+                    std::ostringstream auxStream;
+                    auxStream << std::fixed << std::setprecision(1) << (coating->get_breakdown_voltage().value() / 1000);
+                    text += ", BV " + auxStream.str() + " kV";
+                }
+                else {
+                    std::ostringstream auxStream;
+                    auxStream << std::fixed << std::setprecision(0) << coating->get_breakdown_voltage().value();
+                    text += ", BV " + auxStream.str() + " V";
+                }
+            }
+        }
+        else if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
+            if (!coating->get_grade()) {
+                throw std::invalid_argument("Missing grade in enamelled wire");
+            }
+            text += " enamel";
+            WireStandard standard;
+            if (get_standard()) {
+                standard = get_standard().value();
+            }
+            else {
+                standard = WireStandard::IEC_60317;
+            }
+
+            if (coating->get_grade().value() == 1) {
+                if (standard == WireStandard::NEMA_MW_1000_C) {
+                    text += " single build";
+                }
+                else {
+                    text += " grade 1";
+                }
+            }
+            else if (coating->get_grade().value() == 2) {
+                if (standard == WireStandard::NEMA_MW_1000_C) {
+                    text += " heavy build";
+                }
+                else {
+                    text += " grade 2";
+                }
+            }
+            else if (coating->get_grade().value() == 3) {
+                if (standard == WireStandard::NEMA_MW_1000_C) {
+                    text += " triple build";
+                }
+                else {
+                    text += " grade 3";
+                }
+            }
+            else {
+                text += " FIW" + std::to_string(coating->get_grade().value());
+            }
+        }
+        else if (coating->get_type().value() == InsulationWireCoatingType::SERVED) {
+            if (!coating->get_number_layers()) {
+                throw std::invalid_argument("Missing number of layers in served wire: " + get_name().value());
+            }
+            if (coating->get_number_layers().value() == 1) {
+                text += " single served";
+            }
+            else if (coating->get_number_layers().value() == 2) {
+                text += " double served";
+            }
+        }
+        else if (coating->get_type().value() == InsulationWireCoatingType::BARE) {
+            if (get_type() == WireType::LITZ) {
+                text += " unserved";
+            }
+            else {
+                text += " bare";
+            }
+        }
+        else {
+            throw std::invalid_argument("Coating type not implemented yet: " + std::string{magic_enum::enum_name(coating->get_type().value())});
+        }
+
+        return text;
+    }
+
+
 
 } // namespace OpenMagnetics

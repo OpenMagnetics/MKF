@@ -548,3 +548,13 @@ SUITE(Wire_Number_Parallels_Calculation) {
         CHECK_EQUAL(expectedNumberParallels, numberParallels);
     }
 }
+
+SUITE(Wire_Coating) {
+    TEST(Test_Coating_Label_Uniqueness) {
+        auto wires = OpenMagnetics::get_wires();
+        std::vector<std::string> coatingLabels;
+        for (auto wire : wires) {
+            auto coatingLabel = wire.get_coating_label();
+        }
+    }
+}
