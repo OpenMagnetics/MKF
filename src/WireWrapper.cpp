@@ -1314,7 +1314,7 @@ namespace OpenMagnetics {
             if (!coating->get_grade()) {
                 throw std::invalid_argument("Missing grade in enamelled wire");
             }
-            text += " enamel";
+            text += "Enamel";
             WireStandard standard;
             if (get_standard()) {
                 standard = get_standard().value();
