@@ -110,7 +110,7 @@ std::vector<std::string> get_wire_material_names();
 
 std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string> manufacturer);
 std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal = true);
-std::vector<OpenMagnetics::WireWrapper> get_wires();
+std::vector<OpenMagnetics::WireWrapper> get_wires(std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt);
 std::vector<OpenMagnetics::BobbinWrapper> get_bobbins();
 std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials();
 std::vector<OpenMagnetics::WireMaterial> get_wire_materials();

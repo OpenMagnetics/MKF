@@ -568,7 +568,8 @@ std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal) {
     return shapes;
 }
 
-std::vector<OpenMagnetics::WireWrapper> get_wires() {
+
+std::vector<OpenMagnetics::WireWrapper> get_wires(std::optional<WireType> wireType, std::optional<WireStandard> wireStandard) {
     if (wireDatabase.empty()) {
         load_wires();
     }
@@ -576,6 +577,18 @@ std::vector<OpenMagnetics::WireWrapper> get_wires() {
     std::vector<OpenMagnetics::WireWrapper> wires;
 
     for (auto& datum : wireDatabase) {
+        if (wireStandard && !datum.second.get_standard()) {
+            continue;
+        }
+
+        if (wireStandard && datum.second.get_standard().value() != wireStandard) {
+            continue;
+        }
+
+        if (wireType && datum.second.get_type() != wireType) {
+            continue;
+        }
+        
         wires.push_back(datum.second);
     }
 

@@ -143,4 +143,13 @@ SUITE(Utils) {
                 );
         }
     }
+
+    TEST(Test_Wires_With_Type_And_Standard) {
+        OpenMagnetics::clear_databases();
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->reset();
+        auto allWires = OpenMagnetics::get_wires();
+        auto someWires = OpenMagnetics::get_wires(OpenMagnetics::WireType::ROUND, OpenMagnetics::WireStandard::IEC_60317);
+        CHECK(someWires.size() < allWires.size());
+    }
 }
