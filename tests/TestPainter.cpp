@@ -452,7 +452,7 @@ SUITE(FieldPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("2.36x1.12 - Grade 1");
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Rectangular 2.36x1.12 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -499,7 +499,7 @@ SUITE(FieldPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("2.36x1.12 - Grade 1");
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Rectangular 2.36x1.12 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
@@ -547,7 +547,7 @@ SUITE(FieldPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("4.50x0.90 - Grade 1");
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Rectangular 4.50x0.90 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
@@ -594,7 +594,7 @@ SUITE(FieldPainter) {
         OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
         OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("4.50x0.90 - Grade 1");
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Rectangular 4.50x0.90 - Grade 1");
         auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
