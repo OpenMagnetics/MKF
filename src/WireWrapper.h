@@ -1,6 +1,7 @@
 #pragma once
 
 #include "InputsWrapper.h"
+#include "Defaults.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
@@ -116,6 +117,30 @@ class WireWrapper : public Wire {
                 set_conducting_area(wire.get_conducting_area().value());
         }
 
+        void set_strand_from_wire(WireWrapper wire) {
+            set_type(wire.get_type());
+            if (wire.get_conducting_diameter()) 
+                set_conducting_diameter(wire.get_conducting_diameter().value());
+            if (wire.get_material()) 
+                set_material(wire.get_material().value());
+            if (wire.get_outer_diameter()) 
+                set_outer_diameter(wire.get_outer_diameter().value());
+            if (wire.get_coating()) 
+                set_coating(wire.get_coating().value());
+            if (wire.get_conducting_area()) 
+                set_conducting_area(wire.get_conducting_area().value());
+            if (wire.get_manufacturer_info()) 
+                set_manufacturer_info(wire.get_manufacturer_info().value());
+            if (wire.get_name()) 
+                set_name(wire.get_name().value());
+            if (wire.get_number_conductors()) 
+                set_number_conductors(wire.get_number_conductors().value());
+            if (wire.get_standard()) 
+                set_standard(wire.get_standard().value());
+            if (wire.get_standard_name()) 
+                set_standard_name(wire.get_standard_name().value());
+        }
+
 
         WireWrapper() = default;
         virtual ~WireWrapper() = default;
@@ -206,6 +231,8 @@ class WireWrapper : public Wire {
 
         void cut_foil_wire_to_section(Section section);
         double get_relative_cost();
+
+        static WireWrapper get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
 
 };
 } // namespace OpenMagnetics

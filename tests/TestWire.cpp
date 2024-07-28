@@ -352,7 +352,7 @@ SUITE(Wire_Effective_Current_Density) {
                                                                                          peakToPeak,
                                                                                          dutyCycle,
                                                                                          offset);
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("0.5 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(inputs.get_primary_excitation(), temperature);
         double expectedEffectiveCurrentDensity = 5.33e6;
 
@@ -361,7 +361,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_Low_Frequency_Round) {
         double frequency = 10;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("0.5 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 5.093e6;
 
@@ -370,7 +370,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_Medium_Frequency_Round) {
         double frequency = 100000;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("0.5 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 5.283e6;
 
@@ -379,7 +379,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_High_Frequency_Round) {
         double frequency = 1000000;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("0.5 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 11.19e6;
 
@@ -388,7 +388,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_Low_Frequency_Litz) {
         double frequency = 10;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("1000x0.05 - Grade 1 - Single Served"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 5.093e5;
 
@@ -397,7 +397,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_High_Frequency_Litz) {
         double frequency = 10000000;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("1000x0.05 - Grade 1 - Single Served"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 5.24e5;
 
@@ -406,7 +406,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_Low_Frequency_Rectangular) {
         double frequency = 10;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("3.15x0.85 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 3.96e5;
 
@@ -415,7 +415,7 @@ SUITE(Wire_Effective_Current_Density) {
 
     TEST(Test_Effective_Current_Density_High_Frequency_Rectangular) {
         double frequency = 1000000;
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("3.15x0.85 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(1, frequency, temperature);
         double expectedEffectiveCurrentDensity = 2.09e6;
 
@@ -438,7 +438,7 @@ SUITE(Wire_Effective_Current_Density) {
                                                                                               dutyCycle,
                                                                                               offset);
         
-        auto wire = OpenMagnetics::find_wire_by_name("0.5 - Grade 1");
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1");
         // double expectedNumberParallels = 69;
 
         // CHECK_CLOSE(expectedConductingArea, conductingArea, max_error * expectedConductingArea);
@@ -475,7 +475,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::find_wire_by_name("0.5 - Grade 1");
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1");
         double maximumEffectiveCurrentDensity = 5.5e6;
         double expectedNumberParallels = 1;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -488,7 +488,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::find_wire_by_name("0.5 - Grade 1");
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1");
         double maximumEffectiveCurrentDensity = 5e6;
         double expectedNumberParallels = 2;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -501,7 +501,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::find_wire_by_name("0.5 - Grade 1");
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1");
         double maximumEffectiveCurrentDensity = 5e6;
         double expectedNumberParallels = 3;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -514,7 +514,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("1000x0.05 - Grade 1 - Single Served"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
         double maximumEffectiveCurrentDensity = 5e5;
         double expectedNumberParallels = 2;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -527,7 +527,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("3.15x0.85 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         double maximumEffectiveCurrentDensity = 5e6;
         double expectedNumberParallels = 1;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -540,7 +540,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 
         auto inputs = setup_inputs(frequency);
         
-        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("3.15x0.85 - Grade 1"));
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
         double maximumEffectiveCurrentDensity = 1e6;
         double expectedNumberParallels = 3;
         auto numberParallels = OpenMagnetics::WireWrapper::calculate_number_parallels_needed(inputs, wire, maximumEffectiveCurrentDensity);
@@ -559,7 +559,208 @@ SUITE(Wire_Coating) {
         }
 
         CHECK(std::find(coatingLabels.begin(), coatingLabels.end(), "Bare") != coatingLabels.end());
+    }
+}
 
+SUITE(Wire_Equivalents) {
+    double max_error = 0.05;
+
+    TEST(Test_Find_Round_By_Dimension_European) {
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::ROUND, OpenMagnetics::WireStandard::IEC_60317);
+        CHECK_EQUAL(wire.get_standard_name().value(), "0.71 mm");
     }
 
+    TEST(Test_Find_Round_By_Dimension_American) {
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::ROUND, OpenMagnetics::WireStandard::NEMA_MW_1000_C);
+        CHECK_EQUAL(wire.get_standard_name().value(), "21 AWG");
+    }
+
+    TEST(Test_Find_Among_All_By_Dimension) {
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072);
+        CHECK_EQUAL(wire.get_standard_name().value(), "21 AWG");
+    }
+
+    TEST(Test_Find_Rectangular_By_Dimension) {
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::RECTANGULAR);
+        auto conductingHeight = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value());
+        CHECK_EQUAL(conductingHeight, 0.0008);
+    }
+
+    TEST(Test_Find_Foil_By_Dimension) {
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::FOIL);
+        auto conductingWidth = OpenMagnetics::resolve_dimensional_values(wire.get_conducting_width().value());
+        CHECK_EQUAL(conductingWidth, 0.0007);
+    }
+
+    TEST(Test_Litz_To_Litz_Equivalent) {
+        double effectiveFrequency = 1234981;
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::LITZ, effectiveFrequency);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1000);
+        CHECK_CLOSE(conductingDimension, 0.00005, max_error * 0.00005);
+    }
+
+    TEST(Test_Round_To_Litz_Equivalent) {
+        double effectiveFrequency = 1234981;
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::LITZ, effectiveFrequency);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 71);
+        CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
+    }
+
+    TEST(Test_Rectangular_To_Litz_Equivalent) {
+        double effectiveFrequency = 1234981;
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::LITZ, effectiveFrequency);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 914);
+        CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
+    }
+
+    TEST(Test_Foil_To_Litz_Equivalent) {
+        double effectiveFrequency = 1234981;
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Foil 0.2"));
+        oldWire.set_nominal_value_conducting_height(0.01);
+
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::LITZ, effectiveFrequency);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 725);
+        CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
+    }
+
+    TEST(Test_Litz_To_Round_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::ROUND);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
+    }
+
+    TEST(Test_Round_To_Round_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::ROUND);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0005, max_error * 0.0005);
+    }
+
+    TEST(Test_Rectangular_To_Round_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::ROUND);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0009, max_error * 0.0009);
+    }
+
+    TEST(Test_Foil_To_Round_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Foil 0.2"));
+        oldWire.set_nominal_value_conducting_height(0.001);
+
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::ROUND);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0002, max_error * 0.0002);
+    }
+
+    TEST(Test_Litz_To_Rectangular_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::RECTANGULAR);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
+    }
+
+    TEST(Test_Round_To_Rectangular_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.80 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::RECTANGULAR);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
+    }
+
+    TEST(Test_Rectangular_To_Rectangular_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::RECTANGULAR);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.00085, max_error * 0.00085);
+    }
+
+    TEST(Test_Foil_To_Rectangular_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Foil 0.2"));
+        oldWire.set_nominal_value_conducting_height(0.001);
+
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::RECTANGULAR);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
+    }
+
+    TEST(Test_Litz_To_Foil_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Litz 1000x0.05 - Grade 1 - Single Served"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::FOIL);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
+    }
+
+    TEST(Test_Round_To_Foil_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.80 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::FOIL);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
+    }
+
+    TEST(Test_Rectangular_To_Foil_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Rectangular 3.15x0.85 - Grade 1"));
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::FOIL);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
+    }
+
+    TEST(Test_Foil_To_Foil_Equivalent) {
+        auto oldWire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Foil 0.2"));
+        oldWire.set_nominal_value_conducting_height(0.001);
+
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, OpenMagnetics::WireType::FOIL);
+
+        auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
+        auto numberConductors = newWire.get_number_conductors().value();
+        CHECK_EQUAL(numberConductors, 1);
+        CHECK_CLOSE(conductingDimension, 0.0002, max_error * 0.0002);
+    }
 }

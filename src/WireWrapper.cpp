@@ -1216,9 +1216,9 @@ namespace OpenMagnetics {
             case WireType::ROUND:
                     return resolve_dimensional_values(get_conducting_diameter().value());
             case WireType::RECTANGULAR:
-                    return resolve_dimensional_values(get_conducting_width().value());
-            case WireType::FOIL:
                     return resolve_dimensional_values(get_conducting_height().value());
+            case WireType::FOIL:
+                    return resolve_dimensional_values(get_conducting_width().value());
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
@@ -1376,6 +1376,174 @@ namespace OpenMagnetics {
 
         return text;
     }
+
+    WireWrapper WireWrapper::get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency, double temperature) {
+
+        WireStandard standard;
+        if (oldWire.get_standard()) {
+            standard = oldWire.get_standard().value();
+        }
+        else {
+            standard = WireStandard::IEC_60317;
+        }
+
+        switch (newWireType) {
+            case WireType::LITZ:
+                {
+                    double strandConductingDiameter = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency, temperature);
+                    double strandConductingArea = std::numbers::pi * pow(strandConductingDiameter / 2, 2);
+                    WireWrapper strand;
+                    size_t numberConductors;
+
+                    switch (oldWire.get_type()) {
+                        case WireType::LITZ:
+                            return oldWire;
+                            break;
+                        default:
+                            double oldConductingArea = oldWire.calculate_conducting_area();
+                            strand = OpenMagnetics::find_wire_by_dimension(strandConductingDiameter, OpenMagnetics::WireType::ROUND, standard);
+                            numberConductors = round(oldConductingArea / strandConductingArea);
+                            break;
+                    }
+
+
+                    InsulationWireCoating newCoating;
+                    auto oldCoating = oldWire.resolve_coating();
+
+                    // Served coating by default
+                    newCoating.set_type(InsulationWireCoatingType::SERVED);
+                    newCoating.set_number_layers(1);
+
+                    // We get the old coating only if it's insulated
+                    if (oldCoating) {
+                        if (oldCoating->get_type() == InsulationWireCoatingType::INSULATED) {
+                            newCoating = oldCoating.value();
+                        }
+                    }
+
+                    WireWrapper newWire;
+                    newWire.set_strand_from_wire(strand);
+                    newWire.set_coating(newCoating);
+                    newWire.set_number_conductors(numberConductors);
+
+                    if (newCoating.get_type() == InsulationWireCoatingType::SERVED) {
+                        double outerDiameter = get_outer_diameter_served_litz(strandConductingDiameter, numberConductors, 1, 1, standard);
+                        newWire.set_nominal_value_outer_diameter(outerDiameter);
+                    }
+                    else if (newCoating.get_type() == InsulationWireCoatingType::INSULATED) {
+                        if (newCoating.get_number_layers()) {
+                            throw std::runtime_error("Missing number of layer in insulated wire coating");
+                        }
+                        if (newCoating.get_thickness_layers()) {
+                            throw std::runtime_error("Missing layer thickness in insulated wire coating");
+                        }
+                        double outerDiameter = get_outer_diameter_insulated_litz(strandConductingDiameter, numberConductors, newCoating.get_number_layers().value(), newCoating.get_thickness_layers().value(), 1, standard);
+                        newWire.set_nominal_value_outer_diameter(outerDiameter);
+                    }
+
+                    return newWire;
+                }
+            case WireType::ROUND:
+                {
+                    double conductingDiameter;
+
+                    switch (oldWire.get_type()) {
+                        case WireType::ROUND:
+                            return oldWire;
+                        case WireType::LITZ:
+                            {
+                                double oldConductingArea = oldWire.calculate_conducting_area();
+                                conductingDiameter = sqrt(oldConductingArea / std::numbers::pi) * 2;
+                                break;
+                            }
+                        case WireType::RECTANGULAR:
+                        case WireType::FOIL:
+                            conductingDiameter = oldWire.get_minimum_conducting_dimension();
+                            break;
+                        default:
+                            throw std::runtime_error("Unknown wire type");
+                    }
+                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingDiameter, OpenMagnetics::WireType::ROUND, standard);
+                    auto oldCoating = oldWire.resolve_coating();
+                    newWire.set_coating(oldCoating);
+                    return newWire;
+                }
+            case WireType::RECTANGULAR:
+                {
+                    double conductingHeight;
+
+                    switch (oldWire.get_type()) {
+                        case WireType::RECTANGULAR:
+                            return oldWire;
+                        case WireType::LITZ:
+                            {
+                                double oldConductingArea = oldWire.calculate_conducting_area();
+                                conductingHeight = sqrt(oldConductingArea / std::numbers::pi) * 2;
+                                break;
+                            }
+                        case WireType::ROUND:
+                        case WireType::FOIL:
+                            conductingHeight = oldWire.get_minimum_conducting_dimension();
+                            break;
+                        default:
+                            throw std::runtime_error("Unknown wire type");
+                    }
+                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingHeight, OpenMagnetics::WireType::RECTANGULAR);
+
+                    InsulationWireCoating newCoating;
+                    auto oldCoating = oldWire.resolve_coating();
+
+                    // Enamelled coating by default
+                    newCoating.set_type(InsulationWireCoatingType::ENAMELLED);
+                    newCoating.set_grade(1);
+
+                    // We get the old coating only if it's insulated
+                    if (oldCoating) {
+                        if (oldCoating->get_type() == InsulationWireCoatingType::ENAMELLED) {
+                            newCoating = oldCoating.value();
+                        }
+                    }
+                    newWire.set_coating(newCoating);
+                    auto outerWidth = get_outer_width_rectangular(resolve_dimensional_values(newWire.get_conducting_width().value()), newCoating.get_grade().value());
+                    auto outerHeight = get_outer_height_rectangular(resolve_dimensional_values(newWire.get_conducting_height().value()), newCoating.get_grade().value());
+
+                    newWire.set_coating(newCoating);
+                    newWire.set_nominal_value_outer_width(outerWidth);
+                    newWire.set_nominal_value_outer_height(outerHeight);
+                    return newWire;
+                }
+            case WireType::FOIL:
+                {
+                    double conductingWidth;
+
+                    switch (oldWire.get_type()) {
+                        case WireType::FOIL:
+                            return oldWire;
+                        case WireType::LITZ:
+                            {
+                                double oldConductingArea = oldWire.calculate_conducting_area();
+                                conductingWidth = sqrt(oldConductingArea / std::numbers::pi) * 2;
+                                break;
+                            }
+                        case WireType::ROUND:
+                        case WireType::RECTANGULAR:
+                            conductingWidth = oldWire.get_minimum_conducting_dimension();
+                            break;
+                        default:
+                            throw std::runtime_error("Unknown wire type");
+                    }
+                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingWidth, OpenMagnetics::WireType::FOIL);
+
+                    // No coating by default
+
+                    newWire.set_nominal_value_outer_width(resolve_dimensional_values(newWire.get_conducting_width().value()));
+                    return newWire;
+                }
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+    }
+
 
 
 
