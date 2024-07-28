@@ -652,6 +652,63 @@ OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
     }
 }
 
+
+OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard) {
+    if (wireDatabase.empty()) {
+        load_wires();
+    }
+
+    auto wires = get_wires(wireType, wireStandard);
+    double minimumDistance = DBL_MAX;
+    OpenMagnetics::WireWrapper minimumDistanceWire;
+    for (auto wire : wires) {
+        double distance = 0;
+
+        switch (wire.get_type()) {
+            case WireType::LITZ:
+                continue;
+                // throw std::runtime_error("Not defined for Litz wire");
+            case WireType::ROUND:
+                {
+                    if (!wire.get_conducting_diameter()) {
+                        throw std::runtime_error("Missing conducting diameter in round wire");
+                    }
+                    auto conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+                    distance = fabs(conductingDiameter - dimension);
+                    break;
+                }
+            case WireType::RECTANGULAR:
+                {
+                    if (!wire.get_conducting_height()) {
+                        throw std::runtime_error("Missing conducting height in rectangular wire");
+                    }
+                    auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                    distance = fabs(conductingHeight - dimension);
+                    break;
+                }
+            case WireType::FOIL:
+                {
+                    if (!wire.get_conducting_width()) {
+                        throw std::runtime_error("Missing conducting width in foil wire");
+                    }
+                    auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+                    distance = fabs(conductingWidth - dimension);
+                    break;
+                }
+            default:
+                throw std::runtime_error("Unknow type of wire");
+        }
+        if (distance < minimumDistance) {
+            minimumDistance = distance;
+            minimumDistanceWire = wire;
+        }
+    }
+    minimumDistanceWire.set_name(std::nullopt);
+    minimumDistanceWire.set_coating(std::nullopt);
+
+    return minimumDistanceWire;
+}
+
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
     if (bobbinDatabase.empty()) {
         load_bobbins();
