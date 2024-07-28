@@ -159,7 +159,7 @@ SUITE(MagneticSimulator) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.1 - Grade 1");
+            wire.set_strand("Round 0.1 - Grade 1");
             wire.set_nominal_value_outer_diameter(0.001);
             wire.set_number_conductors(45);
             wire.set_type(OpenMagnetics::WireType::LITZ);
@@ -345,7 +345,7 @@ SUITE(MagneticSimulator) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.05 - Grade 1");
+            wire.set_strand("Round 0.05 - Grade 1");
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_insulated_litz(0.00005, 900, 3, 5.08e-05));
             wire.set_number_conductors(900);
             wire.set_type(OpenMagnetics::WireType::LITZ);
@@ -361,7 +361,7 @@ SUITE(MagneticSimulator) {
         }
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.05 - Grade 1");
+            wire.set_strand("Round 0.05 - Grade 1");
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.00005, 800, 1, 1));
             wire.set_number_conductors(900);
             wire.set_type(OpenMagnetics::WireType::LITZ);
@@ -547,7 +547,7 @@ SUITE(MagneticSimulator) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.071 - Grade 1");
+            wire.set_strand("Round 0.071 - Grade 1");
             int numberStrands = 600;
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_insulated_litz(0.000071, numberStrands, 3, 5.08e-05));
             wire.set_number_conductors(numberStrands);
@@ -565,7 +565,7 @@ SUITE(MagneticSimulator) {
 
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.071 - Grade 1");
+            wire.set_strand("Round 0.071 - Grade 1");
             int numberStrands = 500;
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, numberStrands, 1, 1));
             wire.set_number_conductors(numberStrands);
@@ -731,7 +731,7 @@ SUITE(MagneticSimulator) {
         std::vector<OpenMagnetics::WireWrapper> wires;
         {
             OpenMagnetics::WireWrapper wire;
-            wire.set_strand("0.071 - Grade 1");
+            wire.set_strand("Round 0.071 - Grade 1");
             int numberStrands = 120;
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, numberStrands, 1, 1));
             wire.set_number_conductors(numberStrands);

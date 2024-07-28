@@ -15,7 +15,7 @@ SUITE(Wire) {
     auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.05;
 
-    TEST(Sample_Wire) {
+    TEST(Test_Sample_Wire) {
         auto wireFilePath = masPath + "samples/magnetic/wire/round/0.000140.json";
         std::ifstream json_file(wireFilePath);
         auto wireJson = json::parse(json_file);
@@ -599,6 +599,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::LITZ);
         CHECK_EQUAL(numberConductors, 1000);
         CHECK_CLOSE(conductingDimension, 0.00005, max_error * 0.00005);
     }
@@ -610,6 +611,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::LITZ);
         CHECK_EQUAL(numberConductors, 71);
         CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
     }
@@ -621,6 +623,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::LITZ);
         CHECK_EQUAL(numberConductors, 914);
         CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
     }
@@ -634,6 +637,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::LITZ);
         CHECK_EQUAL(numberConductors, 725);
         CHECK_CLOSE(conductingDimension, 0.00006, max_error * 0.00006);
     }
@@ -644,6 +648,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::ROUND);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
     }
@@ -654,6 +659,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::ROUND);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0005, max_error * 0.0005);
     }
@@ -664,6 +670,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::ROUND);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0009, max_error * 0.0009);
     }
@@ -676,6 +683,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::ROUND);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0002, max_error * 0.0002);
     }
@@ -686,6 +694,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::RECTANGULAR);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
     }
@@ -696,6 +705,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::RECTANGULAR);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
     }
@@ -706,6 +716,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::RECTANGULAR);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.00085, max_error * 0.00085);
     }
@@ -718,6 +729,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::RECTANGULAR);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
     }
@@ -728,6 +740,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::FOIL);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0016, max_error * 0.0016);
     }
@@ -738,6 +751,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::FOIL);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
     }
@@ -748,6 +762,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::FOIL);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0008, max_error * 0.0008);
     }
@@ -760,6 +775,7 @@ SUITE(Wire_Equivalents) {
 
         auto conductingDimension = OpenMagnetics::resolve_dimensional_values(newWire.get_minimum_conducting_dimension());
         auto numberConductors = newWire.get_number_conductors().value();
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::FOIL);
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0002, max_error * 0.0002);
     }

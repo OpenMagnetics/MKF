@@ -19,6 +19,33 @@ std::map<std::string, int64_t> minLitzWireNumberConductors;
 std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 namespace OpenMagnetics {
+
+    WireRound WireWrapper::convert_from_wire_to_strand(WireWrapper wire) {
+        WireRound strand;
+        strand.set_type(wire.get_type());
+        if (wire.get_conducting_diameter()) 
+            strand.set_conducting_diameter(wire.get_conducting_diameter().value());
+        if (wire.get_material()) 
+            strand.set_material(wire.get_material().value());
+        if (wire.get_outer_diameter()) 
+            strand.set_outer_diameter(wire.get_outer_diameter().value());
+        if (wire.get_coating()) 
+            strand.set_coating(wire.get_coating().value());
+        if (wire.get_conducting_area()) 
+            strand.set_conducting_area(wire.get_conducting_area().value());
+        if (wire.get_manufacturer_info()) 
+            strand.set_manufacturer_info(wire.get_manufacturer_info().value());
+        if (wire.get_name()) 
+            strand.set_name(wire.get_name().value());
+        if (wire.get_number_conductors()) 
+            strand.set_number_conductors(wire.get_number_conductors().value());
+        if (wire.get_standard()) 
+            strand.set_standard(wire.get_standard().value());
+        if (wire.get_standard_name()) 
+            strand.set_standard_name(wire.get_standard_name().value());
+        return strand;
+    }
+
     std::optional<InsulationWireCoating> WireWrapper::resolve_coating(const WireWrapper& wire) {
         // If the coating is a string, we have to load its data from the database
         if (!wire.get_coating()) {
@@ -1422,7 +1449,8 @@ namespace OpenMagnetics {
                     }
 
                     WireWrapper newWire;
-                    newWire.set_strand_from_wire(strand);
+                    newWire.set_type(WireType::LITZ);
+                    newWire.set_strand(convert_from_wire_to_strand(strand));
                     newWire.set_coating(newCoating);
                     newWire.set_number_conductors(numberConductors);
 
@@ -1465,6 +1493,7 @@ namespace OpenMagnetics {
                     }
                     auto newWire = OpenMagnetics::find_wire_by_dimension(conductingDiameter, OpenMagnetics::WireType::ROUND, standard);
                     auto oldCoating = oldWire.resolve_coating();
+                    newWire.set_type(WireType::ROUND);
                     newWire.set_coating(oldCoating);
                     return newWire;
                 }
@@ -1507,6 +1536,7 @@ namespace OpenMagnetics {
                     auto outerWidth = get_outer_width_rectangular(resolve_dimensional_values(newWire.get_conducting_width().value()), newCoating.get_grade().value());
                     auto outerHeight = get_outer_height_rectangular(resolve_dimensional_values(newWire.get_conducting_height().value()), newCoating.get_grade().value());
 
+                    newWire.set_type(WireType::RECTANGULAR);
                     newWire.set_coating(newCoating);
                     newWire.set_nominal_value_outer_width(outerWidth);
                     newWire.set_nominal_value_outer_height(outerHeight);
@@ -1536,6 +1566,7 @@ namespace OpenMagnetics {
 
                     // No coating by default
 
+                    newWire.set_type(WireType::FOIL);
                     newWire.set_nominal_value_outer_width(resolve_dimensional_values(newWire.get_conducting_width().value()));
                     return newWire;
                 }
