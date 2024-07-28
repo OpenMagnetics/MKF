@@ -1274,7 +1274,7 @@ namespace OpenMagnetics {
     std::string WireWrapper::get_coating_label() {
         auto coating = resolve_coating();
         if (!coating) {
-            return " bare";
+            return "Bare";
         }
         std::string text = "";
         if (coating->get_type().value() == InsulationWireCoatingType::INSULATED) {
@@ -1356,18 +1356,18 @@ namespace OpenMagnetics {
                 throw std::invalid_argument("Missing number of layers in served wire: " + get_name().value());
             }
             if (coating->get_number_layers().value() == 1) {
-                text += " single served";
+                text += "Single served";
             }
             else if (coating->get_number_layers().value() == 2) {
-                text += " double served";
+                text += "Double served";
             }
         }
         else if (coating->get_type().value() == InsulationWireCoatingType::BARE) {
             if (get_type() == WireType::LITZ) {
-                text += " unserved";
+                text += "Unserved";
             }
             else {
-                text += " bare";
+                text += "Bare";
             }
         }
         else {

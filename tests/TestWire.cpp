@@ -555,6 +555,11 @@ SUITE(Wire_Coating) {
         std::vector<std::string> coatingLabels;
         for (auto wire : wires) {
             auto coatingLabel = wire.get_coating_label();
+            coatingLabels.push_back(coatingLabel);
         }
+
+        CHECK(std::find(coatingLabels.begin(), coatingLabels.end(), "Bare") != coatingLabels.end());
+
     }
+
 }
