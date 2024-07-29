@@ -284,6 +284,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                                                                                          GappingType gappingType,
                                                                                          size_t decimals) {
     auto constants = OpenMagnetics::Constants();
+
     auto operatingPoint = inputs->get_operating_point(0);
     double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
     double desiredMagnetizingInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
@@ -300,12 +301,16 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     double neededTotalReluctance = pow(numberTurnsPrimary, 2) / desiredMagnetizingInductance;
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
-    if (!excitation.get_voltage()) {
+
+    if (!excitation.get_voltage() && excitation.get_current()) {
         InputsWrapper::set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
 
     while (true) {
+        if (!excitation.get_magnetizing_current()) {
+            break;
+        }
         auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary);
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
@@ -321,7 +326,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         }
     }
 
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage() && excitation.get_current()) {
         operatingPoint.get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, desiredMagnetizingInductance));
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
