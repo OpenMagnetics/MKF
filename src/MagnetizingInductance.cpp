@@ -223,7 +223,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     return std::max(1, numberTurnsPrimary);
 }
 
-CoreWrapper get_core_with_grinded_gapping(CoreWrapper core, double gapLength) {
+CoreWrapper get_core_with_ground_gapping(CoreWrapper core, double gapLength) {
     auto constants = OpenMagnetics::Constants();
     auto basicCentralGap = CoreGap();
     basicCentralGap.set_type(GapType::SUBTRACTIVE);
@@ -339,8 +339,8 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     while (true) {
         reluctance = 0;
         switch (gappingType) {
-            case GappingType::GRINDED:
-                gappedCore = get_core_with_grinded_gapping(core, gapLength);
+            case GappingType::GROUND:
+                gappedCore = get_core_with_ground_gapping(core, gapLength);
                 break;
             case GappingType::SPACER:
                 gappedCore = get_core_with_spacer_gapping(core, gapLength);
@@ -376,7 +376,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 }
                 break;
             default:
-                throw std::runtime_error("Unknown type of gap, options are {GRINDED, SPACER, RESIDUAL, DISTRIBUTED}");
+                throw std::runtime_error("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
         }
 
         auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(gappedCore, currentInitialPermeability);
@@ -408,8 +408,8 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     gapLength = roundFloat(gapLength, decimals);
 
     switch (gappingType) {
-        case GappingType::GRINDED:
-            return get_core_with_grinded_gapping(core, gapLength).get_gapping();
+        case GappingType::GROUND:
+            return get_core_with_ground_gapping(core, gapLength).get_gapping();
         case GappingType::SPACER:
             return get_core_with_spacer_gapping(core, gapLength).get_gapping();
         case GappingType::RESIDUAL:
@@ -419,7 +419,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
             return get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps).get_gapping();
             break;
         default:
-            throw std::runtime_error("Unknown type of gap, options are {GRINDED, SPACER, RESIDUAL, DISTRIBUTED}");
+            throw std::runtime_error("Unknown type of gap, options are {GROUND, SPACER, RESIDUAL, DISTRIBUTED}");
     }
 }
 
