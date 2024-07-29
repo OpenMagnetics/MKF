@@ -47,7 +47,7 @@ SUITE(MagnetizingInductance) {
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
     }
 
-    TEST(Test_Inductance_Ferrite_Grinded) {
+    TEST(Test_Inductance_Ferrite_Ground) {
         settings->reset();
         OpenMagnetics::clear_databases();
 
@@ -219,7 +219,7 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
 
-    TEST(Test_Inductance_Ferrite_Grinded_Few_Turns) {
+    TEST(Test_Inductance_Ferrite_Ground_Few_Turns) {
         settings->reset();
         OpenMagnetics::clear_databases();
 
@@ -275,7 +275,7 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
 
-    TEST(Test_NumberTurns_Ferrite_Grinded) {
+    TEST(Test_NumberTurns_Ferrite_Ground) {
         settings->reset();
         OpenMagnetics::clear_databases();
 
@@ -329,7 +329,7 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, numberTurns, max_error * expectedValue);
     }
 
-    TEST(Test_Gapping_Ferrite_Grinded) {
+    TEST(Test_Gapping_Ferrite_Ground) {
         settings->reset();
         OpenMagnetics::clear_databases();
 
@@ -352,12 +352,12 @@ SUITE(MagnetizingInductance) {
                                 coreShape, coreMaterial, core, winding, inputs);
 
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
-            core, winding, &inputs, OpenMagnetics::GappingType::GRINDED);
+            core, winding, &inputs, OpenMagnetics::GappingType::GROUND);
 
         CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
     }
 
-    TEST(Test_Gapping_U_Shape_Ferrite_Grinded) {
+    TEST(Test_Gapping_U_Shape_Ferrite_Ground) {
         settings->reset();
         OpenMagnetics::clear_databases();
 
@@ -380,7 +380,7 @@ SUITE(MagnetizingInductance) {
                                 coreShape, coreMaterial, core, winding, inputs);
 
         auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(
-            core, winding, &inputs, OpenMagnetics::GappingType::GRINDED);
+            core, winding, &inputs, OpenMagnetics::GappingType::GROUND);
 
         CHECK_CLOSE(expectedValue, gapping[0].get_length(), max_error * expectedValue);
     }
@@ -552,7 +552,7 @@ SUITE(MagnetizingInductance) {
             "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.4999999999999996, -2.4999999999999996,
             7.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05,
             1e-05]}}}], "name": null}]})");
-        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
+        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GROUND").value();
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
@@ -658,7 +658,7 @@ SUITE(MagnetizingInductance) {
             "data": [41.0, 51.0, 41.0], "numberPeriods": null, "time": [0.0, 2.5e-06, 1e-05]}}, "frequency":
             100000.0, "magneticField": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name":
             "My Operating Point"}], "name": null}]})");
-        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GRINDED").value();
+        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GROUND").value();
 
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);

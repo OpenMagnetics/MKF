@@ -56,7 +56,7 @@ enum class DimensionalValues : int {
     MINIMUM
 };
 enum class GappingType : int {
-    GRINDED,
+    GROUND,
     SPACER,
     RESIDUAL,
     DISTRIBUTED

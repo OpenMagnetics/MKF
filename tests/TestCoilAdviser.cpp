@@ -782,7 +782,7 @@ SUITE(CoilAdviser) {
 
                 std::vector<OpenMagnetics::CoreGap> gapping;
                 switch (gappingType) {
-                    case OpenMagnetics::GappingType::GRINDED:
+                    case OpenMagnetics::GappingType::GROUND:
                         gapping = OpenMagneticsTesting::get_ground_gap(gapLength);
                         break;
                     case OpenMagnetics::GappingType::SPACER:
