@@ -2385,6 +2385,43 @@ SUITE(CoilPainter) {
         settings->reset();
     }
 
+    TEST(Test_Painter_Litz) {
+        std::vector<int64_t> numberTurns = {4};
+        std::vector<int64_t> numberParallels = {1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz TXXL07/28FXXX-2(MWXX)");
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Litz.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
     TEST(Test_Painter_Foil_With_Insulation_Centered) {
         std::vector<int64_t> numberTurns = {4};
         std::vector<int64_t> numberParallels = {1};
@@ -3191,7 +3228,7 @@ SUITE(CoilPainter) {
     }
 
     TEST(Course0) {
-        for (size_t index = 1; index < 20; index++) {
+        for (int64_t index = 1; index < 20; index++) {
 
             std::vector<int64_t> numberTurns = {index, index * 10};
             std::vector<int64_t> numberParallels = {1, 1};
@@ -3222,6 +3259,312 @@ SUITE(CoilPainter) {
             settings->reset();
         }
     }
+}
 
+SUITE(WirePainter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
 
+    TEST(Test_Wire_Painter_Round_Enamelled_Grade_1) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_1.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+    TEST(Test_Wire_Painter_Round_Enamelled_Grade_2) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 2");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Round_Enamelled_Grade_9) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.071 - FIW 9");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_Enamelled_Grade_9.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Round_TIW_PFA) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round T17A01PXXX-1.5");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_TIW_PFA.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Round_DIW_ETFE) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round D32A01TXX-3");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_DIW_ETFE.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Round_SIW_PEF) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round S24A01FX-2");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_SIW_PEF.svg");
+            std::filesystem::remove(outFile)
+;            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Round_SIW_TCA) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Round TCA1 31 AWG");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Round_SIW_TCA.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Rectangular_Enamelled_Grade_1) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Rectangular 2x0.80 - Grade 1");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Rectangular_Enamelled_Grade_1.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Rectangular_Enamelled_Grade_2) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Rectangular 2x0.80 - Grade 2");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Rectangular_Enamelled_Grade_2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Foil_Bare) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Foil 0.7");
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(0.010);
+        wire.set_conducting_height(dimensionWithTolerance);
+        wire.set_outer_width(wire.get_conducting_width().value());
+        wire.set_outer_height(dimensionWithTolerance);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Foil_Bare.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Simple_TIW) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz TXXL07/28FXXX-2(MWXX)");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Simple_Insulation.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Simple_Bare) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 75x0.3 - Grade 1 - Unserved");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Simple_Bare.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Simple_Single_Served) {
+        OpenMagnetics::clear_databases();
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 75x0.3 - Grade 1 - Single Served");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Simple_Single_Served.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Simple_Double_Served) {
+        OpenMagnetics::clear_databases(); 
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 270x0.02 - Grade 1 - Single Served");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Simple_Double_Served.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Simple_Insulated) {
+        OpenMagnetics::clear_databases(); 
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz DXXL550/44TXX-3(MWXX)");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Simple_sInsulated.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Litz_Few_Strands) {
+        OpenMagnetics::clear_databases(); 
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 4x0.071 - Grade 2 - Double Served");
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Few_Strands.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_All_Litz) {
+        OpenMagnetics::clear_databases(); 
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto wires = OpenMagnetics::get_wires(OpenMagnetics::WireType::LITZ);
+
+        for (auto wire : wires) {
+            std::string wireName = wire.get_name().value();
+            std::replace( wireName.begin(), wireName.end(), '/', '_');
+            std::cout << wireName << std::endl;
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_" + wireName + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
 }

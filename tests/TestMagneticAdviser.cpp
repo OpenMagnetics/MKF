@@ -1379,4 +1379,145 @@ SUITE(MagneticAdviser) {
         }
     }
 
+    TEST(Test_Planar) {
+        srand (time(NULL));
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        settings->set_use_only_cores_in_stock(false);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_round(false);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+        double temperature = 20;
+        json inputsJson;
+
+        inputsJson["operatingPoints"] = json::array();
+        json operatingPointJson = json();
+        operatingPointJson["name"] = "Nominal";
+        operatingPointJson["conditions"] = json();
+        operatingPointJson["conditions"]["ambientTemperature"] = 25;
+
+        operatingPointJson["excitationsPerWinding"] = json::array();
+        {
+            json windingExcitation = json();
+            windingExcitation["frequency"] = 100000;
+            windingExcitation["current"]["processed"]["label"] = "Triangular";
+            windingExcitation["current"]["processed"]["peakToPeak"] = 26;
+            windingExcitation["current"]["processed"]["offset"] = 10;
+            windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+            windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+            windingExcitation["voltage"]["processed"]["peakToPeak"] = 800;
+            windingExcitation["voltage"]["processed"]["offset"] = 0;
+            windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+            operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+        }
+        // {
+        //     json windingExcitation = json();
+        //     windingExcitation["frequency"] = 100000;
+        //     windingExcitation["current"]["processed"]["label"] = "Triangular";
+        //     windingExcitation["current"]["processed"]["peakToPeak"] = 26;
+        //     windingExcitation["current"]["processed"]["offset"] = 10;
+        //     windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+        //     windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+        //     windingExcitation["voltage"]["processed"]["peakToPeak"] = 800;
+        //     windingExcitation["voltage"]["processed"]["offset"] = 0;
+        //     windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+        //     operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+        // }
+        {
+            json windingExcitation = json();
+            windingExcitation["frequency"] = 100000;
+            windingExcitation["current"]["processed"]["label"] = "Triangular";
+            windingExcitation["current"]["processed"]["peakToPeak"] = 50;
+            windingExcitation["current"]["processed"]["offset"] = 20;
+            windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+            windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+            windingExcitation["voltage"]["processed"]["peakToPeak"] = 800;
+            windingExcitation["voltage"]["processed"]["offset"] = 0;
+            windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+            operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+        }
+        {
+            json windingExcitation = json();
+            windingExcitation["frequency"] = 100000;
+            windingExcitation["current"]["processed"]["label"] = "Triangular";
+            windingExcitation["current"]["processed"]["peakToPeak"] = 36;
+            windingExcitation["current"]["processed"]["offset"] = 14;
+            windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+            windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+            windingExcitation["voltage"]["processed"]["peakToPeak"] = 178 * 2;
+            windingExcitation["voltage"]["processed"]["offset"] = 0;
+            windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+            operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+        }
+        inputsJson["operatingPoints"].push_back(operatingPointJson);
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 750e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+        {
+            json turnRatioSecondary;
+            turnRatioSecondary["minimum"] = 0.8;
+            turnRatioSecondary["nominal"] = 1;
+            turnRatioSecondary["maximum"] = 1.2;
+            inputsJson["designRequirements"]["turnsRatios"].push_back(turnRatioSecondary);
+        }
+        {
+            json turnRatioSecondary;
+            turnRatioSecondary["minimum"] = 2;
+            turnRatioSecondary["nominal"] = 2.25;
+            turnRatioSecondary["maximum"] = 2.5;
+            inputsJson["designRequirements"]["turnsRatios"].push_back(turnRatioSecondary);
+        }
+
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY,
+                                                                    OpenMagnetics::IsolationSide::SECONDARY,
+                                                                    OpenMagnetics::IsolationSide::TERTIARY};
+
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        inputs.process_waveforms();
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
+
+        CHECK(masMagnetics.size() > 0);
+
+        for (auto [masMagnetic, scoring] : masMagnetics) {
+            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            std::cout << "Mierda 0" << std::endl;
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+
+            {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_Planar_" +  std::to_string(scoring) + ".mas.json";
+                outFile.append(filename);
+                OpenMagnetics::to_file(outFile, masMagnetic);
+            }
+            std::cout << "Mierda 2" << std::endl;
+
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outFile = outputFilePath;
+            std::string filename = "Test_Planar_" + std::to_string(scoring) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile, true);
+
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_logarithmic_scale(true);
+            settings->set_painter_include_fringing(true);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            // settings->set_painter_number_points_x(200);
+            // settings->set_painter_number_points_y(200);
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
 }

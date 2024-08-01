@@ -31,6 +31,11 @@ CMRC_DECLARE(data);
 namespace OpenMagnetics {
 
 
+void CoreAdviser::logEntry(std::string entry) {
+    std::cout << entry << std::endl;
+    _log += entry + "\n";
+}
+
 std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> CoreAdviser::get_scorings(bool weighted){
     std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> swappedScorings;
     for (auto& [filter, aux] : _scorings) {
@@ -1191,7 +1196,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     }
 
     if (firstFilter != CoreAdviserFilters::EFFICIENCY) {
+        logEntry("Adding initial number of turns to " + std::to_string(masMagneticsWithScoring.size()) + " magnetics.");
+
         add_initial_turns(&masMagneticsWithScoring, inputs);
+        logEntry("Added initial number of turns to " + std::to_string(masMagneticsWithScoring.size()) + " magnetics.");
     }
     
 

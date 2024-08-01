@@ -830,24 +830,26 @@ double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, Dimen
 bool check_requirement(DimensionWithTolerance requirement, double value){
     auto settings = OpenMagnetics::Settings::GetInstance();
     if (requirement.get_minimum() && requirement.get_maximum()) {
-        if (settings->_debug) {
-            std::cout << "bool(requirement.get_minimum()): " << bool(requirement.get_minimum()) << std::endl;
-            std::cout << "bool(requirement.get_maximum()): " << bool(requirement.get_maximum()) << std::endl;
-            if (bool(requirement.get_minimum())) {
-                std::cout << "requirement.get_minimum().value(): " << requirement.get_minimum().value() << std::endl;
+        if (requirement.get_maximum().value() < requirement.get_minimum().value()) {
+            throw std::runtime_error("Minimum requirement cannot be larger than maximum");
+        }
+        if (requirement.get_nominal()) {
+            if (requirement.get_maximum().value() < requirement.get_nominal().value()) {
+                throw std::runtime_error("Nominal requirement cannot be larger than maximum");
             }
-            if (bool(requirement.get_maximum())) {
-                std::cout << "requirement.get_maximum().value(): " << requirement.get_maximum().value() << std::endl;
-            }
-            std::cout << "value: " << value << std::endl;
-            std::cout << "(requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value()): " << (requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value()) << std::endl;
         }
         return requirement.get_minimum().value() <= value && value <= requirement.get_maximum().value();
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && requirement.get_maximum()) {
+        if (requirement.get_maximum().value() < requirement.get_nominal().value()) {
+            throw std::runtime_error("Nominal requirement cannot be larger than maximum");
+        }
         return requirement.get_nominal().value() <= value && value <= requirement.get_maximum().value();
     }
     else if (requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
+        if (requirement.get_nominal().value() < requirement.get_minimum().value()) {
+            throw std::runtime_error("Minimum requirement cannot be larger than nominal");
+        }
         return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {

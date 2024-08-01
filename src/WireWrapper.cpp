@@ -670,7 +670,10 @@ namespace OpenMagnetics {
     double get_packing_factor_from_standard(WireStandard standard, double numberConductors) {
         if (standard == WireStandard::IEC_60317) {
             // Accoding to standard IEC 60317 - 11
-            if (numberConductors < 12) {
+            if (numberConductors == 2) {
+                return sqrt(2);
+            }
+            else if (numberConductors < 12) {
                 return 1.25;
             }
             else if (numberConductors < 16) {
@@ -689,7 +692,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double get_serving_thickness_from_standard(int numberLayers, double outerDiameter) {
+    double WireWrapper::get_serving_thickness_from_standard(int numberLayers, double outerDiameter) {
         if (numberLayers == 0) {
             return 0;
         }
@@ -829,14 +832,20 @@ namespace OpenMagnetics {
     }
 
     double WireWrapper::get_outer_diameter_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard) {
+        double outerDiameter = get_outer_diameter_bare_litz(conductingDiameter, numberConductors, grade, standard);
+
+        double servingThickness = get_serving_thickness_from_standard(numberLayers, outerDiameter);
+
+        outerDiameter += servingThickness * 2;
+
+        return outerDiameter;
+    }
+
+    double WireWrapper::get_outer_diameter_bare_litz(double conductingDiameter, int numberConductors, int grade, WireStandard standard) {
         double packingFactor = get_packing_factor_from_standard(standard, numberConductors);
         double outerStrandDiameter = get_outer_diameter_round(conductingDiameter, grade, standard);
 
         double outerDiameter = packingFactor * sqrt(numberConductors) * outerStrandDiameter;
-
-        double servingThickness = get_serving_thickness_from_standard(numberLayers, outerDiameter);
-
-        outerDiameter += servingThickness;
 
         return outerDiameter;
     }
