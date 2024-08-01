@@ -28,9 +28,7 @@ class CoreAdviser {
         std::map<CoreAdviserFilters, double> _weights;
         double _averageMarginInWindingWindow = 0;
 
-        void logEntry(std::string entry) {
-            _log += entry + "\n";
-        }
+        void logEntry(std::string entry);
 
     public:
 

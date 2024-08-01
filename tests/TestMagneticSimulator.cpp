@@ -163,6 +163,10 @@ SUITE(MagneticSimulator) {
             wire.set_nominal_value_outer_diameter(0.001);
             wire.set_number_conductors(45);
             wire.set_type(OpenMagnetics::WireType::LITZ);
+            OpenMagnetics::InsulationWireCoating coating;
+            coating.set_type(OpenMagnetics::InsulationWireCoatingType::SERVED);
+            coating.set_number_layers(1);
+            wire.set_coating(coating);
             wires.push_back(wire);
         }
         {
@@ -352,7 +356,7 @@ SUITE(MagneticSimulator) {
             OpenMagnetics::InsulationWireCoating coating;
             coating.set_type(OpenMagnetics::InsulationWireCoatingType::INSULATED);
             coating.set_number_layers(3);
-            coating.set_material("FEP");
+            coating.set_material("ETFE");
             coating.set_thickness_layers(5.08e-05);
             coating.set_temperature_rating(155);
             coating.set_breakdown_voltage(9000);
@@ -362,16 +366,12 @@ SUITE(MagneticSimulator) {
         {
             OpenMagnetics::WireWrapper wire;
             wire.set_strand("Round 0.05 - Grade 1");
-            wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.00005, 800, 1, 1));
-            wire.set_number_conductors(900);
+            wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.00005, 720, 1, 1));
+            wire.set_number_conductors(800);
             wire.set_type(OpenMagnetics::WireType::LITZ);
             OpenMagnetics::InsulationWireCoating coating;
-            coating.set_type(OpenMagnetics::InsulationWireCoatingType::INSULATED);
-            coating.set_number_layers(3);
-            coating.set_material("FEP");
-            coating.set_thickness_layers(5.08e-05);
-            coating.set_temperature_rating(155);
-            coating.set_breakdown_voltage(9000);
+            coating.set_type(OpenMagnetics::InsulationWireCoatingType::SERVED);
+            coating.set_number_layers(1);
             wire.set_coating(coating);
             wires.push_back(wire);
         }
@@ -544,6 +544,8 @@ SUITE(MagneticSimulator) {
         auto turnsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
         auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
 
+        // settings->set_coil_fill_sections_with_margin_tape(true);
+
         std::vector<OpenMagnetics::WireWrapper> wires;
         {
             OpenMagnetics::WireWrapper wire;
@@ -567,13 +569,11 @@ SUITE(MagneticSimulator) {
             OpenMagnetics::WireWrapper wire;
             wire.set_strand("Round 0.071 - Grade 1");
             int numberStrands = 500;
-            wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, numberStrands, 1, 1));
+            wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_bare_litz(0.000071, numberStrands));
             wire.set_number_conductors(numberStrands);
             wire.set_type(OpenMagnetics::WireType::LITZ);
             OpenMagnetics::InsulationWireCoating coating;
-            coating.set_type(OpenMagnetics::InsulationWireCoatingType::SERVED);
-            coating.set_temperature_rating(155);
-            coating.set_breakdown_voltage(9000);
+            coating.set_type(OpenMagnetics::InsulationWireCoatingType::BARE);
             wire.set_coating(coating);
             wires.push_back(wire);
         }
@@ -706,7 +706,7 @@ SUITE(MagneticSimulator) {
             settings->set_painter_logarithmic_scale(true);
             settings->set_painter_include_fringing(true);
 
-            // painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
             painter.paint_coil_turns(magnetic);
@@ -732,10 +732,14 @@ SUITE(MagneticSimulator) {
         {
             OpenMagnetics::WireWrapper wire;
             wire.set_strand("Round 0.071 - Grade 1");
-            int numberStrands = 120;
+            int numberStrands = 110;
             wire.set_nominal_value_outer_diameter(OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, numberStrands, 1, 1));
             wire.set_number_conductors(numberStrands);
             wire.set_type(OpenMagnetics::WireType::LITZ);
+            OpenMagnetics::InsulationWireCoating coating;
+            coating.set_type(OpenMagnetics::InsulationWireCoatingType::SERVED);
+            coating.set_number_layers(1);
+            wire.set_coating(coating);
             wires.push_back(wire);
         }
         {

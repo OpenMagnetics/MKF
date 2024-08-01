@@ -20,7 +20,7 @@ std::vector<uint64_t> NumberTurns::get_next_number_turns_combination() {
 }
 
 void NumberTurns::increment_number_turns() {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    uint64_t timeout = 1000;
     uint64_t primaryNumberTurns = _currentNumberTurns[0];
     bool allRequirementsPassed = false;
     while (!allRequirementsPassed) {
@@ -40,6 +40,10 @@ void NumberTurns::increment_number_turns() {
                 allRequirementsPassed = false;
                 break;
             }
+        }
+        timeout--;
+        if (timeout == 0) {
+            throw std::runtime_error("NumberTurns did not converge");
         }
     }
 }

@@ -38,14 +38,23 @@ class Settings
         bool _painterLogarithmicScale = false;
         bool _painterIncludeFringing = true;
         bool _painterDrawSpacer = true;
+        bool _painterSimpleLitz = true;
+        bool _painterAdvancedLitz = false;
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
         std::string _painterColorFerrite = "0x007b7c7d";
         std::string _painterColorBobbin = "0x8f1b1b1b";
         std::string _painterColorCopper = "0x00b87333";
         std::string _painterColorInsulation = "0x18539796";
+        std::string _painterColorEnamel = "0x539796";
+        std::string _painterColorFEP = "0x252525";
+        std::string _painterColorETFE = "0xb42811";
+        std::string _painterColorTCA = "0x696969";
+        std::string _painterColorPFA = "0xedbe1c";
+        std::string _painterColorSilk = "0xe7e7e8";
         std::string _painterColorMargin = "0x00fff05b";
         std::string _painterColorSpacer = "0x003b3b3b";
+        std::string _painterColorLines = "0x000000";
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
@@ -136,8 +145,14 @@ class Settings
         bool get_painter_include_fringing() const;
         void set_painter_include_fringing(bool value);
 
-        bool get_painter_painter_draw_spacer() const;
-        void set_painter_painter_draw_spacer(bool value);
+        bool get_painter_draw_spacer() const;
+        void set_painter_draw_spacer(bool value);
+
+        bool get_painter_simple_litz() const;
+        void set_painter_simple_litz(bool value);
+
+        bool get_painter_advanced_litz() const;
+        void set_painter_advanced_litz(bool value);
 
         std::optional<double> get_painter_maximum_value_colorbar() const;
         void set_painter_maximum_value_colorbar(std::optional<double> value);
@@ -162,6 +177,27 @@ class Settings
 
         std::string get_painter_color_spacer() const;
         void set_painter_color_spacer(std::string value);
+
+        std::string get_painter_color_lines() const;
+        void set_painter_color_lines(std::string value);
+
+        std::string get_painter_color_enamel() const;
+        void set_painter_color_enamel(std::string value);
+
+        std::string get_painter_color_fep() const;
+        void set_painter_color_fep(std::string value);
+
+        std::string get_painter_color_etfe() const;
+        void set_painter_color_etfe(std::string value);
+
+        std::string get_painter_color_tca() const;
+        void set_painter_color_tca(std::string value);
+
+        std::string get_painter_color_pfa() const;
+        void set_painter_color_pfa(std::string value);
+
+        std::string get_painter_color_silk() const;
+        void set_painter_color_silk(std::string value);
 
         int get_painter_mirroring_dimension() const;
         void set_painter_mirroring_dimension(int value);

@@ -166,7 +166,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
                 Y[j][i] = field.get_data()[numberPointsX * j + i].get_point()[1];
 
                 if (logarithmicScale) {
-                    M[j][i] = hypot(log(fabs(field.get_data()[numberPointsX * j + i].get_real())), log(fabs(field.get_data()[numberPointsX * j + i].get_imaginary())));
+                    M[j][i] = hypot(log10(fabs(field.get_data()[numberPointsX * j + i].get_real())), log10(fabs(field.get_data()[numberPointsX * j + i].get_imaginary())));
                 }
                 else {
                     M[j][i] = hypot(field.get_data()[numberPointsX * j + i].get_real(), field.get_data()[numberPointsX * j + i].get_imaginary());
@@ -207,11 +207,11 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             Y[i] = field.get_data()[i].get_point()[1];
 
             if (logarithmicScale) {
-                U[i] = log(fabs(field.get_data()[i].get_real()));
+                U[i] = log10(fabs(field.get_data()[i].get_real()));
                 if (field.get_data()[i].get_real() < 0) {
                     U[i] = -U[i];
                 }
-                V[i] = log(fabs(field.get_data()[i].get_imaginary()));
+                V[i] = log10(fabs(field.get_data()[i].get_imaginary()));
                 if (field.get_data()[i].get_imaginary() < 0) {
                     V[i] = -V[i];
                 }
@@ -339,7 +339,7 @@ void Painter::export_svg() {
         std::string newLine = lines[lineIndex];
         for (auto [key, changedLine] : _postProcessingChanges){
             if (currentLine.contains(key)) {
-                if (lines[lineIndex - 1].contains(R"(stroke-linecap="butt")")) {
+                if (lines[lineIndex - 1].contains(R"(stroke-linecap="butt")") && !_postProcessingChanges[key].starts_with(R"(<g )")) {
                     lines[lineIndex - 1] = replace_key(R"(stroke-linecap="butt")", lines[lineIndex - 1], _postProcessingChanges[key]);
                 }
 
@@ -492,6 +492,32 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     return {showingCoreWidth, showingCoreHeight};
 }
 
+
+void Painter::set_image_size(WireWrapper wire) {
+    _extraDimension = 0.1;
+    double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
+    auto showingWireWidth = wire.get_maximum_outer_width() + margin;
+    if (_addProportionForColorBar) {
+        double proportionForColorBar = 0.4;
+        showingWireWidth *= (1 + proportionForColorBar);
+    }
+    _offsetForColorBar = 0;
+
+    double showingWireHeight = wire.get_maximum_outer_height() + margin;
+
+    _scale = _fixedScale * 0.01 / showingWireHeight;
+
+    _fontSize = std::max(1.0, 100 * showingWireHeight / 0.01);
+    _fontSize = std::min(100.0, _fontSize);
+
+    matplot::gcf()->size(showingWireWidth * _scale, showingWireHeight * _scale);
+    matplot::xlim({-showingWireWidth / 2, showingWireWidth / 2});
+    matplot::ylim({-showingWireHeight / 2, showingWireHeight / 2});
+    matplot::gca()->cb_inside(true);
+    matplot::gca()->cb_position({0.01f, 0.05f, 0.05f, 0.9f});
+    matplot::gca()->position({0.0f, 0.0f, 1.0f, 1.0f});
+}
+
 void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
@@ -546,8 +572,6 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
             showingCoreWidth = processedDescription.get_width() / 2;
             showingMainColumnWidth = mainColumn.get_width() / 2;
     }
-
-    double coreHeight = processedDescription.get_height();
 
     auto aux = get_image_size(magnetic);
     double imageWidth = aux[0];
@@ -788,7 +812,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
 
 void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
-    bool drawSpacer = settings->get_painter_painter_draw_spacer();
+    bool drawSpacer = settings->get_painter_draw_spacer();
     auto sections = magnetic.get_coil().get_sections_description().value();
 
     if (sections.size() == 1) {
@@ -1124,6 +1148,101 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
+
+
+void Painter::paint_wire(WireWrapper wire) {
+    set_image_size(wire);
+
+    switch (wire.get_type()) {
+        case WireType::ROUND:
+            paint_round_wire(0, 0, wire);
+            break;
+        case WireType::LITZ:
+            paint_litz_wire(0, 0, wire);
+            break;
+        case WireType::FOIL:
+        case WireType::RECTANGULAR:
+            paint_rectangular_wire(0, 0, wire, 0, {0, 0});
+            break;
+        default:
+            throw std::runtime_error("Unknown error");
+    }
+}
+
+struct CoatingInfo {
+    double strokeWidth;
+    size_t numberLines;
+    double lineRadiusIncrease;
+    std::array<float, 4> coatingColor;
+};
+
+CoatingInfo process_coating(double insulationThickness, InsulationWireCoating coating) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    InsulationWireCoatingType insulationWireCoatingType = coating.get_type().value();
+    size_t numberLines = 0;
+    double strokeWidth = 0;
+    double lineRadiusIncrease = 0;
+    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+
+    switch (insulationWireCoatingType) {
+        case InsulationWireCoatingType::BARE:
+            break;
+        case InsulationWireCoatingType::ENAMELLED:
+            if (!coating.get_grade()) {
+                throw std::runtime_error("Enamelled wire missing grade");
+            }
+            numberLines = coating.get_grade().value() + 1;
+            lineRadiusIncrease = insulationThickness / coating.get_grade().value() * 2;
+            coatingColor = matplot::to_array(settings->get_painter_color_enamel());
+            break;
+        case InsulationWireCoatingType::SERVED:
+        case InsulationWireCoatingType::INSULATED:
+            {
+                if (!coating.get_number_layers()) {
+                    throw std::runtime_error("Insulated wire missing number layers");
+                }
+                numberLines = coating.get_number_layers().value() + 1;
+                lineRadiusIncrease = insulationThickness / coating.get_number_layers().value() * 2;
+                if (insulationWireCoatingType == InsulationWireCoatingType::SERVED) {
+                    coatingColor = matplot::to_array(settings->get_painter_color_silk());
+                }
+                else {
+                    coatingColor = matplot::to_array(settings->get_painter_color_fep());
+                    if (coating.get_material()) {
+                        std::string coatingMaterial = std::get<std::string>(coating.get_material().value());
+                        if (coatingMaterial == "PFA") {
+                            coatingColor = matplot::to_array(settings->get_painter_color_pfa());
+                        }
+                        else if (coatingMaterial == "FEP") {
+                            coatingColor = matplot::to_array(settings->get_painter_color_fep());
+                        }
+                        else if (coatingMaterial == "ETFE") {
+                            coatingColor = matplot::to_array(settings->get_painter_color_etfe());
+                        }
+                        else if (coatingMaterial == "TCA") {
+                            coatingColor = matplot::to_array(settings->get_painter_color_tca());
+                        }
+                        else {
+                            throw std::runtime_error("Unknown insulated wire material");
+                        }
+
+                    }
+                }
+            }
+            break;
+        default:
+            throw std::runtime_error("Coating type plot not implemented yet");
+    }
+    strokeWidth = insulationThickness / 10 / numberLines;
+    CoatingInfo coatingInfo;
+    coatingInfo.strokeWidth = strokeWidth;
+    coatingInfo.numberLines = numberLines;
+    coatingInfo.lineRadiusIncrease = lineRadiusIncrease;
+    coatingInfo.coatingColor = coatingColor;
+
+    return coatingInfo;
+}
+
 void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapper wire) {
     if (!wire.get_outer_diameter()) {
         throw std::runtime_error("Wire is missing outerDiameter");
@@ -1131,21 +1250,194 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
-    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
-
-    if (wire.get_conducting_diameter()) {
-        double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+    double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+    double insulationThickness = (outerDiameter - conductingDiameter) / 2;
+    auto coating = wire.resolve_coating();
+    size_t numberLines = 0;
+    double strokeWidth = 0;
+    double lineRadiusIncrease = 0;
+    double currentLineDiameter = conductingDiameter;
+    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+    if (coating) {
+        CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
+        strokeWidth = coatingInfo.strokeWidth;
+        numberLines = coatingInfo.numberLines;
+        lineRadiusIncrease = coatingInfo.lineRadiusIncrease;
+        coatingColor = coatingInfo.coatingColor;
     }
+
+    // Paint insulation
+    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(coatingColor);
+
+    // Paint copper
+    if (!wire.get_conducting_diameter()) {
+        throw std::runtime_error("Wire is missing conducting diameter");
+    }
+    matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+
+    // Paint layer separation lines
+    for (size_t i = 0; i < numberLines; ++i) {
+        matplot::ellipse(_offsetForColorBar + xCoordinate - currentLineDiameter / 2, yCoordinate - currentLineDiameter / 2, currentLineDiameter, currentLineDiameter)->fill(false).line_width(strokeWidth * _scale).color(matplot::to_array(settings->get_painter_color_lines()));
+        currentLineDiameter += lineRadiusIncrease;
+    }
+
 }
 
-void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, WireWrapper wire, double angle, std::vector<double> center) {
+void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrapper wire) {
+    if (!wire.get_outer_diameter()) {
+        throw std::runtime_error("Wire is missing outerDiameter");
+    }
     auto settings = OpenMagnetics::Settings::GetInstance();
+    bool simpleMode = settings->get_painter_simple_litz();
+    auto coating = wire.resolve_coating();
+    size_t numberConductors = wire.get_number_conductors().value();
+
+    double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+    auto strand = wire.resolve_strand();
+    double strandOuterDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
+    double conductingDiameter = 0;
+    if (coating->get_type() == InsulationWireCoatingType::BARE) {
+        conductingDiameter = outerDiameter;
+    }
+    else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
+        if (!coating->get_number_layers()) {
+            throw std::runtime_error("Number layers missing in litz served");
+        }
+        auto strandCoating = WireWrapper::resolve_coating(strand);
+        double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+        conductingDiameter = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        if (outerDiameter <= conductingDiameter) {
+            double servedThickness = WireWrapper::get_serving_thickness_from_standard(coating->get_number_layers().value(), outerDiameter);
+            outerDiameter = conductingDiameter + 2 * servedThickness;
+            wire.set_nominal_value_outer_diameter(outerDiameter);
+            set_image_size(wire);
+        }
+    }
+    else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
+        auto strandCoating = WireWrapper::resolve_coating(strand);
+        double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+        conductingDiameter = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+    }
+    else {
+        throw std::runtime_error("Coating type not implemented for Litz yet");
+    }
+
+    double insulationThickness = (outerDiameter - conductingDiameter) / 2;
+
+    size_t numberLines = 0;
+    double strokeWidth = 0;
+    double lineRadiusIncrease = 0;
+    double currentLineDiameter = conductingDiameter;
+    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+    if (coating) {
+        CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
+        strokeWidth = coatingInfo.strokeWidth;
+        numberLines = coatingInfo.numberLines;
+        lineRadiusIncrease = coatingInfo.lineRadiusIncrease;
+        coatingColor = coatingInfo.coatingColor;
+    }
+
+    // Paint insulation
+    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(coatingColor);
+
+    if (simpleMode) {
+        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+    }
+    else {
+        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
+        auto coordinateFilePath = _cciCoordinatesPath.append("cci" + std::to_string(numberConductors) + ".txt");
+
+        std::ifstream in(coordinateFilePath);
+        std::vector<std::pair<double, double>> coordinates;
+        bool advancedMode = settings->get_painter_advanced_litz();
+
+        if (in) {
+            std::string line;
+
+            while (getline(in, line)) {
+                std::stringstream sep(line);
+                std::string field;
+
+                std::vector<double> numbers;
+
+                while (getline(sep, field, ' ')) {
+                    try {
+                        numbers.push_back(stod(field));
+                    }
+                    catch (...) {
+                        continue;
+                    }
+                }
+
+                coordinates.push_back({numbers[1], numbers[2]});
+            }
+
+            for (size_t i = 0; i < numberConductors; ++i) {
+                double internalXCoordinate = conductingDiameter / 2 * coordinates[i].first;
+                double internalYCoordinate = conductingDiameter / 2 * coordinates[i].second;
+
+                if (advancedMode) {
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate + internalYCoordinate, strand);
+                }
+                else {
+                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                }
+
+
+            }
+        }
+        else {
+            double currentRadius = 0;
+            double currentAngle = 0;
+            double angleCoveredThisLayer = 0;
+            double strandAngle = 360;
+            for (size_t i = 0; i < numberConductors; ++i) {
+                double internalXCoordinate = currentRadius * cos(currentAngle / 180 * std::numbers::pi);
+                double internalYCoordinate = currentRadius * sin(currentAngle / 180 * std::numbers::pi);
+
+                if (advancedMode) {
+                    Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate + internalYCoordinate, strand);
+                }
+                else {
+                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                }
+
+                if (currentRadius > 0) {
+                    strandAngle = wound_distance_to_angle(strandOuterDiameter, currentRadius);
+                }
+
+                if (angleCoveredThisLayer + strandAngle * 1.99 > 360) {
+                    currentRadius += strandOuterDiameter;
+                    if (currentRadius + strandOuterDiameter / 2 > conductingDiameter / 2) {
+                        // We cut down some strands to avoid visual error, which should be done only at thousands of strands due to cci_coords files
+                        break;
+                    }
+                    angleCoveredThisLayer = 0;
+                }
+                else {
+                    currentAngle += strandAngle;
+                    angleCoveredThisLayer += strandAngle;
+                }
+            }
+        }
+
+    }
+
+    // Paint layer separation lines
+    for (size_t i = 0; i < numberLines; ++i) {
+        matplot::ellipse(_offsetForColorBar + xCoordinate - currentLineDiameter / 2, yCoordinate - currentLineDiameter / 2, currentLineDiameter, currentLineDiameter)->fill(false).line_width(strokeWidth * _scale).color(matplot::to_array(settings->get_painter_color_lines()));
+        currentLineDiameter += lineRadiusIncrease;
+    }
+
+}
+
+std::string Painter::paint_rectangle(std::vector<double> cornerData, bool fill, double strokeWidth) {
     std::vector<std::vector<double>> turnPoints = {};
-    turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-    turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-    turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-    turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_outer_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+    turnPoints.push_back(std::vector<double>({cornerData[0], cornerData[1]}));
+    turnPoints.push_back(std::vector<double>({cornerData[2], cornerData[1]}));
+    turnPoints.push_back(std::vector<double>({cornerData[2], cornerData[3]}));
+    turnPoints.push_back(std::vector<double>({cornerData[0], cornerData[3]}));
+    turnPoints.push_back(std::vector<double>({cornerData[0], cornerData[1]}));
 
     auto currentMapIndex = uint_to_hex(_currentMapIndex);
     auto key = key_to_rgb_color(_currentMapIndex);
@@ -1156,32 +1448,101 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
         x.push_back(point[0] + _offsetForColorBar);
         y.push_back(point[1]);
     }
-    matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
-
-    _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
-    _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
-
-    if (wire.get_conducting_width() && wire.get_conducting_height()) {
-        std::vector<std::vector<double>> turnPoints = {};
-        turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-        turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate + resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-        turnPoints.push_back(std::vector<double>({xCoordinate + resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-        turnPoints.push_back(std::vector<double>({xCoordinate - resolve_dimensional_values(wire.get_conducting_width().value()) / 2, yCoordinate - resolve_dimensional_values(wire.get_conducting_height().value()) / 2}));
-
-        auto currentMapIndex = uint_to_hex(_currentMapIndex);
-        auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
-
-        std::vector<double> x, y;
-        for (auto& point : turnPoints) {
-            x.push_back(point[0] + _offsetForColorBar);
-            y.push_back(point[1]);
-        }
+    if (fill){
         matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
+    }
+    else {
+        matplot::fill(x, y)->fill(false).line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
+    }
+    return key;
+}
 
+void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, WireWrapper wire, double angle, std::vector<double> center) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+
+    if (!wire.get_outer_width()) {
+        throw std::runtime_error("Wire is missing outerWidth");
+    }
+    if (!wire.get_outer_height()) {
+        throw std::runtime_error("Wire is missing outerHeight");
+    }
+
+    double outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
+    double outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+    double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+    double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+    double insulationThicknessInWidth = (outerWidth - conductingWidth) / 2;
+    double insulationThicknessInHeight = (outerHeight - conductingHeight) / 2;
+    auto coating = wire.resolve_coating();
+    size_t numberLines = 0;
+    double strokeWidth = 0;
+    double lineWidthIncrease = 0;
+    double lineHeightIncrease = 0;
+    double currentLineWidth = conductingWidth;
+    double currentLineHeight = conductingHeight;
+
+    std::string coatingColor = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
+    if (coating) {
+        InsulationWireCoatingType insulationWireCoatingType = coating->get_type().value();
+
+        switch (insulationWireCoatingType) {
+            case InsulationWireCoatingType::BARE:
+                break;
+            case InsulationWireCoatingType::ENAMELLED:
+                if (!coating->get_grade()) {
+                    throw std::runtime_error("Enamelled wire missing grade");
+                }
+                numberLines = coating->get_grade().value() + 1;
+                lineWidthIncrease = insulationThicknessInWidth / coating->get_grade().value() * 2;
+                lineHeightIncrease = insulationThicknessInHeight / coating->get_grade().value() * 2;
+                coatingColor = key_to_rgb_color(stoi(settings->get_painter_color_enamel(), 0, 16));
+                break;
+            default:
+                throw std::runtime_error("Coating type plot not implemented yet");
+        }
+        strokeWidth = std::min(lineWidthIncrease / 10 / numberLines, lineHeightIncrease / 10 / numberLines);
+    }
+
+    // Paint insulation
+
+    {
+        std::vector<double> cornerDataOuter;
+        cornerDataOuter.push_back(xCoordinate - outerWidth / 2);
+        cornerDataOuter.push_back(yCoordinate + outerHeight / 2);
+        cornerDataOuter.push_back(xCoordinate + outerWidth / 2);
+        cornerDataOuter.push_back(yCoordinate - outerHeight / 2);
+        auto key = paint_rectangle(cornerDataOuter, true);
+        _postProcessingColors[key] = coatingColor;
+        _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
+    }
+
+    // Paint copper
+    {
+        std::vector<double> cornerDataConducting;
+        cornerDataConducting.push_back(xCoordinate - conductingWidth / 2);
+        cornerDataConducting.push_back(yCoordinate + conductingHeight / 2);
+        cornerDataConducting.push_back(xCoordinate + conductingWidth / 2);
+        cornerDataConducting.push_back(yCoordinate - conductingHeight / 2);
+        auto key = paint_rectangle(cornerDataConducting, true);
         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
         _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
 
+    }
+
+    // Paint layer separation lines
+
+    for (size_t i = 0; i < numberLines; ++i) {
+        std::vector<double> cornerDataConducting;
+        cornerDataConducting.push_back(xCoordinate - currentLineWidth / 2);
+        cornerDataConducting.push_back(yCoordinate + currentLineHeight / 2);
+        cornerDataConducting.push_back(xCoordinate + currentLineWidth / 2);
+        cornerDataConducting.push_back(yCoordinate - currentLineHeight / 2);
+        auto key = paint_rectangle(cornerDataConducting, false, strokeWidth);
+        _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_lines(), 0, 16));
+        _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
+
+        currentLineWidth += lineWidthIncrease;
+        currentLineHeight += lineHeightIncrease;
     }
 }
 
@@ -1201,8 +1562,11 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
             paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
+        }
+        else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+            paint_litz_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
         }
         else {
             {
@@ -1303,8 +1667,11 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
         auto wire = wirePerWinding[windingIndex];
         double xCoordinate = turns[i].get_coordinates()[0];
         double yCoordinate = turns[i].get_coordinates()[1];
-        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
             paint_round_wire(xCoordinate, yCoordinate, wire);
+        }
+        else if ( wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+            paint_litz_wire(xCoordinate, yCoordinate, wire);
         }
         else {
             double turnAngle = turns[i].get_rotation().value();
@@ -1318,8 +1685,11 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
             for (auto additionalCoordinate : additionalCoordinates){
                 double xAdditionalCoordinate = additionalCoordinate[0];
                 double yAdditionalCoordinate = additionalCoordinate[1];
-                if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
                     paint_round_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire);
+                }
+                else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                    paint_litz_wire(xAdditionalCoordinate, yAdditionalCoordinate, wire);
                 }
                 else {
                     double turnAngle = turns[i].get_rotation().value();

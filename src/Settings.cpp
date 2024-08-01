@@ -40,6 +40,8 @@ namespace OpenMagnetics {
         _painterLogarithmicScale = false;
         _painterIncludeFringing = true;
         _painterDrawSpacer = true;
+        _painterSimpleLitz = true;
+        _painterAdvancedLitz = false;
         _painterMaximumValueColorbar = std::nullopt;
         _painterMinimumValueColorbar = std::nullopt;
         _painterColorFerrite = "0x007b7c7d";
@@ -47,7 +49,14 @@ namespace OpenMagnetics {
         _painterColorCopper = "0x00b87333";
         _painterColorInsulation = "0x18539796";
         _painterColorMargin = "0x00fff05b";
+        _painterColorEnamel = "0x539796";
+        _painterColorFEP = "0x252525";
+        _painterColorETFE = "0xb42811";
+        _painterColorTCA = "0x696969";
+        _painterColorTCA = "0x696969";
+        _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x003b3b3b";
+        _painterColorLines = "0x000000";
 
         _magneticFieldNumberPointsX = 25;
         _magneticFieldNumberPointsY = 50;
@@ -211,11 +220,25 @@ namespace OpenMagnetics {
         _painterIncludeFringing = value;
     }
 
-    bool Settings::get_painter_painter_draw_spacer() const {
+    bool Settings::get_painter_draw_spacer() const {
         return _painterDrawSpacer;
     }
-    void Settings::set_painter_painter_draw_spacer(bool value) {
+    void Settings::set_painter_draw_spacer(bool value) {
         _painterDrawSpacer = value;
+    }
+
+    bool Settings::get_painter_simple_litz() const {
+        return _painterSimpleLitz;
+    }
+    void Settings::set_painter_simple_litz(bool value) {
+        _painterSimpleLitz = value;
+    }
+
+    bool Settings::get_painter_advanced_litz() const {
+        return _painterAdvancedLitz;
+    }
+    void Settings::set_painter_advanced_litz(bool value) {
+        _painterAdvancedLitz = value;
     }
 
     std::optional<double> Settings::get_painter_maximum_value_colorbar() const {
@@ -272,6 +295,61 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_spacer(std::string value) {
         _painterColorSpacer = value;
+    }
+
+    std::string Settings::get_painter_color_lines() const {
+        return _painterColorLines;
+    }
+    void Settings::set_painter_color_lines(std::string value) {
+        _painterColorLines = value;
+    }
+
+    std::string Settings::get_painter_color_enamel() const {
+        return _painterColorEnamel;
+    }
+
+    void Settings::set_painter_color_enamel(std::string value) {
+        _painterColorEnamel = value;
+    }
+
+    std::string Settings::get_painter_color_fep() const {
+        return _painterColorFEP;
+    }
+
+    void Settings::set_painter_color_fep(std::string value) {
+        _painterColorFEP = value;
+    }
+
+    std::string Settings::get_painter_color_etfe() const {
+        return _painterColorETFE;
+    }
+
+    void Settings::set_painter_color_etfe(std::string value) {
+        _painterColorETFE = value;
+    }
+
+    std::string Settings::get_painter_color_tca() const {
+        return _painterColorTCA;
+    }
+
+    void Settings::set_painter_color_tca(std::string value) {
+        _painterColorTCA = value;
+    }
+
+    std::string Settings::get_painter_color_pfa() const {
+        return _painterColorPFA;
+    }
+
+    void Settings::set_painter_color_pfa(std::string value) {
+        _painterColorPFA = value;
+    }
+
+    std::string Settings::get_painter_color_silk() const {
+        return _painterColorSilk;
+    }
+
+    void Settings::set_painter_color_silk(std::string value) {
+        _painterColorSilk = value;
     }
 
     int Settings::get_painter_mirroring_dimension() const {

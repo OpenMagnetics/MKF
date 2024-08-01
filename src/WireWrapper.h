@@ -138,7 +138,9 @@ class WireWrapper : public Wire {
         static double get_filling_factor_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
         static double get_outer_diameter_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard = WireStandard::IEC_60317);
         // Thought for enamelled litz wires with or without serving
+        static double get_serving_thickness_from_standard(int numberLayers, double outerDiameter);
         static double get_filling_factor_served_litz(double conductingDiameter, int numberConductors, int grade = 1, int numberLayers= 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
+        static double get_outer_diameter_bare_litz(double conductingDiameter, int numberConductors, int grade = 1, WireStandard standard = WireStandard::IEC_60317);
         static double get_outer_diameter_served_litz(double conductingDiameter, int numberConductors, int grade = 1, int numberLayers= 1, WireStandard standard = WireStandard::IEC_60317);
         // Thought for insulated litz wires
         static double get_filling_factor_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
