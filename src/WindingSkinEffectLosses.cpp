@@ -46,7 +46,9 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
         case WireType::LITZ: {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
         }
-        case WireType::RECTANGULAR: {
+        case WireType::PLANAR:
+        case WireType::RECTANGULAR:
+        {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);
         }
         case WireType::FOIL: {
@@ -242,7 +244,9 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
             penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
             break;
         }
-        case WireType::RECTANGULAR: {
+        case WireType::PLANAR:
+        case WireType::RECTANGULAR:
+        {
             penetrationRatio = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value())) / skinDepth;
             break;
         }
@@ -285,7 +289,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const WireWrapp
     double wireRadius;
     double wireOuterRadius;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         wireRadius = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value())) / 2;
         wireOuterRadius = std::min(resolve_dimensional_values(wire.get_outer_width().value()), resolve_dimensional_values(wire.get_outer_height().value())) / 2;
     }
@@ -363,7 +367,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const WireWra
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double wireHeight;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         wireHeight = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
@@ -400,7 +404,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double b, a;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         double bPrima = std::max(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
         double aPrima = std::min(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
         b = 2 * bPrima / sqrt(std::numbers::pi);
@@ -428,7 +432,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire
 double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double bPrima, aPrima;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         bPrima = std::max(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
         aPrima = std::min(resolve_dimensional_values(wire.get_conducting_height().value()), resolve_dimensional_values(wire.get_conducting_width().value())) / 2;
     }

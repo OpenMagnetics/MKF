@@ -24,6 +24,25 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+double CoreWrapper::get_depth() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_depth();
+}
+double CoreWrapper::get_height() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_height();
+}
+double CoreWrapper::get_width() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_width();
+}
+
 double roundFloat(double value, int64_t decimals) {
     return round(value * pow(10, decimals)) / pow(10, decimals);
 }

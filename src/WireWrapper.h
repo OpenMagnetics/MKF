@@ -189,6 +189,7 @@ class WireWrapper : public Wire {
 
         int get_equivalent_insulation_layers(double voltageToInsulate);
 
+        std::vector<std::vector<double>> calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints=10);
         double calculate_effective_current_density(OperatingPointExcitation excitation, double temperature);
         double calculate_effective_current_density(SignalDescriptor current, double temperature);
         double calculate_effective_current_density(double rms, double frequency, double temperature);
@@ -210,6 +211,7 @@ class WireWrapper : public Wire {
         std::string get_coating_label();
 
         void cut_foil_wire_to_section(Section section);
+        void cut_planar_wire_to_section(Section section);
         double get_relative_cost();
 
         static WireWrapper get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);

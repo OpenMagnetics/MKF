@@ -1198,6 +1198,9 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     if (wire.get_type() == WireType::FOIL){
         throw std::runtime_error("Foil is not supported in toroids");
     }
+    if (wire.get_type() == WireType::PLANAR){
+        throw std::runtime_error("Planar is not supported in toroids");
+    }
     if (wire.get_type() == WireType::RECTANGULAR){
         currentRadius = windingWindowRadius - wireWidth - currentRadialHeight;
     }
@@ -2003,7 +2006,7 @@ bool CoilWrapper::wind_by_rectangular_layers() {
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
-                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR) {  // TODO: Fix for future PLANAR case
+                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR) {
                         maximumNumberPhysicalTurnsPerLayer = 1;
                     }
                     else {
@@ -2472,6 +2475,17 @@ bool CoilWrapper::wind_by_rectangular_turns() {
     }
 
     auto layers = get_layers_description().value();
+    auto settings = Settings::GetInstance();
+
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR) {
+            auto conductionLayers = get_layers_by_type(ElectricalType::CONDUCTION);
+            if (conductionLayers.size() > settings->get_coil_maximum_layers_planar()) {
+                return false;
+            }
+        }
+
+    }
 
     std::vector<Turn> turns;
     for (auto& layer : layers) {

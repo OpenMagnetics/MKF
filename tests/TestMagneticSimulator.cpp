@@ -905,4 +905,181 @@ SUITE(MagneticSimulator) {
             settings->reset();
         }
     }
+
+    // TEST(Test_Planar_Simulation) {
+    //     srand (time(NULL));
+    //     settings->reset();
+    //     OpenMagnetics::clear_databases();
+
+    //     double temperature = 20;
+    //     std::vector<int64_t> numberTurns = {18, 9, 4};
+    //     std::vector<int64_t> numberParallels = {1, 1, 1};
+    //     std::string shapeName = "E 64/10/50";
+    //     uint8_t interleavingLevel = 1;
+    //     auto windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+    //     auto layersOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+    //     auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+    //     auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+    //     std::vector<OpenMagnetics::WireWrapper> wires;
+    //     {
+    //         OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Planar 69.60 µm");
+    //         wire.set_nominal_value_conducting_width(0.002);
+    //         wire.set_nominal_value_outer_width(0.0021);
+    //         wire.set_nominal_value_outer_height(OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()));
+    //         wires.push_back(wire);
+    //     }
+    //     {
+    //         OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Planar 69.60 µm");
+    //         wire.set_nominal_value_conducting_width(0.002);
+    //         wire.set_nominal_value_outer_width(0.0021);
+    //         wire.set_nominal_value_outer_height(OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()));
+    //         wires.push_back(wire);
+    //     }
+    //     {
+    //         OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Planar 69.60 µm");
+    //         wire.set_nominal_value_conducting_width(0.005);
+    //         wire.set_nominal_value_outer_width(0.0051);
+    //         wire.set_nominal_value_outer_height(OpenMagnetics::resolve_dimensional_values(wire.get_conducting_height().value()));
+    //         wires.push_back(wire);
+    //     }
+
+    //     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+    //                                                      numberParallels,
+    //                                                      shapeName,
+    //                                                      interleavingLevel,
+    //                                                      windingOrientation,
+    //                                                      layersOrientation,
+    //                                                      turnsAlignment,
+    //                                                      sectionsAlignment,
+    //                                                      wires,
+    //                                                      false);
+
+    //     coil.wind({0, 1, 2}, 1);
+
+    //     int64_t numberStacks = 1;
+    //     std::string coreMaterial = "3C95";
+    //     auto gapping = OpenMagneticsTesting::get_residual_gap();
+    //     auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+    //     OpenMagnetics::Magnetic magnetic;
+    //     magnetic.set_core(core);
+    //     magnetic.set_coil(coil);
+
+    //     json inputsJson;
+
+    //     inputsJson["operatingPoints"] = json::array();
+    //     json operatingPointJson = json();
+    //     operatingPointJson["name"] = "Nominal";
+    //     operatingPointJson["conditions"] = json();
+    //     operatingPointJson["conditions"]["ambientTemperature"] = 25;
+
+    //     operatingPointJson["excitationsPerWinding"] = json::array();
+    //     {
+    //         json windingExcitation = json();
+    //         windingExcitation["frequency"] = 100000;
+    //         windingExcitation["current"]["processed"]["label"] = "Triangular";
+    //         windingExcitation["current"]["processed"]["peakToPeak"] = 26;
+    //         windingExcitation["current"]["processed"]["offset"] = 10;
+    //         windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+    //         windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+    //         windingExcitation["voltage"]["processed"]["peakToPeak"] = 800;
+    //         windingExcitation["voltage"]["processed"]["offset"] = 0;
+    //         windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+    //         operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+    //     }
+    //     {
+    //         json windingExcitation = json();
+    //         windingExcitation["frequency"] = 100000;
+    //         windingExcitation["current"]["processed"]["label"] = "Triangular";
+    //         windingExcitation["current"]["processed"]["peakToPeak"] = 50;
+    //         windingExcitation["current"]["processed"]["offset"] = 20;
+    //         windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+    //         windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+    //         windingExcitation["voltage"]["processed"]["peakToPeak"] = 800;
+    //         windingExcitation["voltage"]["processed"]["offset"] = 0;
+    //         windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+    //         operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+    //     }
+    //     {
+    //         json windingExcitation = json();
+    //         windingExcitation["frequency"] = 100000;
+    //         windingExcitation["current"]["processed"]["label"] = "Triangular";
+    //         windingExcitation["current"]["processed"]["peakToPeak"] = 36;
+    //         windingExcitation["current"]["processed"]["offset"] = 14;
+    //         windingExcitation["current"]["processed"]["dutyCycle"] = 0.5;
+    //         windingExcitation["voltage"]["processed"]["label"] = "Rectangular";
+    //         windingExcitation["voltage"]["processed"]["peakToPeak"] = 178 * 2;
+    //         windingExcitation["voltage"]["processed"]["offset"] = 0;
+    //         windingExcitation["voltage"]["processed"]["dutyCycle"] = 0.5;
+    //         operatingPointJson["excitationsPerWinding"].push_back(windingExcitation);
+    //     }
+    //     inputsJson["operatingPoints"].push_back(operatingPointJson);
+
+    //     inputsJson["designRequirements"] = json();
+    //     inputsJson["designRequirements"]["maximumDimensions"] = json();
+    //     inputsJson["designRequirements"]["maximumDimensions"]["height"] = 0.023;
+    //     inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 750e-6;
+    //     inputsJson["designRequirements"]["turnsRatios"] = json::array();
+    //     {
+    //         json turnRatioSecondary;
+    //         turnRatioSecondary["minimum"] = 0.8;
+    //         turnRatioSecondary["nominal"] = 1;
+    //         turnRatioSecondary["maximum"] = 1.2;
+    //         inputsJson["designRequirements"]["turnsRatios"].push_back(turnRatioSecondary);
+    //     }
+    //     {
+    //         json turnRatioSecondary;
+    //         turnRatioSecondary["minimum"] = 2;
+    //         turnRatioSecondary["nominal"] = 2.25;
+    //         turnRatioSecondary["maximum"] = 2.5;
+    //         inputsJson["designRequirements"]["turnsRatios"].push_back(turnRatioSecondary);
+    //     }
+
+
+    //     OpenMagnetics::InputsWrapper inputs(inputsJson);
+    //     std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY,
+    //                                                                 OpenMagnetics::IsolationSide::SECONDARY,
+    //                                                                 OpenMagnetics::IsolationSide::TERTIARY};
+
+
+    //     inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+    //     inputs.process_waveforms();
+    //     OpenMagnetics::MagneticAdviser MagneticAdviser;
+
+    //     auto simulator = OpenMagnetics::MagneticSimulator();
+    //     auto mas = simulator.simulate(inputs, magnetic);
+    //     // json coreLossesJson;
+    //     // to_json(coreLossesJson, coreLosses);
+    //     // std::cout << coreLossesJson << std::endl;
+
+    //     OpenMagnetics::MagneticAdviser::preview_magnetic(mas);
+
+    //     {
+    //         auto outFile = outputFilePath;
+    //         outFile.append("Test_Planar_Simulation.mas.json");
+    //         OpenMagnetics::to_file(outFile, mas);
+    //     }
+
+    //     {
+    //         auto outFile = outputFilePath;
+    //         outFile.append("Test_Planar_Simulation.svg");
+    //         std::filesystem::remove(outFile); 
+    //         OpenMagnetics::Painter painter(outFile, true);
+
+    //         settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+    //         settings->set_painter_number_points_x(100);
+    //         settings->set_painter_number_points_y(100);
+    //         // settings->set_painter_maximum_value_colorbar(8000);
+    //         // settings->set_painter_minimum_value_colorbar(500);
+    //         settings->set_painter_logarithmic_scale(true);
+    //         settings->set_painter_include_fringing(true);
+
+    //         painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+    //         painter.paint_core(magnetic);
+    //         painter.paint_bobbin(magnetic);
+    //         painter.paint_coil_turns(magnetic);
+    //         painter.export_svg();
+    //         settings->reset();
+    //     }
+    // }
 }

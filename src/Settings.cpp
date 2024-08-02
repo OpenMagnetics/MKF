@@ -30,6 +30,7 @@ namespace OpenMagnetics {
         _coilTryRewind = true;
         _coilIncludeAdditionalCoordinates = true;
         _coilEqualizeMargins = true;
+        _coilMaximumLayersPlanar = 4;
 
         _useOnlyCoresInStock = true;
 
@@ -67,6 +68,7 @@ namespace OpenMagnetics {
         _coreIncludeStacks = true;
         _coreIncludeDistributedGaps = true;
 
+        _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
         _wireAdviserIncludeRectangular = true;
         _wireAdviserIncludeLitz = true;
@@ -176,6 +178,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_coil_equalize_margins(bool value) {
         _coilEqualizeMargins = value;
+    }
+
+    size_t Settings::get_coil_maximum_layers_planar() const {
+        return _coilMaximumLayersPlanar;
+    }
+    void Settings::set_coil_maximum_layers_planar(size_t value) {
+        _coilMaximumLayersPlanar = value;
     }
 
     bool Settings::get_use_only_cores_in_stock() const {
@@ -406,6 +415,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_include_distributed_gaps(bool value) {
         _coreIncludeDistributedGaps = value;
+    }
+
+    bool Settings::get_wire_adviser_include_planar() const {
+        return _wireAdviserIncludePlanar;
+    }
+    void Settings::set_wire_adviser_include_planar(bool value) {
+        _wireAdviserIncludePlanar = value;
     }
 
     bool Settings::get_wire_adviser_include_foil() const {

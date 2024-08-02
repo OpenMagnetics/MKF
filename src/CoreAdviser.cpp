@@ -32,7 +32,7 @@ namespace OpenMagnetics {
 
 
 void CoreAdviser::logEntry(std::string entry) {
-    std::cout << entry << std::endl;
+    // std::cout << entry << std::endl;
     _log += entry + "\n";
 }
 
@@ -344,6 +344,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
     for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){  
         MasWrapper mas = (*unfilteredMasMagnetics)[masIndex].first;
         MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
+        auto core = magnetic.get_core();
+
 
         if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::ENERGY_STORED)) {
             if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::ENERGY_STORED].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
@@ -362,6 +364,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
             auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
             totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, magneticEnergy.calculate_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), &operatingPoint));
+
             if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
                 magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
                 magnetizingInductanceOutput.set_method_used(models["gapReluctance"]);
@@ -373,6 +376,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
                 break;
             }
         }
+
+
+
         if (validMagnetic) {
             double scoring = totalStorableMagneticEnergy;
             newScoring.push_back(scoring);
@@ -726,7 +732,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
             }
         }
 
-
         if (totalLossesPerOperatingPoint.size() < inputs.get_operating_points().size()) {
             listOfIndexesToErase.push_back(masIndex);
         }
@@ -771,6 +776,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         }
     }
     // (*unfilteredMasMagnetics).clear();
+
+    if (filteredMagneticsWithScoring.size() == 0) {
+        return *unfilteredMasMagnetics;
+    }
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
         throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMasMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
@@ -964,6 +973,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     auto includeToroidalCores = settings->get_use_toroidal_cores();
     auto globalIncludeStacks = settings->get_core_include_stacks();
     auto globalIncludeDistributedGaps = settings->get_core_include_distributed_gaps();
+    double maximumHeight = DBL_MAX;
+    if (inputs.get_design_requirements().get_maximum_dimensions()) {
+        if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
+            maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
+        }
+    }
 
     MagneticWrapper magnetic;
     MasWrapper mas;
@@ -984,11 +999,17 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
             continue;
         }
 
+        if (core.get_type() == CoreType::TWO_PIECE_SET) {
+            if (core.get_height() > maximumHeight) {
+                continue;
+            }
+        }
+
         if (!globalIncludeDistributedGaps && core.get_gapping().size() > core.get_processed_description()->get_columns().size()) {
             continue;
         }
 
-        if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
+        if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
@@ -1025,6 +1046,13 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
     CoilWrapper coil = get_dummy_coil(inputs);
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto includeToroidalCores = settings->get_use_toroidal_cores();
+    double maximumHeight = DBL_MAX;
+    if (inputs.get_design_requirements().get_maximum_dimensions()) {
+        if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
+            maximumHeight = inputs.get_design_requirements().get_maximum_dimensions()->get_height().value();
+        }
+    }
+
 
     MagneticWrapper magnetic;
     MasWrapper mas;
@@ -1039,7 +1067,13 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
             continue;
         }
 
-        if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U) {
+        if (core.get_type() == CoreType::TWO_PIECE_SET) {
+            if (core.get_height() > maximumHeight) {
+                continue;
+            }
+        }
+
+        if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U) {
 
             core.process_data();
             if (!core.process_gap()) {

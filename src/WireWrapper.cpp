@@ -1023,10 +1023,48 @@ namespace OpenMagnetics {
                     auto conductingHeight = resolve_dimensional_values(get_conducting_height().value()) * get_number_conductors().value();
                     return conductingWidth * conductingHeight;
                 }
+            case WireType::PLANAR:
+                {
+                    if (!get_conducting_width()) {
+                        throw std::runtime_error("Missing conducting width in planar wire");
+                    }
+                    if (!get_conducting_height()) {
+                        throw std::runtime_error("Missing conducting height in planar wire");
+                    }
+                    auto conductingWidth = resolve_dimensional_values(get_conducting_width().value());
+                    auto conductingHeight = resolve_dimensional_values(get_conducting_height().value()) * get_number_conductors().value();
+                    return conductingWidth * conductingHeight;
+                }
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
     }
+
+    // std::vector<std::vector<double>> WireWrapper::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
+    //     auto material = resolve_material();
+    //     if (!current.get_processed()) {
+    //         throw std::runtime_error("Current is not processed");
+    //     }
+
+    //     if (!current.get_processed()->get_rms()) {
+    //         throw std::runtime_error("Current is missing RMS");
+    //     }
+    //     auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material, frequency, temperature);
+    //     std::complex<double> waveNumber(1, -1);
+    //     waveNumber /= skinDepth;
+
+    //     std::vector<double> distributionRadial;
+    //     auto conductingRadius = resolve_dimensional_values(get_conducting_diameter().value()) / 2 ;
+    //     auto currentRms = current.get_processed()->get_rms().value();
+
+    //     for (size_t pointIndex = 0; pointIndex <= numberPoints; ++pointIndex) {
+    //         double radius = conductingRadius * pointIndex / numberPoints;
+    //         double currentDensityPoint = (waveNumber * currentRms / (2 * std::numbers::pi * conductingRadius) * bessel_first_kind(0, waveNumber * radius) / bessel_first_kind(1, waveNumber * conductingRadius)).real;
+    //         distributionRadial.push_back(currentDensityPoint);
+    //     }
+
+    //     return {distributionRadial};
+    // }
 
     double WireWrapper::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
         if (!excitation.get_current()) {
@@ -1070,6 +1108,7 @@ namespace OpenMagnetics {
                     conductingSmallestDimension = resolve_dimensional_values(get_conducting_diameter().value());
                     break;
                 }
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 {
@@ -1106,6 +1145,7 @@ namespace OpenMagnetics {
                         nonConductingArea = std::numbers::pi * pow(resolve_dimensional_values(get_conducting_diameter().value()) / 2 - skinDepth, 2) * get_number_conductors().value();
                         break;
                     }
+                case WireType::PLANAR:
                 case WireType::RECTANGULAR:
                 case WireType::FOIL:
                     {
@@ -1173,6 +1213,7 @@ namespace OpenMagnetics {
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else 
                     return get_maximum_conducting_width();
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 if (get_outer_width())
@@ -1192,6 +1233,7 @@ namespace OpenMagnetics {
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else 
                     return get_maximum_conducting_height();
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 if (get_outer_height())
@@ -1217,6 +1259,7 @@ namespace OpenMagnetics {
                 }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 return resolve_dimensional_values(get_conducting_width().value());
@@ -1234,6 +1277,7 @@ namespace OpenMagnetics {
                 }
             case WireType::ROUND:
                 return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
             case WireType::FOIL:
                 return resolve_dimensional_values(get_conducting_height().value());
@@ -1251,6 +1295,7 @@ namespace OpenMagnetics {
                 }
             case WireType::ROUND:
                     return resolve_dimensional_values(get_conducting_diameter().value());
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
                     return resolve_dimensional_values(get_conducting_height().value());
             case WireType::FOIL:
@@ -1268,6 +1313,18 @@ namespace OpenMagnetics {
         DimensionWithTolerance dimensionWithTolerance;
         dimensionWithTolerance.set_maximum(section.get_dimensions()[1] * (1 - constants.foilToSectionMargin));
         set_conducting_height(dimensionWithTolerance);
+        set_outer_width(get_conducting_width());
+        set_outer_height(get_conducting_height());
+    }
+
+    void WireWrapper::cut_planar_wire_to_section(Section section) {
+        auto constants = Constants();
+        if (get_type() != WireType::PLANAR) {
+            throw std::runtime_error("Method only valid for Planar wire");
+        }
+        DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_maximum(section.get_dimensions()[0] * (1 - constants.planarToSectionMargin));
+        set_conducting_width(dimensionWithTolerance);
         set_outer_width(get_conducting_width());
         set_outer_height(get_conducting_height());
     }
@@ -1493,6 +1550,7 @@ namespace OpenMagnetics {
                                 conductingDiameter = sqrt(oldConductingArea / std::numbers::pi) * 2;
                                 break;
                             }
+                        case WireType::PLANAR:
                         case WireType::RECTANGULAR:
                         case WireType::FOIL:
                             conductingDiameter = oldWire.get_minimum_conducting_dimension();
@@ -1504,6 +1562,35 @@ namespace OpenMagnetics {
                     auto oldCoating = oldWire.resolve_coating();
                     newWire.set_type(WireType::ROUND);
                     newWire.set_coating(oldCoating);
+                    return newWire;
+                }
+            case WireType::PLANAR:
+                {
+                    double conductingHeight;
+
+                    switch (oldWire.get_type()) {
+                        case WireType::PLANAR:
+                            return oldWire;
+                        case WireType::LITZ:
+                            {
+                                double oldConductingArea = oldWire.calculate_conducting_area();
+                                conductingHeight = sqrt(oldConductingArea / std::numbers::pi) * 2;
+                                break;
+                            }
+                        case WireType::RECTANGULAR:
+                        case WireType::ROUND:
+                        case WireType::FOIL:
+                            conductingHeight = oldWire.get_minimum_conducting_dimension();
+                            break;
+                        default:
+                            throw std::runtime_error("Unknown wire type");
+                    }
+                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingHeight, OpenMagnetics::WireType::PLANAR);
+
+                    // No coating by default
+
+                    newWire.set_type(WireType::PLANAR);
+                    newWire.set_nominal_value_outer_height(resolve_dimensional_values(newWire.get_conducting_height().value()));
                     return newWire;
                 }
             case WireType::RECTANGULAR:
@@ -1519,6 +1606,7 @@ namespace OpenMagnetics {
                                 conductingHeight = sqrt(oldConductingArea / std::numbers::pi) * 2;
                                 break;
                             }
+                        case WireType::PLANAR:
                         case WireType::ROUND:
                         case WireType::FOIL:
                             conductingHeight = oldWire.get_minimum_conducting_dimension();

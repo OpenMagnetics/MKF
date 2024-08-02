@@ -143,9 +143,9 @@ class CoreWrapper : public MagneticCore {
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
     std::vector<ColumnElement> get_columns();
     std::vector<WindingWindowElement> get_winding_windows();
-    double get_depth() { return get_processed_description().value().get_depth(); }
-    double get_height() { return get_processed_description().value().get_height(); }
-    double get_width() { return get_processed_description().value().get_width(); }
+    double get_depth();
+    double get_height();
+    double get_width();
 
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
     double get_initial_permeability(double temperature);

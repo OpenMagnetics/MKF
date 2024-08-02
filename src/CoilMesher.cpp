@@ -137,7 +137,9 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
                 model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
-            case WireType::RECTANGULAR: {
+            case WireType::PLANAR:
+            case WireType::RECTANGULAR:
+            {
                 model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
@@ -225,7 +227,9 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
                 model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
-            case WireType::RECTANGULAR: {
+            case WireType::PLANAR:
+            case WireType::RECTANGULAR:
+            {
                 model = CoilMesherModel::factory(CoilMesherModels::WANG);
                 break;
             }
@@ -483,7 +487,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn tu
         fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2 + w});
         fieldPoints.push_back(fieldPoint);
     }
-    else if (wire.get_type() == WireType::RECTANGULAR) {
+    else if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR) {
         fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2 - w, turn.get_coordinates()[1]});
         fieldPoints.push_back(fieldPoint);
 
