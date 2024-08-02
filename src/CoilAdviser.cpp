@@ -156,7 +156,8 @@ namespace OpenMagnetics {
         std::string jsonLine;
         std::vector<WireWrapper> wires;
         for (const auto& [key, wire] : wireDatabase) {
-            if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+            if ((settings->get_wire_adviser_include_planar() || wire.get_type() != WireType::PLANAR) &&
+                (settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
                 (settings->get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
                 (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
                 (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {

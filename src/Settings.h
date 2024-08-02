@@ -28,6 +28,7 @@ class Settings
         bool _coilTryRewind = true;
         bool _coilIncludeAdditionalCoordinates = true;
         bool _coilEqualizeMargins = true;
+        size_t _coilMaximumLayersPlanar = 4;
 
         bool _useOnlyCoresInStock = true;
 
@@ -65,6 +66,7 @@ class Settings
         bool _coreIncludeStacks = true;
         bool _coreIncludeDistributedGaps = true;
 
+        bool _wireAdviserIncludePlanar = false;
         bool _wireAdviserIncludeFoil = false;
         bool _wireAdviserIncludeRectangular = true;
         bool _wireAdviserIncludeLitz = true;
@@ -126,6 +128,9 @@ class Settings
 
         bool get_coil_equalize_margins() const;
         void set_coil_equalize_margins(bool value);
+
+        size_t get_coil_maximum_layers_planar() const;
+        void set_coil_maximum_layers_planar(size_t value);
 
         bool get_use_only_cores_in_stock() const;
         void set_use_only_cores_in_stock(bool value);
@@ -222,6 +227,9 @@ class Settings
 
         bool get_core_include_distributed_gaps() const;
         void set_core_include_distributed_gaps(bool value);
+
+        bool get_wire_adviser_include_planar() const;
+        void set_wire_adviser_include_planar(bool value);
 
         bool get_wire_adviser_include_foil() const;
         void set_wire_adviser_include_foil(bool value);

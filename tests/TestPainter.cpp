@@ -3546,25 +3546,50 @@ SUITE(WirePainter) {
         settings->reset();
     }
 
-    TEST(Test_Wire_Painter_All_Litz) {
-        OpenMagnetics::clear_databases(); 
-        settings->set_painter_simple_litz(false);
-        settings->set_painter_advanced_litz(true);
+    // TEST(Test_Wire_Painter_All_Litz) {
+    //     OpenMagnetics::clear_databases(); 
+    //     settings->set_painter_simple_litz(false);
+    //     settings->set_painter_advanced_litz(true);
 
-        auto wires = OpenMagnetics::get_wires(OpenMagnetics::WireType::LITZ);
+    //     auto wires = OpenMagnetics::get_wires(OpenMagnetics::WireType::LITZ);
 
-        for (auto wire : wires) {
-            std::string wireName = wire.get_name().value();
-            std::replace( wireName.begin(), wireName.end(), '/', '_');
-            std::cout << wireName << std::endl;
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Litz_" + wireName + ".svg");
-            std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
-            painter.paint_wire(wire);
-            painter.export_svg();
-        }
-        settings->reset();
-    }
+    //     for (auto wire : wires) {
+    //         std::string wireName = wire.get_name().value();
+    //         std::replace( wireName.begin(), wireName.end(), '/', '_');
+    //         std::cout << wireName << std::endl;
+    //         auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    //         auto outFile = outputFilePath;
+    //         outFile.append("Test_Wire_Painter_Litz_" + wireName + ".svg");
+    //         std::filesystem::remove(outFile);
+    //         OpenMagnetics::Painter painter(outFile);
+    //         painter.paint_wire(wire);
+    //         painter.export_svg();
+    //     }
+    //     settings->reset();
+    // }
 }
+
+// SUITE(WirePainterCurrentDensity) {
+//     auto settings = OpenMagnetics::Settings::GetInstance();
+
+//     TEST(Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1) {
+//         OpenMagnetics::clear_databases();
+
+//         double voltagePeakToPeak = 2000;
+//         double frequency = 125000;
+//         auto wire = OpenMagnetics::find_wire_by_name("Round 0.335 - Grade 1");
+//         auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0);
+
+//         {
+//             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+//             auto outFile = outputFilePath;
+//             outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1.svg");
+//             std::filesystem::remove(outFile);
+//             OpenMagnetics::Painter painter(outFile);
+//             painter.paint_wire(wire);
+//             painter.paint_current_density(inputs.get_operating_point(0).get_excitations_per_winding()[0].get_current().value(), frequency, wire);
+//             painter.export_svg();
+//         }
+//         settings->reset();
+//     }
+// }

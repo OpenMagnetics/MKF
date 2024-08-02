@@ -56,6 +56,7 @@ struct Constants {
 
     const double roshenMagneticFieldStrengthStep = 0.1;
     const double foilToSectionMargin = 0.05;
+    const double planarToSectionMargin = 0.05;
 };
 } // namespace OpenMagnetics
 

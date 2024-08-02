@@ -42,6 +42,7 @@ class WireAdviser {
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
+        std::string _log;
     public:
 
         WireAdviser(double maximumEffectiveCurrentDensity, double maximumNumberParallels) {
@@ -54,6 +55,8 @@ class WireAdviser {
             _maximumNumberParallels = defaults.maximumNumberParallels;
         }
         virtual ~WireAdviser() = default;
+
+        void logEntry(std::string entry);
 
         void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;

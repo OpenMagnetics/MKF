@@ -44,7 +44,9 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
         case WireType::LITZ: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
-        case WireType::RECTANGULAR: {
+        case WireType::PLANAR:
+        case WireType::RECTANGULAR:
+        {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
         }
         case WireType::FOIL: {
@@ -193,7 +195,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
     double factor;
     std::complex<double> alpha(1, 1);
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         double wireWidth = resolve_dimensional_values(wire.get_conducting_width().value());
         double wireHeight = resolve_dimensional_values(wire.get_conducting_height().value());
 
@@ -253,7 +255,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(WireWrapper 
     double c = 0;
     double h = 0;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
 
         if (!wire.get_conducting_width()) {
             throw std::runtime_error("Missing conducting width in wire");
@@ -302,7 +304,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         if (!wire.get_conducting_width()) {
             throw std::runtime_error("Missing conducting width in wire");
         }
@@ -370,7 +372,7 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(WireWrappe
     double d = 0;
     double c = 0;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         if (!wire.get_conducting_width()) {
             throw std::runtime_error("Missing conducting width in wire");
         }
@@ -408,7 +410,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     double factor;
     double wireConductingDimension;
 
-    if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
+    if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
         wireConductingDimension = std::min(resolve_dimensional_values(wire.get_conducting_width().value()), resolve_dimensional_values(wire.get_conducting_height().value()));
     }
     else if (wire.get_type() == WireType::ROUND ) {

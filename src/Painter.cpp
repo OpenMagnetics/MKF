@@ -1160,6 +1160,7 @@ void Painter::paint_wire(WireWrapper wire) {
         case WireType::LITZ:
             paint_litz_wire(0, 0, wire);
             break;
+        case WireType::PLANAR:
         case WireType::FOIL:
         case WireType::RECTANGULAR:
             paint_rectangular_wire(0, 0, wire, 0, {0, 0});
@@ -1545,6 +1546,19 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
         currentLineHeight += lineHeightIncrease;
     }
 }
+
+// void Painter::paint_current_density(OperatingPoint operatingPoint, WireWrapper wire) {
+
+    
+
+
+//     // <radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+//     //   <stop offset="0%" stop-color="red" stop-opacity="0"/>
+//     //   <stop offset="10%" stop-color="red" stop-opacity="0.9"/>
+//     //   <stop offset="100%" stop-color="red" stop-opacity="1" />
+//     // </radialGradient>
+// }
+
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();

@@ -677,6 +677,7 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
                     distance = fabs(conductingDiameter - dimension);
                     break;
                 }
+            case WireType::PLANAR:
             case WireType::RECTANGULAR:
                 {
                     if (!wire.get_conducting_height()) {

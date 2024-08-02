@@ -9,6 +9,11 @@
 
 namespace OpenMagnetics {
 
+void WireAdviser::logEntry(std::string entry) {
+    // std::cout << entry << std::endl;
+    _log += entry + "\n";
+}
+
 void normalize_scoring(std::vector<std::pair<CoilFunctionalDescription, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
     double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
@@ -289,7 +294,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
         auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
         bool isValid = true;
 
-        if (wire.get_type() == WireType::FOIL) {
+        if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
             newScoring.push_back(0);
             continue;
         }
@@ -392,6 +397,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
         json jf = json::parse(jsonLine);
         WireWrapper wire(jf);
         if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
+            (settings->get_wire_adviser_include_planar() &&  wire.get_type() != WireType::PLANAR) &&
             ((settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&
             (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
             (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
@@ -419,6 +425,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
 
     for (auto& wire : *wires){
         if ((!settings->get_wire_adviser_include_foil() && wire.get_type() == WireType::FOIL) ||
+            (!settings->get_wire_adviser_include_planar() &&  wire.get_type() == WireType::PLANAR) ||
             (!(settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) && wire.get_type() == WireType::RECTANGULAR) ||
             (!settings->get_wire_adviser_include_litz() && wire.get_type() == WireType::LITZ) ||
             (!settings->get_wire_adviser_include_round() && wire.get_type() == WireType::ROUND)) {
@@ -427,6 +434,9 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
         int numberParallelsNeeded;
         if (wire.get_type() == WireType::FOIL) {
             wire.cut_foil_wire_to_section(section);
+        }
+        if (wire.get_type() == WireType::PLANAR) {
+            wire.cut_planar_wire_to_section(section);
         }
 
 
@@ -489,25 +499,31 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         size_t maximumNumberResults){
     auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature);
 
+    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area no parallels.");
 
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by solid insulation.");
     }
 
     auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels.");
 
     if (tempCoilsWithScoring.size() == 0) {
         coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels, allowing not fitting.");
     }
     else{
         coilsWithScoring = tempCoilsWithScoring;
     }
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.");
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
-
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
