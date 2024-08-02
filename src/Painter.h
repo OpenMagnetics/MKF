@@ -29,7 +29,8 @@ class Painter{
         std::filesystem::path _cciCoordinatesPath;
         std::map<std::string, std::string> _postProcessingChanges;
         std::map<std::string, std::string> _postProcessingColors;
-        uint32_t _currentMapIndex = 0;
+        std::vector<std::string> _postProcessingDefs;
+        uint32_t _currentMapIndex = 1;
 
         // PainterModes _mode;
         // bool _logarithmicScale = false;
@@ -96,8 +97,8 @@ class Painter{
     void paint_coil_turns(MagneticWrapper magnetic);
     void paint_two_piece_set_winding_turns(MagneticWrapper magnetic);
     void paint_toroidal_winding_turns(MagneticWrapper magnetic);
-    // void paint_current_density(OperatingPoint operatingPoint, WireWrapper wire);
-    // void paint_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature=Defaults().ambientTemperature);
+    void paint_current_density(WireWrapper wire, OperatingPoint operatingPoint, size_t windingIndex = 0);
+    void paint_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature=Defaults().ambientTemperature);
 
     void paint_two_piece_set_margin(MagneticWrapper magnetic);
     void paint_toroidal_margin(MagneticWrapper magnetic);
