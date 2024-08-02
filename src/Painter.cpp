@@ -334,6 +334,16 @@ void Painter::export_svg() {
         lines.push_back(line);
     }
 
+    for (size_t lineIndex = lines.size() - 1; lineIndex > 0 ; --lineIndex) {
+        std::string currentLine = lines[lineIndex];
+
+        if (currentLine.contains("<defs>")) {
+            for (auto def : _postProcessingDefs){
+                lines.insert(lines.begin() + lineIndex + 1, def);
+            }
+        }
+    }
+
     for (size_t lineIndex = 1; lineIndex < lines.size(); ++lineIndex) {
         std::string currentLine = lines[lineIndex];
         std::string newLine = lines[lineIndex];
@@ -343,12 +353,15 @@ void Painter::export_svg() {
                     lines[lineIndex - 1] = replace_key(R"(stroke-linecap="butt")", lines[lineIndex - 1], _postProcessingChanges[key]);
                 }
 
-                lines[lineIndex] = replace_key(key, currentLine, _postProcessingColors[key]);
-
                 if (lines[lineIndex].contains(R"(polygon)")) {
                     lines[lineIndex - 2] = replace_key(R"(<g )", lines[lineIndex - 2], _postProcessingChanges[key]);
                 }
 
+            }
+        }
+        for (auto [key, color] : _postProcessingColors){
+            if (currentLine.contains(key)) {
+                lines[lineIndex] = replace_key(key, currentLine, _postProcessingColors[key]);
             }
         }
 
@@ -1547,17 +1560,51 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
     }
 }
 
-// void Painter::paint_current_density(OperatingPoint operatingPoint, WireWrapper wire) {
+void Painter::paint_current_density(WireWrapper wire, OperatingPoint operatingPoint, size_t windingIndex) {
+    if (operatingPoint.get_excitations_per_winding().size() <= windingIndex) {
+        throw std::runtime_error("Excitation missing for winding index: " + std::to_string(windingIndex));
+    }
+    auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
 
-    
+    if (!excitation.get_current()) {
+        throw std::runtime_error("Current is missing");
+    }
+    if (!excitation.get_frequency()) {
+        throw std::runtime_error("Frequency is missing");
+    }
+    auto current = excitation.get_current().value();
+    auto frequency = excitation.get_frequency();
+    auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
+    return paint_current_density(wire, current, frequency, temperature);
 
-//     // <radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-//     //   <stop offset="0%" stop-color="red" stop-opacity="0"/>
-//     //   <stop offset="10%" stop-color="red" stop-opacity="0.9"/>
-//     //   <stop offset="100%" stop-color="red" stop-opacity="1" />
-//     // </radialGradient>
-// }
+}
+
+void Painter::paint_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature) {
+    auto currentDensityPoints = wire.calculate_current_density_distribution(current, frequency, temperature);
+
+    if (wire.get_type() == WireType::ROUND) {
+
+        _postProcessingDefs.push_back(R"(  </radialGradient>)");
+        double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        auto maximumValue = currentDensityPoints[0].back();
+        auto numberPoints = currentDensityPoints[0].size();
+        for (size_t pointIndex = numberPoints - 1; pointIndex > 0 ; --pointIndex) {
+            double pointValue = currentDensityPoints[0][pointIndex];
+            double opacity = pointValue / maximumValue;
+            double percentage = double(pointIndex) / (numberPoints - 1) * 100;
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+
+        }
+        _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+
+        matplot::ellipse(_offsetForColorBar + 0 - conductingDiameter / 2, 0  - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+        _postProcessingColors[key] = "url(#currentDensity)";
+    }
+}
 
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {

@@ -1040,31 +1040,36 @@ namespace OpenMagnetics {
         }
     }
 
-    // std::vector<std::vector<double>> WireWrapper::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
-    //     auto material = resolve_material();
-    //     if (!current.get_processed()) {
-    //         throw std::runtime_error("Current is not processed");
-    //     }
+    std::vector<std::vector<double>> WireWrapper::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
+        auto material = resolve_material();
+        if (!current.get_processed()) {
+            throw std::runtime_error("Current is not processed");
+        }
 
-    //     if (!current.get_processed()->get_rms()) {
-    //         throw std::runtime_error("Current is missing RMS");
-    //     }
-    //     auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material, frequency, temperature);
-    //     std::complex<double> waveNumber(1, -1);
-    //     waveNumber /= skinDepth;
+        if (!current.get_processed()->get_rms()) {
+            throw std::runtime_error("Current is missing RMS");
+        }
+        auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material, frequency, temperature);
+        std::complex<double> waveNumber(1, -1);
+        waveNumber /= skinDepth;
 
-    //     std::vector<double> distributionRadial;
-    //     auto conductingRadius = resolve_dimensional_values(get_conducting_diameter().value()) / 2 ;
-    //     auto currentRms = current.get_processed()->get_rms().value();
+        std::vector<double> distributionRadial;
+        if (get_type() == WireType::ROUND) {
+            auto conductingRadius = get_minimum_conducting_dimension() / 2 ;
+            auto currentRms = current.get_processed()->get_rms().value();
 
-    //     for (size_t pointIndex = 0; pointIndex <= numberPoints; ++pointIndex) {
-    //         double radius = conductingRadius * pointIndex / numberPoints;
-    //         double currentDensityPoint = (waveNumber * currentRms / (2 * std::numbers::pi * conductingRadius) * bessel_first_kind(0, waveNumber * radius) / bessel_first_kind(1, waveNumber * conductingRadius)).real;
-    //         distributionRadial.push_back(currentDensityPoint);
-    //     }
+            for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
+                double radius = std::max(conductingRadius / 1000, conductingRadius * pointIndex / (numberPoints - 1));
+                double currentDensityPoint = abs(waveNumber * currentRms / (2 * std::numbers::pi * conductingRadius) * bessel_first_kind(0, waveNumber * radius) / bessel_first_kind(1, waveNumber * conductingRadius));
+                distributionRadial.push_back(currentDensityPoint);
+            }
 
-    //     return {distributionRadial};
-    // }
+            return {distributionRadial};
+        }
+        else {
+            throw std::runtime_error("Not implemented yet");
+        }
+    }
 
     double WireWrapper::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
         if (!excitation.get_current()) {
