@@ -3575,24 +3575,26 @@ SUITE(WirePainterCurrentDensity) {
     TEST(Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1) {
         OpenMagnetics::clear_databases();
 
-        double currentPeakToPeak = 1000;
-        double currentRms = currentPeakToPeak / sqrt(3);
-        double frequency = 1250000;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 3.55 - Grade 1");
-        double conductingArea = wire.calculate_conducting_area();
-        double currentDensity = currentRms / conductingArea;
-        std::cout << "currentDensity: " << currentDensity << std::endl;
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+        for (size_t pointIndex = 0; pointIndex < 20; ++pointIndex) {
+            double currentPeakToPeak = 1000;
+            double currentRms = currentPeakToPeak / sqrt(3);
+            double frequency = 12500 * (pointIndex + 1);
+            auto wire = OpenMagnetics::find_wire_by_name("Round 3.55 - Grade 1");
+            double conductingArea = wire.calculate_conducting_area();
+            double currentDensity = currentRms / conductingArea;
+            std::cout << "currentDensity: " << currentDensity << std::endl;
+            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
-        {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1.svg");
-            std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
-            painter.paint_wire(wire);
-            painter.paint_current_density(wire, inputs.get_operating_point(0));
-            painter.export_svg();
+            {
+                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
+                std::filesystem::remove(outFile);
+                OpenMagnetics::Painter painter(outFile);
+                painter.paint_wire(wire);
+                painter.paint_current_density(wire, inputs.get_operating_point(0));
+                painter.export_svg();
+            }
         }
         settings->reset();
     }
