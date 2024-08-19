@@ -178,6 +178,6 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
-        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "N95");
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
     }
 }

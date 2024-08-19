@@ -254,7 +254,14 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 throw std::runtime_error("Operating point is missing magnetizing current");
             }
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
-                throw std::runtime_error("Operating point is missing magnetizing current processed data");
+                auto excitations = operatingPoint.get_excitations_per_winding();
+                auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
+                auto processed = InputsWrapper::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+                magnetizingCurrent.set_processed(processed);
+                excitations[0].set_magnetizing_current(magnetizingCurrent);
+                operatingPoint.set_excitations_per_winding(excitations);
+                // throw std::runtime_error("Operating point is missing magnetizing current processed data");
+
             }
 
             for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
@@ -291,7 +298,13 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                         throw std::runtime_error("Operating point is missing magnetizing current");
                     }
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
-                        throw std::runtime_error("Operating point is missing magnetizing current processed data");
+                        auto excitations = operatingPoint.get_excitations_per_winding();
+                        auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
+                        auto processed = InputsWrapper::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+                        magnetizingCurrent.set_processed(processed);
+                        excitations[0].set_magnetizing_current(magnetizingCurrent);
+                        operatingPoint.set_excitations_per_winding(excitations);
+                        // throw std::runtime_error("Operating point is missing magnetizing current processed data");
                     }
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);

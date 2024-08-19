@@ -747,16 +747,15 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
             meanTotalLosses /= inputs.get_operating_points().size();
             double maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
 
+            for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+                mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
+                mas.get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
+            }
+            (*unfilteredMasMagnetics)[masIndex].first = mas;
+
             if (meanTotalLosses < maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity) {
-                for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-                    mas.get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
-                    mas.get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
-                }
                 double scoring = meanTotalLosses;
                 newScoring.push_back(scoring);
-                (*unfilteredMasMagnetics)[masIndex].first = mas;
-                if (magnetic.get_manufacturer_info().value().get_reference().value() == "P 9/5 - N30 - Ungapped") {
-                }
                 add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::EFFICIENCY, scoring, firstFilter);
             }
             else {

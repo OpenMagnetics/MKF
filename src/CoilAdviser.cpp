@@ -167,6 +167,32 @@ namespace OpenMagnetics {
         return get_advised_coil(&wires, mas, maximumNumberResults);
     }
 
+    std::pair<std::vector<size_t>, size_t> check_integrity(std::vector<size_t> pattern, size_t repetitions, CoilWrapper coil) {
+        bool needsMerge = false;
+        for (auto winding : coil.get_functional_description()) {
+            // TODO expand for more than one winding per layer
+            auto numberPhysicalTurns = winding.get_number_turns() * winding.get_number_parallels();
+            if (numberPhysicalTurns < repetitions) {
+                needsMerge = true;
+            }
+        }
+
+        std::vector<size_t> newPattern;
+        if (needsMerge) {
+            for (size_t repetition = 1; repetition <= repetitions; ++repetition) {
+                for (auto windingIndex : pattern) {
+                    auto winding = coil.get_functional_description()[windingIndex];
+                    auto numberPhysicalTurns = winding.get_number_turns() * winding.get_number_parallels();
+                    if (numberPhysicalTurns >= repetition) {
+                        newPattern.push_back(windingIndex);
+                    }
+                }
+            }
+            return {newPattern, 1};
+        }
+        return {pattern, repetitions};
+    }
+
     std::vector<MasWrapper> CoilAdviser::get_advised_coil(std::vector<WireWrapper>* wires, MasWrapper mas, size_t maximumNumberResults){
         auto core = mas.get_magnetic().get_core();
         auto coreType = core.get_functional_description().get_type();
@@ -181,6 +207,9 @@ namespace OpenMagnetics {
         std::vector<MasWrapper> masMagneticsWithCoil;
         for (auto repetition : repetitions) {
             for (auto pattern : patterns) {
+                auto aux = check_integrity(pattern, repetition, mas.get_magnetic().get_coil());
+                pattern = aux.first;
+                repetition = aux.second;
                 auto combinationsSolidInsulationRequirementsForWires = get_solid_insulation_requirements_for_wires(mas.get_mutable_inputs(), pattern, repetition);
                 for(size_t insulationIndex = 0; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
                     auto solidInsulationRequirementsForWires = combinationsSolidInsulationRequirementsForWires[insulationIndex];

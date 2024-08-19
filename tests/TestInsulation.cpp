@@ -307,7 +307,7 @@ SUITE(CoilSectionsInterface) {
         inputs.get_mutable_design_requirements().set_turns_ratios({dimensionWithTolerance});
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<OpenMagnetics::IsolationSide>{OpenMagnetics::IsolationSide::PRIMARY, OpenMagnetics::IsolationSide::PRIMARY});
         auto insulationMaterial = OpenMagnetics::find_insulation_material_by_name("ETFE");
-        auto leftWire = OpenMagnetics::find_wire_by_name("Litz Round 0.016 - Grade 1");
+        auto leftWire = OpenMagnetics::find_wire_by_name("Round 0.016 - Grade 1");
         auto rightWire = OpenMagnetics::find_wire_by_name("Litz DXXL07/28TXX-3(MWXX)");
 
         auto coilSectionInterface = standardCoordinator.calculate_coil_section_interface_layers(inputs, leftWire,  rightWire, insulationMaterial).value();

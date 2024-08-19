@@ -50,7 +50,7 @@ template<typename T> std::vector<T> convolution_valid(std::vector<T> const &f, s
 // from https://rosettacode.org/wiki/Fast_Fourier_transform#C++
 void fft(std::vector<std::complex<double>>& x) {
     // DFT
-    size_t N = x.size(), k = N, n;
+    unsigned int N = x.size(), k = N, n;
     double thetaT = std::numbers::pi / N;
     std::complex<double> phiT = std::complex<double>(cos(thetaT), -sin(thetaT)), T;
     while (k > 1) {
@@ -58,9 +58,9 @@ void fft(std::vector<std::complex<double>>& x) {
         k >>= 1;
         phiT = phiT * phiT;
         T = 1.0L;
-        for (size_t l = 0; l < k; l++) {
-            for (size_t a = l; a < N; a += n) {
-                size_t b = a + k;
+        for (unsigned int l = 0; l < k; l++) {
+            for (long a = l; a < N; a += n) {
+                long b = a + k;
                 std::complex<double> t = x[a] - x[b];
                 x[a] += x[b];
                 x[b] = t * T;
@@ -69,9 +69,9 @@ void fft(std::vector<std::complex<double>>& x) {
         }
     }
     // Decimate
-    size_t m = (size_t) log2(N);
-    for (size_t a = 0; a < N; a++) {
-        size_t b = a;
+    unsigned int m = (unsigned int) log2(N);
+    for (unsigned int a = 0; a < N; a++) {
+        unsigned int b = a;
         // Reverse bits
         b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1));
         b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2));
@@ -403,6 +403,56 @@ bool InputsWrapper::is_waveform_imported(Waveform waveform) {
 
 }
 
+bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint) {
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.size() < 2) {
+        return false;
+    }
+    else {
+        OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
+        if (excitation.get_current()->get_waveform()) {
+            if (excitation.get_current()->get_waveform()->get_ancillary_label()) {
+                auto ancillaryLabel = excitation.get_current()->get_waveform()->get_ancillary_label().value();
+                if (ancillaryLabel == WaveformLabel::FLYBACK_PRIMARY || ancillaryLabel == WaveformLabel::FLYBACK_SECONDARY) {
+                    return true;
+                }
+            }
+        }
+        if (excitation.get_current()->get_processed()) {
+            auto label = excitation.get_current()->get_processed()->get_label();
+            if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+SignalDescriptor InputsWrapper::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint) {
+    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
+
+    if (!excitation.get_current()->get_processed()) {
+        throw std::runtime_error("Current is not processed");
+    }
+
+    double rms = excitation.get_current()->get_processed()->get_rms().value();
+    double offset = excitation.get_current()->get_processed()->get_offset();
+    double triangularPeak = rms * sqrt(3);
+
+    Processed triangularProcessed;
+    triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
+    triangularProcessed.set_offset(triangularPeak / 2);
+    triangularProcessed.set_peak_to_peak(triangularPeak);
+    auto waveform = create_waveform(triangularProcessed, excitation.get_frequency());
+    SignalDescriptor magnetizingCurrent;
+    auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, excitation.get_frequency());
+    magnetizingCurrent.set_waveform(sampledWaveform);
+    magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+    magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
+
+    return magnetizingCurrent;
+}
+
 Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double frequency) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     std::vector<double> time;
@@ -471,6 +521,9 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
     Waveform sampledWaveform;
     sampledWaveform.set_data(sampledData);
     sampledWaveform.set_time(sampledTime);
+    if (waveform.get_ancillary_label()) {
+        sampledWaveform.set_ancillary_label(waveform.get_ancillary_label().value());
+    }
     return sampledWaveform;
 }
 
@@ -909,7 +962,7 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
         processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
     }
 
-    processed.set_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()));
+    processed.set_peak(std::max(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()), -1 * *min_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end())));
 
     processed.set_duty_cycle(try_guess_duty_cycle(compressedWaveform, label));
 

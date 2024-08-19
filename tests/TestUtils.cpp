@@ -139,6 +139,7 @@ SUITE(Utils) {
                 wire.starts_with("Round ") ||
                 wire.starts_with("Litz ") ||
                 wire.starts_with("Rectangular ") ||
+                wire.starts_with("Planar ") ||
                 wire.starts_with("Foil ")
                 );
         }
