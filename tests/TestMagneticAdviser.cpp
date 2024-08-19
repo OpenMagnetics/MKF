@@ -8,7 +8,7 @@
 #include <vector>
 
 SUITE(MagneticAdviser) {
-    bool plot = false;
+    bool plot = true;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_MagneticAdviser_High_Current) {
@@ -334,9 +334,24 @@ SUITE(MagneticAdviser) {
             if (waveShape == OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR ||
                 waveShape == OpenMagnetics::WaveformLabel::CUSTOM ||
                 waveShape == OpenMagnetics::WaveformLabel::RECTANGULAR ||
+                waveShape == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_DCM ||
+                waveShape == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME ||
                 waveShape == OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR) {
                 waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
             }
+
+                for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                    std::cout << "numberTurns: " << numberTurns[windingIndex] << std::endl;
+                }
+                for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+                    std::cout << "isolationSides: " << magic_enum::enum_name(isolationSides[windingIndex]) << std::endl;
+                }
+                std::cout << "frequency: " << frequency << std::endl;
+                std::cout << "peakToPeak: " << peakToPeak << std::endl;
+                std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+                std::cout << "dutyCycle: " << dutyCycle << std::endl;
+                std::cout << "dcCurrent: " << dcCurrent << std::endl;
+                std::cout << "waveShape: " << magic_enum::enum_name(waveShape) << std::endl;
 
             auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
                                                                                                   magnetizingInductance,
@@ -790,9 +805,9 @@ SUITE(MagneticAdviser) {
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
 
-        if (masMagnetics.size() > 0) {
+        if (plot && masMagnetics.size() > 0) {
             auto masMagnetic = masMagnetics[0].first;
-            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            // OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -845,6 +860,7 @@ SUITE(MagneticAdviser) {
 
         CHECK(masMagnetics.size() > 0);
 
+        if (plot)
         for (auto [masMagnetic, scoring] : masMagnetics) {
             OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
@@ -1111,6 +1127,7 @@ SUITE(MagneticAdviser) {
 
         CHECK(masMagnetics.size() > 0);
 
+        if (plot)
         for (auto [masMagnetic, scoring] : masMagnetics) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
@@ -1186,6 +1203,7 @@ SUITE(MagneticAdviser) {
 
         CHECK(masMagnetics.size() > 0);
 
+        if (plot)
         for (auto [masMagnetic, scoring] : masMagnetics) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
@@ -1265,6 +1283,7 @@ SUITE(MagneticAdviser) {
 
         CHECK(masMagnetics.size() > 0);
 
+        if (plot)
         for (auto [masMagnetic, scoring] : masMagnetics) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
@@ -1347,6 +1366,7 @@ SUITE(MagneticAdviser) {
 
         CHECK(masMagnetics.size() > 0);
 
+        if (plot)
         for (auto [masMagnetic, scoring] : masMagnetics) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 

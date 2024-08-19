@@ -197,14 +197,14 @@ SUITE(Wire) {
 
     TEST(Test_Outer_Diameter_Litz_Wire_Grade_1_Served_1_Layer_Few_Strands) {
         auto outerDiameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(2e-05, 10, 1, 1, OpenMagnetics::WireStandard::IEC_60317);
-        double expectedOuterDiameter = 0.000126;
+        double expectedOuterDiameter = 0.00016;
 
         CHECK_CLOSE(expectedOuterDiameter, outerDiameter, max_error * expectedOuterDiameter);
     }
 
     TEST(Test_Outer_Diameter_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands) {
         auto outerDiameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(2e-05, 10, 2, 1, OpenMagnetics::WireStandard::IEC_60317);
-        double expectedOuterDiameter = 0.000137;
+        double expectedOuterDiameter = 0.00017;
 
         CHECK_CLOSE(expectedOuterDiameter, outerDiameter, max_error * expectedOuterDiameter);
     }

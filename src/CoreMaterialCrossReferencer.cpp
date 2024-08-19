@@ -373,6 +373,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
         double volumetricLossesWithTemperature = calculate_average_volumetric_losses(coreMaterial, temperature, models);
+        if (std::isnan(volumetricLossesWithTemperature)) {
+            volumetricLossesWithTemperature = DBL_MAX;
+        }
 
         if (volumetricLossesWithTemperature < referenceVolumetricLossesWithTemperature) {
             double scoring = 0;

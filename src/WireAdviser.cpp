@@ -397,7 +397,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
         json jf = json::parse(jsonLine);
         WireWrapper wire(jf);
         if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
-            (settings->get_wire_adviser_include_planar() &&  wire.get_type() != WireType::PLANAR) &&
+            (settings->get_wire_adviser_include_planar() ||  wire.get_type() != WireType::PLANAR) &&
             ((settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&
             (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
             (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {

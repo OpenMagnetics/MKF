@@ -633,8 +633,10 @@ SUITE(CoreAdviser) {
         for (auto& masMagnetic : masMagnetics) {
             json aux;
             to_json(aux, masMagnetic.first.get_magnetic());
-            to_json(aux, masMagnetic.first.get_outputs()[0].get_core_losses().value());
-            to_json(aux, masMagnetic.first.get_outputs()[0].get_winding_losses().value());
+            if (masMagnetic.first.get_outputs()[0].get_core_losses()) {
+                    to_json(aux, masMagnetic.first.get_outputs()[0].get_core_losses().value());
+                    to_json(aux, masMagnetic.first.get_outputs()[0].get_winding_losses().value());
+            }
             if(masMagnetic.first.get_outputs()[0].get_magnetizing_inductance()) {
                 to_json(aux, masMagnetic.first.get_outputs()[0].get_magnetizing_inductance().value());
             }

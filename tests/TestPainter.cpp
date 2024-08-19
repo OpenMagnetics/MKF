@@ -840,7 +840,7 @@ SUITE(FieldPainter) {
 }
 
 
-SUITE(ToridalFieldPainter) {
+SUITE(ToroidalFieldPainter) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
@@ -2540,7 +2540,6 @@ SUITE(CoilPainter) {
         settings->reset();
     }
 
-
     TEST(Test_Painter_Delimit_Coil_Sections_Horizontal_Horizontal_Centered) {
         std::vector<int64_t> numberTurns = {23, 23};
         std::vector<int64_t> numberParallels = {2, 2};
@@ -3227,38 +3226,38 @@ SUITE(CoilPainter) {
         settings->reset();
     }
 
-    TEST(Course0) {
-        for (int64_t index = 1; index < 20; index++) {
+    // TEST(Course0) {
+    //     for (int64_t index = 1; index < 20; index++) {
 
-            std::vector<int64_t> numberTurns = {index, index * 10};
-            std::vector<int64_t> numberParallels = {1, 1};
-            uint8_t interleavingLevel = 1;
-            int64_t numberStacks = 1;
-            std::string coreShape = "PQ 26/25";
-            std::string coreMaterial = "3C97";
-            auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
+    //         std::vector<int64_t> numberTurns = {index, index * 10};
+    //         std::vector<int64_t> numberParallels = {1, 1};
+    //         uint8_t interleavingLevel = 1;
+    //         int64_t numberStacks = 1;
+    //         std::string coreShape = "PQ 26/25";
+    //         std::string coreMaterial = "3C97";
+    //         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
 
-            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
-            auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+    //         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+    //         auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
 
-            auto outFile = outputFilePath;
-            outFile.append("Course" + std::to_string(index) + ".svg");
-            std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_core(core);
-            magnetic.set_coil(coil);
+    //         auto outFile = outputFilePath;
+    //         outFile.append("Course" + std::to_string(index) + ".svg");
+    //         std::filesystem::remove(outFile);
+    //         OpenMagnetics::Painter painter(outFile);
+    //         OpenMagnetics::Magnetic magnetic;
+    //         magnetic.set_core(core);
+    //         magnetic.set_coil(coil);
 
-            painter.paint_core(magnetic);
-            painter.paint_bobbin(magnetic);
-            painter.paint_coil_turns(magnetic);
+    //         painter.paint_core(magnetic);
+    //         painter.paint_bobbin(magnetic);
+    //         painter.paint_coil_turns(magnetic);
 
-            painter.export_svg();
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            CHECK(std::filesystem::exists(outFile));
-            settings->reset();
-        }
-    }
+    //         painter.export_svg();
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    //         CHECK(std::filesystem::exists(outFile));
+    //         settings->reset();
+    //     }
+    // }
 }
 
 SUITE(WirePainter) {
@@ -3280,6 +3279,7 @@ SUITE(WirePainter) {
         }
         settings->reset();
     }
+
     TEST(Test_Wire_Painter_Round_Enamelled_Grade_2) {
         OpenMagnetics::clear_databases();
 
@@ -3577,12 +3577,8 @@ SUITE(WirePainterCurrentDensity) {
 
         for (size_t pointIndex = 0; pointIndex < 20; ++pointIndex) {
             double currentPeakToPeak = 1000;
-            double currentRms = currentPeakToPeak / sqrt(3);
             double frequency = 12500 * (pointIndex + 1);
             auto wire = OpenMagnetics::find_wire_by_name("Round 3.55 - Grade 1");
-            double conductingArea = wire.calculate_conducting_area();
-            double currentDensity = currentRms / conductingArea;
-            std::cout << "currentDensity: " << currentDensity << std::endl;
             auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
             {

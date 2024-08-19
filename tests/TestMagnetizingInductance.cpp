@@ -121,7 +121,7 @@ SUITE(MagnetizingInductance) {
         // This tests checks that the operating is not crashing
 
         json coreData = json::parse(
-            R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": null, "coordinates": null,
+            R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null,
             "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001,
             "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null,
             "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null,
@@ -130,7 +130,7 @@ SUITE(MagnetizingInductance) {
             null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}],
             "material": {"bhCycle": null, "curieTemperature": 500.0, "remanence": null, "resistivity": [{"value": 5, "temperature": 20}], "family": "High Flux",
             "manufacturerInfo": {"cost": null, "name": "Magnetics", "reference": null, "status": null},
-            "materialComposition": "powder", "name": "High Flux 26", "permeability": {"amplitude":
+            "material": "powder", "name": "High Flux 26", "permeability": {"amplitude":
             null, "initial": {"frequency": null, "magneticFieldDcBias": null, "magneticFluxDensityPeak":
             null, "modifiers": {"EQ/LP": {"frequencyFactor": null, "magneticFieldDcBiasFactor": {"a": 0.01,
             "b": 1.58277e-17, "c": 3.243}, "method": "magnetics", "temperatureFactor": null}, "default":
@@ -164,6 +164,7 @@ SUITE(MagnetizingInductance) {
             "processed": null, "waveform": {"ancillaryLabel": null, "data": [7.5, 7.5, -2.5, -2.5, 7.5],
             "numberPeriods": null, "time": [0.0, 2.5e-06, 2.5e-06, 1e-05, 1e-05]}}}], "name": null})");
 
+        OpenMagnetics::CoreMaterial coreMaterial(coreData["functionalDescription"]["material"]);
         OpenMagnetics::CoreWrapper core(coreData);
         OpenMagnetics::CoilWrapper winding(windingData);
         OpenMagnetics::OperatingPoint operatingPoint(operatingPointData);
