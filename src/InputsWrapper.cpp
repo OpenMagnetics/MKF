@@ -412,7 +412,7 @@ bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint) {
         OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
         if (excitation.get_current()->get_waveform()) {
             if (excitation.get_current()->get_waveform()->get_ancillary_label()) {
-                auto ancillaryLabel = excitation.get_current()->get_waveform()->get_ancillary_label().value();
+                WaveformLabel ancillaryLabel = excitation.get_current()->get_waveform()->get_ancillary_label().value();
                 if (ancillaryLabel == WaveformLabel::FLYBACK_PRIMARY || ancillaryLabel == WaveformLabel::FLYBACK_SECONDARY) {
                     return true;
                 }
