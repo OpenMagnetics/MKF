@@ -3,4 +3,4 @@
 	url = https://github.com/OpenMagnetics/MAS.git
 [submodule "cci_coords"]
 	path = cci_coords
-	url = git@github.com:OpenMagnetics/cci_coords.git
+	url = https://github.com/OpenMagnetics/cci_coords.git
