@@ -17,13 +17,15 @@ MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const Magnet
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         OutputsWrapper output;
-        // std::cout << "Simulating magnetizing_inductance" << std::endl;
+        std::cout << "Simulating magnetizing_inductance" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
-        // std::cout << "Simulating core_losses" << std::endl;
+        std::cout << "Simulating core_losses" << std::endl;
         output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
-        // std::cout << "Simulating winding_losses" << std::endl;
+        std::cout << "Simulating winding_losses" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
+        std::cout << "Simulating leakage inductance" << std::endl;
         output.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
+        std::cout << "Simulation complete" << std::endl;
 
         outputs.push_back(output);
         simulatedOperatingPoints.push_back(operatingPoint);
@@ -40,7 +42,18 @@ MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(
 
 LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic){
     double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
-    return OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency);
+    LeakageInductanceOutput leakageInductanceOutput; 
+    for (size_t windingIndex = 1; windingIndex <  magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        auto aux = OpenMagnetics::LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, windingIndex);
+        if (windingIndex == 1) {
+            leakageInductanceOutput = aux;
+            leakageInductanceOutput.set_leakage_inductance_per_winding(std::vector<DimensionWithTolerance>());
+        }
+        auto currentLeakageInductancePerWinding = leakageInductanceOutput.get_leakage_inductance_per_winding();
+        currentLeakageInductancePerWinding.push_back(aux.get_leakage_inductance_per_winding()[0]);
+        leakageInductanceOutput.set_leakage_inductance_per_winding(currentLeakageInductancePerWinding);
+    }
+    return leakageInductanceOutput;
 }
 
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature){
