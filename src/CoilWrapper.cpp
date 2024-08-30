@@ -1463,14 +1463,22 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
             section.set_margin(_marginsPerSection[sectionIndex]);
             section.set_layers_orientation(_layersOrientation);
             section.set_coordinate_system(CoordinateSystem::CARTESIAN);
-
-
             
             if (_windingOrientation == WindingOrientation::OVERLAPPING) {
                 section.set_dimensions(std::vector<double>{currentSectionWidth, currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]});
             }
             else {
                 section.set_dimensions(std::vector<double>{currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1], currentSectionHeight});
+            }
+
+            if (wirePerWinding[windingIndex].get_type() == WireType::FOIL && !wirePerWinding[windingIndex].get_conducting_height()) {
+                wirePerWinding[windingIndex].cut_foil_wire_to_section(section);
+                get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
+            }
+
+            if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR && !wirePerWinding[windingIndex].get_conducting_width()) {
+                wirePerWinding[windingIndex].cut_planar_wire_to_section(section);
+                get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
             }
 
             if (_windingOrientation == WindingOrientation::OVERLAPPING) {
