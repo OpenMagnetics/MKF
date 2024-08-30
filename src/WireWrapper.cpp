@@ -1243,8 +1243,10 @@ namespace OpenMagnetics {
             case WireType::FOIL:
                 if (get_outer_height())
                     return resolve_dimensional_values(get_outer_height().value());
-                else 
+                else if (get_conducting_height())
                     return resolve_dimensional_values(get_conducting_height().value());
+                else
+                    return 0;
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
