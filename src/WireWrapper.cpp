@@ -1371,8 +1371,12 @@ namespace OpenMagnetics {
         return cost;
     }
 
-    std::string WireWrapper::get_coating_label() {
-        auto coating = resolve_coating();
+    std::string WireWrapper::encode_coating_label() {
+        return encode_coating_label(*this);
+    }
+
+    std::string WireWrapper::encode_coating_label(WireWrapper wire) {
+        auto coating = resolve_coating(wire);
         if (!coating) {
             return "Bare";
         }
@@ -1416,8 +1420,8 @@ namespace OpenMagnetics {
             }
             text += "Enamel";
             WireStandard standard;
-            if (get_standard()) {
-                standard = get_standard().value();
+            if (wire.get_standard()) {
+                standard = wire.get_standard().value();
             }
             else {
                 standard = WireStandard::IEC_60317;
@@ -1453,7 +1457,7 @@ namespace OpenMagnetics {
         }
         else if (coating->get_type().value() == InsulationWireCoatingType::SERVED) {
             if (!coating->get_number_layers()) {
-                throw std::invalid_argument("Missing number of layers in served wire: " + get_name().value());
+                throw std::invalid_argument("Missing number of layers in served wire: " + wire.get_name().value());
             }
             if (coating->get_number_layers().value() == 1) {
                 text += "Single served";
@@ -1463,7 +1467,7 @@ namespace OpenMagnetics {
             }
         }
         else if (coating->get_type().value() == InsulationWireCoatingType::BARE) {
-            if (get_type() == WireType::LITZ) {
+            if (wire.get_type() == WireType::LITZ) {
                 text += "Unserved";
             }
             else {
@@ -1475,6 +1479,73 @@ namespace OpenMagnetics {
         }
 
         return text;
+    }
+
+    std::optional<InsulationWireCoating> WireWrapper::decode_coating_label(std::string label) {
+        std::optional<InsulationWireCoating> coating;
+
+        if ((label.find("Bare") != std::string::npos) || (label.find("Unserved") != std::string::npos)) {
+            coating->set_type(InsulationWireCoatingType::BARE);
+        }
+        if (label.find("SIW") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::INSULATED);
+            coating->set_number_layers(1);
+        }
+        if (label.find("DIW") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::INSULATED);
+            coating->set_number_layers(2);
+        }
+        if (label.find("TIW") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::INSULATED);
+            coating->set_number_layers(3);
+        }
+
+        if (label.find("TR 155") != std::string::npos) {
+            coating->set_temperature_rating(155);
+        }
+        if (label.find("TR 180") != std::string::npos) {
+            coating->set_temperature_rating(180);
+        }
+
+        if (label.find(", BV ") != std::string::npos) {
+            auto aux = split(label,", BV ")[1];
+            if (aux.find(" kV") != std::string::npos) {
+                auto breakdownVoltage = std::stod(split(aux," kV")[0]);
+                coating->set_breakdown_voltage(breakdownVoltage * 1000);
+            }
+            if (aux.find(" V") != std::string::npos) {
+                auto breakdownVoltage = std::stod(split(aux," V")[0]);
+                coating->set_breakdown_voltage(breakdownVoltage);
+            }
+        }
+
+        if (label.find("Enamel") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::ENAMELLED);
+            if ((label.find("grade 1") != std::string::npos) || (label.find("single build") != std::string::npos)) {
+                coating->set_grade(1);
+            }
+            else if ((label.find("grade 2") != std::string::npos) || (label.find("heavy build") != std::string::npos)) {
+                coating->set_grade(2);
+            }
+            else if ((label.find("grade 3") != std::string::npos) || (label.find("triple build") != std::string::npos)) {
+                coating->set_grade(3);
+            }
+            else {
+                auto aux = split(label,"FIW")[1];
+                auto grade = std::stoi(aux);
+                coating->set_grade(grade);
+            }
+        }
+        if (label.find("Single served") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::SERVED);
+            coating->set_number_layers(1);
+        }
+        if (label.find("Double served") != std::string::npos) {
+            coating->set_type(InsulationWireCoatingType::SERVED);
+            coating->set_number_layers(2);
+        }
+
+        return coating;
     }
 
     WireWrapper WireWrapper::get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency, double temperature) {

@@ -554,11 +554,35 @@ SUITE(Wire_Coating) {
         auto wires = OpenMagnetics::get_wires();
         std::vector<std::string> coatingLabels;
         for (auto wire : wires) {
-            auto coatingLabel = wire.get_coating_label();
+            auto coatingLabel = wire.encode_coating_label();
             coatingLabels.push_back(coatingLabel);
         }
 
         CHECK(std::find(coatingLabels.begin(), coatingLabels.end(), "Bare") != coatingLabels.end());
+    }
+
+    TEST(Test_Coating_Decoding) {
+        auto wires = OpenMagnetics::get_wires();
+        for (auto wire : wires) {
+            auto coatingLabel = wire.encode_coating_label();
+            auto coating = wire.resolve_coating();
+            if (coating) {
+                auto decodedCoating = OpenMagnetics::WireWrapper::decode_coating_label(coatingLabel);
+                CHECK(coating->get_type().value() == decodedCoating->get_type().value());
+                if (coating->get_number_layers()) {
+                    CHECK(coating->get_number_layers().value() == decodedCoating->get_number_layers().value());
+                }
+                if (coating->get_temperature_rating()) {
+                    CHECK(coating->get_temperature_rating().value() == decodedCoating->get_temperature_rating().value());
+                }
+                if (coating->get_breakdown_voltage() && coating->get_type().value() == OpenMagnetics::InsulationWireCoatingType::INSULATED) {
+                    CHECK(coating->get_breakdown_voltage().value() == decodedCoating->get_breakdown_voltage().value());
+                }
+                if (coating->get_grade()) {
+                    CHECK(coating->get_grade().value() == decodedCoating->get_grade().value());
+                }
+            }
+        }
     }
 }
 
