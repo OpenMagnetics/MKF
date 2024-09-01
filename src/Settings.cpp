@@ -58,6 +58,7 @@ namespace OpenMagnetics {
         _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x003b3b3b";
         _painterColorLines = "0x000000";
+        _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
         _magneticFieldNumberPointsX = 25;
         _magneticFieldNumberPointsY = 50;
@@ -311,6 +312,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_lines(std::string value) {
         _painterColorLines = value;
+    }
+
+    std::string Settings::get_painter_cci_coordinates_path() const {
+        return _painterCciCoordinatesPath;
+    }
+    void Settings::set_painter_cci_coordinates_path(std::string value) {
+        _painterCciCoordinatesPath = value;
     }
 
     std::string Settings::get_painter_color_enamel() const {

@@ -26,7 +26,6 @@ class Painter{
         bool _addProportionForColorBar = true;
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
         std::filesystem::path _filepath;
-        std::filesystem::path _cciCoordinatesPath;
         std::map<std::string, std::string> _postProcessingChanges;
         std::map<std::string, std::string> _postProcessingColors;
         std::vector<std::string> _postProcessingDefs;
@@ -50,19 +49,9 @@ class Painter{
                 matplot::yticks({});
             }
             matplot::hold(matplot::off);
-            std::string selfFilePath = __FILE__;
-            _cciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
         };
         virtual ~Painter() = default;
 
-    void set_cci_coordinates_path(std::filesystem::path path) {
-       _cciCoordinatesPath = path;
-    }
-
-    std::filesystem::path get_cci_coordinates_path() {
-       return _cciCoordinatesPath;
-    }
-    
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
     ComplexField calculate_magnetic_field_additional_coordinates(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex);
     void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
