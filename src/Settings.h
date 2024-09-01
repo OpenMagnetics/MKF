@@ -11,6 +11,7 @@ class Settings
         Settings() {}
 
         static Settings* settings_;
+        std::string selfFilePath = __FILE__;
 
         bool _useToroidalCores = true;
         bool _useConcentricCores = true;
@@ -56,6 +57,7 @@ class Settings
         std::string _painterColorMargin = "0x00fff05b";
         std::string _painterColorSpacer = "0x003b3b3b";
         std::string _painterColorLines = "0x000000";
+        std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
@@ -185,6 +187,9 @@ class Settings
 
         std::string get_painter_color_lines() const;
         void set_painter_color_lines(std::string value);
+
+        std::string get_painter_cci_coordinates_path() const;
+        void set_painter_cci_coordinates_path(std::string value);
 
         std::string get_painter_color_enamel() const;
         void set_painter_color_enamel(std::string value);

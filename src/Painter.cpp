@@ -1364,7 +1364,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     }
     else {
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
-        auto coordinateFilePath = _cciCoordinatesPath;
+        auto coordinateFilePath = settings->get_painter_cci_coordinates_path();
         coordinateFilePath = coordinateFilePath.append("cci" + std::to_string(numberConductors) + ".txt");
 
         std::ifstream in(coordinateFilePath);
