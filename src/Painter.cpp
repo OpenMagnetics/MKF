@@ -13,15 +13,22 @@
 namespace OpenMagnetics {
 
 std::string uint_to_hex(uint32_t i) {
-  std::stringstream stream;
-  stream << "0x" << std::setfill ('0') << std::setw(8) << std::hex << i;
-  return stream.str();
+    std::stringstream stream;
+    stream << "0x" << std::setfill ('0') << std::setw(8) << std::hex << i;
+    return stream.str();
 }
 
 std::string key_to_rgb_color(uint32_t i) {
-  std::stringstream stream;
-  stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
-  return stream.str();
+    std::stringstream stream;
+    stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
+    return stream.str();
+}
+
+std::string key_to_rgb_color(std::string s) {
+    auto i = stoi(s, 0, 16);
+    std::stringstream stream;
+    stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
+    return stream.str();
 }
 
 std::string replace_key(std::string key, std::string line, std::string replacement) {
@@ -1184,7 +1191,7 @@ struct CoatingInfo {
     double strokeWidth;
     size_t numberLines;
     double lineRadiusIncrease;
-    std::array<float, 4> coatingColor;
+    std::string coatingColor;
 };
 
 CoatingInfo process_coating(double insulationThickness, InsulationWireCoating coating) {
@@ -1193,7 +1200,7 @@ CoatingInfo process_coating(double insulationThickness, InsulationWireCoating co
     size_t numberLines = 0;
     double strokeWidth = 0;
     double lineRadiusIncrease = 0;
-    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+    auto coatingColor = settings->get_painter_color_insulation();
 
     switch (insulationWireCoatingType) {
         case InsulationWireCoatingType::BARE:
@@ -1204,7 +1211,7 @@ CoatingInfo process_coating(double insulationThickness, InsulationWireCoating co
             }
             numberLines = coating.get_grade().value() + 1;
             lineRadiusIncrease = insulationThickness / coating.get_grade().value() * 2;
-            coatingColor = matplot::to_array(settings->get_painter_color_enamel());
+            coatingColor = settings->get_painter_color_enamel();
             break;
         case InsulationWireCoatingType::SERVED:
         case InsulationWireCoatingType::INSULATED:
@@ -1215,23 +1222,23 @@ CoatingInfo process_coating(double insulationThickness, InsulationWireCoating co
                 numberLines = coating.get_number_layers().value() + 1;
                 lineRadiusIncrease = insulationThickness / coating.get_number_layers().value() * 2;
                 if (insulationWireCoatingType == InsulationWireCoatingType::SERVED) {
-                    coatingColor = matplot::to_array(settings->get_painter_color_silk());
+                    coatingColor = settings->get_painter_color_silk();
                 }
                 else {
-                    coatingColor = matplot::to_array(settings->get_painter_color_fep());
+                    coatingColor = settings->get_painter_color_fep();
                     if (coating.get_material()) {
                         std::string coatingMaterial = std::get<std::string>(coating.get_material().value());
                         if (coatingMaterial == "PFA") {
-                            coatingColor = matplot::to_array(settings->get_painter_color_pfa());
+                            coatingColor = settings->get_painter_color_pfa();
                         }
                         else if (coatingMaterial == "FEP") {
-                            coatingColor = matplot::to_array(settings->get_painter_color_fep());
+                            coatingColor = settings->get_painter_color_fep();
                         }
                         else if (coatingMaterial == "ETFE") {
-                            coatingColor = matplot::to_array(settings->get_painter_color_etfe());
+                            coatingColor = settings->get_painter_color_etfe();
                         }
                         else if (coatingMaterial == "TCA") {
-                            coatingColor = matplot::to_array(settings->get_painter_color_tca());
+                            coatingColor = settings->get_painter_color_tca();
                         }
                         else {
                             throw std::runtime_error("Unknown insulated wire material");
@@ -1268,7 +1275,7 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     double strokeWidth = 0;
     double lineRadiusIncrease = 0;
     double currentLineDiameter = conductingDiameter;
-    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+    auto coatingColor = settings->get_painter_color_insulation();
     if (coating) {
         CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
         strokeWidth = coatingInfo.strokeWidth;
@@ -1278,17 +1285,25 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     }
 
     // Paint insulation
-    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(coatingColor);
+    {
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+        _postProcessingColors[key] = key_to_rgb_color(coatingColor);
+        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+    }
 
     // Paint copper
-    if (!wire.get_conducting_diameter()) {
-        throw std::runtime_error("Wire is missing conducting diameter");
+    {
+        if (!wire.get_conducting_diameter()) {
+            throw std::runtime_error("Wire is missing conducting diameter");
+        }
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+        _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
+        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
     }
-    auto currentMapIndex = uint_to_hex(_currentMapIndex);
-    auto key = key_to_rgb_color(_currentMapIndex);
-    _currentMapIndex++;
-    _postProcessingColors[key] = settings->get_painter_color_copper();
-    matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
 
     // Paint layer separation lines
     for (size_t i = 0; i < numberLines; ++i) {
@@ -1343,7 +1358,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     double strokeWidth = 0;
     double lineRadiusIncrease = 0;
     double currentLineDiameter = conductingDiameter;
-    auto coatingColor = matplot::to_array(settings->get_painter_color_insulation());
+    auto coatingColor = settings->get_painter_color_insulation();
     if (coating) {
         CoatingInfo coatingInfo = process_coating(insulationThickness, coating.value());
         strokeWidth = coatingInfo.strokeWidth;
@@ -1360,7 +1375,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         auto key = key_to_rgb_color(_currentMapIndex);
         _currentMapIndex++;
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
-        _postProcessingColors[key] = settings->get_painter_color_copper();
+        _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
     }
     else {
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
@@ -1403,7 +1418,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
                     auto key = key_to_rgb_color(_currentMapIndex);
                     _currentMapIndex++;
-                    _postProcessingColors[key] = settings->get_painter_color_copper();
+                    _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
                     matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
 
                 }
@@ -1428,7 +1443,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                     auto key = key_to_rgb_color(_currentMapIndex);
                     _currentMapIndex++;
                     matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
-                    _postProcessingColors[key] = settings->get_painter_color_copper();
+                    _postProcessingColors[key] = (settings->get_painter_color_copper());
                 }
 
                 if (currentRadius > 0) {
