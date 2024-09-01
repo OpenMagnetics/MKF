@@ -1053,9 +1053,12 @@ namespace OpenMagnetics {
         std::complex<double> waveNumber(1, -1);
         waveNumber /= skinDepth;
 
-        std::vector<double> distributionRadial;
+        if (get_type() == WireType::LITZ) {
+            throw std::runtime_error("For LITZ use ROUND in the strands");
+        }
         if (get_type() == WireType::ROUND) {
-            auto conductingRadius = get_minimum_conducting_dimension() / 2 ;
+            std::vector<double> distributionRadial;
+            auto conductingRadius = get_minimum_conducting_dimension() / 2;
             auto currentRms = current.get_processed()->get_rms().value();
 
             for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
@@ -1066,8 +1069,26 @@ namespace OpenMagnetics {
 
             return {distributionRadial};
         }
+        if (get_type() == WireType::RECTANGULAR || get_type() == WireType::FOIL || get_type() == WireType::PLANAR) {
+            std::vector<double> distributionHorizontal;
+            std::vector<double> distributionVertical;
+            auto conductingSemiWidth = resolve_dimensional_values(get_conducting_width().value()) / 2;
+            auto conductingSemiHeight = resolve_dimensional_values(get_conducting_height().value()) / 2;
+            auto currentRms = current.get_processed()->get_rms().value();
+
+            for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
+                double horizontalRadius = std::max(conductingSemiWidth / 1000, conductingSemiWidth * pointIndex / (numberPoints - 1));
+                double verticalRadius = std::max(conductingSemiHeight / 1000, conductingSemiHeight * pointIndex / (numberPoints - 1));
+                double horizontalCurrentDensityPoint = abs(waveNumber * currentRms / (2 * std::numbers::pi * conductingSemiWidth) * bessel_first_kind(0, waveNumber * horizontalRadius) / bessel_first_kind(1, waveNumber * conductingSemiWidth));
+                double verticalCurrentDensityPoint = abs(waveNumber * currentRms / (2 * std::numbers::pi * conductingSemiHeight) * bessel_first_kind(0, waveNumber * verticalRadius) / bessel_first_kind(1, waveNumber * conductingSemiHeight));
+                distributionHorizontal.push_back(horizontalCurrentDensityPoint);
+                distributionVertical.push_back(verticalCurrentDensityPoint);
+            }
+
+            return {distributionHorizontal, distributionVertical};
+        }
         else {
-            throw std::runtime_error("Not implemented yet");
+            throw std::runtime_error("Unknonw wire type");
         }
     }
 

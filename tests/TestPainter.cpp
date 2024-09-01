@@ -3546,6 +3546,25 @@ SUITE(WirePainter) {
         settings->reset();
     }
 
+    TEST(Test_Wire_Painter_Web_0) {
+        OpenMagnetics::clear_databases(); 
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        OpenMagnetics::WireWrapper wire(json::parse(R"({"standard": "IEC 60317", "type": "litz", "strand": "Round 0.2 - Grade 1", "numberConductors": 17, "coating": {"breakdownVoltage": null, "grade": null, "material": null, "numberLayers": 1, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "served"}})"));
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Litz_Few_Strands.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
     // TEST(Test_Wire_Painter_All_Litz) {
     //     OpenMagnetics::clear_databases(); 
     //     settings->set_painter_simple_litz(false);
@@ -3575,22 +3594,156 @@ SUITE(WirePainterCurrentDensity) {
     TEST(Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1) {
         OpenMagnetics::clear_databases();
 
-        for (size_t pointIndex = 0; pointIndex < 20; ++pointIndex) {
-            double currentPeakToPeak = 1000;
-            double frequency = 12500 * (pointIndex + 1);
-            auto wire = OpenMagnetics::find_wire_by_name("Round 3.55 - Grade 1");
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+        double currentPeakToPeak = 1000;
+        double frequency = 250000;
+        auto wire = OpenMagnetics::find_wire_by_name("Round 3.55 - Grade 1");
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
 
-            {
-                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-                auto outFile = outputFilePath;
-                outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
-                std::filesystem::remove(outFile);
-                OpenMagnetics::Painter painter(outFile);
-                painter.paint_wire(wire);
-                painter.paint_current_density(wire, inputs.get_operating_point(0));
-                painter.export_svg();
-            }
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Round_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000000;
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 10x0.02 - Grade 2 - Single Served");
+        settings->set_painter_simple_litz(true);
+        // settings->set_painter_advanced_litz(false);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Simple_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000000;
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 10x0.02 - Grade 2 - Single Served");
+        settings->set_painter_simple_litz(false);
+        // settings->set_painter_advanced_litz(false);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+
+    TEST(Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000000;
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 1000x0.02 - Grade 1 - Single Served");
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Normal_Many_Strands_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000000;
+        auto wire = OpenMagnetics::find_wire_by_name("Litz 10x0.02 - Grade 2 - Single Served");
+        settings->set_painter_simple_litz(false);
+        settings->set_painter_advanced_litz(true);
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Litz_Single_Served_Advanced_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
+    TEST(Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000;
+        auto wire = OpenMagnetics::find_wire_by_name("Rectangular 2x0.80 - Grade 1");
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Rectangular_Enamelled_Grade_1_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+    TEST(Test_Wire_Painter_Current_Density_Foil) {
+        OpenMagnetics::clear_databases();
+
+        double currentPeakToPeak = 1000;
+        double frequency = 250000;
+        auto wire = OpenMagnetics::find_wire_by_name("Foil 0.5");
+        OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_nominal(0.010);
+        wire.set_conducting_height(dimensionWithTolerance);
+        wire.set_outer_width(wire.get_conducting_width().value());
+        wire.set_outer_height(dimensionWithTolerance);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, currentPeakToPeak, 0.5, 0);
+
+        {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Current_Density_Foil_" + std::to_string(frequency) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire_with_current_density(wire, inputs.get_operating_point(0));
+            painter.export_svg();
         }
         settings->reset();
     }
