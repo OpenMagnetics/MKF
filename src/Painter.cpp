@@ -505,7 +505,6 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     return {showingCoreWidth, showingCoreHeight};
 }
 
-
 void Painter::set_image_size(WireWrapper wire) {
     _extraDimension = 0.1;
     double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
@@ -1161,8 +1160,6 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-
-
 void Painter::paint_wire(WireWrapper wire) {
     set_image_size(wire);
 
@@ -1287,7 +1284,11 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     if (!wire.get_conducting_diameter()) {
         throw std::runtime_error("Wire is missing conducting diameter");
     }
-    matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+    auto currentMapIndex = uint_to_hex(_currentMapIndex);
+    auto key = key_to_rgb_color(_currentMapIndex);
+    _currentMapIndex++;
+    _postProcessingColors[key] = settings->get_painter_color_copper();
+    matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
 
     // Paint layer separation lines
     for (size_t i = 0; i < numberLines; ++i) {
@@ -1355,11 +1356,16 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(coatingColor);
 
     if (simpleMode) {
-        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+        matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+        _postProcessingColors[key] = settings->get_painter_color_copper();
     }
     else {
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
-        auto coordinateFilePath = _cciCoordinatesPath.append("cci" + std::to_string(numberConductors) + ".txt");
+        auto coordinateFilePath = _cciCoordinatesPath;
+        coordinateFilePath = coordinateFilePath.append("cci" + std::to_string(numberConductors) + ".txt");
 
         std::ifstream in(coordinateFilePath);
         std::vector<std::pair<double, double>> coordinates;
@@ -1394,7 +1400,12 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                     Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate + internalYCoordinate, strand);
                 }
                 else {
-                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                    auto key = key_to_rgb_color(_currentMapIndex);
+                    _currentMapIndex++;
+                    _postProcessingColors[key] = settings->get_painter_color_copper();
+                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+
                 }
 
 
@@ -1413,7 +1424,11 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                     Painter::paint_round_wire(xCoordinate + internalXCoordinate, yCoordinate + internalYCoordinate, strand);
                 }
                 else {
-                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                    auto currentMapIndex = uint_to_hex(_currentMapIndex);
+                    auto key = key_to_rgb_color(_currentMapIndex);
+                    _currentMapIndex++;
+                    matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+                    _postProcessingColors[key] = settings->get_painter_color_copper();
                 }
 
                 if (currentRadius > 0) {
@@ -1442,7 +1457,6 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         matplot::ellipse(_offsetForColorBar + xCoordinate - currentLineDiameter / 2, yCoordinate - currentLineDiameter / 2, currentLineDiameter, currentLineDiameter)->fill(false).line_width(strokeWidth * _scale).color(matplot::to_array(settings->get_painter_color_lines()));
         currentLineDiameter += lineRadiusIncrease;
     }
-
 }
 
 std::string Painter::paint_rectangle(std::vector<double> cornerData, bool fill, double strokeWidth) {
@@ -1540,7 +1554,6 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
         auto key = paint_rectangle(cornerDataConducting, true);
         _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_copper(), 0, 16));
         _postProcessingChanges[key] = R"(<g transform="rotate( )" + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ")\" ";
-
     }
 
     // Paint layer separation lines
@@ -1560,7 +1573,7 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
     }
 }
 
-void Painter::paint_current_density(WireWrapper wire, OperatingPoint operatingPoint, size_t windingIndex) {
+void Painter::paint_wire_with_current_density(WireWrapper wire, OperatingPoint operatingPoint, size_t windingIndex) {
     if (operatingPoint.get_excitations_per_winding().size() <= windingIndex) {
         throw std::runtime_error("Excitation missing for winding index: " + std::to_string(windingIndex));
     }
@@ -1576,14 +1589,50 @@ void Painter::paint_current_density(WireWrapper wire, OperatingPoint operatingPo
     auto frequency = excitation.get_frequency();
     auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
 
-    return paint_current_density(wire, current, frequency, temperature);
-
+    return paint_wire_with_current_density(wire, current, frequency, temperature);
 }
 
-void Painter::paint_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature) {
-    auto currentDensityPoints = wire.calculate_current_density_distribution(current, frequency, temperature);
+void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature) {
+    set_image_size(wire);
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    std::vector<std::vector<double>> currentDensityPoints;
+    if (wire.get_type() == WireType::LITZ) {
+        WireWrapper strand(wire.resolve_strand());
+        currentDensityPoints = strand.calculate_current_density_distribution(current, frequency, temperature);
+    }
+    else {
+        currentDensityPoints = wire.calculate_current_density_distribution(current, frequency, temperature);
+    }
 
-    if (wire.get_type() == WireType::ROUND) {
+
+    if (wire.get_type() == WireType::LITZ) {
+        _postProcessingDefs.push_back(R"(  </radialGradient>)");
+        auto strand = wire.resolve_strand();
+        double conductingDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
+        auto maximumValue = currentDensityPoints[0].back();
+        auto numberPoints = currentDensityPoints[0].size();
+        for (size_t pointIndex = numberPoints - 1; pointIndex > 0 ; --pointIndex) {
+            double pointValue = currentDensityPoints[0][pointIndex];
+            double opacity = pointValue / maximumValue;
+            double percentage = double(pointIndex) / (numberPoints - 1) * 100;
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+
+        }
+        _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
+
+
+        auto copperColor = settings->get_painter_color_copper();
+        if (settings->get_painter_simple_litz()) {
+            settings->set_painter_color_copper("red");
+        }
+        else {
+            settings->set_painter_color_copper("url(#currentDensity)");
+        }
+        paint_litz_wire(0, 0, wire);
+        settings->set_painter_color_copper(copperColor);
+    }
+    else if (wire.get_type() == WireType::ROUND) {
+        paint_round_wire(0, 0, wire);
 
         _postProcessingDefs.push_back(R"(  </radialGradient>)");
         double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
@@ -1597,15 +1646,61 @@ void Painter::paint_current_density(WireWrapper wire, SignalDescriptor current, 
 
         }
         _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
-        auto currentMapIndex = uint_to_hex(_currentMapIndex);
-        auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
+        {
+            matplot::ellipse(_offsetForColorBar + 0 - conductingDiameter / 2, 0  - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color("white");
+        }
+        {
+            auto currentMapIndex = uint_to_hex(_currentMapIndex);
+            auto key = key_to_rgb_color(_currentMapIndex);
+            _currentMapIndex++;
 
-        matplot::ellipse(_offsetForColorBar + 0 - conductingDiameter / 2, 0  - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
-        _postProcessingColors[key] = "url(#currentDensity)";
+            matplot::ellipse(_offsetForColorBar + 0 - conductingDiameter / 2, 0  - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+            _postProcessingColors[key] = "url(#currentDensity)";
+        }
+    }
+    else if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
+        paint_rectangular_wire(0, 0, wire, 0, {0, 0});
+
+        _postProcessingDefs.push_back(R"(  </radialGradient>)");
+        auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+        auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        auto maximumValue = currentDensityPoints[0].back();
+        auto numberPoints = currentDensityPoints[0].size();
+        for (size_t pointIndex = numberPoints - 1; pointIndex > 0 ; --pointIndex) {
+            double pointValue = currentDensityPoints[0][pointIndex];
+            double opacity = pointValue / maximumValue;
+            double percentage = double(pointIndex) / (numberPoints - 1) * 100;
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+
+        }
+        _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
+
+        // Paint corner current density
+        {
+            std::vector<double> cornerDataConducting;
+            cornerDataConducting.push_back(0 - conductingWidth / 2);
+            cornerDataConducting.push_back(0 + conductingHeight / 2);
+            cornerDataConducting.push_back(0 + conductingWidth / 2);
+            cornerDataConducting.push_back(0 - conductingHeight / 2);
+            auto key = paint_rectangle(cornerDataConducting, true);
+            _postProcessingColors[key] = "white";
+        }
+
+        // Paint corner current density
+        {
+            std::vector<double> cornerDataConducting;
+            cornerDataConducting.push_back(0 - conductingWidth / 2);
+            cornerDataConducting.push_back(0 + conductingHeight / 2);
+            cornerDataConducting.push_back(0 + conductingWidth / 2);
+            cornerDataConducting.push_back(0 - conductingHeight / 2);
+            auto key = paint_rectangle(cornerDataConducting, true);
+            _postProcessingColors[key] = "url(#currentDensity)";
+        }
+    }
+    else {
+        throw std::runtime_error("Unknonw wire type");
     }
 }
-
 
 void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
     auto settings = OpenMagnetics::Settings::GetInstance();
@@ -1800,7 +1895,6 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
 void Painter::paint_waveform(Waveform waveform) {
     paint_waveform(waveform.get_data(), waveform.get_time());
 }
-
 
 void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector<double>> time) {
     std::vector<double> x, y;
