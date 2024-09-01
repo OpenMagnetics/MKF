@@ -45,9 +45,9 @@ class Settings
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
         std::string _painterColorFerrite = "0x7b7c7d";
-        std::string _painterColorBobbin = "0x8f1b1b1b";
+        std::string _painterColorBobbin = "0x1b1b1b";
         std::string _painterColorCopper = "0xb87333";
-        std::string _painterColorInsulation = "0x18539796";
+        std::string _painterColorInsulation = "0x539796";
         std::string _painterColorEnamel = "0x539796";
         std::string _painterColorFEP = "0x252525";
         std::string _painterColorETFE = "0xb42811";
@@ -55,7 +55,7 @@ class Settings
         std::string _painterColorPFA = "0xedbe1c";
         std::string _painterColorSilk = "0xe7e7e8";
         std::string _painterColorMargin = "0xfff05b";
-        std::string _painterColorSpacer = "0x003b3b3b";
+        std::string _painterColorSpacer = "0x3b3b3b";
         std::string _painterColorLines = "0x000000";
         std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
