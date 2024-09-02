@@ -389,14 +389,10 @@ namespace OpenMagnetics {
         return combinationsSolidInsulationRequirementsForWires;
     }
 
-    std::vector<MasWrapper> CoilAdviser::get_advised_coil_for_pattern(std::vector<WireWrapper>* wires, MasWrapper mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
-        auto settings = Settings::GetInstance();
-        size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
-        auto defaults = Defaults();
+    std::vector<Section> CoilAdviser::get_advised_sections(MasWrapper mas, std::vector<size_t> pattern, size_t repetitions){
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
-        size_t numberWindings = coil.get_functional_description().size();
         if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
             coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
             coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
@@ -406,7 +402,6 @@ namespace OpenMagnetics {
             coil.set_section_alignment(CoilAlignment::SPREAD);
         }
 
-        auto needsMargin = needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
         coil.calculate_insulation(true);
@@ -415,6 +410,24 @@ namespace OpenMagnetics {
         coil.set_strict(true);
 
         auto sections = coil.get_sections_description().value();
+        return sections;
+    }
+
+    std::vector<MasWrapper> CoilAdviser::get_advised_coil_for_pattern(std::vector<WireWrapper>* wires, MasWrapper mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
+        auto settings = Settings::GetInstance();
+        size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
+        auto defaults = Defaults();
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        size_t numberWindings = coil.get_functional_description().size();
+
+        auto needsMargin = needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
+        coil.set_inputs(mas.get_inputs());
+        coil.wind_by_sections(sectionProportions, pattern, repetitions);
+
+        auto sections = get_advised_sections(mas, pattern, repetitions);
+        coil.set_sections_description(sections);
 
         for (auto section : sections) {
             if (section.get_dimensions()[0] < 0) {
