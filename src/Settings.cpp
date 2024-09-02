@@ -45,19 +45,20 @@ namespace OpenMagnetics {
         _painterAdvancedLitz = false;
         _painterMaximumValueColorbar = std::nullopt;
         _painterMinimumValueColorbar = std::nullopt;
-        _painterColorFerrite = "0x007b7c7d";
-        _painterColorBobbin = "0x8f1b1b1b";
-        _painterColorCopper = "0x00b87333";
-        _painterColorInsulation = "0x18539796";
-        _painterColorMargin = "0x00fff05b";
+        _painterColorFerrite = "0x7b7c7d";
+        _painterColorBobbin = "0x1b1b1b";
+        _painterColorCopper = "0xb87333";
+        _painterColorInsulation = "0x539796";
+        _painterColorMargin = "0xfff05b";
         _painterColorEnamel = "0x539796";
         _painterColorFEP = "0x252525";
         _painterColorETFE = "0xb42811";
         _painterColorTCA = "0x696969";
         _painterColorTCA = "0x696969";
         _painterColorSilk = "0xe7e7e8";
-        _painterColorSpacer = "0x003b3b3b";
+        _painterColorSpacer = "0x3b3b3b";
         _painterColorLines = "0x000000";
+        _painterColorCurrentDensity = "0x0892D0";
         _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
         _magneticFieldNumberPointsX = 25;
@@ -367,6 +368,14 @@ namespace OpenMagnetics {
 
     void Settings::set_painter_color_silk(std::string value) {
         _painterColorSilk = value;
+    }
+
+    std::string Settings::get_painter_color_current_density() const {
+        return _painterColorCurrentDensity;
+    }
+
+    void Settings::set_painter_color_current_density(std::string value) {
+        _painterColorCurrentDensity = value;
     }
 
     int Settings::get_painter_mirroring_dimension() const {
