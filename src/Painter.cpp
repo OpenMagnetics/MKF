@@ -1633,7 +1633,7 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
             double pointValue = currentDensityPoints[0][pointIndex];
             double opacity = pointValue / maximumValue;
             double percentage = double(pointIndex) / (numberPoints - 1) * 100;
-            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color=")" + key_to_rgb_color(settings->get_painter_color_current_density()) + R"(" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
 
         }
         _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
@@ -1641,7 +1641,7 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
 
         auto copperColor = settings->get_painter_color_copper();
         if (settings->get_painter_simple_litz()) {
-            settings->set_painter_color_copper("red");
+            settings->set_painter_color_copper(settings->get_painter_color_current_density());
         }
         else {
             settings->set_painter_color_copper("url(#currentDensity)");
@@ -1660,7 +1660,7 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
             double pointValue = currentDensityPoints[0][pointIndex];
             double opacity = pointValue / maximumValue;
             double percentage = double(pointIndex) / (numberPoints - 1) * 100;
-            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color=")" + key_to_rgb_color(settings->get_painter_color_current_density()) + R"(" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
 
         }
         _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
@@ -1688,7 +1688,7 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
             double pointValue = currentDensityPoints[0][pointIndex];
             double opacity = pointValue / maximumValue;
             double percentage = double(pointIndex) / (numberPoints - 1) * 100;
-            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color="red" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
+            _postProcessingDefs.push_back(R"(    <stop offset=")" + std::to_string(percentage) + R"(%" stop-color=")" + key_to_rgb_color(settings->get_painter_color_current_density()) + R"(" stop-opacity=")" + std::to_string(opacity) + R"("/>)");
 
         }
         _postProcessingDefs.push_back(R"(  <radialGradient id="currentDensity" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">)");
