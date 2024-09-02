@@ -25,6 +25,9 @@ std::string key_to_rgb_color(uint32_t i) {
 }
 
 std::string key_to_rgb_color(std::string s) {
+    if (s[0] != '0') {
+        return s;
+    }
     auto i = stoi(s, 0, 16);
     std::stringstream stream;
     stream << "rgb(" << std::setfill (' ') << std::setw(3) << ((i >> 16) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 8) & 0xFF) << ", " << std::setfill (' ') << std::setw(3) << ((i >> 0) & 0xFF) << ")";
