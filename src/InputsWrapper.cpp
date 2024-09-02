@@ -944,7 +944,6 @@ Processed InputsWrapper::calculate_basic_processed_data(Waveform waveform) {
                          sampledWaveform.get_data().size());
     }
     else {
-        // std::cout << compressedWaveform.get_data().size() << std::endl;
         // auto average = calculate_waveform_average(compressedWaveform);
         // processed.set_average(average);
     }
@@ -1668,86 +1667,116 @@ bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
-WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {;
+WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto compressedWaveform = waveform;
     if (is_waveform_sampled(waveform))
         compressedWaveform = compress_waveform(waveform);
-    double period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
+    double period = 0;
+    if (compressedWaveform.get_time()) {
+        period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
+    }
 
     if (compressedWaveform.get_data().size() == 3 && 
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[2]) {
             return WaveformLabel::TRIANGULAR;
     }
-    else if (compressedWaveform.get_data().size() == 4 &&
-        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
-            return WaveformLabel::UNIPOLAR_TRIANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 5 &&
-        !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-            return WaveformLabel::UNIPOLAR_RECTANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 5 &&
-        is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-            return WaveformLabel::RECTANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 5 &&
-        is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
-        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-            return WaveformLabel::RECTANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 10 &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-        is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
-        is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
-            return WaveformLabel::BIPOLAR_RECTANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 6 &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
-        compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
-            return WaveformLabel::BIPOLAR_TRIANGULAR;
-    }
-    else if (compressedWaveform.get_data().size() == 5 &&
-        is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
-        is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-            return WaveformLabel::FLYBACK_PRIMARY;
-    }
-    else if (compressedWaveform.get_data().size() == 5 &&
-        compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
-        is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
-        is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
-        compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
-            return WaveformLabel::FLYBACK_SECONDARY;
+    else if (compressedWaveform.get_time()) {
+        if (compressedWaveform.get_data().size() == 4 &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
+                return WaveformLabel::UNIPOLAR_TRIANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+                return WaveformLabel::UNIPOLAR_RECTANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+                return WaveformLabel::RECTANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+                return WaveformLabel::RECTANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 10 &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
+            is_close_enough(compressedWaveform.get_time().value()[5], compressedWaveform.get_time().value()[6], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[6] == compressedWaveform.get_data()[7] &&
+            is_close_enough(compressedWaveform.get_time().value()[7], compressedWaveform.get_time().value()[8], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[8] == compressedWaveform.get_data()[9] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[9]) {
+                return WaveformLabel::BIPOLAR_RECTANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 6 &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+            is_close_enough(compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
+            compressedWaveform.get_data()[4] == compressedWaveform.get_data()[5] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[5]) {
+                return WaveformLabel::BIPOLAR_TRIANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[1] < compressedWaveform.get_data()[2] &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+                return WaveformLabel::FLYBACK_PRIMARY;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
+            is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[2] > compressedWaveform.get_data()[3] &&
+            is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[0] == waveform.get_data()[4]) {
+                return WaveformLabel::FLYBACK_SECONDARY;
+        }
+        else {
+            auto settings = OpenMagnetics::Settings::GetInstance();
+            double error = 0;
+            double area = 0;
+            double maximum = *max_element(waveform.get_data().begin(), waveform.get_data().end());
+            double minimum = *min_element(waveform.get_data().begin(), waveform.get_data().end());
+
+            double peakToPeak = maximum - minimum;
+            double offset = (maximum - minimum) / 2;
+
+            for (size_t i = 0; i < waveform.get_data().size(); ++i) {
+                double angle = i * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
+                double calculated_data = (sin(angle) * peakToPeak / 2) + offset;
+                area += fabs(waveform.get_data()[i]);
+                error += fabs(calculated_data - waveform.get_data()[i]);
+            }
+            error /= waveform.get_data().size();
+            error /= area;
+            if (error < 0.05) {
+                return WaveformLabel::SINUSOIDAL;
+            }
+            else {
+                return WaveformLabel::CUSTOM;
+            }
+        }
     }
     else {
         auto settings = OpenMagnetics::Settings::GetInstance();
