@@ -1360,6 +1360,12 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         auto strandCoating = WireWrapper::resolve_coating(strand);
         double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
         conductingDiameter = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        if (outerDiameter <= conductingDiameter) {
+            double insulationThickness = coating->get_number_layers().value() * coating->get_thickness_layers().value();
+            outerDiameter = conductingDiameter + 2 * insulationThickness;
+            wire.set_nominal_value_outer_diameter(outerDiameter);
+            set_image_size(wire);
+        }
     }
     else {
         throw std::runtime_error("Coating type not implemented for Litz yet");
@@ -1382,6 +1388,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         lineRadiusIncrease = coatingInfo.lineRadiusIncrease;
         coatingColor = coatingInfo.coatingColor;
     }
+
 
     // Paint insulation
     {
