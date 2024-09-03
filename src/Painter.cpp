@@ -1331,6 +1331,16 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     double conductingDiameter = 0;
     if (coating->get_type() == InsulationWireCoatingType::BARE) {
         conductingDiameter = outerDiameter;
+        auto strandCoating = WireWrapper::resolve_coating(strand);
+        double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+        auto conductingDiameterTheory = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        if (conductingDiameterTheory > conductingDiameter) {
+            conductingDiameter = conductingDiameterTheory;
+            outerDiameter = conductingDiameterTheory;
+            wire.set_nominal_value_outer_diameter(outerDiameter);
+            set_image_size(wire);
+        }
+
     }
     else if (coating->get_type() == InsulationWireCoatingType::SERVED) {
         if (!coating->get_number_layers()) {
@@ -1356,6 +1366,9 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     }
 
     double insulationThickness = (outerDiameter - conductingDiameter) / 2;
+    if (insulationThickness < 0) {
+        throw std::runtime_error("Insulation thickness cannot be negative");
+    }
 
     size_t numberLines = 0;
     double strokeWidth = 0;

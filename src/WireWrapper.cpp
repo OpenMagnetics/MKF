@@ -886,7 +886,8 @@ namespace OpenMagnetics {
                                                 InsulationWireCoatingType::INSULATED,
                                                 standard,
                                                 key);
-        if (packingFactor == 0) {
+        if (packingFactor < 1 / 0.9069) {
+            // if packing if smaller than what is physically possible (https://en.wikipedia.org/wiki/Circle_packing) we use the formula. 
             packingFactor = get_packing_factor_from_standard(standard, numberConductors);
         }
 
