@@ -283,8 +283,14 @@ SUITE(WireAdviser) {
             outFile.append("Test_WireAdviser_Web_0.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
+            auto wire = OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first);
+            OpenMagnetics::InsulationWireCoating newCoating;
+            newCoating.set_type(OpenMagnetics::InsulationWireCoatingType::INSULATED);
+            newCoating.set_number_layers(2);
+            newCoating.set_thickness_layers(5.08e-05);
+            wire.set_coating(newCoating);
 
-            painter.paint_wire(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first));
+            painter.paint_wire(wire);
             painter.export_svg();
         }
 
