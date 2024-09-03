@@ -1371,7 +1371,13 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     }
 
     // Paint insulation
-    matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(coatingColor);
+    {
+        auto currentMapIndex = uint_to_hex(_currentMapIndex);
+        auto key = key_to_rgb_color(_currentMapIndex);
+        _currentMapIndex++;
+        _postProcessingColors[key] = key_to_rgb_color(coatingColor);
+        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+    }
 
     if (simpleMode) {
         auto currentMapIndex = uint_to_hex(_currentMapIndex);

@@ -3518,7 +3518,7 @@ SUITE(WirePainter) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wire_Painter_Litz_Simple_sInsulated.svg");
+            outFile.append("Test_Wire_Painter_Litz_Simple_Insulated.svg");
             std::filesystem::remove(outFile);
             OpenMagnetics::Painter painter(outFile);
             painter.paint_wire(wire);
