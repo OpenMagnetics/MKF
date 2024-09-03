@@ -56,7 +56,7 @@ class Settings
         std::string _painterColorSilk = "0xe7e7e8";
         std::string _painterColorMargin = "0xfff05b";
         std::string _painterColorSpacer = "0x3b3b3b";
-        std::string _painterColorLines = "0x000000";
+        std::string _painterColorLines = "0x010000";
         std::string _painterColorCurrentDensity = "0x0892D0";
         std::string _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
