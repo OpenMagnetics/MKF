@@ -386,16 +386,14 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
-
-    auto settings = Settings::GetInstance();
-    std::string file_path = __FILE__;
-    auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/../../MAS/data/wires.ndjson");
-    std::ifstream ndjsonFile(inventory_path);
-    std::string jsonLine;
     std::vector<WireWrapper> wires;
-    while (std::getline(ndjsonFile, jsonLine)) {
-        json jf = json::parse(jsonLine);
-        WireWrapper wire(jf);
+    auto settings = OpenMagnetics::Settings::GetInstance();
+
+    if (wireDatabase.empty()) {
+        load_wires();
+    }
+
+    for (auto [name, wire] : wireDatabase) {
         if ((settings->get_wire_adviser_include_foil() || wire.get_type() != WireType::FOIL) &&
             (settings->get_wire_adviser_include_planar() ||  wire.get_type() != WireType::PLANAR) &&
             ((settings->get_wire_adviser_include_rectangular() && (settings->get_wire_adviser_allow_rectangular_in_toroidal_cores() || section.get_coordinate_system() == CoordinateSystem::CARTESIAN)) || wire.get_type() != WireType::RECTANGULAR) &&

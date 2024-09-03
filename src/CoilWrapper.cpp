@@ -1401,6 +1401,7 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
     auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
    
     std::vector<std::vector<double>> remainingParallelsProportion;
+
     auto wirePerWinding = get_wires();
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
@@ -4125,7 +4126,18 @@ WireWrapper CoilWrapper::resolve_wire(CoilFunctionalDescription coilFunctionalDe
     auto wireOrString = coilFunctionalDescription.get_wire();
     WireWrapper wire;
     if (std::holds_alternative<std::string>(wireOrString)) {
-        wire = find_wire_by_name(std::get<std::string>(wireOrString));
+        try {
+            wire = find_wire_by_name(std::get<std::string>(wireOrString));
+        }
+        catch (const std::exception &exc) {
+            // If wire is not found because it is "Dummy", we return a small Round, as it should only happening when get an advised wire
+            if (std::get<std::string>(wireOrString) == "Dummy") {
+                wire = find_wire_by_name("Round 0.01 - Grade 1");
+            }
+            else {
+                throw std::runtime_error("wire not found: " + std::get<std::string>(wireOrString));
+            }
+        }
     }
     else {
         wire = std::get<Wire>(wireOrString);
