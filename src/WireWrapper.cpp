@@ -577,7 +577,11 @@ namespace OpenMagnetics {
             load_wires();
         }
 
-        if (!wireFillingFactorInterps.contains(key)) {
+        if (standard && (wireType == WireType::RECTANGULAR || wireType == WireType::FOIL || wireType == WireType::PLANAR)) {
+            standard = std::nullopt;
+        } 
+
+        if (!wireOuterDimensionInterps.contains(key)) {
             create_interpolators(conductingDiameter,
                                  conductingWidth,
                                  conductingHeight,

@@ -19,22 +19,42 @@ class WireSolidInsulationRequirements {
     double minimumBreakdownVoltage = 0;
 
     public:
-
     std::optional<int64_t> get_minimum_number_layers() const { return _minimumNumberLayers; }
-    void set_minimum_number_layers(const int64_t & value) { this->_minimumNumberLayers = value; }
+    void set_minimum_number_layers(std::optional<int64_t> value) { this->_minimumNumberLayers = value; }
 
     std::optional<int64_t> get_minimum_grade() const { return _minimumGrade; }
-    void set_minimum_grade(const int64_t & value) { this->_minimumGrade = value; }
+    void set_minimum_grade(std::optional<int64_t> value) { this->_minimumGrade = value; }
 
     std::optional<int64_t> get_maximum_number_layers() const { return _maximumNumberLayers; }
-    void set_maximum_number_layers(const int64_t & value) { this->_maximumNumberLayers = value; }
+    void set_maximum_number_layers(std::optional<int64_t> value) { this->_maximumNumberLayers = value; }
 
     std::optional<int64_t> get_maximum_grade() const { return _maximumGrade; }
-    void set_maximum_grade(const int64_t & value) { this->_maximumGrade = value; }
+    void set_maximum_grade(std::optional<int64_t> value) { this->_maximumGrade = value; }
 
     double get_minimum_breakdown_voltage() const { return minimumBreakdownVoltage; }
     void set_minimum_breakdown_voltage(const double & value) { this->minimumBreakdownVoltage = value; }
 };
+
+void from_json(const json & j, WireSolidInsulationRequirements & x);
+void to_json(json & j, const WireSolidInsulationRequirements & x);
+
+inline void from_json(const json & j, WireSolidInsulationRequirements& x) {
+    x.set_minimum_number_layers(get_stack_optional<int64_t>(j, "minimumNumberLayers"));
+    x.set_minimum_grade(get_stack_optional<int64_t>(j, "minimumGrade"));
+    x.set_maximum_number_layers(get_stack_optional<int64_t>(j, "maximumNumberLayers"));
+    x.set_maximum_grade(get_stack_optional<int64_t>(j, "maximumGrade"));
+    x.set_minimum_breakdown_voltage(j.at("minimumBreakdownVoltage").get<double>());
+}
+
+inline void to_json(json & j, const WireSolidInsulationRequirements & x) {
+    j = json::object();
+    j["minimumNumberLayers"] = x.get_minimum_number_layers();
+    j["minimumGrade"] = x.get_minimum_grade();
+    j["maximumNumberLayers"] = x.get_maximum_number_layers();
+    j["maximumGrade"] = x.get_maximum_grade();
+    j["minimumBreakdownVoltage"] = x.get_minimum_breakdown_voltage();
+}
+
 
 class WireAdviser {
     protected:
