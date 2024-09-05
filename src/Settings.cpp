@@ -67,8 +67,10 @@ namespace OpenMagnetics {
         _magneticFieldIncludeFringing = true;
         
         _coilAdviserMaximumNumberWires = 100;
-        _coreIncludeStacks = true;
-        _coreIncludeDistributedGaps = true;
+        _coreAdviserIncludeStacks = true;
+        _coreAdviserIncludeDistributedGaps = true;
+        _coreAdviserIncludeMargin = false;
+
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -420,18 +422,25 @@ namespace OpenMagnetics {
         _coilAdviserMaximumNumberWires = value;
     }
 
-    bool Settings::get_core_include_stacks() const {
-        return _coreIncludeStacks;
+    bool Settings::get_core_adviser_include_stacks() const {
+        return _coreAdviserIncludeStacks;
     }
-    void Settings::set_core_include_stacks(bool value) {
-        _coreIncludeStacks = value;
+    void Settings::set_core_adviser_include_stacks(bool value) {
+        _coreAdviserIncludeStacks = value;
     }
 
-    bool Settings::get_core_include_distributed_gaps() const {
-        return _coreIncludeDistributedGaps;
+    bool Settings::get_core_adviser_include_distributed_gaps() const {
+        return _coreAdviserIncludeDistributedGaps;
     }
-    void Settings::set_core_include_distributed_gaps(bool value) {
-        _coreIncludeDistributedGaps = value;
+    void Settings::set_core_adviser_include_distributed_gaps(bool value) {
+        _coreAdviserIncludeDistributedGaps = value;
+    }
+
+    bool Settings::get_core_adviser_include_margin() const {
+        return _coreAdviserIncludeMargin;
+    }
+    void Settings::set_core_adviser_include_margin(bool value) {
+        _coreAdviserIncludeMargin = value;
     }
 
     bool Settings::get_wire_adviser_include_planar() const {

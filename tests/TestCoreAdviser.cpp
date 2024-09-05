@@ -2,6 +2,7 @@
 #include "CoreAdviser.h"
 #include "Utils.h"
 #include "InputsWrapper.h"
+#include "TestingUtils.h"
 
 #include <UnitTest++.h>
 #include <filesystem>
@@ -18,9 +19,13 @@ SUITE(CoreAdviser) {
     void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, std::vector<double> turnsRatios,
                                  double desiredMagnetizingInductance, OpenMagnetics::InputsWrapper& inputs,
                                  double peakToPeak = 20, double dutyCycle = 0.5) {
+        OpenMagnetics::DesignRequirements designRequirements = inputs.get_design_requirements();
         inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL,
             peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+        if (designRequirements.get_insulation()) {
+            inputs.get_mutable_design_requirements().set_insulation(designRequirements.get_insulation().value());
+        }
     }
 
     std::vector<OpenMagnetics::CoreWrapper> load_test_data() {
@@ -79,6 +84,57 @@ SUITE(CoreAdviser) {
         }
 
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
+        settings->reset();
+    }
+
+    TEST(Test_All_Cores_With_Margin) {
+        settings->reset();
+        settings->set_core_adviser_include_margin(true);
+        auto standard = OpenMagnetics::InsulationIEC60664Model();
+        OpenMagnetics::DimensionWithTolerance altitude;
+        altitude.set_maximum(2000);
+        auto cti = OpenMagnetics::Cti::GROUP_I;
+        auto insulationType = OpenMagnetics::InsulationType::REINFORCED;
+        OpenMagnetics::DimensionWithTolerance mainSupplyVoltage;
+        mainSupplyVoltage.set_nominal(400);
+        auto overvoltageCategory = OpenMagnetics::OvervoltageCategory::OVC_II;
+        auto pollutionDegree = OpenMagnetics::PollutionDegree::P3;
+        auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+        double maximumVoltageRms = 666;
+        double maximumVoltagePeak = 800;
+        double frequency = 100000;
+        OpenMagnetics::InputsWrapper inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards, maximumVoltageRms, maximumVoltagePeak, frequency, OpenMagnetics::WiringTechnology::WOUND);
+        
+        OpenMagnetics::clear_databases();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreAdviser coreAdviser;
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
+
+
+        CHECK(masMagnetics.size() == 1);
+        double bestScoring = masMagnetics[0].second;
+        for (size_t i = 0; i < masMagnetics.size(); ++i)
+        {
+            CHECK(masMagnetics[i].second <= bestScoring);
+        }
+
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 35/18/10 - 3C95 - Gapped 0.5 mm");
         settings->reset();
     }
 

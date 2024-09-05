@@ -1890,6 +1890,13 @@ double InputsWrapper::get_maximum_voltage_rms() {
                 throw std::invalid_argument("Missing voltage in excitation");
             if (!excitation.get_voltage()->get_processed()) 
                 throw std::invalid_argument("Voltage has not been processed");
+            // if (!excitation.get_voltage()->get_processed()->get_rms()) {
+            //     Processed processed = calculate_processed_data(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+            //     auto voltage = excitation.get_voltage().value();
+            //     voltage.set_processed(processed);
+            //     excitation.set_voltage(voltage);
+            //     // throw std::invalid_argument("RMS has not been calculated");
+            // }
             maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_rms().value());
         }
     }
