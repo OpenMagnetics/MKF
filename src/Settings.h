@@ -66,8 +66,10 @@ class Settings
         bool _magneticFieldIncludeFringing = true;
 
         size_t _coilAdviserMaximumNumberWires = 100;
-        bool _coreIncludeStacks = true;
-        bool _coreIncludeDistributedGaps = true;
+        bool _coreAdviserIncludeStacks = true;
+        bool _coreAdviserIncludeDistributedGaps = true;
+        bool _coreAdviserIncludeMargin = false;
+
 
         bool _wireAdviserIncludePlanar = false;
         bool _wireAdviserIncludeFoil = false;
@@ -231,11 +233,14 @@ class Settings
         size_t get_coil_adviser_maximum_number_wires() const;
         void set_coil_adviser_maximum_number_wires(size_t value);
 
-        bool get_core_include_stacks() const;
-        void set_core_include_stacks(bool value);
+        bool get_core_adviser_include_stacks() const;
+        void set_core_adviser_include_stacks(bool value);
 
-        bool get_core_include_distributed_gaps() const;
-        void set_core_include_distributed_gaps(bool value);
+        bool get_core_adviser_include_distributed_gaps() const;
+        void set_core_adviser_include_distributed_gaps(bool value);
+
+        bool get_core_adviser_include_margin() const;
+        void set_core_adviser_include_margin(bool value);
 
         bool get_wire_adviser_include_planar() const;
         void set_wire_adviser_include_planar(bool value);

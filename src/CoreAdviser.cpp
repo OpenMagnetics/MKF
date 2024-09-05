@@ -9,6 +9,7 @@
 #include "NumberTurns.h"
 #include "MagneticEnergy.h"
 #include "WireWrapper.h"
+#include "Insulation.h"
 #include "BobbinWrapper.h"
 #include "Defaults.h"
 #include "Settings.h"
@@ -910,6 +911,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 }
 
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, std::vector<CoreWrapper>* cores, size_t maximumNumberResults){
+    auto settings = Settings::GetInstance();
     auto defaults = Defaults();
     _weights = weights;
  
@@ -927,6 +929,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     size_t maximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     bool needToAddStacks = false;
+
+    if (settings->get_core_adviser_include_margin() && inputs.get_design_requirements().get_insulation()) {
+        auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
+        set_average_margin_in_winding_window(clearanceAndCreepageDistance);
+
+    }
 
     if (firstFilter == CoreAdviserFilters::EFFICIENCY) {
         masMagnetics = create_mas_dataset(inputs, cores, true);
@@ -951,8 +959,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     }
 
     // masMagnetics = create_mas_dataset(inputs, cores, true);
-    auto settings = Settings::GetInstance();
-    auto globalIncludeStacks = settings->get_core_include_stacks();
+    auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
     if (needToAddStacks && globalIncludeStacks) {
         expand_mas_dataset_with_stacks(inputs, cores, &masMagnetics);
     }
@@ -970,8 +977,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     CoilWrapper coil = get_dummy_coil(inputs);
     auto settings = Settings::GetInstance();
     auto includeToroidalCores = settings->get_use_toroidal_cores();
-    auto globalIncludeStacks = settings->get_core_include_stacks();
-    auto globalIncludeDistributedGaps = settings->get_core_include_distributed_gaps();
+    auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
+    auto globalIncludeDistributedGaps = settings->get_core_adviser_include_distributed_gaps();
     double maximumHeight = DBL_MAX;
     if (inputs.get_design_requirements().get_maximum_dimensions()) {
         if (inputs.get_design_requirements().get_maximum_dimensions()->get_height()) {
@@ -1239,6 +1246,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
         if (filter != firstFilter) {
+            std::string filterString = std::string{magic_enum::enum_name(filter)};
+            logEntry("Filtering by " + filterString + ".");
             switch (filter) {
                 case CoreAdviserFilters::AREA_PRODUCT: 
                     masMagneticsWithScoring = filterAreaProduct.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::AREA_PRODUCT]);
@@ -1256,7 +1265,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
                     masMagneticsWithScoring = filterDimensions.filter_magnetics(&masMagneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS]);
                     break;
             }    
-            std::string filterString = std::string{magic_enum::enum_name(filter)};
             logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " after filtering by " + filterString + ".");
         }
     });
