@@ -118,7 +118,6 @@ void CorePiece::process() {
     auto [c1, c2, minimumArea] = get_shape_constants();
 
     if (c1 <= 0 || c2 <= 0 || minimumArea <= 0) {
-        std::cout << get_shape().get_name().value() << std::endl;
         throw std::runtime_error("Shape constants cannot be negative or 0");
     }
 
@@ -2247,6 +2246,18 @@ std::vector<CoreGap> CoreWrapper::find_gaps_by_column(ColumnElement column) {
     double columnRightLimit = column.get_coordinates()[0] + column.get_width() / 2;
     double columnFrontLimit = column.get_coordinates()[2] + column.get_depth() / 2;
     double columnBackLimit = column.get_coordinates()[2] - column.get_depth() / 2;
+
+    bool gapIsComplete = true;
+    for (auto& gap : get_functional_description().get_gapping()) {
+        if (!gap.get_coordinates()) {
+            gapIsComplete = false;
+        }
+    }
+
+    if (!gapIsComplete) {
+        process_gap();
+    }
+
     for (auto& gap : get_functional_description().get_gapping()) {
         if (gap.get_coordinates().value()[0] >= columnLeftLimit &&
             gap.get_coordinates().value()[0] <= columnRightLimit &&
