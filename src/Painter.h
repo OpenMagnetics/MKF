@@ -23,6 +23,7 @@ class Painter{
         double _fontSize = 10;
         double _extraDimension = 1;
         double _offsetForColorBar = 0;
+        bool _paintingFullMagnetic = false;
         bool _addProportionForColorBar = true;
         int _mirroringDimension = Defaults().magneticFieldMirroringDimension;
         std::filesystem::path _filepath;

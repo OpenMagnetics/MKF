@@ -1428,6 +1428,7 @@ SUITE(CoilPainterToroid) {
         CHECK(std::filesystem::exists(outFile));
         settings->reset();
     }
+
 }
 
 SUITE(CoilPainter) {

@@ -402,6 +402,7 @@ void Painter::export_png() {
 }
 
 void Painter::paint_core(MagneticWrapper magnetic) {
+    _paintingFullMagnetic = true;
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
@@ -516,6 +517,9 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
 }
 
 void Painter::set_image_size(WireWrapper wire) {
+    if (_paintingFullMagnetic) {
+        return;
+    }
     _extraDimension = 0.1;
     double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
     auto showingWireWidth = wire.get_maximum_outer_width() + margin;
@@ -598,6 +602,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     auto aux = get_image_size(magnetic);
     double imageWidth = aux[0];
     double imageHeight = aux[1];
+
 
     matplot::gcf()->size(imageWidth * _scale, imageHeight * _scale);
     matplot::xlim({0, imageWidth});
@@ -1329,6 +1334,9 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     auto strand = wire.resolve_strand();
     double strandOuterDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
     double conductingDiameter = 0;
+
+
+
     if (coating->get_type() == InsulationWireCoatingType::BARE) {
         conductingDiameter = outerDiameter;
         auto strandCoating = WireWrapper::resolve_coating(strand);
