@@ -45,10 +45,10 @@ class Settings
         std::optional<double> _painterMaximumValueColorbar = std::nullopt;
         std::optional<double> _painterMinimumValueColorbar = std::nullopt;
         std::string _painterColorFerrite = "0x7b7c7d";
-        std::string _painterColorBobbin = "0x1b1b1b";
+        std::string _painterColorBobbin = "0x539796";
         std::string _painterColorCopper = "0xb87333";
-        std::string _painterColorInsulation = "0x539796";
-        std::string _painterColorEnamel = "0x539796";
+        std::string _painterColorInsulation = "0xfff05b";
+        std::string _painterColorEnamel = "0xc63032";
         std::string _painterColorFEP = "0x252525";
         std::string _painterColorETFE = "0xb42811";
         std::string _painterColorTCA = "0x696969";
