@@ -580,5 +580,10 @@ WindingWindowShape BobbinWrapper::get_winding_window_shape(size_t windingWindowI
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_shape().value();
 }
 
+void BobbinWrapper::process_data() {
+    auto processor = BobbinDataProcessor::factory(*this);
+    set_processed_description((*processor).process_data(*this));
+}
+
 
 } // namespace OpenMagnetics

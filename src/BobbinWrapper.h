@@ -28,11 +28,12 @@ class BobbinDataProcessor{
 class BobbinWrapper : public Bobbin {
   private:
   public:
-    BobbinWrapper(const json& j) {
+    BobbinWrapper(const json& j, bool includeProcessedDescription = true) {
         from_json(j, *this);
         if (get_functional_description()) {
-            auto processor = BobbinDataProcessor::factory(*this);
-            set_processed_description((*processor).process_data(*this));
+            if (includeProcessedDescription) {
+                process_data();
+            }
         }
         else {
             if (!get_processed_description()) {
@@ -40,8 +41,26 @@ class BobbinWrapper : public Bobbin {
             }
         }
     }
+
+    BobbinWrapper(const Bobbin bobbin) {
+        set_functional_description(bobbin.get_functional_description());
+
+        if (bobbin.get_processed_description()) {
+            set_processed_description(bobbin.get_processed_description());
+        }
+        if (bobbin.get_distributors_info()) {
+            set_distributors_info(bobbin.get_distributors_info());
+        }
+        if (bobbin.get_manufacturer_info()) {
+            set_manufacturer_info(bobbin.get_manufacturer_info());
+        }
+        if (bobbin.get_name()) {
+            set_name(bobbin.get_name());
+        }
+    }
     BobbinWrapper() = default;
     virtual ~BobbinWrapper() = default;
+    void process_data();
     
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
     static std::vector<double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
