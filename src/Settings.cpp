@@ -46,11 +46,11 @@ namespace OpenMagnetics {
         _painterMaximumValueColorbar = std::nullopt;
         _painterMinimumValueColorbar = std::nullopt;
         _painterColorFerrite = "0x7b7c7d";
-        _painterColorBobbin = "0x1b1b1b";
+        _painterColorBobbin = "0x539796";
         _painterColorCopper = "0xb87333";
-        _painterColorInsulation = "0x539796";
+        _painterColorInsulation = "0xfff05b";
         _painterColorMargin = "0xfff05b";
-        _painterColorEnamel = "0x539796";
+        _painterColorEnamel = "0xc63032";
         _painterColorFEP = "0x252525";
         _painterColorETFE = "0xb42811";
         _painterColorTCA = "0x696969";
