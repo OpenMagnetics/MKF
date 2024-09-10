@@ -29,6 +29,14 @@ class CoilWrapper : public Coil {
         std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> _sectionInfoWithInsulation;
         std::vector<std::vector<double>> _marginsPerSection;
+        size_t _interleavingLevel = 1;
+        WindingOrientation _windingOrientation = WindingOrientation::OVERLAPPING;
+        WindingOrientation _layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
+        std::optional<InputsWrapper> _inputs;
+        std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
+        std::map<std::string, WindingOrientation> _layersOrientationPerSection;
         std::string coilLog;
         bool are_sections_and_layers_fitting();
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
@@ -40,12 +48,6 @@ class CoilWrapper : public Coil {
         BobbinWrapper _bobbin;
 
     public:
-        size_t _interleavingLevel = 1;
-        WindingOrientation _windingOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation _layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
-        CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
-        std::optional<InputsWrapper> _inputs;
 
         CoilWrapper(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
@@ -61,6 +63,7 @@ class CoilWrapper : public Coil {
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
         void try_rewind();
+        void clear();
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
@@ -101,54 +104,24 @@ class CoilWrapper : public Coil {
         bool delimit_and_compact();
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
-        void log(std::string entry) {
-            coilLog += entry + "\n";
-        }
-        std::string read_log() {
-            return coilLog;
-        }
 
-        void set_strict(bool value) {
-            _strict = value;
-        }
-        void set_inputs(InputsWrapper inputs) {  // TODO: change to DesignRequirements?
-            _inputs = inputs;
-        }
-        void set_interleaving_level(uint8_t interleavingLevel) {
-            _interleavingLevel = interleavingLevel;
-            _marginsPerSection = std::vector<std::vector<double>>(interleavingLevel, {0, 0});
-        }
-        void reset_margins_per_section() {
-            _marginsPerSection.clear();
-        }
-        size_t get_interleaving_level() {
-            return _currentRepetitions;
-        }
-        void set_winding_orientation(WindingOrientation windingOrientation) {
-            _windingOrientation = windingOrientation;
-        }
-        void set_layers_orientation(WindingOrientation layersOrientation) {
-            _layersOrientation = layersOrientation;
-        }
-        void set_turns_alignment(CoilAlignment turnsAlignment) {
-            _turnsAlignment = turnsAlignment;
-        }
-        void set_section_alignment(CoilAlignment sectionAlignment) {
-            _sectionAlignment = sectionAlignment;
-        }
+        void log(std::string entry);
+        std::string read_log();
+        void set_strict(bool value);
+        void set_inputs(InputsWrapper inputs);  // TODO: change to DesignRequirements?
 
-        WindingOrientation get_winding_orientation() {
-            return _windingOrientation;
-        }
-        WindingOrientation get_layers_orientation() {
-            return _layersOrientation;
-        }
-        CoilAlignment get_turns_alignment() {
-            return _turnsAlignment;
-        }
-        CoilAlignment get_section_alignment() {
-            return _sectionAlignment;
-        }
+        void set_interleaving_level(uint8_t interleavingLevel);
+        void reset_margins_per_section();
+        size_t get_interleaving_level();
+        void set_winding_orientation(WindingOrientation windingOrientation);
+        void set_layers_orientation(WindingOrientation layersOrientation, std::optional<std::string> sectionName = std::nullopt);
+        void set_turns_alignment(CoilAlignment turnsAlignment, std::optional<std::string> sectionName = std::nullopt);
+        void set_section_alignment(CoilAlignment sectionAlignment);
+
+        WindingOrientation get_winding_orientation();
+        WindingOrientation get_layers_orientation();
+        CoilAlignment get_turns_alignment(std::optional<std::string> sectionName = std::nullopt);
+        CoilAlignment get_section_alignment();
 
         std::vector<Section> get_sections_description_conduction();
         std::vector<Layer> get_layers_description_conduction();
