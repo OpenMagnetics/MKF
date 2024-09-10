@@ -5617,7 +5617,7 @@ SUITE(CoilLayersDescription) {
 }
 
 SUITE(CoilTurnsDescription) {
-    bool plot = false;
+    bool plot = true;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_Wind_By_Turn_Wind_One_Section_One_Layer) {
@@ -6056,6 +6056,58 @@ SUITE(CoilTurnsDescription) {
 
         auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
         OpenMagneticsTesting::check_turns_description(coil);
+        settings->reset();
+    }
+
+    TEST(Test_Wind_By_Turn_Different_Alignment) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        std::vector<int64_t> numberTurns = {10, 10};
+        std::vector<int64_t> numberParallels = {1, 1};
+        int64_t numberPhysicalTurns = std::numeric_limits<int64_t>::max();
+
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex)
+        {
+            numberPhysicalTurns = std::min(numberPhysicalTurns, numberTurns[windingIndex] * numberParallels[windingIndex]);
+        }
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.01;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        uint8_t interleavingLevel = 1;
+        interleavingLevel = std::min(std::max(uint8_t(1U), uint8_t(numberPhysicalTurns)), interleavingLevel);
+        OpenMagnetics::WindingOrientation windingOrientation = magic_enum::enum_cast<OpenMagnetics::WindingOrientation>(0).value();
+        if (windingOrientation == OpenMagnetics::WindingOrientation::OVERLAPPING) {
+            bobbinWidth *= numberTurns.size();
+            bobbinCenterCoodinates[0] += bobbinWidth / 2;
+        }
+        else {
+            bobbinHeight *= numberTurns.size();
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil_no_compact(numberTurns, numberParallels, bobbinHeight, bobbinWidth, bobbinCenterCoodinates, interleavingLevel, windingOrientation);
+
+        coil.clear();
+        coil.wind();
+        coil.set_turns_alignment(OpenMagnetics::CoilAlignment::INNER_OR_TOP, "winding 0 section 0");
+        coil.set_turns_alignment(OpenMagnetics::CoilAlignment::OUTER_OR_BOTTOM, "winding 1 section 0");
+        coil.wind_by_turns();
+        coil.delimit_and_compact();
+        
+
+        OpenMagneticsTesting::check_turns_description(coil);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turn_Different_Alignment.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            OpenMagnetics::MagneticWrapper magnetic;
+            magnetic.set_coil(coil);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            // painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
         settings->reset();
     }
 }
