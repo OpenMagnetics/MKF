@@ -281,6 +281,18 @@ CoilAlignment CoilWrapper::get_turns_alignment(std::optional<std::string> sectio
 }
 
 CoilAlignment CoilWrapper::get_section_alignment() {
+    auto bobbin = resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        return _sectionAlignment;
+    }
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (windingWindows.size() > 1) {
+        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+    }
+    if (windingWindows[0].get_sections_alignment()) {
+        return windingWindows[0].get_sections_alignment().value();
+    }
     return _sectionAlignment;
 }
 
@@ -1403,7 +1415,7 @@ bool CoilWrapper::wind_by_sections() {
     auto windingOrientation = get_winding_orientation();
     auto sectionAlignment = get_section_alignment();
 
-    if (bobbinWindingWindowShape == WindingWindowShape::ROUND && windingOrientation == WindingOrientation::CONTIGUOUS && _sectionAlignment == CoilAlignment::SPREAD ) {
+    if (bobbinWindingWindowShape == WindingWindowShape::ROUND && windingOrientation == WindingOrientation::CONTIGUOUS && sectionAlignment == CoilAlignment::SPREAD ) {
         proportionPerWinding = std::vector<double>(get_functional_description().size(), 1.0 / get_functional_description().size());
     }
     else {
@@ -1456,6 +1468,9 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
     }
     if (!windingWindows[0].get_sections_orientation()) {
         windingWindows[0].set_sections_orientation(_windingOrientation);
+    }
+    if (!windingWindows[0].get_sections_alignment()) {
+        windingWindows[0].set_sections_alignment(_sectionAlignment);
     }
     bobbinProcessedDescription.set_winding_windows(windingWindows);
     bobbin.set_processed_description(bobbinProcessedDescription);
