@@ -1158,22 +1158,29 @@ std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> CoilWrapper::a
         orderedSectionsWithInsulation.push_back({ElectricalType::CONDUCTION, orderedSections[sectionIndex]});
     }
 
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
 
     // last insulation layer we compare between last and first
-    auto leftWindingIndex = orderedSections[orderedSections.size() - 1].first;
-    auto rightWindingIndex = orderedSections[0].first;
-    auto windingsMapKey = std::pair<size_t, size_t>{leftWindingIndex, rightWindingIndex}; 
+    if (windingOrientation != WindingOrientation::CONTIGUOUS || bobbinWindingWindowShape != WindingWindowShape::RECTANGULAR) {
+        // We don't add one in the sections are contiguous, as they end in the bobbin
+        auto leftWindingIndex = orderedSections[orderedSections.size() - 1].first;
+        auto rightWindingIndex = orderedSections[0].first;
+        auto windingsMapKey = std::pair<size_t, size_t>{leftWindingIndex, rightWindingIndex}; 
 
-    if (_insulationSections.contains(windingsMapKey)) {
-        std::pair<size_t, double> insulationSectionInfo;
-        if (windingOrientation == WindingOrientation::OVERLAPPING) {
-            insulationSectionInfo = {SIZE_MAX, _insulationSections[windingsMapKey].get_dimensions()[0]};
-        }
-        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-            insulationSectionInfo = {SIZE_MAX, _insulationSections[windingsMapKey].get_dimensions()[1]};
-        }
+        if (_insulationSections.contains(windingsMapKey)) {
+            std::pair<size_t, double> insulationSectionInfo;
+            if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                insulationSectionInfo = {SIZE_MAX, _insulationSections[windingsMapKey].get_dimensions()[0]};
+            }
+            else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+                insulationSectionInfo = {SIZE_MAX, _insulationSections[windingsMapKey].get_dimensions()[1]};
+            }
 
-        orderedSectionsWithInsulation.push_back({ElectricalType::INSULATION, insulationSectionInfo});
+            orderedSectionsWithInsulation.push_back({ElectricalType::INSULATION, insulationSectionInfo});
+        }
     }
 
     return orderedSectionsWithInsulation;
@@ -1506,6 +1513,8 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
 
     auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
     auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
+
+
 
     double numberWindings = get_functional_description().size();
     auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
@@ -3347,7 +3356,7 @@ std::vector<double> CoilWrapper::get_aligned_section_dimensions_rectangular_wind
     double totalSectionsWidth = 0;
     double totalSectionsHeight = 0;
     for (size_t auxSectionIndex = 0; auxSectionIndex < sections.size(); ++auxSectionIndex) {
-        if (_windingOrientation == WindingOrientation::OVERLAPPING) {
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
             totalSectionsWidth += sections[auxSectionIndex].get_dimensions()[0];
             if (sections[auxSectionIndex].get_type() == ElectricalType::CONDUCTION) {
                 totalSectionsHeight = std::max(totalSectionsHeight, sections[auxSectionIndex].get_dimensions()[1]);
@@ -3738,7 +3747,6 @@ bool CoilWrapper::delimit_and_compact_rectangular_window() {
                     double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
                     double currentLayerMaximumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) + turnsInLayer[0].get_dimensions().value()[1] / 2;
                     double currentLayerMinimumHeight = (turnsInLayer[0].get_coordinates()[1] - layerCoordinates[1]) - turnsInLayer[0].get_dimensions().value()[1] / 2;
-
                     for (auto& turn : turnsInLayer) {
                         currentLayerMaximumWidth = std::max(currentLayerMaximumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) + turn.get_dimensions().value()[0] / 2);
                         currentLayerMinimumWidth = std::min(currentLayerMinimumWidth, (turn.get_coordinates()[0] - layerCoordinates[0]) - turn.get_dimensions().value()[0] / 2);
@@ -3749,6 +3757,7 @@ bool CoilWrapper::delimit_and_compact_rectangular_window() {
                                                                layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
                     layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
                                                                currentLayerMaximumHeight - currentLayerMinimumHeight}));
+
                 }
                 set_layers_description(layers);
             }
