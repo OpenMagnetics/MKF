@@ -164,6 +164,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
         forceMinimumModule = forceMaximumModule - 1;
     }
 
+
     if (mode == PainterModes::CONTOUR) {
 
         std::vector<std::vector<double>> X(numberPointsY, std::vector<double>(numberPointsX, 0));
