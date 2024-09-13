@@ -4,6 +4,7 @@
 #include "CoilMesher.h"
 #include "Models.h"
 #include "Reluctance.h"
+#include "MagneticSimulator.h"
 #include "InitialPermeability.h"
 #include "Settings.h"
 
@@ -251,7 +252,13 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     if (_magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ALBACH) {
         if (includeFringing) {
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-                throw std::runtime_error("Operating point is missing magnetizing current");
+
+                auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
+                auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                                                                                       resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()));
+
+                operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                // throw std::runtime_error("Operating point is missing magnetizing current");
             }
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
                 auto excitations = operatingPoint.get_excitations_per_winding();
@@ -295,7 +302,12 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 // For the main harmonic we calculate the fringing effect for each gap
                 if (includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
-                        throw std::runtime_error("Operating point is missing magnetizing current");
+                        auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
+                        auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                                                                                               resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()));
+
+                        operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                        // throw std::runtime_error("Operating point is missing magnetizing current");
                     }
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
                         auto excitations = operatingPoint.get_excitations_per_winding();

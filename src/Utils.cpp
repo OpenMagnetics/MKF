@@ -1118,6 +1118,19 @@ std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPo
     size_t maximumCommonIndex = SIZE_MAX;
     std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(operatingPoint.get_excitations_per_winding().size(), 0);
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {
+            throw std::runtime_error("Missing current");
+        }
+        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
+            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            auto frequency = operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency();
+            if (!current.get_waveform()) {
+                throw std::runtime_error("Current missing harmonics and waveform");
+            }
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), frequency);
+            current.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, frequency));
+            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+        }
         auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
         maximumCommonIndex = std::min(maximumCommonIndex, harmonics.get_amplitudes().size());
         for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
