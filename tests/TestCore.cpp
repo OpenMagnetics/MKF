@@ -1510,7 +1510,7 @@ SUITE(CoreProcessedDescription) {
         CHECK(core.get_processed_description()->get_columns()[0].get_shape() == OpenMagnetics::ColumnShape::RECTANGULAR);
     }
 
-    TEST(Web_0) {
+    TEST(Core_Procecessd_Description_Web_0) {
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000123, \"coordinates\": "
             "[0.0, 0.0, 0.0], \"distanceClosestNormalSurface\": 0.01455, \"length\": 0.0001, \"sectionDimensions\": "
@@ -1529,7 +1529,7 @@ SUITE(CoreProcessedDescription) {
         CHECK_EQUAL(core.get_processed_description()->get_columns().size(), 2u);
     }
 
-    TEST(Web_1) {
+    TEST(Core_Procecessd_Description_Web_1) {
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", "
             "\"numberStacks\": 1, \"shape\": {\"aliases\": [], \"dimensions\": {\"A\": 0.0308, \"B\": 0.0264, \"C\": "
@@ -1542,6 +1542,7 @@ SUITE(CoreProcessedDescription) {
                     0.0002756 * 0.2);
         auto functionalDescription = core.get_functional_description();
     }
+
 
     TEST(Test_Core_All_Shapes) {
         settings->set_use_toroidal_cores(true);
@@ -1667,7 +1668,7 @@ SUITE(CoreGeometricalDescription) {
         CHECK(geometrical_description[1].get_type() == OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
     }
 
-    TEST(Web_1) {
+    TEST(Test_Core_Geometrical_Description_Web_1) {
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000135, \"coordinates\": "
             "[0.0, 0.0078, 0.0], \"distanceClosestNormalSurface\": 0.00515, \"length\": 0.0001, \"sectionDimensions\": "
@@ -1866,7 +1867,7 @@ SUITE(CoreFunctionalDescription) {
               -(*functionalDescription.get_gapping()[4].get_coordinates())[0]);
     }
 
-    TEST(Web_0) {
+    TEST(Test_Core_Functional_Description_Web_0) {
         auto coreJson = json::parse(
             ""
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [], \"material\": \"3C97\", \"shape\": "
@@ -1881,7 +1882,7 @@ SUITE(CoreFunctionalDescription) {
         auto functionalDescription = core.get_functional_description();
     }
 
-    TEST(Web_1) {
+    TEST(Test_Core_Functional_Description_Web_1) {
         // Tests that a missaligned gapping get recalculated
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000123, \"coordinates\": "
@@ -1910,7 +1911,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK((*functionalDescription.get_gapping()[1].get_coordinates())[2] != 0);
     }
 
-    TEST(Web_2) {
+    TEST(Test_Core_Functional_Description_Web_2) {
         // Tests that a distributed but aligned gapping does not get recalculated
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 1.5e-05, \"coordinates\": "
@@ -1950,7 +1951,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK((*functionalDescription.get_gapping()[3].get_coordinates())[2] != 0);
     }
 
-    TEST(Web_3) {
+    TEST(Test_Core_Functional_Description_Web_3) {
         // Check for segmentation fault
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 1.5e-05, \"coordinates\": "
@@ -1968,7 +1969,7 @@ SUITE(CoreFunctionalDescription) {
         auto functionalDescription = core.get_functional_description();
     }
 
-    TEST(Web_4) {
+    TEST(Test_Core_Functional_Description_Web_4) {
         // Check for segmentation fault
         auto coreJson = json::parse(
             "{\"name\": \"default\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000175, \"coordinates\": "
@@ -1990,7 +1991,7 @@ SUITE(CoreFunctionalDescription) {
         auto functionalDescription = core.get_functional_description();
     }
 
-    TEST(Web_5) {
+    TEST(Test_Core_Functional_Description_Web_5) {
         // Check for segmentation fault
         auto coreJson = json::parse(
             "{\"name\": \"dummy\", \"functionalDescription\": {\"gapping\": [{\"length\": 0.001, \"type\": "
@@ -2008,7 +2009,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK_EQUAL(functionalDescription.get_gapping().size(), 5u);
     }
 
-    TEST(Web_6) {
+    TEST(Test_Core_Functional_Description_Web_6) {
         // Check for segmentation fault
         auto coreJson = json::parse(
             "{\"name\": \"My Core test 2\", \"functionalDescription\": {\"gapping\": [{\"area\": 0.000199, "
@@ -2032,7 +2033,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
-    TEST(Web_7) {
+    TEST(Test_Core_Functional_Description_Web_7) {
         // Check for segmentation fault
         auto coreJson = json::parse(R"({"name":"My Core","functionalDescription":{"coating":null,"gapping":[{"area":0.000057,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0085,0.0085],"shape":"round","type":"residual"},{"area":0.000028,"coordinates":[0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"},{"area":0.000028,"coordinates":[-0.01075,0,0],"distanceClosestNormalSurface":0.010097499999999999,"distanceClosestParallelSurface":0.005050000000000001,"length":0.000005,"sectionDimensions":[0.0029,0.0085],"shape":"irregular","type":"residual"}],"material":"3C97","numberStacks":1,"shape":{"aliases":[],"dimensions":{"A":0.0576,"B":0.028399999999999998,"C":0.0155,"D":0.016,"H":0.0159,"G":0},"family":"ur","familySubtype":"2","name":"UR 57/28/16","type":"standard"},"type":"two-piece set"}})");
 
@@ -2042,7 +2043,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
-    TEST(Web_8) {
+    TEST(Test_Core_Functional_Description_Web_8) {
         // Check for segmentation fault
         auto coreJson = json::parse(R"({"functionalDescription": {"type": "two-piece set", "material": "3C97", "shape": "U 80/150/30", "gapping": [{"length": 0.003, "type": "additive", "coordinates": [0, 0, 0 ] }, {"length": 0.003, "type": "additive", "coordinates": [0.0595, 0, 0 ] } ], "numberStacks": 1 }, "name": "My Core", "geometricalDescription": null, "processedDescription": null })");
 
@@ -2052,7 +2053,7 @@ SUITE(CoreFunctionalDescription) {
         CHECK_EQUAL(functionalDescription.get_gapping().size(), 2u);
     }
 
-    TEST(Web_9) {
+    TEST(Test_Core_Functional_Description_Web_9) {
         OpenMagnetics::CoreWrapper core = json::parse(R"({"distributorsInfo":[{"cost":1.17,"country":"USA","distributedArea":"International","email":null,"link":"https://www.digikey.com/en/products/detail/ferroxcube/E18-4-10-R-3F36/7041469","name":"Digi-Key","phone":null,"quantity":7063,"reference":"1779-1009-ND","updatedAt":"05/10/2023"},{"cost":null,"country":"UK","distributedArea":"International","email":null,"link":"https://www.shop.gatewaycando.com/magnetics/cores","name":"Gateway","phone":null,"quantity":5,"reference":"E18/4/10/R-3F36","updatedAt":"05/10/2023"}],"functionalDescription":{"coating":null,"gapping":[{"area":0.00004,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.004,0.01],"shape":"rectangular","type":"residual"},{"area":0.000021,"coordinates":[0.008,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.002001,0.01],"shape":"rectangular","type":"residual"},{"area":0.000021,"coordinates":[-0.008,0,0],"distanceClosestNormalSurface":0.0019975,"distanceClosestParallelSurface":0.005,"length":0.000005,"sectionDimensions":[0.002001,0.01],"shape":"rectangular","type":"residual"}],"material":{"bhCycle":null,"coerciveForce":[{"magneticField":32,"magneticFluxDensity":0,"temperature":100},{"magneticField":37,"magneticFluxDensity":0,"temperature":25}],"curieTemperature":230,"density":4750,"family":"3F","heatCapacity":{"excludeMaximum":null,"excludeMinimum":null,"maximum":800,"minimum":700,"nominal":null},"heatConductivity":{"excludeMaximum":null,"excludeMinimum":null,"maximum":5,"minimum":3.5,"nominal":null},"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Ferroxcube","reference":null,"status":null},"material":"ferrite","name":"3F36","permeability":{"amplitude":null,"initial":[{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-40,"tolerance":null,"value":1577},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-30,"tolerance":null,"value":1590},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-20,"tolerance":null,"value":1611},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":-10,"tolerance":null,"value":1633},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":0,"tolerance":null,"value":1657},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":10,"tolerance":null,"value":1683},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":20,"tolerance":null,"value":1710},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":30,"tolerance":null,"value":1767},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":40,"tolerance":null,"value":1792},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":50,"tolerance":null,"value":1818},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":60,"tolerance":null,"value":1842},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":70,"tolerance":null,"value":1780},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":80,"tolerance":null,"value":1794},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":90,"tolerance":null,"value":1807},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":100,"tolerance":null,"value":1818},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":110,"tolerance":null,"value":1893},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":120,"tolerance":null,"value":1897},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":130,"tolerance":null,"value":1901},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":140,"tolerance":null,"value":1907},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":150,"tolerance":null,"value":1848},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":160,"tolerance":null,"value":1855},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":170,"tolerance":null,"value":1865},{"frequency":10000,"magneticFieldDcBias":null,"magneticFluxDensityPeak":null,"modifiers":null,"temperature":180,"tolerance":null,"value":1878}]},"remanence":[{"magneticField":0,"magneticFluxDensity":0.105,"temperature":100},{"magneticField":0,"magneticFluxDensity":0.125,"temperature":25}],"resistivity":[{"temperature":25,"value":12}],"saturation":[{"magneticField":1200,"magneticFluxDensity":0.42,"temperature":100},{"magneticField":1200,"magneticFluxDensity":0.52,"temperature":25}],"type":"commercial","volumetricLosses":{"default":[{"a":null,"b":null,"c":null,"coefficients":{"excessLossesCoefficient":1.82280296e-20,"resistivityFrequencyCoefficient":4.25672064e-28,"resistivityMagneticFluxDensityCoefficient":14.7587264,"resistivityOffset":6.465016450000001e-17,"resistivityTemperatureCoefficient":5.84938089e-16},"d":null,"method":"roshen","ranges":null,"referenceVolumetricLosses":null},{"a":null,"b":null,"c":null,"coefficients":null,"d":null,"method":"steinmetz","ranges":[{"alpha":1.43902,"beta":3.26718,"ct0":1.232717265,"ct1":0.010783518,"ct2":0.00008394600000000001,"k":6.83,"maximumFrequency":499999,"minimumFrequency":100000},{"alpha":2.19515,"beta":2.71986,"ct0":1.28161335,"ct1":0.011719438,"ct2":0.0000892639,"k":0.00011249900000000001,"maximumFrequency":800000,"minimumFrequency":500000},{"alpha":2.61053,"beta":2.49772,"ct0":1.010843873,"ct1":0.006141983,"ct2":0.0000611871,"k":2.23928e-7,"maximumFrequency":1200000,"minimumFrequency":800000}],"referenceVolumetricLosses":null}]}},"numberStacks":1,"shape":{"aliases":["ELP 18/4/10","E 18/4/10/R","E18/4","E18/8"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.01835,"minimum":0.017650000000000002,"nominal":null},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0041,"minimum":0.0039000000000000003,"nominal":null},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0102,"minimum":0.0098,"nominal":null},"D":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0021000000000000003,"minimum":0.0019,"nominal":null},"E":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0143,"minimum":0.0137,"nominal":null},"F":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.0041,"minimum":0.0039000000000000003,"nominal":null}},"family":"planar e","familySubtype":null,"magneticCircuit":"open","name":"E 18/4/10/R","type":"standard"},"type":"two-piece set"},"geometricalDescription":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Ferroxcube","reference":"E18/4/10/R-3F36","status":"production"},"name":"E 18/4/10/R - 3F36 - Ungapped","processedDescription":{"columns":[{"area":0.00004,"coordinates":[0,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"central","width":0.004},{"area":0.000021,"coordinates":[0.008,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"lateral","width":0.002001},{"area":0.000021,"coordinates":[-0.008,0,0],"depth":0.01,"height":0.004,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"lateral","width":0.002001}],"depth":0.01,"effectiveParameters":{"effectiveArea":0.00004,"effectiveLength":0.024283185307179586,"effectiveVolume":9.713274122871836e-7,"minimumArea":0.00004},"height":0.008,"width":0.018000000000000002,"windingWindows":[{"angle":null,"area":0.00002,"coordinates":[0.002,0],"height":0.004,"radialHeight":null,"width":0.005}]}})");
 
         auto magneticFluxDensity = core.get_magnetic_flux_density_saturation(25.0, false);
@@ -2063,6 +2064,11 @@ SUITE(CoreFunctionalDescription) {
         magneticFluxDensity = core.get_magnetic_flux_density_saturation(125.0, false);
         expectedMagneticFluxDensity = 0.4;
         CHECK_CLOSE(expectedMagneticFluxDensity, magneticFluxDensity, expectedMagneticFluxDensity * maximumError);
+    }
+
+    TEST(Test_Core_Functional_Description_Web_10) {
+        auto coreJson = json::parse(R"({"distributorsInfo":[],"functionalDescription":{"coating":null,"gapping":[{"area":0.00003,"coordinates":[0,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.0057,0.0051],"shape":"rectangular","type":"residual"},{"area":0.000015,"coordinates":[0.008625,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.00285,0.0051],"shape":"rectangular","type":"residual"},{"area":0.000015,"coordinates":[-0.008625,0,0],"distanceClosestNormalSurface":0.007198,"distanceClosestParallelSurface":0.00435,"length":0.000005,"sectionDimensions":[0.00285,0.0051],"shape":"rectangular","type":"residual"}],"material":"3C90","numberStacks":1,"shape":{"aliases":["R 140/103/25"],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.14},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.103},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.025}},"family":"t","familySubtype":null,"magneticCircuit":"closed","name":"T 140/103/25","type":"standard"},"type":"two-piece set"},"geometricalDescription":null,"manufacturerInfo":{"cost":null,"datasheetUrl":"https://ferroxcube.com/upload/media/product/file/Pr_ds/E20_10_5.pdf","family":null,"name":"Ferroxcube","orderCode":null,"reference":"E20/10/5-3C90","status":"production"},"name":"E 20/10/5 - 3C90 - Ungapped","processedDescription":null})");
+        OpenMagnetics::CoreWrapper core(coreJson, true);
     }
 
     TEST(Missing_Core_Hermes) {

@@ -88,40 +88,8 @@ class CoreWrapper : public MagneticCore {
     bool _includeMaterialData = false;
 
   public:
-    CoreWrapper(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true) {
-        _includeMaterialData = includeMaterialData;
-        from_json(j, *this);
-        
-        if (includeProcessedDescription) {
-            process_data();
-            process_gap();
-        }
-
-        if (!get_geometrical_description() && includeGeometricalDescription) {
-            auto geometricalDescription = create_geometrical_description();
-
-            set_geometrical_description(geometricalDescription);
-        }
-    }
-    CoreWrapper(const MagneticCore core) {
-        set_functional_description(core.get_functional_description());
-
-        if (core.get_geometrical_description()) {
-            set_geometrical_description(core.get_geometrical_description());
-        }
-        if (core.get_processed_description()) {
-            set_processed_description(core.get_processed_description());
-        }
-        if (core.get_distributors_info()) {
-            set_distributors_info(core.get_distributors_info());
-        }
-        if (core.get_manufacturer_info()) {
-            set_manufacturer_info(core.get_manufacturer_info());
-        }
-        if (core.get_name()) {
-            set_name(core.get_name());
-        }
-    }
+    CoreWrapper(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
+    CoreWrapper(const MagneticCore core);
     CoreWrapper() = default;
     virtual ~CoreWrapper() = default;
 

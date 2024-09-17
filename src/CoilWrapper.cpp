@@ -1809,7 +1809,7 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
     double spaceForSections = 0;
     auto windingOrientation = get_winding_orientation();
 
-    if (_windingOrientation == WindingOrientation::OVERLAPPING) {
+    if (windingOrientation == WindingOrientation::OVERLAPPING) {
         spaceForSections = windingWindowRadialHeight;
     }
     else {
