@@ -30,7 +30,7 @@ class Painter{
         std::map<std::string, std::string> _postProcessingChanges;
         std::map<std::string, std::string> _postProcessingColors;
         std::vector<std::string> _postProcessingDefs;
-        uint32_t _currentMapIndex = 1;
+        uint32_t _currentMapIndex = 0x000001;
 
         // PainterModes _mode;
         // bool _logarithmicScale = false;
@@ -53,9 +53,12 @@ class Painter{
         };
         virtual ~Painter() = default;
 
+    void increment_current_map_index();
+
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
     ComplexField calculate_magnetic_field_additional_coordinates(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex);
     void paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1, std::optional<ComplexField> inputField = std::nullopt);
+
 
     std::vector<double> get_image_size(MagneticWrapper magnetic);
     void set_image_size(WireWrapper wire);
@@ -98,5 +101,6 @@ class Painter{
     void paint_waveform(Waveform waveform);
     void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt);
 
+    void paint_background(MagneticWrapper magnetic);
 };
 } // namespace OpenMagnetics
