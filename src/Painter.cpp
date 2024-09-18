@@ -48,6 +48,32 @@ std::string replace_key(std::string key, std::string line, std::string replaceme
     return newLine;
 }
 
+void Painter::increment_current_map_index() {
+    if (_currentMapIndex < 0x000050) {
+        _currentMapIndex++;
+    }
+    if (_currentMapIndex == 0x000050) {
+        _currentMapIndex = 0x000100;
+    }
+
+    if (_currentMapIndex > 0x000050 && _currentMapIndex < 0x005000) {
+        _currentMapIndex += 0x000100;
+    }
+    if (_currentMapIndex == 0x005000) {
+        _currentMapIndex = 0x010000;
+    }
+
+    if (_currentMapIndex > 0x005000 && _currentMapIndex < 0x500000) {
+        _currentMapIndex += 0x010000;
+    }
+    if (_currentMapIndex == 0x500000) {
+        _currentMapIndex = 0xFEFFFF;
+    }
+    if (_currentMapIndex > 0x500000 && _currentMapIndex > 0xBFFFFF) {
+        _currentMapIndex -= 0x010000;
+    }
+
+}
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
@@ -370,6 +396,7 @@ void Painter::export_svg() {
 
             }
         }
+
         for (auto [key, color] : _postProcessingColors){
             if (currentLine.contains(key)) {
                 lines[lineIndex] = replace_key(key, currentLine, _postProcessingColors[key]);
@@ -501,7 +528,7 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
             _extraDimension = 1;
             showingCoreWidth = processedDescription.get_width() / 2;
             if (_addProportionForColorBar) {
-                double proportionForColorBar = 0.4;
+                double proportionForColorBar = 0.45;
                 showingCoreWidth *= (1 + proportionForColorBar);
             }
             _offsetForColorBar = (showingCoreWidth - processedDescription.get_width() / 2);
@@ -569,7 +596,7 @@ void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
 
     auto currentMapIndex = uint_to_hex(_currentMapIndex);
     auto key = key_to_rgb_color(_currentMapIndex);
-    _currentMapIndex++;
+    increment_current_map_index();
 
     matplot::ellipse(_offsetForColorBar -circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
     _postProcessingChanges[key] = R"(stroke-linecap="round")";
@@ -910,7 +937,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                     if (margins[0] > 0) {
                         auto currentMapIndex = uint_to_hex(_currentMapIndex);
                         auto key = key_to_rgb_color(_currentMapIndex);
-                        _currentMapIndex++;
+                        increment_current_map_index();
                         double strokeWidth = sections[i].get_dimensions()[0];
                         double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
                         double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
@@ -936,7 +963,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
 
                         auto currentMapIndex = uint_to_hex(_currentMapIndex);
                         auto key = key_to_rgb_color(_currentMapIndex);
-                        _currentMapIndex++;
+                        increment_current_map_index();
 
                         double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
                         double angleProportion = angle / 360;
@@ -960,7 +987,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
 
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
                     auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
+                    increment_current_map_index();
 
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     double angleProportion = angle / 360;
@@ -981,7 +1008,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
 
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
                     auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
+                    increment_current_map_index();
 
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     double angleProportion = angle / 360;
@@ -1066,7 +1093,7 @@ void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
 
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
             auto key = key_to_rgb_color(_currentMapIndex);
-            _currentMapIndex++;
+            increment_current_map_index();
 
             double angleProportion = sections[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
@@ -1156,7 +1183,7 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
 
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
             auto key = key_to_rgb_color(_currentMapIndex);
-            _currentMapIndex++;
+            increment_current_map_index();
 
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
@@ -1297,7 +1324,7 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
     {
         auto currentMapIndex = uint_to_hex(_currentMapIndex);
         auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
+        increment_current_map_index();
         _postProcessingColors[key] = key_to_rgb_color(coatingColor);
         matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
     }
@@ -1309,7 +1336,7 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
         }
         auto currentMapIndex = uint_to_hex(_currentMapIndex);
         auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
+        increment_current_map_index();
         _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
     }
@@ -1403,7 +1430,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     {
         auto currentMapIndex = uint_to_hex(_currentMapIndex);
         auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
+        increment_current_map_index();
         _postProcessingColors[key] = key_to_rgb_color(coatingColor);
         matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
     }
@@ -1411,7 +1438,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
     if (simpleMode) {
         auto currentMapIndex = uint_to_hex(_currentMapIndex);
         auto key = key_to_rgb_color(_currentMapIndex);
-        _currentMapIndex++;
+        increment_current_map_index();
         matplot::ellipse(_offsetForColorBar + xCoordinate - conductingDiameter / 2, yCoordinate - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
         _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
     }
@@ -1455,7 +1482,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                 else {
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
                     auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
+                    increment_current_map_index();
                     _postProcessingColors[key] = key_to_rgb_color(settings->get_painter_color_copper());
                     matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
 
@@ -1479,7 +1506,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
                 else {
                     auto currentMapIndex = uint_to_hex(_currentMapIndex);
                     auto key = key_to_rgb_color(_currentMapIndex);
-                    _currentMapIndex++;
+                    increment_current_map_index();
                     matplot::ellipse(_offsetForColorBar + xCoordinate + internalXCoordinate - strandOuterDiameter / 2, yCoordinate + internalYCoordinate - strandOuterDiameter / 2, strandOuterDiameter, strandOuterDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
                     _postProcessingColors[key] = (settings->get_painter_color_copper());
                 }
@@ -1522,7 +1549,7 @@ std::string Painter::paint_rectangle(std::vector<double> cornerData, bool fill, 
 
     auto currentMapIndex = uint_to_hex(_currentMapIndex);
     auto key = key_to_rgb_color(_currentMapIndex);
-    _currentMapIndex++;
+    increment_current_map_index();
 
     std::vector<double> x, y;
     for (auto& point : turnPoints) {
@@ -1705,7 +1732,7 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
         {
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
             auto key = key_to_rgb_color(_currentMapIndex);
-            _currentMapIndex++;
+            increment_current_map_index();
 
             matplot::ellipse(_offsetForColorBar + 0 - conductingDiameter / 2, 0  - conductingDiameter / 2, conductingDiameter, conductingDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
             _postProcessingColors[key] = "url(#currentDensity)";
@@ -1920,7 +1947,7 @@ void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
 
             auto currentMapIndex = uint_to_hex(_currentMapIndex);
             auto key = key_to_rgb_color(_currentMapIndex);
-            _currentMapIndex++;
+            increment_current_map_index();
 
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
