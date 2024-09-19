@@ -54,6 +54,7 @@ class Painter{
         virtual ~Painter() = default;
 
     void increment_current_map_index();
+    // std::string get_current_post_processing_index(std::optional<std::string> changes = std::nullopt, std::optional<std::string> colors = std::nullopt);
 
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex = 1);
     ComplexField calculate_magnetic_field_additional_coordinates(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex);
