@@ -49,31 +49,75 @@ std::string replace_key(std::string key, std::string line, std::string replaceme
 }
 
 void Painter::increment_current_map_index() {
-    if (_currentMapIndex < 0x000050) {
-        _currentMapIndex++;
-    }
-    if (_currentMapIndex == 0x000050) {
-        _currentMapIndex = 0x000100;
-    }
+    _currentMapIndex++;
 
-    if (_currentMapIndex > 0x000050 && _currentMapIndex < 0x005000) {
-        _currentMapIndex += 0x000100;
-    }
-    if (_currentMapIndex == 0x005000) {
-        _currentMapIndex = 0x010000;
-    }
-
-    if (_currentMapIndex > 0x005000 && _currentMapIndex < 0x500000) {
+    if (_currentMapIndex % 0x002000 == 0) {
         _currentMapIndex += 0x010000;
+        _currentMapIndex &= 0xFFFF0000;
     }
-    if (_currentMapIndex == 0x500000) {
-        _currentMapIndex = 0xFEFFFF;
+    else if (_currentMapIndex % 0x002000 == 0) {
+        _currentMapIndex += 0x010000;
+        _currentMapIndex &= 0xFFFF0000;
     }
-    if (_currentMapIndex > 0x500000 && _currentMapIndex > 0xBFFFFF) {
-        _currentMapIndex -= 0x010000;
+    else if (_currentMapIndex % 0x000020 == 0) {
+        _currentMapIndex += 0x000100;
+        _currentMapIndex &= 0xFFFFFF00;
     }
 
 }
+
+// std::string Painter::get_current_post_processing_index(std::optional<std::string> changes, std::optional<std::string> colors) {
+//     std::string currentKey;
+//     bool foundChanges = false;
+//     bool foundKey = false;
+//     if (changes) {
+//         for (auto [key, value] : _postProcessingChanges) {
+//             if (value == changes.value()) {
+//                 currentKey = key;
+//                 foundChanges = true;
+//                 break;
+//             }
+//         }
+//     }
+
+//     if (colors) {
+//         if (foundChanges) {
+//             bool foundColors = false;
+//             if (_postProcessingColors.contains(currentKey)) {
+//                 if (_postProcessingColors[currentKey] == colors.value()) {
+//                     foundKey = true;
+//                 }
+//             }
+//         }
+//         else {
+//             for (auto [key, value] : _postProcessingColors) {
+//                 if (value == colors.value()) {
+//                     currentKey = key;
+//                     foundKey = true;
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+//     else {
+//         foundKey = foundChanges;
+//     }
+
+//     if (foundKey) {
+//         return currentKey;
+//     }
+//     else {
+//         auto currentMapIndex = uint_to_hex(_currentMapIndex);
+//         if (changes) {
+//             _postProcessingChanges[currentMapIndex] = changes.value();
+//         }
+//         if (colors) {
+//             _postProcessingColors[currentMapIndex] = colors.value();
+//         }
+//         return currentMapIndex;
+//     }
+// }
+
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
