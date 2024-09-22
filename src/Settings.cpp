@@ -58,6 +58,7 @@ namespace OpenMagnetics {
         _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x3b3b3b";
         _painterColorLines = "0x010000";
+        _painterColorText = "0x000000";
         _painterColorCurrentDensity = "0x0892D0";
         _painterCciCoordinatesPath = std::string{selfFilePath}.substr(0, std::string{selfFilePath}.rfind("/")).append("/../cci_coords/coordinates/");
 
@@ -315,6 +316,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_lines(std::string value) {
         _painterColorLines = value;
+    }
+
+    std::string Settings::get_painter_color_text() const {
+        return _painterColorText;
+    }
+    void Settings::set_painter_color_text(std::string value) {
+        _painterColorText = value;
     }
 
     std::string Settings::get_painter_cci_coordinates_path() const {
