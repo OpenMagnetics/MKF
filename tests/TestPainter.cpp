@@ -837,6 +837,61 @@ SUITE(FieldPainter) {
         CHECK(std::filesystem::exists(outFile));
         settings->reset();
     }
+
+    TEST(Test_Painter_Text_Color) {
+        std::vector<int64_t> numberTurns = {10};
+        std::vector<int64_t> numberParallels = {1};
+        // std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        std::vector<double> turnsRatios = {};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        double voltagePeakToPeak = 2000;
+        std::string coreShape = "PQ 26/25";
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        // auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Foil 0.15");
+        OpenMagnetics::DimensionWithTolerance dimensionWithToleranceHeight;
+        dimensionWithToleranceHeight.set_nominal(0.010);
+        wire.set_conducting_height(dimensionWithToleranceHeight);
+        OpenMagnetics::DimensionWithTolerance dimensionWithToleranceWidth;
+        dimensionWithToleranceWidth.set_nominal(0.2e-3);
+        wire.set_outer_width(dimensionWithToleranceWidth);
+        wire.set_outer_height(dimensionWithToleranceHeight);
+        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(125000, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        coil.delimit_and_compact();
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Text_Color.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, true);
+        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+        settings->set_painter_logarithmic_scale(false);
+        settings->set_painter_include_fringing(false);
+        settings->set_painter_maximum_value_colorbar(std::nullopt);
+        settings->set_painter_minimum_value_colorbar(std::nullopt);
+        settings->set_painter_color_text("0xFF0000");
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
 }
 
 

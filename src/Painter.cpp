@@ -51,7 +51,7 @@ std::string replace_key(std::string key, std::string line, std::string replaceme
 void Painter::increment_current_map_index() {
     _currentMapIndex++;
 
-    if (_currentMapIndex % 0x002000 == 0) {
+    if (_currentMapIndex % 0x200000 == 0) {
         _currentMapIndex += 0x010000;
         _currentMapIndex &= 0xFFFF0000;
     }
@@ -63,7 +63,6 @@ void Painter::increment_current_map_index() {
         _currentMapIndex += 0x000100;
         _currentMapIndex &= 0xFFFFFF00;
     }
-
 }
 
 // std::string Painter::get_current_post_processing_index(std::optional<std::string> changes, std::optional<std::string> colors) {
@@ -379,7 +378,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
             break;
         }
     }
-    auto cb = matplot::colorbar().tick_values({tickValues}).ticklabels({tickLabels}).limits(std::array<double, 2>{minimumModule, maximumModule * 0.99});
+    auto cb = matplot::colorbar().color(matplot::to_array(settings->get_painter_color_text())).tick_values({tickValues}).ticklabels({tickLabels}).limits(std::array<double, 2>{minimumModule, maximumModule * 0.99});
     matplot::xticks({});
     matplot::yticks({});
 }
