@@ -2554,6 +2554,15 @@ bool CoreWrapper::is_gapping_missaligned() {
     return false;
 }
 
+bool CoreWrapper::is_gap_processed() {
+    for (auto& gap : get_gapping()) {
+        if (!gap.get_coordinates()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool CoreWrapper::process_gap() {
     std::vector<CoreGap> newGapping;
     auto gapping = get_functional_description().get_gapping();
