@@ -467,8 +467,22 @@ namespace OpenMagnetics {
             SignalDescriptor maximumCurrent;
             double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
             for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_inputs().get_operating_points().size(); ++operatingPointIndex) {
+                if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
+                    throw std::runtime_error("Current is missing");
+                }
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
                     throw std::runtime_error("Current is not processed");
+                }
+                if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
+                    auto current = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
+                    if (current.get_waveform()) {
+                        auto processed = InputsWrapper::calculate_processed_data(current.get_waveform().value());
+                        current.set_processed(processed);
+                        mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+                    }
+                    else {
+                        throw std::runtime_error("Current is not processed");
+                    }
                 }
                 double effectiveFrequency = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();
                 double rms = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value();
@@ -520,6 +534,7 @@ namespace OpenMagnetics {
                 wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
             }
         }
+
         mas.get_mutable_magnetic().set_coil(coil);
 
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {

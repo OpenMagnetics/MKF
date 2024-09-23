@@ -389,17 +389,24 @@ bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<siz
             set_turns_description(std::nullopt);
 
             if (_inputs) {
-                calculate_insulation();
+                if (_inputs->get_design_requirements().get_insulation()) {
+                    calculate_insulation();
+                }
+                else {
+                    calculate_mechanical_insulation();
+                }
             }
             else {
                 calculate_mechanical_insulation();
             }
-            wind_by_sections(proportionPerWinding, pattern, repetitions);
+            auto result = wind_by_sections(proportionPerWinding, pattern, repetitions);
             wind_by_layers();
 
             if (!get_layers_description()) {
                 return false;
             }
+
+            auto sections = get_sections_description().value();
 
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
                 wind_by_turns();
@@ -1512,9 +1519,8 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
     }
 
     auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
+
     auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
-
-
 
     double numberWindings = get_functional_description().size();
     auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
@@ -1525,6 +1531,7 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
             numberSectionsPerWinding[windingIndex]++;
         }
     }
+
     auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
    
     std::vector<std::vector<double>> remainingParallelsProportion;
@@ -4384,6 +4391,7 @@ void CoilWrapper::try_rewind() {
         windingWindowRestrictiveDimension = windingWindowDimensions[1];
     }
 
+
     for (auto& section : sections) {
         if (section.get_type() == ElectricalType::INSULATION) {
             if (sectionOrientation == WindingOrientation::OVERLAPPING) {
@@ -4393,7 +4401,9 @@ void CoilWrapper::try_rewind() {
                 windingWindowRestrictiveDimension -= section.get_dimensions()[1];
             }
         }
+    }
 
+    for (auto& section : sections) {
         double sectionRestrictiveDimension;
         double layersRestrictiveDimension = 0;
         double sectionFillingFactor;
@@ -4490,10 +4500,40 @@ void CoilWrapper::try_rewind() {
                 if (winding.get_winding() == get_functional_description()[windingIndex].get_name()) {
                     if (sectionOrientation == WindingOrientation::OVERLAPPING) {
                         currentSpace += sections[sectionIndex].get_dimensions()[0];
+
+                        // We need to add half the insulation space after it, in case there is
+                        if (sectionIndex < sections.size() - 1) {
+                            if (sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
+                                // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
+                                if (sectionIndex == 0) {
+                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0] / 2;
+                                }
+                                else if (sectionIndex == sections.size() - 2) {
+                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0] * 3 / 2;
+                                }
+                                else {
+                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[0];
+                                }
+                            }
+                        }
                     }
                     else {
                         currentSpace += sections[sectionIndex].get_dimensions()[1];
+
+                        // We need to add half the insulation space after it, in case there is
+                        if (sectionIndex < sections.size() - 1) {
+                            if (sections[sectionIndex + 1].get_type() != ElectricalType::INSULATION) {
+                                // throw std::runtime_error("Consecutive layer to CONDUCTION must always be INSULATION");
+                                if (sectionIndex == 0 || sectionIndex == sections.size() - 2) {
+                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[1] / 2;
+                                }
+                                else {
+                                    currentSpace += sections[sectionIndex + 1].get_dimensions()[1];
+                                }
+                            }
+                        }
                     }
+
                     extraSpaceNeededThisWinding += extraSpaceNeededPerSection[sectionIndex];
                     continue;
                 }
@@ -4506,6 +4546,7 @@ void CoilWrapper::try_rewind() {
         double extraSpaceGottenByThisWinding = windingWindowRemainingRestrictiveDimensionAccordingToSections * extraSpaceNeededThisWinding / totalExtraSpaceNeeded;
         double newSpaceGottenByThisWinding = currentSpace + extraSpaceGottenByThisWinding;
         double newProportionGottenByThisWinding = newSpaceGottenByThisWinding / windingWindowRestrictiveDimension;
+
         if (extraSpaceGottenByThisWinding < 0 || std::isnan(extraSpaceGottenByThisWinding)) {
             throw std::runtime_error("extraSpaceGottenByThisWinding cannot be negative or nan: " + std::to_string(extraSpaceGottenByThisWinding));
         }
@@ -4519,13 +4560,10 @@ void CoilWrapper::try_rewind() {
         newProportions.push_back(newProportionGottenByThisWinding);
     }
 
-    for (auto newProportion : newProportions) {
-
-    }
-    for (auto newProportion : _currentPattern) {
-
-    }
     wind_by_sections(newProportions, _currentPattern, _currentRepetitions);
+
+
+
     wind_by_layers();
 
     if (!get_layers_description()) {
