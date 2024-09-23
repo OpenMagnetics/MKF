@@ -203,6 +203,10 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     CoilMesher coilMesher; 
     std::vector<Field> inducingFields;
 
+    if (!magnetic.get_mutable_core().is_gap_processed()) {
+        magnetic.get_mutable_core().process_gap();
+    }
+
     std::vector<int8_t> currentDirectionPerWinding;
     if (!customCurrentDirectionPerWinding) {
         currentDirectionPerWinding.push_back(1);
@@ -279,6 +283,9 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
                     
                     for (auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
+                        if (gap.get_coordinates().value()[0] < 0) {
+                            continue;
+                        }
                         auto fieldPoint = _fringingEffectModel->get_equivalent_inducing_point_for_gap(gap, magneticFieldStrengthGap);
                         inducingFields[harmonicIndex].get_mutable_data().push_back(fieldPoint);
                     }

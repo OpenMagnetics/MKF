@@ -102,6 +102,7 @@ class CoreWrapper : public MagneticCore {
     std::vector<CoreGap> find_gaps_by_column(ColumnElement column);
     void scale_to_stacks(int64_t numberStacks);
     bool is_gapping_missaligned();
+    bool is_gap_processed();
     bool process_gap();
     bool distribute_and_process_gap();
     void process_data();
