@@ -38,7 +38,6 @@ class CoilWrapper : public Coil {
         std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
         std::map<std::string, WindingOrientation> _layersOrientationPerSection;
         std::string coilLog;
-        bool are_sections_and_layers_fitting();
         InsulationCoordinator _standardCoordinator = InsulationCoordinator();
         std::vector<double> _currentProportionPerWinding;
         std::vector<size_t> _currentPattern;
@@ -64,6 +63,7 @@ class CoilWrapper : public Coil {
         bool wind(size_t repetitions);
         void try_rewind();
         void clear();
+        bool are_sections_and_layers_fitting();
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
