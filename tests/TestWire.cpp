@@ -803,4 +803,14 @@ SUITE(Wire_Equivalents) {
         CHECK_EQUAL(numberConductors, 1);
         CHECK_CLOSE(conductingDimension, 0.0002, max_error * 0.0002);
     }
+
+    TEST(Test_Equivalent_Web_0) {
+        auto oldWire = OpenMagnetics::WireWrapper(json::parse(R"({"coating":{"breakdownVoltage":13500,"grade":null,"material":"FEP","numberLayers":3,"temperatureRating":155,"thickness":null,"thicknessLayers":0.0000762,"type":"insulated"},"conductingArea":null,"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001024},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Nearson","orderCode":null,"reference":null,"status":null},"material":"copper","name":null,"numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.001095},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"18 AWG","strand":null,"type":"round"})"));
+        OpenMagnetics::WireType newWireType;
+        from_json("litz", newWireType);
+        double effectivefrequency = 110746;
+
+        auto newWire = OpenMagnetics::WireWrapper::get_equivalent_wire(oldWire, newWireType, effectivefrequency);
+        CHECK(newWire.get_type() == OpenMagnetics::WireType::LITZ);
+    }
 }

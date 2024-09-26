@@ -4578,6 +4578,11 @@ void CoilWrapper::try_rewind() {
     }
 }
 
+void CoilWrapper::preload_margins(std::vector<std::vector<double>> marginPairs) {
+    for (auto margins : marginPairs) {
+        _marginsPerSection.push_back(margins);
+    }
+}
 
 void CoilWrapper::add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins) {
     if (!get_sections_description()) {

@@ -1629,10 +1629,10 @@ namespace OpenMagnetics {
                         newWire.set_nominal_value_outer_diameter(outerDiameter);
                     }
                     else if (newCoating.get_type() == InsulationWireCoatingType::INSULATED) {
-                        if (newCoating.get_number_layers()) {
+                        if (!newCoating.get_number_layers()) {
                             throw std::runtime_error("Missing number of layer in insulated wire coating");
                         }
-                        if (newCoating.get_thickness_layers()) {
+                        if (!newCoating.get_thickness_layers()) {
                             throw std::runtime_error("Missing layer thickness in insulated wire coating");
                         }
                         double outerDiameter = get_outer_diameter_insulated_litz(strandConductingDiameter, numberConductors, newCoating.get_number_layers().value(), newCoating.get_thickness_layers().value(), 1, standard);

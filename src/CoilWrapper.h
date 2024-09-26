@@ -200,6 +200,7 @@ class CoilWrapper : public Coil {
         static BobbinWrapper resolve_bobbin(CoilWrapper coil);
         BobbinWrapper resolve_bobbin();
 
+        void preload_margins(std::vector<std::vector<double>> marginPairs);
         void add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins);
         static double calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil);
 
