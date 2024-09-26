@@ -585,5 +585,29 @@ void BobbinWrapper::process_data() {
     set_processed_description((*processor).process_data(*this));
 }
 
+bool BobbinWrapper::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t windingWindowIndex) {
+    if (get_winding_window_shape() == WindingWindowShape::RECTANGULAR) {
+        auto windingWindowDimensions = get_winding_window_dimensions();
+        if (isHorizontalOrRadial) {
+            return dimension < windingWindowDimensions[0];
+        }
+        else {
+            return dimension < windingWindowDimensions[1];
+        }
+    }
+    else if (get_winding_window_shape() == WindingWindowShape::ROUND) {
+        auto windingWindowDimensions = get_winding_window_dimensions();
+        if (isHorizontalOrRadial) {
+            return dimension < windingWindowDimensions[0];
+        }
+        else {
+            auto halfPerimeter = std::numbers::pi * windingWindowDimensions[0];
+            return dimension < halfPerimeter;
+        }
+    }
+    else {
+        throw std::runtime_error("Unsupported winding window shape: " + std::string{magic_enum::enum_name(get_winding_window_shape())});
+    }
+}
 
 } // namespace OpenMagnetics
