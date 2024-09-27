@@ -4581,6 +4581,8 @@ void CoilWrapper::try_rewind() {
 void CoilWrapper::preload_margins(std::vector<std::vector<double>> marginPairs) {
     for (auto margins : marginPairs) {
         _marginsPerSection.push_back(margins);
+        // Add an extra one for the insulation layer
+        _marginsPerSection.push_back(margins);
     }
 }
 
