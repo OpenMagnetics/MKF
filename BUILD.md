@@ -14,9 +14,9 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-ge
 
 npm install -g quicktype
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-sudo apt install -y gcc-12 g++-12
-sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 10
-sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 10
+sudo apt install -y gcc-14 g++-14
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 10
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 10
 sudo apt install -y gnuplot
 sudo apt install libopenblas-dev
 

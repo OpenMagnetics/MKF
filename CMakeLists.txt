@@ -61,7 +61,7 @@ include(FetchContent)
 
 FetchContent_Declare(json
     GIT_REPOSITORY https://github.com/nlohmann/json/
-    GIT_TAG  tags/v3.11.2)
+    GIT_TAG  tags/v3.11.3)
 FetchContent_MakeAvailable(json)
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
