@@ -24,6 +24,7 @@ def fit(material, frequency):
     data_path = pathlib.Path(__file__).parent.resolve().joinpath('../../../MAS/data/advanced_core_materials.ndjson')
     all_data = pandas.read_json(data_path, lines=True)
     data = all_data[all_data['name'] == material]['volumetricLosses'].iloc[0]
+    print(material)
     for method in data['default']:
         if isinstance(method, list):
             number_rows = 200
@@ -39,20 +40,27 @@ def fit(material, frequency):
                     if isinstance(frequency, list):
                         data = data[data['frequency'] >= frequency[0]]
                         data = data[data['frequency'] <= frequency[1]]
+                        minimumFrequency = frequency[0]
+                        maximumFrequency = frequency[1]
                     else:
 
                         data_greater = data[data['frequency'] >= frequency]
                         data_lesser = data[data['frequency'] <= frequency]
                         data_greater = data_greater.sort_values('frequency', ascending=True).head(number_rows)
                         data_lesser = data_lesser.sort_values('frequency', ascending=False).head(number_rows)
+                        minimumFrequency = data['frequency'].min()
+                        maximumFrequency = data['frequency'].max()
 
                         data = pandas.concat([data_greater, data_lesser])
 
+                    # print(data)
                     data['magneticFluxDensityPeak'] = data.apply(lambda row: row['magneticFluxDensity']['magneticFluxDensity']['processed']['peak'], axis=1)
                     data = data.drop('magneticFluxDensity', axis=1)
                     data = data.drop('origin', axis=1)
 
                     coefficients = calculate_steinmetz_coefficients(data)
+                    coefficients["minimumFrequency"] = minimumFrequency
+                    coefficients["maximumFrequency"] = maximumFrequency
 
                     # if coefficients['alpha'] < 1:
                     #     number_rows += 100
@@ -72,11 +80,16 @@ def fit(material, frequency):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    coefficients = fit("N49", [1, 300000])
-    print(coefficients)
-    coefficients = fit("N49", [300000, 600000])
-    print(coefficients)
-    coefficients = fit("N49", [600000, 800000])
-    print(coefficients)
-    coefficients = fit("N49", [800000, 1000000])
-    print(coefficients)
+    # coefficients = fit("SMP44", [1, 200000])
+    # print(coefficients)
+    # coefficients = fit("SMP44", [200000, 600000])
+    # print(coefficients)
+
+    print({"method": "steinmetz", "ranges": [fit("SMP44", [1, 200000]), fit("SMP44", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP47", [1, 200000]), fit("SMP47", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP95", [1, 200000]), fit("SMP95", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP96", [1, 200000]), fit("SMP96", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP97", [1, 200000]), fit("SMP97", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP50", [300000, 1000000]), fit("SMP50", [1000000, 5000000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP51", [300000, 1000000]), fit("SMP51", [1000000, 5000000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP53", [300000, 1000000]), fit("SMP53", [1000000, 5000000])]})
