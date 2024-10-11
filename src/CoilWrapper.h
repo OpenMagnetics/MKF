@@ -204,5 +204,6 @@ class CoilWrapper : public Coil {
         void add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins);
         static double calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil);
 
+        void set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers);
 };
 } // namespace OpenMagnetics

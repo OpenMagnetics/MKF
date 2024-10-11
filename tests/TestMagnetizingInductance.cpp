@@ -902,6 +902,45 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }
 
+
+    TEST(Test_Magnetizing_Inductance_Error_Web_1) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
+        OpenMagnetics::CoreWrapper core = json::parse(R"({"name": "650-4637", "functionalDescription": {"type": "two-piece set", "material": "TP4A", "shape": {"aliases": ["E 16/5", "EF 16"], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0167, "minimum": 0.0155, "nominal": null}, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0082, "minimum": 0.0079, "nominal": null}, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0047, "minimum": 0.0043, "nominal": null}, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0061, "minimum": 0.0057, "nominal": null}, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0119, "minimum": 0.0113, "nominal": null}, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0047, "minimum": 0.0044, "nominal": null}}, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 16/8/5", "type": "standard"}, "gapping": [], "numberStacks": 1}, "processedDescription": {"columns": [{"area": 2.1e-05, "coordinates": [0.0, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.00455}, {"area": 1.1e-05, "coordinates": [0.006925, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.002251}, {"area": 1.1e-05, "coordinates": [-0.006925, 0.0, 0.0], "depth": 0.004501, "height": 0.011802, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.002251}], "depth": 0.0045000000000000005, "effectiveParameters": {"effectiveArea": 2.0062091987236854e-05, "effectiveLength": 0.03756497447228765, "effectiveVolume": 7.53631973361239e-07, "minimumArea": 1.935000000000001e-05}, "height": 0.016100000000000003, "width": 0.0161, "windingWindows": [{"angle": null, "area": 4.1595e-05, "coordinates": [0.002275, 0.0], "height": 0.011800000000000001, "radialHeight": null, "sectionsAlignment": null, "sectionsOrientation": null, "shape": null, "width": 0.0035249999999999995}]}})");
+        OpenMagnetics::CoilWrapper coil = json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"name": "PRI", "numberTurns": 192, "numberParallels": 1, "connections": [{"pinName": "2"}, {"pinName": "1"}], "isolationSide": "primary", "wire": "Round 35.0 - Heavy Build"}, {"name": "SEC", "numberTurns": 36, "numberParallels": 1, "connections": [{"pinName": "8"}, {"pinName": "7"}], "isolationSide": "secondary", "wire": "Round 29.0 - Single Build"}, {"name": "AUX", "numberTurns": 20, "numberParallels": 1, "connections": [{"pinName": "4"}, {"pinName": "3"}], "isolationSide": "tertiary", "wire": "Round 35.0 - Heavy Build"}]})");
+        OpenMagnetics::InputsWrapper inputs = json::parse(R"({"designRequirements": {"name": "basicRequirements", "magnetizingInductance": {"nominal": 0.00232}, "turnsRatios": [{"nominal": 0.1875}, {"nominal": 0.10416666666666667}]}, "operatingPoints": []})");
+        json modelsData = json::parse("{}");
+
+        std::map<std::string, std::string> models = modelsData.get<std::map<std::string, std::string>>();
+        OpenMagnetics::GappingType gappingType = magic_enum::enum_cast<OpenMagnetics::GappingType>("GROUND").value();
+        
+        auto reluctanceModelName = OpenMagnetics::Defaults().reluctanceModelDefault;
+        if (models.find("reluctance") != models.end()) {
+            std::string modelNameJsonUpper = models["reluctance"];
+            std::transform(modelNameJsonUpper.begin(), modelNameJsonUpper.end(), modelNameJsonUpper.begin(), ::toupper);
+            reluctanceModelName = magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(modelNameJsonUpper).value();
+        }
+
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceObj(reluctanceModelName);
+        std::vector<OpenMagnetics::CoreGap> gapping = magnetizingInductanceObj.calculate_gapping_from_number_turns_and_inductance(core,
+                                                                                                           coil,
+                                                                                                           &inputs,
+                                                                                                           gappingType,
+                                                                                                           6);
+
+        core.set_processed_description(std::nullopt);
+        core.set_geometrical_description(std::nullopt);
+        core.get_mutable_functional_description().set_gapping(gapping);
+        core.process_data();
+        core.process_gap();
+        auto geometricalDescription = core.create_geometrical_description();
+        core.set_geometrical_description(geometricalDescription);
+
+        json result;
+        to_json(result, core);
+    }
+
     TEST(Test_Inductance_Powder_E_65) {
         settings->reset();
         OpenMagnetics::clear_databases();
