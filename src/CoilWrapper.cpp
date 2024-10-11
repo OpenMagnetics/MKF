@@ -834,6 +834,10 @@ double get_area_used_in_wires(WireWrapper wire, uint64_t physicalTurns) {
     }
 }
 
+void CoilWrapper::set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers) {
+    _insulationLayers = insulationLayers;
+}
+
 bool CoilWrapper::calculate_mechanical_insulation() {
     // Insulation layers just for mechanical reasons, one layer between sections at least
     auto wirePerWinding = get_wires();
