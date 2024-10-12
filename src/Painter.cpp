@@ -764,7 +764,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
+        matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 
     {
@@ -774,7 +774,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
+        matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 
     for (auto& chunk : gapChunks){
@@ -784,7 +784,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
             y.push_back(point[1]);
         }
 
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_ferrite()));
+        matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_ferrite()));
     }
 }
 
@@ -832,7 +832,7 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
         y.push_back(point[1]);
     }
 
-    matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_bobbin()));
+    matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_bobbin()));
 }
 
 void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
@@ -870,7 +870,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                     x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_margin()));
             }
             if (margins[1] > 0) {
                 auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -902,7 +902,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
                     x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_margin()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_margin()));
             }
         }
     }
@@ -973,7 +973,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
                         x.push_back(point[0] + _offsetForColorBar);
                         y.push_back(point[1]);
                     }
-                    matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_spacer()));
+                    matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_spacer()));
 
                 }
                 else {
@@ -1098,10 +1098,10 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
                 y.push_back(point[1]);
             }
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             else {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
         }
     }
@@ -1186,10 +1186,10 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
             y.push_back(point[1]);
         }
         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+            matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
         }
         else {
-            matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+            matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
         }
     }
 
@@ -1369,7 +1369,7 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
         auto key = key_to_rgb_color(_currentMapIndex);
         increment_current_map_index();
         _postProcessingColors[key] = key_to_rgb_color(coatingColor);
-        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).line_width(0.1).color(matplot::to_array(currentMapIndex));
     }
 
     // Paint copper
@@ -1475,7 +1475,7 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         auto key = key_to_rgb_color(_currentMapIndex);
         increment_current_map_index();
         _postProcessingColors[key] = key_to_rgb_color(coatingColor);
-        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).color(matplot::to_array(currentMapIndex));
+        matplot::ellipse(_offsetForColorBar + xCoordinate - outerDiameter / 2, yCoordinate - outerDiameter / 2, outerDiameter, outerDiameter)->fill(true).line_width(0.1).color(matplot::to_array(currentMapIndex));
     }
 
     if (simpleMode) {
@@ -1600,7 +1600,7 @@ std::string Painter::paint_rectangle(std::vector<double> cornerData, bool fill, 
         y.push_back(point[1]);
     }
     if (fill){
-        matplot::fill(x, y)->fill(true).color(matplot::to_array(currentMapIndex));
+        matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(currentMapIndex));
     }
     else {
         matplot::fill(x, y)->fill(false).line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
@@ -1860,7 +1860,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                     x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
 
             if (wire.get_conducting_width() && wire.get_conducting_height()) {
@@ -1875,7 +1875,7 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                     x.push_back(point[0] + _offsetForColorBar);
                     y.push_back(point[1]);
                 }
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             
         }
@@ -1898,10 +1898,10 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
                 y.push_back(point[1]);
             }
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_copper()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
             }
             else {
-                matplot::fill(x, y)->fill(true).color(matplot::to_array(settings->get_painter_color_insulation()));
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
         }
     }
