@@ -160,6 +160,14 @@ CoilWrapper::CoilWrapper(const json& j, size_t interleavingLevel,
     wind();
 }
 
+CoilWrapper::CoilWrapper(const json& j, bool windInConstructor) {
+    from_json(j, *this);
+
+    if (windInConstructor) {
+        wind();
+    }
+}
+
 CoilWrapper::CoilWrapper(const Coil coil) {
     bool hasSectionsData = false;
     bool hasLayersData = false;
@@ -1713,7 +1721,7 @@ bool CoilWrapper::wind_by_rectangular_sections(std::vector<double> proportionPer
 
             auto insulationSection = _insulationSections[windingsMapKey];
 
-            insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(previousWindingIndex) + " section " + std::to_string(sectionIndex));
+            insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(nextWindingIndex) + " section " + std::to_string(sectionIndex));
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth + insulationSection.get_dimensions()[0] / 2,
                                                                       currentSectionCenterHeight,
