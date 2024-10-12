@@ -5751,6 +5751,30 @@ SUITE(CoilLayersDescription) {
 
         OpenMagneticsTesting::check_layers_description(coil);
     }
+
+    TEST(Test_External_Insulation_Layers) {
+
+        std::string insulationLayersString = "{\"(0, 1)\":[{\"coordinates\":[0.0035501599999999997,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_1_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.00709016,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_1_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}],\"(1, 2)\":[{\"coordinates\":[0.004212799999998001,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_3_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.008415439999996001,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_3_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}],\"(2, 0)\":[{\"coordinates\":[0.004423439999998001,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_5_insulation_layer_0\",\"partialWindings\":[],\"type\":\"insulation\"},{\"coordinates\":[0.008836719999996,0],\"dimensions\":[2.032e-05,0.0102],\"layersOrientation\":\"overlapping\",\"margin\":[0,0],\"name\":\"section_5_insulation_layer_1\",\"partialWindings\":[],\"type\":\"insulation\"}]}";
+        auto insulationLayersJson = json::parse(insulationLayersString);
+
+        std::map<std::pair<size_t, size_t>, std::vector<OpenMagnetics::Layer>> insulationLayers;
+
+        for (auto [key, layersJson] : insulationLayersJson.items()) {
+            std::cout << key << std::endl;
+            std::pair<size_t, size_t> windingsMapKey(key[0], key[1]);
+            std::vector<OpenMagnetics::Layer> layers;
+            for (auto layerJson : layersJson) {
+                layers.push_back(OpenMagnetics::Layer(layerJson));
+            }
+            insulationLayers[windingsMapKey] = layers;
+        }
+
+        OpenMagnetics::CoilWrapper coil;
+
+        if (insulationLayers.size() > 0) {
+            coil.set_insulation_layers(insulationLayers);
+        }
+    }
 }
 
 SUITE(CoilTurnsDescription) {
