@@ -54,6 +54,7 @@ class CoilWrapper : public Coil {
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
         CoilWrapper(const Coil coil);
+        CoilWrapper(const json& j, bool windInConstructor);
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
         bool try_wind();
