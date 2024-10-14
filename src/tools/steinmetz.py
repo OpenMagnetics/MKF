@@ -16,7 +16,7 @@ def calculate_steinmetz_coefficients(data):
 
     [log_k, alpha, beta, ct0, ct1, ct2], pcov = curve_fit(steinmetz_fitting_equation, (numpy.log10(data['frequency']), numpy.log10(data['magneticFluxDensityPeak']), data['temperature']), numpy.log10(data['volumetricLosses']), [0.4, 1.5, 2, 0.001, 1e-06, 1e-08])
     k = 10**log_k
-    return {'k': k, 'alpha': alpha, 'beta': beta, 'ct0': ct0, 'ct1': ct1, 'ct2': ct2}
+    return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta), 'ct0': float(ct0), 'ct1': float(ct1), 'ct2': float(ct2)}
 
 
 def fit(material, frequency):
@@ -86,20 +86,21 @@ if __name__ == '__main__':  # pragma: no cover
     # print(coefficients)
 
     # print({"method": "steinmetz", "ranges": [fit("P47", [1, 20000000])]})
-    print({"method": "steinmetz", "ranges": [fit("P45", [1, 20000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("P45", [1, 20000000])]})
     # print({"method": "steinmetz", "ranges": [fit("P491", [1, 20000000])]})
     # print({"method": "steinmetz", "ranges": [fit("P6", [1, 20000000])]})
     # print({"method": "steinmetz", "ranges": [fit("P61", [1, 20000000])]})
     # print({"method": "steinmetz", "ranges": [fit("P62", [1, 20000000])]})
-    print({"method": "steinmetz", "ranges": [fit("P5", [1, 20000000])]})
-    print({"method": "steinmetz", "ranges": [fit("P51", [1, 20000000])]})
-    print({"method": "steinmetz", "ranges": [fit("P52", [1, 20000000])]})
-    print({"method": "steinmetz", "ranges": [fit("JSP95", [1, 20000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("P5", [1, 20000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("P51", [1, 20000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("P52", [1, 20000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("JSP95", [1, 20000000])]})
 
-    # print({"method": "steinmetz", "ranges": [fit("SMP47", [1, 200000]), fit("SMP47", [200000, 600000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP95", [1, 200000]), fit("SMP95", [200000, 600000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP96", [1, 200000]), fit("SMP96", [200000, 600000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP97", [1, 200000]), fit("SMP97", [200000, 600000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP50", [300000, 1000000]), fit("SMP50", [1000000, 5000000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP51", [300000, 1000000]), fit("SMP51", [1000000, 5000000])]})
-    # print({"method": "steinmetz", "ranges": [fit("SMP53", [300000, 1000000]), fit("SMP53", [1000000, 5000000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP44", [1, 200000]), fit("SMP44", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP47", [1, 200000]), fit("SMP47", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP95", [1, 200000]), fit("SMP95", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP96", [1, 200000]), fit("SMP96", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP97", [1, 200000]), fit("SMP97", [200000, 600000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP50", [300000, 1000000]), fit("SMP50", [1000000, 5000000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP51", [300000, 1000000]), fit("SMP51", [1000000, 5000000])]})
+    print({"method": "steinmetz", "ranges": [fit("SMP53", [300000, 1000000]), fit("SMP53", [1000000, 5000000])]})
