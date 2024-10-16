@@ -32,6 +32,8 @@ struct Defaults {
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultSectionsOrientation = WindingOrientation::OVERLAPPING;
     const std::string defaultInsulationMaterial = "ETFE";
+    const std::string defaultLayerInsulationMaterial = "Kapton HN";
+    const double overlappingFactorSurroundingTurns = 0.7;
 };
 } // namespace OpenMagnetics
 

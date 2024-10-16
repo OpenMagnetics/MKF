@@ -721,6 +721,18 @@ SignalDescriptor InputsWrapper::add_offset_to_excitation(SignalDescriptor signal
     return signalDescriptor;
 }
 
+// OperatingPointExcitation InputsWrapper::reflect_waveforms(OperatingPointExcitation excitation, double ratio) {
+//     OperatingPointExcitation reflectedExcitation;
+//     if (excitation.get_current()) {
+//         auto reflectedCurrent = reflect_waveform(excitation.get_current().value(), ratio);
+//         reflectedExcitation.set_current(reflectedCurrent);
+//     }
+//     if (excitation.get_voltage()) {
+//         auto reflectedVoltage = reflect_waveform(excitation.get_voltage().value(), ratio);
+//         reflectedExcitation.set_voltage(reflectedVoltage);
+//     }
+// }
+
 SignalDescriptor InputsWrapper::reflect_waveform(SignalDescriptor primarySignalDescriptor,
                                                          double ratio) {
     SignalDescriptor reflected_waveform;

@@ -13,6 +13,7 @@ struct Constants {
     const double residualGap = 5e-6;
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;
+    const double vacuumPermittivity =  8.8541878128e-12;
 
     const double magneticFluxDensitySaturation = 0.352; // HARDCODED TODO: replace when materials are implemented
 

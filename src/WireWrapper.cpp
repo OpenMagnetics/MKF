@@ -1397,6 +1397,94 @@ namespace OpenMagnetics {
         return cost;
     }
 
+
+    double WireWrapper::get_coating_thickness() {
+        return get_coating_thickness(*this);
+    }
+
+    double WireWrapper::get_coating_dielectric_strength() {
+        return get_coating_dielectric_strength(*this);
+    }
+
+    double WireWrapper::get_coating_thickness(WireWrapper wire) {
+        auto coating = resolve_coating(wire);
+
+        if (coating->get_thickness()) {
+            return resolve_dimensional_values(coating->get_thickness().value());
+        }
+
+        if (coating->get_thickness_layers() && coating->get_number_layers()) {
+            return coating->get_thickness_layers().value() * coating->get_number_layers().value();
+        }
+
+        auto maximumOuterWidth = wire.get_maximum_outer_width();
+        auto maximumOuterHeight = wire.get_maximum_outer_height();
+        auto maximumConductingWidth = wire.get_maximum_conducting_width();
+        auto maximumConductingHeight = wire.get_maximum_conducting_height();
+
+        auto coatingThicknessWidth = (maximumOuterWidth - maximumConductingWidth) / 2;
+        auto coatingThicknessHeight = (maximumOuterHeight - maximumConductingHeight) / 2;
+
+        return std::min(coatingThicknessWidth, coatingThicknessHeight);
+    }
+
+    double WireWrapper::get_coating_dielectric_strength(WireWrapper wire) {
+        auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
+        auto coatingThickness = get_coating_thickness(wire);
+        return coatingInsulationMaterial.get_dielectric_strength_by_thickness(coatingThickness);
+    }
+
+    double WireWrapper::get_coating_dielectric_constant() {
+        return get_coating_dielectric_constant(*this);
+    }
+
+    double WireWrapper::get_coating_dielectric_constant(WireWrapper wire) {
+        auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
+        if (!coatingInsulationMaterial.get_dielectric_constant())
+            throw std::runtime_error("Coating insulation material is missing dielectric constant");
+        return coatingInsulationMaterial.get_dielectric_constant().value();
+    }
+
+    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(){
+        return resolve_coating_insulation_material(*this);
+    }
+
+    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(WireWrapper wire) {
+        auto coating = resolve_coating(wire);
+
+        if (!coating->get_material())
+            throw std::runtime_error("Coating is missing material information");
+
+        auto insulationMaterial = coating->get_material().value();
+        // If the material is a string, we have to load its data from the database
+        if (std::holds_alternative<std::string>(insulationMaterial)) {
+            auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
+
+            return insulationMaterialData;
+        }
+        else {
+            return std::get<InsulationMaterial>(insulationMaterial);
+        }
+    }
+
+    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(WireRound wire) {
+        auto coating = resolve_coating(wire);
+
+        if (!coating->get_material())
+            throw std::runtime_error("Coating is missing material information");
+
+        auto insulationMaterial = coating->get_material().value();
+        // If the material is a string, we have to load its data from the database
+        if (std::holds_alternative<std::string>(insulationMaterial)) {
+            auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
+
+            return insulationMaterialData;
+        }
+        else {
+            return std::get<InsulationMaterial>(insulationMaterial);
+        }
+    }
+
     std::string WireWrapper::encode_coating_label() {
         return encode_coating_label(*this);
     }

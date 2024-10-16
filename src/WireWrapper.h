@@ -1,6 +1,7 @@
 #pragma once
 
 #include "InputsWrapper.h"
+#include "InsulationMaterialWrapper.h"
 #include "Defaults.h"
 #include "json.hpp"
 
@@ -130,6 +131,9 @@ class WireWrapper : public Wire {
         static WireMaterial resolve_material(WireWrapper wire);
         static WireMaterial resolve_material(WireRound wire);
         WireMaterial resolve_material();
+        static InsulationMaterialWrapper resolve_coating_insulation_material(WireWrapper wire);
+        static InsulationMaterialWrapper resolve_coating_insulation_material(WireRound wire);
+        InsulationMaterialWrapper resolve_coating_insulation_material();
 
         // Thought for enamelled round wires
         static double get_filling_factor_round(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
@@ -208,9 +212,16 @@ class WireWrapper : public Wire {
         double get_maximum_conducting_height();
         double get_minimum_conducting_dimension();
 
+
+        double get_coating_thickness();
+        double get_coating_dielectric_strength();
+        static double get_coating_thickness(WireWrapper wire);
+        static double get_coating_dielectric_strength(WireWrapper wire);
         std::string encode_coating_label();
         static std::string encode_coating_label(WireWrapper wire);
         static std::optional<InsulationWireCoating> decode_coating_label(std::string label);
+        double get_coating_dielectric_constant();
+        static double get_coating_dielectric_constant(WireWrapper wire);
 
         void cut_foil_wire_to_section(Section section);
         void cut_planar_wire_to_section(Section section);
