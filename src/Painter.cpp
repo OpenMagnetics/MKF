@@ -9,6 +9,7 @@
 #include <cfloat>
 #include <chrono>
 #include <thread>
+#include <filesystem>
 
 namespace OpenMagnetics {
 
@@ -413,6 +414,8 @@ void Painter::export_svg() {
     while (getline (ifTempFile, line)) {
         lines.push_back(line);
     }
+
+    std::filesystem::remove(std::filesystem::path(tempFile));
 
     for (size_t lineIndex = lines.size() - 1; lineIndex > 0 ; --lineIndex) {
         std::string currentLine = lines[lineIndex];

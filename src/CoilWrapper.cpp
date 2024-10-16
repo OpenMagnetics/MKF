@@ -407,7 +407,7 @@ bool CoilWrapper::wind(std::vector<double> proportionPerWinding, std::vector<siz
             else {
                 calculate_mechanical_insulation();
             }
-            auto result = wind_by_sections(proportionPerWinding, pattern, repetitions);
+            wind_by_sections(proportionPerWinding, pattern, repetitions);
             wind_by_layers();
 
             if (!get_layers_description()) {
@@ -522,6 +522,18 @@ std::vector<Turn> CoilWrapper::get_turns_by_layer(std::string layerName) {
     return foundTurns;
 }
 
+std::vector<Turn> CoilWrapper::get_turns_by_winding(std::string windingName) {
+    auto turns = get_turns_description().value();
+    std::vector<Turn> foundTurns;
+    for (auto & turn : turns) {
+        auto turnSectionName = turn.get_winding();
+        if (turnSectionName == windingName) {
+            foundTurns.push_back(turn);
+        }
+    }
+    return foundTurns;
+}
+
 std::vector<Turn> CoilWrapper::get_turns_by_section(std::string sectionName) {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
@@ -529,6 +541,69 @@ std::vector<Turn> CoilWrapper::get_turns_by_section(std::string sectionName) {
         auto turnSectionName = turn.get_section().value();
         if (turnSectionName == sectionName) {
             foundTurns.push_back(turn);
+        }
+    }
+    return foundTurns;
+}
+
+std::vector<std::string> CoilWrapper::get_layers_names_by_winding(std::string windingName) {
+    auto layers = get_layers_description().value();
+    std::vector<std::string> foundLayers;
+    for (auto & layer : layers) {
+        auto layerWindings = layer.get_partial_windings();
+        for (auto & winding : layerWindings) {
+            if (winding.get_winding() == windingName) {
+                foundLayers.push_back(layer.get_name());
+                break;
+            }
+        }
+    }
+    return foundLayers;
+}
+
+std::vector<std::string> CoilWrapper::get_layers_names_by_section(std::string sectionName) {
+    auto layers = get_layers_description().value();
+    std::vector<std::string> foundLayers;
+    for (auto & layer : layers) {
+        auto layerSectionName = layer.get_section().value();
+        if (layerSectionName == sectionName) {
+            foundLayers.push_back(layer.get_name());
+        }
+    }
+    return foundLayers;
+}
+
+std::vector<std::string> CoilWrapper::get_turns_names_by_layer(std::string layerName) {
+    auto turns = get_turns_description().value();
+    std::vector<std::string> foundTurns;
+    for (auto & turn : turns) {
+        auto turnLayerName = turn.get_layer().value();
+        if (turnLayerName == layerName) {
+            foundTurns.push_back(turn.get_name());
+        }
+    }
+    return foundTurns;
+}
+
+std::vector<std::string> CoilWrapper::get_turns_names_by_winding(std::string windingName) {
+    auto turns = get_turns_description().value();
+    std::vector<std::string> foundTurns;
+    for (auto & turn : turns) {
+        auto turnWindingName = turn.get_winding();
+        if (turnWindingName == windingName) {
+            foundTurns.push_back(turn.get_name());
+        }
+    }
+    return foundTurns;
+}
+
+std::vector<std::string> CoilWrapper::get_turns_names_by_section(std::string sectionName) {
+    auto turns = get_turns_description().value();
+    std::vector<std::string> foundTurns;
+    for (auto & turn : turns) {
+        auto turnSectionName = turn.get_section().value();
+        if (turnSectionName == sectionName) {
+            foundTurns.push_back(turn.get_name());
         }
     }
     return foundTurns;
@@ -567,6 +642,20 @@ const Section CoilWrapper::get_section_by_name(std::string name) const {
         }
     }
     throw std::runtime_error("Not found section with name:" + name);
+}
+
+const Layer CoilWrapper::get_layer_by_name(std::string name) const {
+    if (!get_layers_description()) {
+        throw std::runtime_error("Coil is missing layers description");
+    }
+
+    auto layers = get_layers_description().value();
+    for (auto & layer : layers) {
+        if (layer.get_name() == name) {
+            return layer;
+        }
+    }
+    throw std::runtime_error("Not found layer with name:" + name);
 }
 
 const Turn CoilWrapper::get_turn_by_name(std::string name) const {
@@ -1403,7 +1492,6 @@ void CoilWrapper::equalize_margins(std::vector<std::pair<ElectricalType, std::pa
     auto bobbin = resolve_bobbin();
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
     for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
         if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
@@ -2325,6 +2413,7 @@ bool CoilWrapper::wind_by_rectangular_layers() {
 
             for (size_t layerIndex = 0; layerIndex < insulationLayers.size(); ++layerIndex) {
                 auto insulationLayer = insulationLayers[layerIndex];
+                insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
                 insulationLayer.set_section(sections[sectionIndex].get_name());
                 insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
@@ -2363,7 +2452,7 @@ bool CoilWrapper::wind_by_round_layers() {
         if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
             uint64_t maximumNumberLayersFittingInSection;
             uint64_t maximumNumberPhysicalTurnsPerLayer;
-            uint64_t minimumNumberLayerNeeded;
+            uint64_t minimumNumberLayerNeeded = 0;
             uint64_t numberLayers;
             std::vector<int64_t> layerPhysicalTurns;
             uint64_t physicalTurnsInSection = 0;
@@ -2576,6 +2665,7 @@ bool CoilWrapper::wind_by_round_layers() {
             for (size_t layerIndex = 0; layerIndex < insulationLayers.size(); ++layerIndex) {
                 auto insulationLayer = insulationLayers[layerIndex];
                 insulationLayer.set_section(sections[sectionIndex].get_name());
+                insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
                 insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layers.push_back(insulationLayer);
@@ -4727,6 +4817,130 @@ double CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(Co
     }
 
     return (2 * maximumAdditionalRadialCoordinate) / coreWidth;
+}
+
+
+double CoilWrapper::get_insulation_section_thickness(std::string sectionName) {
+    return get_insulation_section_thickness(*this, sectionName);
+}
+
+double CoilWrapper::get_insulation_section_thickness(CoilWrapper coil, std::string sectionName) {
+    if (!coil.get_sections_description()) {
+        throw std::runtime_error("Coil is missing sections description");
+    }
+    if (!coil.get_layers_description()) {
+        throw std::runtime_error("Coil is missing layers description");
+    }
+
+    auto layers = coil.get_layers_by_section(sectionName);
+
+    double thickness = 0;
+
+    for (auto layer : layers) {
+        thickness += coil.get_insulation_layer_thickness(layer);
+    }
+
+    return thickness;
+}
+
+double CoilWrapper::get_insulation_layer_thickness(CoilWrapper coil, std::string layerName) {
+    return coil.get_insulation_layer_thickness(layerName);
+}
+
+double CoilWrapper::get_insulation_layer_thickness(std::string layerName) {
+    if (!get_layers_description()) {
+        throw std::runtime_error("Coil is missing layers description");
+    }
+    auto layer = get_layer_by_name(layerName);
+    return get_insulation_layer_thickness(layer);
+}
+
+double CoilWrapper::get_insulation_layer_thickness(Layer layer) {
+    if (!layer.get_coordinate_system()) {
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+    }
+    if (layer.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
+        if (layer.get_orientation() == WindingOrientation::CONTIGUOUS) {
+            return layer.get_dimensions()[1];
+        }
+        else {
+            return layer.get_dimensions()[0];
+        }
+    }
+    else {
+        if (layer.get_orientation() == WindingOrientation::CONTIGUOUS) {
+            auto bobbin = resolve_bobbin();
+            auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+            auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+
+            double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+            double layerRadialHeight = layer.get_dimensions()[0];
+            double radius = windingWindowRadialHeight - layerRadialHeight;
+            double layerAngle = layer.get_dimensions()[1];
+            double layerPerimeter = std::numbers::pi * (layerAngle / 180) * radius;
+            return layerPerimeter;
+        }
+        else {
+            return layer.get_dimensions()[0];
+        }
+    }
+}
+
+InsulationMaterialWrapper CoilWrapper::resolve_insulation_layer_insulation_material(std::string layerName){
+    auto layer = get_layer_by_name(layerName);
+    return resolve_insulation_layer_insulation_material(layer);
+}
+
+InsulationMaterialWrapper CoilWrapper::resolve_insulation_layer_insulation_material(CoilWrapper coil, std::string layerName) {
+    auto layer = coil.get_layer_by_name(layerName);
+    return coil.resolve_insulation_layer_insulation_material(layer);
+}
+
+InsulationMaterialWrapper CoilWrapper::resolve_insulation_layer_insulation_material(Layer layer) {
+    if (!layer.get_insulation_material()) {
+        layer.set_insulation_material(Defaults().defaultLayerInsulationMaterial);
+        // throw std::runtime_error("Layer is missing material information");
+    }
+
+    auto insulationMaterial = layer.get_insulation_material().value();
+    // If the material is a string, we have to load its data from the database
+    if (std::holds_alternative<std::string>(insulationMaterial)) {
+        auto insulationMaterialData = find_insulation_material_by_name(std::get<std::string>(insulationMaterial));
+
+        return insulationMaterialData;
+    }
+    else {
+        return std::get<InsulationMaterial>(insulationMaterial);
+    }
+}
+
+double CoilWrapper::get_insulation_layer_dielectric_constant(std::string layerName) {
+    auto layer = get_layer_by_name(layerName);
+    return get_insulation_layer_dielectric_constant(layer);
+}
+double CoilWrapper::get_insulation_layer_dielectric_constant(CoilWrapper coil, std::string layerName) {
+    return coil.get_insulation_layer_dielectric_constant(layerName);
+}
+double CoilWrapper::get_insulation_layer_dielectric_constant(Layer layer) {
+    auto coatingInsulationMaterial = resolve_insulation_layer_insulation_material(layer);
+    if (!coatingInsulationMaterial.get_dielectric_constant())
+        throw std::runtime_error("Coating insulation material is missing dielectric constant");
+    return coatingInsulationMaterial.get_dielectric_constant().value();
+}
+
+double CoilWrapper::get_insulation_section_dielectric_constant(std::string sectionName) {
+    return get_insulation_section_dielectric_constant(*this, sectionName);
+}
+double CoilWrapper::get_insulation_section_dielectric_constant(CoilWrapper coil, std::string sectionName) {
+    auto layers = coil.get_layers_by_section(sectionName);
+    if (layers.size() == 0)
+        throw std::runtime_error("No layers in this section");
+
+    double averageDielectricConstant = 0;
+    for (auto layer : layers) {
+        averageDielectricConstant += coil.get_insulation_layer_dielectric_constant(layer);
+    }
+    return averageDielectricConstant / layers.size();
 }
 
 } // namespace OpenMagnetics

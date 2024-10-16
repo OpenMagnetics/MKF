@@ -174,9 +174,17 @@ class CoilWrapper : public Coil {
         std::vector<Layer> get_layers_by_section(std::string sectionName);
         const std::vector<Layer> get_layers_by_type(ElectricalType electricalType) const;
         std::vector<Layer> get_layers_by_winding_index(size_t windingIndex);
+        const Layer get_layer_by_name(std::string name) const;
 
         std::vector<Turn> get_turns_by_layer(std::string layerName);
         std::vector<Turn> get_turns_by_section(std::string sectionName);
+        std::vector<Turn> get_turns_by_winding(std::string windingName);
+
+        std::vector<std::string> get_layers_names_by_winding(std::string windingName);
+        std::vector<std::string> get_layers_names_by_section(std::string sectionName);
+        std::vector<std::string> get_turns_names_by_layer(std::string layerName);
+        std::vector<std::string> get_turns_names_by_section(std::string sectionName);
+        std::vector<std::string> get_turns_names_by_winding(std::string windingName);
 
         std::vector<uint64_t> get_number_parallels();
         void set_number_parallels(std::vector<uint64_t> numberParallels);
@@ -206,5 +214,21 @@ class CoilWrapper : public Coil {
         static double calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil);
 
         void set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers);
+
+        static InsulationMaterialWrapper resolve_insulation_layer_insulation_material(CoilWrapper coil, std::string layerName);
+        InsulationMaterialWrapper resolve_insulation_layer_insulation_material(std::string layerName);
+        InsulationMaterialWrapper resolve_insulation_layer_insulation_material(Layer layer);
+        double get_insulation_section_thickness(std::string sectionName);
+        static double get_insulation_section_thickness(CoilWrapper coil, std::string sectionName);
+
+        double get_insulation_layer_thickness(Layer layer);
+        double get_insulation_layer_thickness(std::string layerName);
+        static double get_insulation_layer_thickness(CoilWrapper coil, std::string layerName);
+
+        double get_insulation_layer_dielectric_constant(Layer layer);
+        double get_insulation_layer_dielectric_constant(std::string layerName);
+        static double get_insulation_layer_dielectric_constant(CoilWrapper coil, std::string layerName);
+        double get_insulation_section_dielectric_constant(std::string sectionName);
+        static double get_insulation_section_dielectric_constant(CoilWrapper coil, std::string sectionName);
 };
 } // namespace OpenMagnetics
