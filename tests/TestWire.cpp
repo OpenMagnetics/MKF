@@ -550,6 +550,7 @@ SUITE(Wire_Number_Parallels_Calculation) {
 }
 
 SUITE(Wire_Coating) {
+    double max_error = 0.05;
     TEST(Test_Coating_Label_Uniqueness) {
         auto wires = OpenMagnetics::get_wires();
         std::vector<std::string> coatingLabels;
@@ -584,6 +585,20 @@ SUITE(Wire_Coating) {
             }
         }
     }
+
+
+    TEST(Test_Coating_Relative_Permittivity) {
+        auto wire = OpenMagnetics::WireWrapper(OpenMagnetics::find_wire_by_name("Round 0.80 - Grade 1"));
+        auto relativePermittivity = wire.get_coating_relative_permittivity();
+        CHECK_CLOSE(3.7, relativePermittivity, max_error * 3.7);
+    }
+
+    TEST(Test_Coating_Relative_Permittivity_Web0) {
+        auto wire = OpenMagnetics::WireWrapper(json::parse(R"({"type": "round", "conductingDiameter": {"nominal": 0.001}, "material": "copper", "outerDiameter": {"nominal": 0.001062}, "coating": {"breakdownVoltage": 2700.0, "grade": 1, "type": "enamelled"}, "name": "Round 1.00 - Grade 1", "numberConductors": 1, "standard": "IEC 60317", "standardName": "1.00 mm"})"));
+        auto relativePermittivity = wire.get_coating_relative_permittivity();
+        CHECK_CLOSE(3.7, relativePermittivity, max_error * 3.7);
+    }
+
 }
 
 SUITE(Wire_Equivalents) {
