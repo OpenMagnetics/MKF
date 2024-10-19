@@ -20,6 +20,14 @@ class StrayCapacitanceModel {
 };
 
 // Based on "Induktivitäten in der Leistungselektronik", pages 49-50, by Manfred Albach
+class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
+    public:
+        std::string methodName = "Albach";
+        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+
+};
+
+// Based on "Induktivitäten in der Leistungselektronik", pages 49-50, by Manfred Albach
 class StrayCapacitanceAlbachModel : public StrayCapacitanceModel {
     public:
         std::string methodName = "Albach";
@@ -43,7 +51,7 @@ class StrayCapacitance{
     public:
 
         StrayCapacitance(){
-            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::ALBACH);
+            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::KOCH);
         };
         virtual ~StrayCapacitance() = default;
 

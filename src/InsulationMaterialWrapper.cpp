@@ -95,27 +95,27 @@ namespace OpenMagnetics {
         return get_dielectric_strength_by_thickness(*this, thickness);
     }
     double InsulationMaterialWrapper::get_dielectric_strength_by_thickness(InsulationMaterial materialData, double thickness) {
-        auto dielectricConstantData = materialData.get_dielectric_strength();
-        double dielectricConstant = -1;
+        auto relativePermittivityData = materialData.get_dielectric_strength();
+        double relativePermittivity = -1;
 
-        if (dielectricConstantData.size() < 2) {
-            dielectricConstant = dielectricConstantData[0].get_value();
+        if (relativePermittivityData.size() < 2) {
+            relativePermittivity = relativePermittivityData[0].get_value();
         }
         else {
-            size_t n = dielectricConstantData.size();
+            size_t n = relativePermittivityData.size();
             std::vector<double> x, y;
 
             for (size_t i = 0; i < n; i++) {
-                if (x.size() == 0 || dielectricConstantData[i].get_thickness().value() != x.back()) {
-                    x.push_back(dielectricConstantData[i].get_thickness().value());
-                    y.push_back(dielectricConstantData[i].get_value());
+                if (x.size() == 0 || relativePermittivityData[i].get_thickness().value() != x.back()) {
+                    x.push_back(relativePermittivityData[i].get_thickness().value());
+                    y.push_back(relativePermittivityData[i].get_value());
                 }
             }
 
             tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-            dielectricConstant = interp(thickness);
+            relativePermittivity = interp(thickness);
         }
-        return dielectricConstant;
+        return relativePermittivity;
     };
 
 } // namespace OpenMagnetics

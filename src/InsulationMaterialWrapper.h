@@ -34,8 +34,8 @@ public:
         if (insulationMaterial.get_composition()) {
             set_composition(insulationMaterial.get_composition().value());
         }
-        if (insulationMaterial.get_dielectric_constant()) {
-            set_dielectric_constant(insulationMaterial.get_dielectric_constant().value());
+        if (insulationMaterial.get_relative_permittivity()) {
+            set_relative_permittivity(insulationMaterial.get_relative_permittivity().value());
         }
         set_dielectric_strength(insulationMaterial.get_dielectric_strength());
 

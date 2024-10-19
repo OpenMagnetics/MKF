@@ -1434,15 +1434,15 @@ namespace OpenMagnetics {
         return coatingInsulationMaterial.get_dielectric_strength_by_thickness(coatingThickness);
     }
 
-    double WireWrapper::get_coating_dielectric_constant() {
-        return get_coating_dielectric_constant(*this);
+    double WireWrapper::get_coating_relative_permittivity() {
+        return get_coating_relative_permittivity(*this);
     }
 
-    double WireWrapper::get_coating_dielectric_constant(WireWrapper wire) {
+    double WireWrapper::get_coating_relative_permittivity(WireWrapper wire) {
         auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
-        if (!coatingInsulationMaterial.get_dielectric_constant())
+        if (!coatingInsulationMaterial.get_relative_permittivity())
             throw std::runtime_error("Coating insulation material is missing dielectric constant");
-        return coatingInsulationMaterial.get_dielectric_constant().value();
+        return coatingInsulationMaterial.get_relative_permittivity().value();
     }
 
     InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(){
@@ -1453,7 +1453,14 @@ namespace OpenMagnetics {
         auto coating = resolve_coating(wire);
 
         if (!coating->get_material())
-            throw std::runtime_error("Coating is missing material information");
+        {
+            if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
+                coating->set_material("Polyurethane 155");
+            }
+            else {
+                throw std::runtime_error("Coating is missing material information");
+            }
+        }
 
         auto insulationMaterial = coating->get_material().value();
         // If the material is a string, we have to load its data from the database

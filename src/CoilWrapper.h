@@ -225,10 +225,10 @@ class CoilWrapper : public Coil {
         double get_insulation_layer_thickness(std::string layerName);
         static double get_insulation_layer_thickness(CoilWrapper coil, std::string layerName);
 
-        double get_insulation_layer_dielectric_constant(Layer layer);
-        double get_insulation_layer_dielectric_constant(std::string layerName);
-        static double get_insulation_layer_dielectric_constant(CoilWrapper coil, std::string layerName);
-        double get_insulation_section_dielectric_constant(std::string sectionName);
-        static double get_insulation_section_dielectric_constant(CoilWrapper coil, std::string sectionName);
+        double get_insulation_layer_relative_permittivity(Layer layer);
+        double get_insulation_layer_relative_permittivity(std::string layerName);
+        static double get_insulation_layer_relative_permittivity(CoilWrapper coil, std::string layerName);
+        double get_insulation_section_relative_permittivity(std::string sectionName);
+        static double get_insulation_section_relative_permittivity(CoilWrapper coil, std::string sectionName);
 };
 } // namespace OpenMagnetics
