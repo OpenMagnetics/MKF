@@ -155,11 +155,11 @@ namespace OpenMagnetics {
         return strayCapacitanceOutput;
     }
 
-    double get_effective_dielectric_constant(double firstThickness, double firstDielectricConstant, double secondThickness, double secondDielectricConstant) {
-        return firstDielectricConstant * secondDielectricConstant * (firstThickness + secondThickness) / (firstThickness * secondDielectricConstant + secondThickness * firstDielectricConstant);
+    double get_effective_relative_permittivity(double firstThickness, double firstrelativePermittivity, double secondThickness, double secondrelativePermittivity) {
+        return firstrelativePermittivity * secondrelativePermittivity * (firstThickness + secondThickness) / (firstThickness * secondrelativePermittivity + secondThickness * firstrelativePermittivity);
     }
 
-    double get_wire_insulation_dielectric_constant(WireWrapper wire) {
+    double get_wire_insulation_relative_permittivity(WireWrapper wire) {
         if (wire.get_type() != WireType::ROUND) {
             throw std::runtime_error("Other wires not implemented yet, check Albach's book");
         }
@@ -187,8 +187,8 @@ namespace OpenMagnetics {
 
         InsulationMaterialWrapper insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
 
-        auto epsilonDFirstWire = get_wire_insulation_dielectric_constant(firstWire);
-        auto epsilonDSecondWire = get_wire_insulation_dielectric_constant(secondWire);
+        auto epsilonDFirstWire = get_wire_insulation_relative_permittivity(firstWire);
+        auto epsilonDSecondWire = get_wire_insulation_relative_permittivity(secondWire);
         auto epsilonD = (epsilonDFirstWire + epsilonDSecondWire) / 2;
 
         auto insulationThicknessFirstWire = firstWire.get_coating_thickness();
@@ -206,25 +206,25 @@ namespace OpenMagnetics {
         distanceBetweenTurns = roundFloat(distanceBetweenTurns, 9);
         double distanceThroughLayers = 0;
         std::vector<double> distancesThroughLayers;
-        std::vector<double> dielectricConstantLayers;
-        double effectiveDielectricConstantLayers = 1;
+        std::vector<double> relativePermittivityLayers;
+        double effectiveRelativePermittivityLayers = 1;
                 
         std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil);
 
         for (auto layer : insulationLayersInBetween) {
             auto distance = coil.get_insulation_layer_thickness(layer);
-            auto dielectricConstant = coil.get_insulation_layer_dielectric_constant(layer);
+            auto relativePermittivity = coil.get_insulation_layer_relative_permittivity(layer);
             distanceThroughLayers += distance;
             distancesThroughLayers.push_back(distance);
-            dielectricConstantLayers.push_back(dielectricConstant);
+            relativePermittivityLayers.push_back(relativePermittivity);
         }
 
         for (size_t index = 0; index < distancesThroughLayers.size(); ++index) {
             if (index == 0) {
-                effectiveDielectricConstantLayers = dielectricConstantLayers[index];
+                effectiveRelativePermittivityLayers = relativePermittivityLayers[index];
             }
             else {
-                effectiveDielectricConstantLayers = get_effective_dielectric_constant(distancesThroughLayers[index - 1], effectiveDielectricConstantLayers, distancesThroughLayers[index], dielectricConstantLayers[index]);
+                effectiveRelativePermittivityLayers = get_effective_relative_permittivity(distancesThroughLayers[index - 1], effectiveRelativePermittivityLayers, distancesThroughLayers[index], relativePermittivityLayers[index]);
             }
         }
         double distanceThroughAir = distanceBetweenTurns - distanceThroughLayers;
@@ -234,23 +234,23 @@ namespace OpenMagnetics {
         }
         auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
-        return {insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, effectiveDielectricConstantLayers};
+        return {insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, effectiveRelativePermittivityLayers};
     }
 
     double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
         auto vacuumPermittivity = Constants().vacuumPermittivity;
 
-        double effectiveDielectricConstant = epsilonF;
+        double effectiveRelativePermittivity = epsilonF;
         double distanceThroughLayersAndAir = distanceThroughAir + distanceThroughLayers;
         if (distanceThroughAir > 0 && distanceThroughLayers > 0) {
-            effectiveDielectricConstant = get_effective_dielectric_constant(distanceThroughLayers, epsilonF, distanceThroughAir, vacuumPermittivity);
+            effectiveRelativePermittivity = get_effective_relative_permittivity(distanceThroughLayers, epsilonF, distanceThroughAir, vacuumPermittivity);
         }
         else if (distanceThroughAir > 0 && distanceThroughLayers == 0) {
-            effectiveDielectricConstant = vacuumPermittivity;
+            effectiveRelativePermittivity = vacuumPermittivity;
         }
 
         double zeta = 1 - insulationThickness / (epsilonD * conductingRadius);
-        double beta = 1.0 / zeta * (1 + distanceThroughLayers / (2 * effectiveDielectricConstant * conductingRadius));
+        double beta = 1.0 / zeta * (1 + distanceThroughLayers / (2 * effectiveRelativePermittivity * conductingRadius));
         double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
         double Z = 1.0 / (pow(beta, 2) - 1)*((pow(beta, 2) - 2) * V - beta / 2) - std::numbers::pi / 4;
         double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * epsilonD) * pow(distanceThroughLayers / conductingRadius, 2) * Z / zeta);

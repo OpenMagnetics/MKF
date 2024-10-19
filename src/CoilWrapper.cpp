@@ -4914,33 +4914,33 @@ InsulationMaterialWrapper CoilWrapper::resolve_insulation_layer_insulation_mater
     }
 }
 
-double CoilWrapper::get_insulation_layer_dielectric_constant(std::string layerName) {
+double CoilWrapper::get_insulation_layer_relative_permittivity(std::string layerName) {
     auto layer = get_layer_by_name(layerName);
-    return get_insulation_layer_dielectric_constant(layer);
+    return get_insulation_layer_relative_permittivity(layer);
 }
-double CoilWrapper::get_insulation_layer_dielectric_constant(CoilWrapper coil, std::string layerName) {
-    return coil.get_insulation_layer_dielectric_constant(layerName);
+double CoilWrapper::get_insulation_layer_relative_permittivity(CoilWrapper coil, std::string layerName) {
+    return coil.get_insulation_layer_relative_permittivity(layerName);
 }
-double CoilWrapper::get_insulation_layer_dielectric_constant(Layer layer) {
+double CoilWrapper::get_insulation_layer_relative_permittivity(Layer layer) {
     auto coatingInsulationMaterial = resolve_insulation_layer_insulation_material(layer);
-    if (!coatingInsulationMaterial.get_dielectric_constant())
+    if (!coatingInsulationMaterial.get_relative_permittivity())
         throw std::runtime_error("Coating insulation material is missing dielectric constant");
-    return coatingInsulationMaterial.get_dielectric_constant().value();
+    return coatingInsulationMaterial.get_relative_permittivity().value();
 }
 
-double CoilWrapper::get_insulation_section_dielectric_constant(std::string sectionName) {
-    return get_insulation_section_dielectric_constant(*this, sectionName);
+double CoilWrapper::get_insulation_section_relative_permittivity(std::string sectionName) {
+    return get_insulation_section_relative_permittivity(*this, sectionName);
 }
-double CoilWrapper::get_insulation_section_dielectric_constant(CoilWrapper coil, std::string sectionName) {
+double CoilWrapper::get_insulation_section_relative_permittivity(CoilWrapper coil, std::string sectionName) {
     auto layers = coil.get_layers_by_section(sectionName);
     if (layers.size() == 0)
         throw std::runtime_error("No layers in this section");
 
-    double averageDielectricConstant = 0;
+    double averagerelativePermittivity = 0;
     for (auto layer : layers) {
-        averageDielectricConstant += coil.get_insulation_layer_dielectric_constant(layer);
+        averagerelativePermittivity += coil.get_insulation_layer_relative_permittivity(layer);
     }
-    return averageDielectricConstant / layers.size();
+    return averagerelativePermittivity / layers.size();
 }
 
 } // namespace OpenMagnetics

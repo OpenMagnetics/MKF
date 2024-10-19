@@ -220,8 +220,8 @@ class WireWrapper : public Wire {
         std::string encode_coating_label();
         static std::string encode_coating_label(WireWrapper wire);
         static std::optional<InsulationWireCoating> decode_coating_label(std::string label);
-        double get_coating_dielectric_constant();
-        static double get_coating_dielectric_constant(WireWrapper wire);
+        double get_coating_relative_permittivity();
+        static double get_coating_relative_permittivity(WireWrapper wire);
 
         void cut_foil_wire_to_section(Section section);
         void cut_planar_wire_to_section(Section section);
