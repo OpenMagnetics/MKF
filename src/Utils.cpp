@@ -1189,5 +1189,16 @@ std::vector<std::string> split(std::string s, std::string delimiter) {
     return tokens;
 }
 
+std::vector<double> linear_spaced_array(double a, double b, size_t N) {
+    double h = (b - a) / static_cast<double>(N-1);
+    std::vector<double> xs(N);
+    std::vector<double>::iterator x;
+    double val;
+    for (x = xs.begin(), val = a; x != xs.end(); ++x, val += h) {
+        *x = val;
+    }
+    return xs;
+}
+
 
 } // namespace OpenMagnetics

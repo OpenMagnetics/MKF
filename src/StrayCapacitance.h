@@ -19,10 +19,19 @@ class StrayCapacitanceModel {
         virtual double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) = 0;
 };
 
-// Based on "Induktivitäten in der Leistungselektronik", pages 49-50, by Manfred Albach
+// Based on "Self-Capacitance of Inductors" by Antonio Massarini
+// https://sci-hub.st/https://ieeexplore.ieee.org/document/602562
+class StrayCapacitanceMassariniModel : public StrayCapacitanceModel {
+    public:
+        std::string methodName = "Massarini";
+        double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
+
+};
+
+// Based on "Equivalent capacitances of transformer windings" by W. T. Duerdoth
 class StrayCapacitanceDuerdothModel : public StrayCapacitanceModel {
     public:
-        std::string methodName = "Albach";
+        std::string methodName = "Duerdoth";
         double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF);
 
 };
@@ -51,13 +60,14 @@ class StrayCapacitance{
     public:
 
         StrayCapacitance(){
-            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::KOCH);
+            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::ALBACH);
         };
         virtual ~StrayCapacitance() = default;
 
 
         static std::vector<Turn> get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription);
         static StrayCapacitanceOutput calculate_voltages_per_turn(CoilWrapper coil, OperatingPoint operatingPoint);
+        static StrayCapacitanceOutput calculate_voltages_per_turn(CoilWrapper coil, std::map<std::string, double> voltageRmsPerWinding);
         static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, CoilWrapper coil);
         double calculate_static_capacitance_between_two_turns(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil);
 

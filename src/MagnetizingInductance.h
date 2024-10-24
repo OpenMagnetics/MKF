@@ -5,6 +5,7 @@
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
+#include <MagneticWrapper.h>
 #include <MAS.hpp>
 #include <CoilWrapper.h>
 #include <cmath>
@@ -37,11 +38,14 @@ class MagnetizingInductance {
         _models["gapReluctance"] = model;
     }
     MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                                                   CoilWrapper winding,
-                                                                                   OperatingPoint* operatingPoint);
+                                                                                   CoilWrapper coil,
+                                                                                   OperatingPoint* operatingPoint = nullptr);
+
+    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(MagneticWrapper magnetic,
+                                                                                   OperatingPoint* operatingPoint = nullptr);
 
     std::vector<CoreGap> calculate_gapping_from_number_turns_and_inductance(CoreWrapper core,
-                                                                      CoilWrapper winding,
+                                                                      CoilWrapper coil,
                                                                       InputsWrapper* inputs,
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
@@ -50,8 +54,19 @@ class MagnetizingInductance {
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
         CoreWrapper core,
-        CoilWrapper winding,
-        OperatingPoint* operatingPoint);
+        CoilWrapper coil,
+        OperatingPoint* operatingPoint = nullptr);
+
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
+        MagneticWrapper magnetic,
+        OperatingPoint* operatingPoint = nullptr);
+
+    double calculate_inductance_air_solenoid(
+        MagneticWrapper magnetic);
+
+    double calculate_inductance_air_solenoid(
+        CoreWrapper core,
+        CoilWrapper coil);
 };
 
 } // namespace OpenMagnetics

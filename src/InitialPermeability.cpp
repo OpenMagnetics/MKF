@@ -17,15 +17,17 @@ namespace OpenMagnetics {
 double InitialPermeability::get_initial_permeability(std::string coreMaterialName,
                                                      std::optional<double> temperature,
                                                      std::optional<double> magneticFieldDcBias,
-                                                     std::optional<double> frequency) {
+                                                     std::optional<double> frequency,
+                                                     std::optional<double> magneticFluxDensity) {
     CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
-    return get_initial_permeability(coreMaterial,temperature, magneticFieldDcBias, frequency);
+    return get_initial_permeability(coreMaterial,temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
 }
 
 double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                                                      std::optional<double> temperature,
                                                      std::optional<double> magneticFieldDcBias,
-                                                     std::optional<double> frequency) {
+                                                     std::optional<double> frequency,
+                                                     std::optional<double> magneticFluxDensity) {
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
 
     double initialPermeabilityValue = 1;
@@ -59,13 +61,85 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
 
                 if (magneticFieldDcBias) {
                     auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
-                    double permeabilityVariationDueToMagneticFieldDcBias =
-                        0.01 / (magneticFieldDcBiasFactor.get_a() +
-                                magneticFieldDcBiasFactor.get_b() *
-                                    pow(roundFloat(fabs(magneticFieldDcBias.value()), 3), magneticFieldDcBiasFactor.get_c()));
+                    double a = magneticFieldDcBiasFactor->get_a();
+                    double b = magneticFieldDcBiasFactor->get_b();
+                    double c = magneticFieldDcBiasFactor->get_c();
+                    double H = magneticFieldDcBias.value();
+                    double permeabilityVariationDueToMagneticFieldDcBias = 0.01 / (a + b * pow(roundFloat(fabs(H), 3), c));
 
                     initialPermeabilityValue *= permeabilityVariationDueToMagneticFieldDcBias;
                 }
+            }
+            else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MICROMETALS) {
+
+                auto frequencyFactor = modifiers.get_frequency_factor();
+                if (frequency && frequencyFactor) {
+                    double a = frequencyFactor->get_a();
+                    double b = frequencyFactor->get_b();
+                    double c = frequencyFactor->get_c();
+                    double d = frequencyFactor->get_d();
+                    double f = frequency.value();
+                    initialPermeabilityValue = 1.0 / (a + b * pow(f, c)) + d;
+                }
+
+                auto temperatureFactor = modifiers.get_temperature_factor();
+                if (temperature && temperatureFactor) {
+                    double permeabilityVariationDueToTemperature;
+                    if (temperatureFactor->get_b()) {
+                        double a = temperatureFactor->get_a();
+                        double b = temperatureFactor->get_b().value();
+                        double c = temperatureFactor->get_c().value();
+                        double d = temperatureFactor->get_d().value();
+                        double e = temperatureFactor->get_e().value();
+                        double T = temperature.value();
+                        permeabilityVariationDueToTemperature = (a + c * T + e * pow(T, 2)) / (1 + b * T + d * pow(T, 2));
+                    }
+                    else {
+                        double a = temperatureFactor->get_a();
+                        double T = temperature.value();
+                        permeabilityVariationDueToTemperature = a * (T - 20) * 0.0001;
+                    }
+
+                    initialPermeabilityValue *= (1 + permeabilityVariationDueToTemperature * 0.01);
+                }
+
+                if (magneticFieldDcBias) {
+                    auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
+                    double a = magneticFieldDcBiasFactor->get_a();
+                    double b = magneticFieldDcBiasFactor->get_b();
+                    double c = magneticFieldDcBiasFactor->get_c();
+                    double d = magneticFieldDcBiasFactor->get_d().value();
+                    double H = magneticFieldDcBias.value();
+                    double permeabilityVariationDueToMagneticFieldDcBias = 1.0 / (a + b * pow(roundFloat(fabs(H), 3), c)) + d;
+
+                    initialPermeabilityValue *= permeabilityVariationDueToMagneticFieldDcBias * 0.01;
+                }
+
+                if (magneticFluxDensity) {
+                    auto magneticFluxDensityFactor = modifiers.get_magnetic_flux_density_factor();
+                    double a = magneticFluxDensityFactor->get_a();
+                    double b = magneticFluxDensityFactor->get_b();
+                    double c = magneticFluxDensityFactor->get_c();
+                    double d = magneticFluxDensityFactor->get_d();
+                    double e = magneticFluxDensityFactor->get_e();
+                    double f = magneticFluxDensityFactor->get_f();
+                    double B = magneticFluxDensity.value();
+                    double permeabilityVariationDueToMagneticFluxDensity = 1.0 / (1.0 / (a + b * pow(B, c)) + 1.0 / (d * pow(B, e)) + 1.0 / f);
+
+                    initialPermeabilityValue *= permeabilityVariationDueToMagneticFluxDensity * 0.01;
+                }
+            }
+            else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::FAIR_RITE) {
+                auto temperatureFactor = modifiers.get_temperature_factor();
+                if (temperature && temperatureFactor) {
+                    double permeabilityVariationDueToTemperature;
+                    double a = temperatureFactor->get_a();
+                    double T = temperature.value();
+                    permeabilityVariationDueToTemperature = a * T;
+
+                    initialPermeabilityValue *= (1 + permeabilityVariationDueToTemperature * 0.01);
+                }
+
             }
         }
     }

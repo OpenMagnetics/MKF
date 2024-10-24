@@ -2035,4 +2035,8 @@ void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector
     matplot::plot(x, y);
 }
 
+void Painter::paint_curve(Curve2D curve2D) {
+    matplot::plot(curve2D.get_x_points(), curve2D.get_y_points());
+}
+
 } // namespace OpenMagnetics

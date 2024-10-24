@@ -24,6 +24,35 @@ double ReluctanceModel::get_ungapped_core_reluctance(const CoreWrapper& core, do
     return reluctanceCore;
 }
 
+double ReluctanceModel::get_air_cored_reluctance(BobbinWrapper bobbin) {
+    if (!bobbin.get_processed_description()) {
+        throw std::runtime_error("Bobbin not processed");
+    }
+    double airArea;
+    auto bobbinDimensions = bobbin.get_winding_window_dimensions();
+    auto wallThickness = bobbin.get_processed_description()->get_wall_thickness();
+    double airLength = bobbinDimensions[1] + 2 * wallThickness;
+    auto columnShape = bobbin.get_processed_description()->get_column_shape();
+    auto columnThickness = bobbin.get_processed_description()->get_column_thickness();
+    auto columnWidth = bobbin.get_processed_description()->get_column_width().value();
+    auto columnDepth = bobbin.get_processed_description()->get_column_depth();
+    if (columnShape == ColumnShape::ROUND) {
+        airArea = std::numbers::pi * pow(columnWidth - columnThickness, 2);
+    }
+    else if (columnShape == ColumnShape::RECTANGULAR) {
+        airArea = 4 * (columnWidth - columnThickness) * (columnDepth - columnThickness);
+    }
+    else {
+        throw std::runtime_error("Column shape not implemented yet");
+    }
+
+    auto constants = Constants();
+    double absolutePermeability = constants.vacuumPermeability;
+
+    double reluctanceAirCore = airLength / (absolutePermeability * airArea);
+    return reluctanceAirCore;
+}
+
 double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
     OpenMagnetics::InitialPermeability initialPermeability;
 

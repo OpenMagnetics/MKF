@@ -105,12 +105,7 @@ namespace OpenMagnetics {
     }
 
     StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper coil, OperatingPoint operatingPoint) {
-        if (!coil.get_turns_description()) {
-            throw std::invalid_argument("Missing turns description");
-        }
-        auto turns = coil.get_turns_description().value();
         std::map<std::string, double> voltageRmsPerWinding;
-        std::map<std::string, int64_t> numberTurnsPerWinding;
         for (size_t windingIndex = 0; windingIndex <  coil.get_functional_description().size(); ++windingIndex) {
             if (windingIndex >= operatingPoint.get_excitations_per_winding().size()) {
                 throw std::runtime_error("Missing excitation for windingIndex: " + std::to_string(windingIndex));
@@ -123,6 +118,17 @@ namespace OpenMagnetics {
                 throw std::invalid_argument("Voltage is not processed");
             }
             voltageRmsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = excitation.get_voltage()->get_processed()->get_rms().value();
+        }
+        return StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
+    }
+
+    StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper coil, std::map<std::string, double> voltageRmsPerWinding) {
+        if (!coil.get_turns_description()) {
+            throw std::invalid_argument("Missing turns description");
+        }
+        auto turns = coil.get_turns_description().value();
+        std::map<std::string, int64_t> numberTurnsPerWinding;
+        for (size_t windingIndex = 0; windingIndex <  coil.get_functional_description().size(); ++windingIndex) {
             numberTurnsPerWinding[coil.get_functional_description()[windingIndex].get_name()] = coil.get_functional_description()[windingIndex].get_number_turns();
         }
 
@@ -140,11 +146,12 @@ namespace OpenMagnetics {
         for (auto turn : turns) {
             auto turn_winding = turn.get_winding();
             auto turn_parallel = turn.get_parallel();
+            double voltageDividerCenterThisTurn = (double(numberTurnsPerWinding[turn_winding] - 1) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel]) / (numberTurnsPerWinding[turn_winding] - 1);
             double voltageDividerStartThisTurn = (double(numberTurnsPerWinding[turn_winding]) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel]) / numberTurnsPerWinding[turn_winding];
             double voltageDividerEndThisTurn = (double(numberTurnsPerWinding[turn_winding]) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel] - 1) / numberTurnsPerWinding[turn_winding];
             voltageDividerStartPerTurn.push_back(voltageDividerStartThisTurn);
             voltageDividerEndPerTurn.push_back(voltageDividerEndThisTurn);
-            voltagePerTurn.push_back(voltageRmsPerWinding[turn_winding] * voltageDividerStartThisTurn);
+            voltagePerTurn.push_back(voltageRmsPerWinding[turn_winding] * voltageDividerCenterThisTurn);
             turnIndexPerWindingPerParallel[turn_winding][turn_parallel]++;
         }
 
@@ -175,9 +182,15 @@ namespace OpenMagnetics {
         else if (modelName == StrayCapacitanceModels::ALBACH) {
             return std::make_shared<StrayCapacitanceAlbachModel>();
         }
+        else if (modelName == StrayCapacitanceModels::DUERDOTH) {
+            return std::make_shared<StrayCapacitanceDuerdothModel>();
+        }
+        else if (modelName == StrayCapacitanceModels::MASSARINI) {
+            return std::make_shared<StrayCapacitanceMassariniModel>();
+        }
 
         else
-            throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH}");
+            throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
     }
 
     std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil) {
@@ -235,6 +248,38 @@ namespace OpenMagnetics {
         auto averageTurnLength = (firstTurn.get_length() + secondTurn.get_length()) / 2;
 
         return {insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, effectiveRelativePermittivityLayers};
+    }
+
+    double StrayCapacitanceMassariniModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+        auto vacuumPermittivity = Constants().vacuumPermittivity;
+
+        double Dc = conductingRadius * 2;
+        double D0 = (conductingRadius + insulationThickness) * 2;
+        double epsilonR = get_effective_relative_permittivity(insulationThickness, epsilonD, distanceThroughAir + distanceThroughLayers, epsilonF);
+        std::cout << epsilonR << std::endl;
+        double aux0 = 2 * epsilonR + log(D0 / Dc);
+        double aux1 = sqrt(log(D0 / Dc) * (2 * epsilonR + log(D0 / Dc)));
+        double aux2 = sqrt(2 * epsilonR * log(D0 / Dc) + pow(log(D0 / Dc), 2));
+
+        double C0 = vacuumPermittivity * averageTurnLength * 2 * epsilonR * atan(((-1 + sqrt(3)) * aux0) / ((1 + sqrt(3)) * aux1)) / aux2;
+
+        return C0;
+    }
+
+    double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
+        auto vacuumPermittivity = Constants().vacuumPermittivity;
+
+        double h = distanceThroughAir + distanceThroughLayers;
+        double delta = insulationThickness;
+        double r0 = conductingRadius;
+        double dtt = h + 2 * r0 + 2 * insulationThickness;
+        double dPrima = 2 * r0 + h;
+        double dEff = dPrima - 2.3 * (r0 + delta) + 0.26 * dtt;
+        double epsilonEff = get_effective_relative_permittivity(delta, epsilonD, h, epsilonF);
+
+        double C0 = vacuumPermittivity * epsilonEff * averageTurnLength * 2 * r0 / dEff;
+
+        return C0;
     }
 
     double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) {
@@ -333,8 +378,19 @@ namespace OpenMagnetics {
         }
         auto capacitanceAmongTurns = calculate_capacitance_among_turns(coil);
 
+        std::map<std::string, double> voltageRmsPerWinding;
+        for (auto winding : coil.get_functional_description()) {
+            double turnsRatio = coil.get_functional_description()[0].get_number_turns() /  winding.get_number_turns();
+            voltageRmsPerWinding[winding.get_name()] = 1.0 / turnsRatio;
+        }
+
+        auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
         auto layers = coil.get_layers_description_conduction();
         std::map<std::pair<std::string, std::string>, double> capacitanceMapPerLayers;
+        double minVoltageInFirstLayer = 1;
+        double maxVoltageInFirstLayer = 0;
+        double minVoltageInSecondLayer = 1;
+        double maxVoltageInSecondLayer = 0;
         for (auto firstLayer : layers) {
             auto turnsInFirstLayer = coil.get_turns_names_by_layer(firstLayer.get_name());
             for (auto secondLayer : layers) {
@@ -343,17 +399,27 @@ namespace OpenMagnetics {
                     continue;
                 }
 
-                double capacitanceInBetweenTheseLayers = 0;
+                double energyInBetweenTheseLayers = 0;
+                double voltageDropInBetweenTheseLayers = 0;
                 auto turnsInSecondLayer = coil.get_turns_names_by_layer(secondLayer.get_name());
                 for (auto turnInFirstLayer : turnsInFirstLayer) {
+                    auto firstTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInFirstLayer)];
+                    std::cout << firstTurnVoltage << std::endl;
+                    minVoltageInFirstLayer = std::min(minVoltageInFirstLayer, firstTurnVoltage);
+                    maxVoltageInFirstLayer = std::max(maxVoltageInFirstLayer, firstTurnVoltage);
                     for (auto turnInSecondLayer : turnsInSecondLayer) {
+                        auto secondTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInSecondLayer)];
+                        minVoltageInSecondLayer = std::min(minVoltageInSecondLayer, secondTurnVoltage);
+                        maxVoltageInSecondLayer = std::max(maxVoltageInSecondLayer, secondTurnVoltage);
                         auto turnsKey = std::make_pair(turnInFirstLayer, turnInSecondLayer);
                         if (capacitanceAmongTurns.contains(turnsKey)) {
-                            capacitanceInBetweenTheseLayers += capacitanceAmongTurns[turnsKey];
+                            energyInBetweenTheseLayers += 0.5 * capacitanceAmongTurns[turnsKey] * pow(firstTurnVoltage - secondTurnVoltage, 2);
                         }
                     }
                 }
-                capacitanceMapPerLayers[layersKey] = capacitanceInBetweenTheseLayers;
+                double voltageDropBetweenLayers = maxVoltageInSecondLayer - minVoltageInFirstLayer;
+
+                capacitanceMapPerLayers[layersKey] = energyInBetweenTheseLayers * 2 / pow(voltageDropBetweenLayers, 2);
             }
 
         }
