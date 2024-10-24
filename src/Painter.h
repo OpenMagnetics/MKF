@@ -37,7 +37,6 @@ class Painter{
         // bool _includeFringing = true;
 
 
-
     public:
 
         Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false){
@@ -101,6 +100,8 @@ class Painter{
 
     void paint_waveform(Waveform waveform);
     void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt);
+
+    void paint_curve(Curve2D curve2D);
 
     void paint_background(MagneticWrapper magnetic);
 };

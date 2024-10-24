@@ -154,7 +154,85 @@ SUITE(StrayCapacitance) {
         OpenMagnetics::StrayCapacitance strayCapacitance;
 
         std::map<std::pair<std::string, std::string>, double> expectedValues = {
-            {{"Primary", "Primary"}, 1.1e-12},
+            {{"Primary", "Primary"}, 2.1e-12},
+        };
+
+        auto capacitanceAmongLayers = strayCapacitance.calculate_capacitance_among_windings(coil);
+        for (auto [keys, capacitance] : capacitanceAmongLayers) {
+            std::cout << "Capacitance between " << keys.first << " and " << keys.second << ": " << capacitance << std::endl;
+        }
+
+    }
+
+    TEST(Test_Get_Capacitance_Among_Windings_1_Winding_3_Turns_1_Parallel) {
+        settings->reset();
+        json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 3, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
+        json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+
+        auto core = OpenMagnetics::CoreWrapper(coreJson);
+        auto coil = OpenMagnetics::CoilWrapper(coilJson);
+
+        core.process_data();
+        core.process_gap();
+        coil.set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(core));
+        coil.wind();
+
+        OpenMagnetics::StrayCapacitance strayCapacitance;
+
+        std::map<std::pair<std::string, std::string>, double> expectedValues = {
+            {{"Primary", "Primary"}, 1.9e-12},
+        };
+
+        auto capacitanceAmongLayers = strayCapacitance.calculate_capacitance_among_windings(coil);
+        for (auto [keys, capacitance] : capacitanceAmongLayers) {
+            std::cout << "Capacitance between " << keys.first << " and " << keys.second << ": " << capacitance << std::endl;
+        }
+
+    }
+
+    TEST(Test_Get_Capacitance_Among_Windings_1_Winding_8_Turns_1_Parallel) {
+        settings->reset();
+        json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
+        json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+
+        auto core = OpenMagnetics::CoreWrapper(coreJson);
+        auto coil = OpenMagnetics::CoilWrapper(coilJson);
+
+        core.process_data();
+        core.process_gap();
+        coil.set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(core));
+        coil.wind();
+
+        OpenMagnetics::StrayCapacitance strayCapacitance;
+
+        std::map<std::pair<std::string, std::string>, double> expectedValues = {
+            {{"Primary", "Primary"}, 1.2e-12},
+        };
+
+        auto capacitanceAmongLayers = strayCapacitance.calculate_capacitance_among_windings(coil);
+        for (auto [keys, capacitance] : capacitanceAmongLayers) {
+            std::cout << "Capacitance between " << keys.first << " and " << keys.second << ": " << capacitance << std::endl;
+        }
+
+    }
+
+    TEST(Test_Get_Capacitance_Among_Windings_1_Winding_16_Turns_1_Parallel_2_Layers) {
+        settings->reset();
+        json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 16, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
+        json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+
+        auto core = OpenMagnetics::CoreWrapper(coreJson);
+        auto coil = OpenMagnetics::CoilWrapper(coilJson);
+
+        core.process_data();
+        core.process_gap();
+        coil.set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(core));
+        coil.wind();
+
+        OpenMagnetics::StrayCapacitance strayCapacitance;
+
+        std::map<std::pair<std::string, std::string>, double> expectedValues = {
+            {{"Primary", "Primary"}, 14.9e-12},
         };
 
         auto capacitanceAmongLayers = strayCapacitance.calculate_capacitance_among_windings(coil);

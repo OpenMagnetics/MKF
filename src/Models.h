@@ -76,7 +76,9 @@ enum class WindingProximityEffectLossesModels : int {
 
 enum class StrayCapacitanceModels : int {
     KOCH,
-    ALBACH
+    ALBACH,
+    DUERDOTH,
+    MASSARINI
 };
 
 } // namespace OpenMagnetics

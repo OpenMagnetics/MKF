@@ -209,16 +209,6 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
     auto dutyCycle = roundFloat((maximum_index + 1.0) / settings->get_inputs_number_points_sampled_waveforms(), 2);
     return dutyCycle;
 }
-std::vector<double> linear_spaced_array(double startingValue, double endingValue, std::size_t numberPoints) {
-    double h = (endingValue - startingValue) / static_cast<double>(numberPoints);
-    std::vector<double> xs(numberPoints);
-    std::vector<double>::iterator x;
-    double val;
-    for (x = xs.begin(), val = startingValue; x != xs.end(); ++x, val += h) {
-        *x = val;
-    }
-    return xs;
-}
 
 // In case the waveform comes defined with processed data only, we create a MAS format waveform from it, as the rest of
 // the code depends on it.

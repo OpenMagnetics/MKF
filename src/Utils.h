@@ -40,6 +40,9 @@ extern double maxWindingWindowWidth;
 extern double minWindingWindowHeight;
 extern double maxWindingWindowHeight;
 
+extern std::map<std::string, tk::spline> complexPermeabilityRealInterps;
+extern std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
+
 extern bool _addInternalData;
 
 extern std::map<std::string, double> minWireConductingDimensions;
@@ -75,6 +78,31 @@ enum class OrderedIsolationSide : int {
     DENARY,
     UNDENARY,
     DUODENARY
+};
+
+
+class Curve2D {
+
+    std::vector<double> xPoints;
+    std::vector<double> yPoints;
+    std::string title;
+
+    public: 
+        Curve2D() = default;
+        virtual ~Curve2D() = default;
+        Curve2D(std::vector<double> xPoints, std::vector<double> yPoints, std::string title) : xPoints(xPoints), yPoints(yPoints), title(title){}
+
+        const std::vector<double> & get_x_points() const { return xPoints; }
+        std::vector<double> & get_mutable_x_points() { return xPoints; }
+        void set_x_points(const std::vector<double> & value) { this->xPoints = value; }
+
+        const std::vector<double> & get_y_points() const { return yPoints; }
+        std::vector<double> & get_mutable_y_points() { return yPoints; }
+        void set_y_points(const std::vector<double> & value) { this->yPoints = value; }
+
+        const std::string & get_title() const { return title; }
+        std::string & get_mutable_title() { return title; }
+        void set_title(const std::string & value) { this->title = value; }
 };
 
 double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
@@ -152,6 +180,7 @@ bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByNam
 IsolationSide get_isolation_side_from_index(size_t index);
 
 std::vector<std::string> split(std::string s, std::string delimiter);
+std::vector<double> linear_spaced_array(double a, double b, size_t N);
 
 
 } // namespace OpenMagnetics

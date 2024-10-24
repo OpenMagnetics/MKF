@@ -4,6 +4,7 @@
 #include "Models.h"
 
 #include <CoreWrapper.h>
+#include <BobbinWrapper.h>
 #include <InputsWrapper.h>
 #include <cmath>
 #include <filesystem>
@@ -28,6 +29,7 @@ class ReluctanceModel {
     double get_ungapped_core_reluctance(const CoreWrapper& core, double initialPermeability);
 
     double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
+    double get_air_cored_reluctance(BobbinWrapper bobbin);
     double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
         auto constants = Constants();
         auto gapLength = gapInfo.get_length();

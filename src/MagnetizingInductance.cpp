@@ -35,10 +35,14 @@ double calculate_air_inductance(int64_t numberTurnsPrimary, CoreWrapper core) {
     return Constants().vacuumPermeability * pow(numberTurnsPrimary, 2) * (coilInternalArea * airAreaProportion * 2) / bobbinWindingWindowHeight;
 }
 
-std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(
-    CoreWrapper core,
-    CoilWrapper winding,
-    OperatingPoint* operatingPoint) {
+std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(MagneticWrapper magnetic, OperatingPoint* operatingPoint) {
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    return calculate_inductance_and_magnetic_flux_density(core, coil, operatingPoint);
+}
+
+
+std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(CoreWrapper core, CoilWrapper coil, OperatingPoint* operatingPoint) {
 
     double frequency = Defaults().coreAdviserFrequencyReference;
     double temperature = Defaults().ambientTemperature;
@@ -50,8 +54,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     }
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
-    double numberWindings = winding.get_functional_description().size();
-    double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
+    double numberWindings = coil.get_functional_description().size();
+    double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
     double currentInitialPermeability;
@@ -185,10 +189,30 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     return result;
 }
 
-MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                                           CoilWrapper winding,
-                                                                           OperatingPoint* operatingPoint) {
-    auto inductance_and_magnetic_flux_density = calculate_inductance_and_magnetic_flux_density(core, winding, operatingPoint);
+double MagnetizingInductance::calculate_inductance_air_solenoid(MagneticWrapper magnetic) {
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    return calculate_inductance_air_solenoid(core, coil);
+}
+
+
+double MagnetizingInductance::calculate_inductance_air_solenoid(CoreWrapper core, CoilWrapper coil) {
+    double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
+
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+    double airCoreReluctance = reluctanceModel->get_air_cored_reluctance(coil.resolve_bobbin());
+    auto modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / airCoreReluctance;
+    return modifiedMagnetizingInductance;
+}
+
+MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping(CoreWrapper core, CoilWrapper coil, OperatingPoint* operatingPoint) {
+    auto inductance_and_magnetic_flux_density = calculate_inductance_and_magnetic_flux_density(core, coil, operatingPoint);
+
+    return inductance_and_magnetic_flux_density.first;
+}
+
+MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_number_turns_and_gapping(MagneticWrapper magnetic, OperatingPoint* operatingPoint) {
+    auto inductance_and_magnetic_flux_density = calculate_inductance_and_magnetic_flux_density(magnetic, operatingPoint);
 
     return inductance_and_magnetic_flux_density.first;
 }
@@ -313,10 +337,10 @@ CoreWrapper get_core_with_spacer_gapping(CoreWrapper core, double gapLength) {
 }
 
 std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_and_inductance(CoreWrapper core,
-                                                                                         CoilWrapper winding,
-                                                                                         InputsWrapper* inputs,
-                                                                                         GappingType gappingType,
-                                                                                         size_t decimals) {
+                                                                                               CoilWrapper coil,
+                                                                                               InputsWrapper* inputs,
+                                                                                               GappingType gappingType,
+                                                                                               size_t decimals) {
     double frequency = Defaults().coreAdviserFrequencyReference;
     double temperature = Defaults().ambientTemperature;
     OperatingPointExcitation excitation;
@@ -330,7 +354,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
     }
 
-    double numberTurnsPrimary = winding.get_functional_description()[0].get_number_turns();
+    double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
     double desiredMagnetizingInductance = resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance());
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
