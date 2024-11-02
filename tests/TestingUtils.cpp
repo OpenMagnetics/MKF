@@ -36,11 +36,13 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
     coilJson["bobbin"] = bobbinJson;
 
     for (size_t i = 0; i < numberTurns.size(); ++i){
+        json isolationSideJson;
+        to_json(isolationSideJson, OpenMagnetics::get_isolation_side_from_index(i));
         json individualcoilJson;
         individualcoilJson["name"] = "winding " + std::to_string(i);
         individualcoilJson["numberTurns"] = numberTurns[i];
         individualcoilJson["numberParallels"] = numberParallels[i];
-        individualcoilJson["isolationSide"] = "primary";
+        individualcoilJson["isolationSide"] = isolationSideJson;
         if (i < wires.size()) {
             individualcoilJson["wire"] = wires[i];
         }
@@ -86,11 +88,13 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
     coilJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
 
     for (size_t i = 0; i < numberTurns.size(); ++i){
+        json isolationSideJson;
+        to_json(isolationSideJson, OpenMagnetics::get_isolation_side_from_index(i));
         json individualcoilJson;
         individualcoilJson["name"] = "winding " + std::to_string(i);
         individualcoilJson["numberTurns"] = numberTurns[i];
         individualcoilJson["numberParallels"] = numberParallels[i];
-        individualcoilJson["isolationSide"] = "primary";
+        individualcoilJson["isolationSide"] = isolationSideJson;
         if (i < wires.size()) {
             individualcoilJson["wire"] = wires[i];
         }
@@ -137,6 +141,8 @@ OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> number
     coilJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
 
     for (size_t i = 0; i < numberTurns.size(); ++i){
+        json isolationSideJson;
+        to_json(isolationSideJson, OpenMagnetics::get_isolation_side_from_index(i));
         json individualcoilJson;
         individualcoilJson["name"] = "winding " + std::to_string(i);
         individualcoilJson["numberTurns"] = numberTurns[i];
@@ -188,11 +194,13 @@ OpenMagnetics::CoilWrapper get_quick_toroidal_coil_no_compact(std::vector<int64_
     coilJson["bobbin"]["processedDescription"]["windingWindows"].push_back(windingWindow);
 
     for (size_t i = 0; i < numberTurns.size(); ++i){
+        json isolationSideJson;
+        to_json(isolationSideJson, OpenMagnetics::get_isolation_side_from_index(i));
         json individualcoilJson;
         individualcoilJson["name"] = "winding " + std::to_string(i);
         individualcoilJson["numberTurns"] = numberTurns[i];
         individualcoilJson["numberParallels"] = numberParallels[i];
-        individualcoilJson["isolationSide"] = "primary";
+        individualcoilJson["isolationSide"] = isolationSideJson;
         if (i < wires.size()) {
             individualcoilJson["wire"] = wires[i];
         }

@@ -3,6 +3,8 @@
 #include "json.hpp"
 
 #include <MAS.hpp>
+#include "Defaults.h"
+
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -116,9 +118,14 @@ class CoreWrapper : public MagneticCore {
     double get_height();
     double get_width();
 
+    double get_effective_length();
+    double get_effective_area();
+    double get_minimum_area();
+    double get_effective_volume();
+
     std::vector<CoreGap> get_gapping() { return get_mutable_functional_description().get_gapping(); }
-    double get_initial_permeability(double temperature);
-    static double get_initial_permeability(CoreMaterial coreMaterial, double temperature);
+    double get_initial_permeability(double temperature = Defaults().ambientTemperature);
+    static double get_initial_permeability(CoreMaterial coreMaterial, double temperature = Defaults().ambientTemperature);
     double get_effective_permeability(double temperature);
     double get_reluctance(double temperature);
     double get_density();

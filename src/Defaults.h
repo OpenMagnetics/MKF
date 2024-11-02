@@ -28,6 +28,7 @@ struct Defaults {
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double harmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
+    const double measurementFrequency = 10000;
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultSectionsOrientation = WindingOrientation::OVERLAPPING;

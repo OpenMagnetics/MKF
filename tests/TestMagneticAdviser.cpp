@@ -1,5 +1,6 @@
 #include "Painter.h"
 #include "MagneticAdviser.h"
+#include "CircuitSimulatorInterface.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
 #include "Settings.h"
@@ -1093,7 +1094,7 @@ SUITE(MagneticAdviser) {
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
 
         double frequency = 120000;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 52e-6);
@@ -1175,7 +1176,7 @@ SUITE(MagneticAdviser) {
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
 
         double frequency = 50;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(1, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
@@ -1251,7 +1252,7 @@ SUITE(MagneticAdviser) {
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
 
         double frequency = 372618;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 100e-6);
@@ -1331,7 +1332,7 @@ SUITE(MagneticAdviser) {
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
 
         double frequency = 100000;
-        auto reader = OpenMagnetics::InputsWrapper::CircuitSimulationReader(simulation_path);
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
         auto operatingPoint = reader.extract_operating_point(2, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 220e-6);

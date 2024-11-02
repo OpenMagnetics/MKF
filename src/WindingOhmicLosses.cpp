@@ -55,25 +55,57 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(WireWrapper 
     return dcResistancePerMeter;
 };
 
-WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature) {
-    if (!winding.get_turns_description()) {
+std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(CoilWrapper coil, double temperature) {
+    if (!coil.get_turns_description()) {
         throw std::runtime_error("Missing turns description");
     }
-    auto turns = winding.get_turns_description().value();
+    auto turns = coil.get_turns_description().value();
+    std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
+    auto wirePerWinding = coil.get_wires();
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        seriesResistancePerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
+    }
+
+    std::vector<double> dcResistancePerWinding;
+    for (auto& turn : turns) {
+        auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        auto parallelIndex = turn.get_parallel();
+
+        double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
+        seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
+    }
+
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        double conductance = 0;
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
+            conductance += 1. / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
+        }
+        double parallelResistance = 1. / conductance;
+        dcResistancePerWinding.push_back(parallelResistance);
+    }
+
+    return dcResistancePerWinding;
+}
+
+WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil, OperatingPoint operatingPoint, double temperature) {
+    if (!coil.get_turns_description()) {
+        throw std::runtime_error("Missing turns description");
+    }
+    auto turns = coil.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
     std::vector<std::vector<double>> dcCurrentPerWindingPerParallel;
     std::vector<double> dcCurrentPerWinding;
-    auto wirePerWinding = winding.get_wires();
-    for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
-        seriesResistancePerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
-        dcCurrentPerWindingPerParallel.push_back(std::vector<double>(winding.get_number_parallels(windingIndex), 0));
+    auto wirePerWinding = coil.get_wires();
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        seriesResistancePerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
+        dcCurrentPerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
         dcCurrentPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value());
     }
 
     std::vector<double> dcResistancePerTurn;
     std::vector<double> dcResistancePerWinding;
     for (auto& turn : turns) {
-        auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
+        auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
 
         double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
@@ -81,13 +113,13 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
 
-    for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double conductance = 0;
-        for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(windingIndex); ++parallelIndex) {
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             conductance += 1. / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
         double parallelResistance = 1. / conductance;
-        for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(windingIndex); ++parallelIndex) {
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] = dcCurrentPerWinding[windingIndex] * parallelResistance / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex];
         }
         dcResistancePerWinding.push_back(parallelResistance);
@@ -96,7 +128,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
     std::vector<double> currentDividerPerTurn;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         Turn turn = turns[turnIndex];
-        auto windingIndex = winding.get_winding_index_by_name(turn.get_winding());
+        auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
 
         auto currentDividerThisTurn = dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
@@ -118,10 +150,10 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper windi
     double windingOhmicLossesTotal = 0;
 
     std::vector<WindingLossesPerElement> windingLossesPerWinding;
-    for (size_t windingIndex = 0; windingIndex < winding.get_functional_description().size(); ++windingIndex) {
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         double windingOhmicLossesInWinding = 0;
 
-        for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(windingIndex); ++parallelIndex) {
+        for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             windingOhmicLossesInWinding += seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] * pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2);
         }
         OhmicLosses ohmicLosses;

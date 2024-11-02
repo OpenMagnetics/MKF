@@ -48,6 +48,7 @@ class MagneticWrapper : public Magnetic {
         BobbinWrapper get_bobbin();
         std::vector<WireWrapper> get_wires();
         WireWrapper get_wire(size_t windingIndex=0);
+        std::string get_reference();
 };
 
 void from_json(const json & j, MagneticWrapper & x);

@@ -67,6 +67,7 @@ class MagneticField {
 // https://sci-hub.wf/10.1049/piee.1966.0236
 class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
     public:
+        std::string methodName = "Dowell";
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
 };
 
@@ -76,6 +77,7 @@ class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 // Equation 3.34 and 5.4
 class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthModel {
     public:
+        std::string methodName = "BinnsLawrenson";
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
 };
 
@@ -84,6 +86,7 @@ class MagneticFieldStrengthBinnsLawrensonModel : public MagneticFieldStrengthMod
 // https://archive.org/details/eddycurrents0000lamm
 class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
     public:
+        std::string methodName = "Lammeraner";
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire = std::nullopt);
 };
 
@@ -93,6 +96,7 @@ class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
 // https://sci-hub.st/10.1109/tmag.2008.2002302
 class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthFringingEffectModel {
     public:
+        std::string methodName = "Roshen";
         ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point(CoreGap gap, double magneticFieldStrengthGap, FieldPoint inducedFieldPoint);
         FieldPoint get_equivalent_inducing_point_for_gap([[maybe_unused]]CoreGap gap, [[maybe_unused]]double magneticFieldStrengthGap) {
             throw std::runtime_error("Fringing field not implemented for this model");
@@ -105,6 +109,7 @@ class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthFringingEff
 // https://sci-hub.wf/10.1109/tpel.2011.2143729
 class MagneticFieldStrengthAlbachModel : public MagneticFieldStrengthFringingEffectModel {
     public:
+        std::string methodName = "Albach";
         ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]]CoreGap gap, [[maybe_unused]]double magneticFieldStrengthGap, [[maybe_unused]]FieldPoint inducedFieldPoint) {
             throw std::runtime_error("Fringing field not implemented for this model");
         }
