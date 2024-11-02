@@ -26,7 +26,8 @@ class WindingOhmicLosses {
         static double calculate_dc_resistance_per_meter(WireWrapper wire, double temperature);
         static double calculate_dc_resistance(Turn turn, const WireWrapper& wire, double temperature);
         static double calculate_dc_resistance(double wireLength, const WireWrapper& wire, double temperature);
-        static WindingLossesOutput calculate_ohmic_losses(CoilWrapper winding, OperatingPoint operatingPoint, double temperature);
+        static std::vector<double> calculate_dc_resistance_per_winding(CoilWrapper coil, double temperature);
+        static WindingLossesOutput calculate_ohmic_losses(CoilWrapper coil, OperatingPoint operatingPoint, double temperature);
         static double calculate_ohmic_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
 };
 

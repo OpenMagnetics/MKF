@@ -15,5 +15,14 @@ WireWrapper MagneticWrapper::get_wire(size_t windingIndex) {
     return get_mutable_coil().resolve_wire(windingIndex);
 }
 
+std::string MagneticWrapper::get_reference() {
+    if (get_manufacturer_info()) {
+        if (get_manufacturer_info()->get_reference()) {
+            return get_manufacturer_info()->get_reference().value();
+        }
+    }
+    return "Custom component made with OpenMagnetic";
+}
+
         
 } // namespace OpenMagnetics

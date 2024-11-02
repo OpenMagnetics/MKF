@@ -79,6 +79,30 @@ double CoreWrapper::get_width() {
     }
     return get_processed_description()->get_width();
 }
+double CoreWrapper::get_effective_length() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_effective_parameters().get_effective_length();
+}
+double CoreWrapper::get_effective_area() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_effective_parameters().get_effective_area();
+}
+double CoreWrapper::get_minimum_area() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_effective_parameters().get_minimum_area();
+}
+double CoreWrapper::get_effective_volume() {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Core is not processed");
+    }
+    return get_processed_description()->get_effective_parameters().get_effective_volume();
+}
 
 double roundFloat(double value, int64_t decimals) {
     return round(value * pow(10, decimals)) / pow(10, decimals);
