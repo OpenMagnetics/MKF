@@ -56,10 +56,13 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
 }
 
 
-void CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::string outputFilename, std::optional<std::string> filePathOrFile) {
+ordered_json CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
     auto result = _model->export_magnetic_as_subcircuit(magnetic, filePathOrFile);
-    std::ofstream o(outputFilename);
-    o << std::setw(2) << result << std::endl;
+    if (outputFilename) {
+        std::ofstream o(outputFilename.value());
+        o << std::setw(2) << result << std::endl;
+    }
+    return result;
 }
 
 

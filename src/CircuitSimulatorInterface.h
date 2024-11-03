@@ -32,7 +32,7 @@ class CircuitSimulatorExporter {
     public:
         CircuitSimulatorExporter(CircuitSimulatorExporterModels program);
         CircuitSimulatorExporter();
-        void export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::string outputFilename, std::optional<std::string> filePathOrFile = std::nullopt);
+        ordered_json export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
 };
 
 class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel {
