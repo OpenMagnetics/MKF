@@ -340,11 +340,10 @@ class Stocker():
                         }
                     )
             try:
-                inductance_data = PyMKF.calculate_inductance_from_number_turns_and_gapping(core_data, 
-                                                                                           winding_data,
-                                                                                           operating_point,
-                                                                                           models)
-                inductance = inductance_data['magnetizingInductance']['nominal']
+                inductance = PyMKF.calculate_inductance_from_number_turns_and_gapping(core_data, 
+                                                                                      winding_data,
+                                                                                      operating_point,
+                                                                                      models)
             except ValueError:
                 print(core_data)
                 print(winding_data)
@@ -502,7 +501,7 @@ class DigikeyStocker(Stocker):
         # https://api.digikey.com/v1/oauth2/authorize?response_type=code&client_id=cN8i6L6KnNGJB2h3zsQgC7KvWf8AccsC&redirect_uri=https://localhost:8139/digikey_callback
         # get auth code from the redirected URL and paste it here:
 
-        auth_code = 'xTYZGMpO'
+        auth_code = 'UnObkT2T'
 
         token_response = requests.post('https://api.digikey.com/v1/oauth2/token', data={
             'client_id': self.client_id,

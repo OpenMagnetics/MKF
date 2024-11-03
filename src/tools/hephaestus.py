@@ -715,48 +715,31 @@ class FerroxcubeInventory(Stocker):
 class TdkInventory(Stocker):
     def read_products(self, offset: int = 0):
         cookies = {
-            '_gcl_au': '1.1.1345231983.1676319639',
-            '_ga': 'GA1.1.852533192.1676319639',
-            'wooTracker': 'sSdLALgdnDeE',
-            'mhX5qX4': '802dc24a-3f2d-45d6-a0ed-a5a6e2185d38',
-            'MHD6Ph5HlS': '1ec7f994-87ed-aaca-aa3e-a724a6a0a00f',
-            'OptanonAlertBoxClosed': '2023-02-18T16:25:06.868Z',
-            '_ga_W48MFFWN91': 'GS1.1.1679614622.1.1.1679614642.0.0.0',
-            '__lt__cid.42694821': '5a1e72da-283d-434a-98c5-945ac91af208',
-            '_ga_K1F1PVYW3G': 'GS1.1.1679944616.3.0.1679944617.0.0.0',
-            '_ga_PWM9L9Z85D': 'GS1.1.1679944616.3.0.1679944617.0.0.0',
-            'ref_data': '%7B%22display_distributor_name%22%3A%22Mouser%20Electronics%22%2C%22short_name%22%3A%22Mouser%20Electronics%22%2C%22net_components_distributor_name%22%3A%22Mouser%20Electronics%20Inc.%22%2C%22host%22%3A%22www.mouser.com%22%2C%22ref_disty%22%3A%22mouser%22%7D',
-            '_ga_J72MDETYME': 'GS1.1.1681037908.8.0.1681037911.0.0.0',
-            'OptanonConsent': 'isIABGlobal=false&datestamp=Sun+Apr+09+2023+13%3A55%3A22+GMT%2B0200+(hora+de+verano+de+Europa+central)&version=6.6.0&hosts=&consentId=911d4900-ea39-4349-a2c6-005b068c07e0&interactionCount=2&landingPath=NotLandingPage&groups=C001%3A1%2CC002%3A1%2CC003%3A1%2CC004%3A1%2CC006%3A1&AwaitingReconsent=false&geolocation=ES%3BMD',
-            '_ga_DEXMV98BYD': 'GS1.1.1681041255.16.1.1681041383.60.0.0',
-            '_ga_L03JBTW2NL': 'GS1.1.1681041255.19.1.1681041383.0.0.0',
-            'product_search_fw': 'eyJpdiI6IllUbkZ3ck4wZDdlU2xTWUJTUUd3SHc9PSIsInZhbHVlIjoiMGQyME9QQUJuM2ZKa0lQYy83UW5VZWcyT21XOWtXZjB5U29IMUtPOWhEVVdmbzBYcmRqK2tUQTBIY1pyaUJBZHhoVVJDQ3ZzWlliRFBqT3Y4OGRLTVlZT0hpRFgrL2JtK0dhTDA4eEZaSXVMM1VjTTFwZk5kQTNlT2NQT0tldjkiLCJtYWMiOiJlYTU4YTBmY2M0YjczZjhmZGRkOThmNzBhZGE2ODdmYjVjYTQzZWVjNTA0ZTgzNzJhZTk4NWQxM2NhMjc0ZmIwIiwidGFnIjoiIn0%3D',
-            'mh8ciXI-3a7HfloWZ': '',
-            'mh8oobaIFjn3V': '',
-            'mh8oobaJ7gi': '',
-            'mh8oobaC7SeJd': '',
-            'mhX5qk95': '02d83a15-f22f-4fad-adef-6f02a7662642',
-            'ak_bmsc': '9EDD2353602C93C4006855E989CE5EA6~000000000000000000000000000000~YAAQH1UQYBxqeliHAQAAkdDlZhM/lsFidJ39C9LXsGDXfp07dkJdIsPFu3Qx7/0mxxSuuocidaAdTRIvtHA3w9sQD9Cp+DBQndi0viFWWwZc0WlwiA4IxTHwgJWcfn0LbGYQz2aHR7LA0L7le7OumTWqTCQKjqiFrIAXyTlVHY70P6Aaz/MmReJe6tY+zitAYFQ4suqHI9GG67aJzZX4xidxewduzQ9wEoAVPkgDO912URLQ9PL8fHhn3UZnDKUM1NonN7NUoZE1ZLtEjmzKlm0uqPkkGf7dsNhzrKIhuXscAi9PK33iS5Zh2Ua3QmWxStzGk0wzLu6Eiungotl/Xe/mr+5AV8Wev+ZrnQq0nsqFGWhQZOh7cxO8P0/sw4VP0aPd+xMmA6c=',
-            'RT': '"z=1&dm=tdk.com&si=0290ba7e-33a6-4ddf-8925-8448e3bd6ce4&ss=lg9clkda&sl=0&tt=0&bcn=%2F%2F684dd313.akstat.io%2F&nu=x9hkqc7&cl=a9kna&ul=a9knr"',
+            'ak_bmsc': '7CFA1415F1B17AD986FC6CADA8E5E5E1~000000000000000000000000000000~YAAQXLsUArHr9NqSAQAARNFq8Rk1zMKU5kd3TfdGcYLP3WHh8bcIgLdpnqmSIiVL3Bw72gKPNM4p+iiXT6hExsmGk2XEw/+pHIrX/16ufI9fI1yw0dUOR1bzGYZCTpYgFRPgL2YA0K4K38D+T9GV7ndEad3ZJkdWwTE6YZFDU0nbtoBnJHXJ4TH02Cbad5R0jX3HsMkpNKohfkTHzb2qQbLY9T84Uh3NJDFlbnMrLkgqodNt3xgDH3yTOGeWV96ofgWhxw6cV+E4MezJK4U+ER3S2sfl/83dSvA57QGl4VZIdzl42DvlPIQv+P3KKJBHiObaWM4xym44eH0hPxQ15qyBGqiP/hPjPDjmYB/nP4ZQa37oyDf62ANN65iLvZjrAXoI9xIEG6s=',
+            'wooTracker': 'j3nP9mB8lSGt',
+            '_abck': '7738C6273CFB64C2B06FF20E4388A16E~0~YAAQXLsUAmjs9NqSAQAAzehq8QzU7lHLX0vTQWpZK2IDk6RAr0zRep62BFnJmWqmIlr2SJ456Fjkd1VWM/fCkJcWE3cczMscQzsw+PrdCVuBc7LawkloM3yzjOwBZn+RbiyYZy44Lr2C3XYqcNCZ4rZ1hukFT3PiUUEocgn5AZ20f3KQg59nxRJD8elDsZKlRS1ybzsuXJ5zOGj+F7XR3pix6e9QyrzmS9zjsZhc6ZDtNgUd7GYvCiLvS5rom4lMFDC/PaGtiovO4L4DCXzUQzNC5ok47dud1srO7liXXk2H3xMbdyWjIULt0+4HQpszArJmPejlmYVMOJdP7LyUIZ4Gaqtu+GXsjLf7ANpHp2KK6NOOerbRSW92yTvo9NFKbBr+3WmUllOCIB5FbA80JyhGZjgzrgyxTcpaZlq/Baq2Ee7Zh3zeLU4EH7ZJBwWUTYTkN30U~-1~-1~-1',
+            'ps_ls': '0',
+            'bm_sz': 'EAAD71EF804931D7F9B1C5E2EF3A5A14~YAAQXLsUAlf09NqSAQAAI/9r8RlbRu2fzx8H2xuMsUBYW24D1aJ8n+hzgRd+u14jVjp5iL5nADNbgz1kG8emIt18QIn9gAiRNz6IS6Ege40HTc0+VqltPFK3iPOaK7crktk713fbQu6ss8uA55Tt/HIhxfJfEF4juziHN5LYw7i/36YcnqMuS2ONYnKFYDZPtks29/Tt8kx4DK7M1vSy0tl46kxuXHOlolK8tuEZrErwAEPKNnrjP+rMmIPWbvf5EtE5kn6EuBbhQaR03TxUSCxKE0g4QibLqvr0Pxc1bPLwSqmgzWc6FdK5smDmsdi3brSky/mGDbVUXTmciT5PN0xDkIjrZMi+BapwEYSKfDDn+Y/Dgr71HdMlgSVXYhzUrT6xZ5wueJyEvUjCuchuUO5UK5E0YiaWeodF85ihpwTf/blF9kR/N+KjBl0e85PX75nJBzp65QY=~4339766~3421232',
+            'product_search_fw': 'eyJpdiI6InRDU3VJY0xrNGdURmdtYXU2MnBpNHc9PSIsInZhbHVlIjoiVHFROFBpeStnMmlobW44WU93OEU4c0pFVisxUXIvZ2JVZU1rRmV0eGNJNTYrdWpraHBHTzFHamx0RmloK3hFVllvV2c3ZzhZak1lMkNkNDU0clZmR0JaQlRiV0lyc2w2eTdjRUdpSFhibXE3dVczVDI3UE1NNVJGYjU2MThXSUoiLCJtYWMiOiI1NDMxMDY0M2MwNDVjMjg0ZjBmMDc1YjNhYzBhN2ExMjczOWRmNDZkZDBlNTk1OWJlYTJiMTMzMGMxNTI2OTFhIiwidGFnIjoiIn0%3D',
+            'bm_sv': '0BFC2939F3C4F1993632316C3EC706FA~YAAQXLsUApcI9dqSAQAAQD1u8Rko5RQrLOBwuwhxDIkVNbsDWr0IGR6vpFqsIM0jNlGiOcrtytlcrRxqRKJEt70j2wr8rQCevivajFn/7qjaH2plTpNX2KkG+8/jNJ6LyJS4YFM8YvPPQl9LBQ1/2wVIywHKwV5PBztuKtV4CQAIu9LclQXFIORtRmYnHzF9q7QBpeggA16/XY9MWFo2hK47cUbEULsiPZb/K+QgkF3WikJk8N8HqF+/T/OcFA==~1',
         }
 
         headers = {
-            'authority': 'product.tdk.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'es-ES,es;q=0.9,en;q=0.8',
-            # 'cookie': '_gcl_au=1.1.1345231983.1676319639; _ga=GA1.1.852533192.1676319639; wooTracker=sSdLALgdnDeE; mhX5qX4=802dc24a-3f2d-45d6-a0ed-a5a6e2185d38; MHD6Ph5HlS=1ec7f994-87ed-aaca-aa3e-a724a6a0a00f; OptanonAlertBoxClosed=2023-02-18T16:25:06.868Z; _ga_W48MFFWN91=GS1.1.1679614622.1.1.1679614642.0.0.0; __lt__cid.42694821=5a1e72da-283d-434a-98c5-945ac91af208; _ga_K1F1PVYW3G=GS1.1.1679944616.3.0.1679944617.0.0.0; _ga_PWM9L9Z85D=GS1.1.1679944616.3.0.1679944617.0.0.0; ref_data=%7B%22display_distributor_name%22%3A%22Mouser%20Electronics%22%2C%22short_name%22%3A%22Mouser%20Electronics%22%2C%22net_components_distributor_name%22%3A%22Mouser%20Electronics%20Inc.%22%2C%22host%22%3A%22www.mouser.com%22%2C%22ref_disty%22%3A%22mouser%22%7D; _ga_J72MDETYME=GS1.1.1681037908.8.0.1681037911.0.0.0; OptanonConsent=isIABGlobal=false&datestamp=Sun+Apr+09+2023+13%3A55%3A22+GMT%2B0200+(hora+de+verano+de+Europa+central)&version=6.6.0&hosts=&consentId=911d4900-ea39-4349-a2c6-005b068c07e0&interactionCount=2&landingPath=NotLandingPage&groups=C001%3A1%2CC002%3A1%2CC003%3A1%2CC004%3A1%2CC006%3A1&AwaitingReconsent=false&geolocation=ES%3BMD; _ga_DEXMV98BYD=GS1.1.1681041255.16.1.1681041383.60.0.0; _ga_L03JBTW2NL=GS1.1.1681041255.19.1.1681041383.0.0.0; product_search_fw=eyJpdiI6IllUbkZ3ck4wZDdlU2xTWUJTUUd3SHc9PSIsInZhbHVlIjoiMGQyME9QQUJuM2ZKa0lQYy83UW5VZWcyT21XOWtXZjB5U29IMUtPOWhEVVdmbzBYcmRqK2tUQTBIY1pyaUJBZHhoVVJDQ3ZzWlliRFBqT3Y4OGRLTVlZT0hpRFgrL2JtK0dhTDA4eEZaSXVMM1VjTTFwZk5kQTNlT2NQT0tldjkiLCJtYWMiOiJlYTU4YTBmY2M0YjczZjhmZGRkOThmNzBhZGE2ODdmYjVjYTQzZWVjNTA0ZTgzNzJhZTk4NWQxM2NhMjc0ZmIwIiwidGFnIjoiIn0%3D; mh8ciXI-3a7HfloWZ=; mh8oobaIFjn3V=; mh8oobaJ7gi=; mh8oobaC7SeJd=; mhX5qk95=02d83a15-f22f-4fad-adef-6f02a7662642; ak_bmsc=9EDD2353602C93C4006855E989CE5EA6~000000000000000000000000000000~YAAQH1UQYBxqeliHAQAAkdDlZhM/lsFidJ39C9LXsGDXfp07dkJdIsPFu3Qx7/0mxxSuuocidaAdTRIvtHA3w9sQD9Cp+DBQndi0viFWWwZc0WlwiA4IxTHwgJWcfn0LbGYQz2aHR7LA0L7le7OumTWqTCQKjqiFrIAXyTlVHY70P6Aaz/MmReJe6tY+zitAYFQ4suqHI9GG67aJzZX4xidxewduzQ9wEoAVPkgDO912URLQ9PL8fHhn3UZnDKUM1NonN7NUoZE1ZLtEjmzKlm0uqPkkGf7dsNhzrKIhuXscAi9PK33iS5Zh2Ua3QmWxStzGk0wzLu6Eiungotl/Xe/mr+5AV8Wev+ZrnQq0nsqFGWhQZOh7cxO8P0/sw4VP0aPd+xMmA6c=; RT="z=1&dm=tdk.com&si=0290ba7e-33a6-4ddf-8925-8448e3bd6ce4&ss=lg9clkda&sl=0&tt=0&bcn=%2F%2F684dd313.akstat.io%2F&nu=x9hkqc7&cl=a9kna&ul=a9knr"',
-            'dnt': '1',
+            'accept': '*/*',
+            'accept-language': 'es-ES,es;q=0.9',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            # 'cookie': 'ak_bmsc=7CFA1415F1B17AD986FC6CADA8E5E5E1~000000000000000000000000000000~YAAQXLsUArHr9NqSAQAARNFq8Rk1zMKU5kd3TfdGcYLP3WHh8bcIgLdpnqmSIiVL3Bw72gKPNM4p+iiXT6hExsmGk2XEw/+pHIrX/16ufI9fI1yw0dUOR1bzGYZCTpYgFRPgL2YA0K4K38D+T9GV7ndEad3ZJkdWwTE6YZFDU0nbtoBnJHXJ4TH02Cbad5R0jX3HsMkpNKohfkTHzb2qQbLY9T84Uh3NJDFlbnMrLkgqodNt3xgDH3yTOGeWV96ofgWhxw6cV+E4MezJK4U+ER3S2sfl/83dSvA57QGl4VZIdzl42DvlPIQv+P3KKJBHiObaWM4xym44eH0hPxQ15qyBGqiP/hPjPDjmYB/nP4ZQa37oyDf62ANN65iLvZjrAXoI9xIEG6s=; wooTracker=j3nP9mB8lSGt; _abck=7738C6273CFB64C2B06FF20E4388A16E~0~YAAQXLsUAmjs9NqSAQAAzehq8QzU7lHLX0vTQWpZK2IDk6RAr0zRep62BFnJmWqmIlr2SJ456Fjkd1VWM/fCkJcWE3cczMscQzsw+PrdCVuBc7LawkloM3yzjOwBZn+RbiyYZy44Lr2C3XYqcNCZ4rZ1hukFT3PiUUEocgn5AZ20f3KQg59nxRJD8elDsZKlRS1ybzsuXJ5zOGj+F7XR3pix6e9QyrzmS9zjsZhc6ZDtNgUd7GYvCiLvS5rom4lMFDC/PaGtiovO4L4DCXzUQzNC5ok47dud1srO7liXXk2H3xMbdyWjIULt0+4HQpszArJmPejlmYVMOJdP7LyUIZ4Gaqtu+GXsjLf7ANpHp2KK6NOOerbRSW92yTvo9NFKbBr+3WmUllOCIB5FbA80JyhGZjgzrgyxTcpaZlq/Baq2Ee7Zh3zeLU4EH7ZJBwWUTYTkN30U~-1~-1~-1; ps_ls=0; bm_sz=EAAD71EF804931D7F9B1C5E2EF3A5A14~YAAQXLsUAlf09NqSAQAAI/9r8RlbRu2fzx8H2xuMsUBYW24D1aJ8n+hzgRd+u14jVjp5iL5nADNbgz1kG8emIt18QIn9gAiRNz6IS6Ege40HTc0+VqltPFK3iPOaK7crktk713fbQu6ss8uA55Tt/HIhxfJfEF4juziHN5LYw7i/36YcnqMuS2ONYnKFYDZPtks29/Tt8kx4DK7M1vSy0tl46kxuXHOlolK8tuEZrErwAEPKNnrjP+rMmIPWbvf5EtE5kn6EuBbhQaR03TxUSCxKE0g4QibLqvr0Pxc1bPLwSqmgzWc6FdK5smDmsdi3brSky/mGDbVUXTmciT5PN0xDkIjrZMi+BapwEYSKfDDn+Y/Dgr71HdMlgSVXYhzUrT6xZ5wueJyEvUjCuchuUO5UK5E0YiaWeodF85ihpwTf/blF9kR/N+KjBl0e85PX75nJBzp65QY=~4339766~3421232; product_search_fw=eyJpdiI6InRDU3VJY0xrNGdURmdtYXU2MnBpNHc9PSIsInZhbHVlIjoiVHFROFBpeStnMmlobW44WU93OEU4c0pFVisxUXIvZ2JVZU1rRmV0eGNJNTYrdWpraHBHTzFHamx0RmloK3hFVllvV2c3ZzhZak1lMkNkNDU0clZmR0JaQlRiV0lyc2w2eTdjRUdpSFhibXE3dVczVDI3UE1NNVJGYjU2MThXSUoiLCJtYWMiOiI1NDMxMDY0M2MwNDVjMjg0ZjBmMDc1YjNhYzBhN2ExMjczOWRmNDZkZDBlNTk1OWJlYTJiMTMzMGMxNTI2OTFhIiwidGFnIjoiIn0%3D; bm_sv=0BFC2939F3C4F1993632316C3EC706FA~YAAQXLsUApcI9dqSAQAAQD1u8Rko5RQrLOBwuwhxDIkVNbsDWr0IGR6vpFqsIM0jNlGiOcrtytlcrRxqRKJEt70j2wr8rQCevivajFn/7qjaH2plTpNX2KkG+8/jNJ6LyJS4YFM8YvPPQl9LBQ1/2wVIywHKwV5PBztuKtV4CQAIu9LclQXFIORtRmYnHzF9q7QBpeggA16/XY9MWFo2hK47cUbEULsiPZb/K+QgkF3WikJk8N8HqF+/T/OcFA==~1',
+            'origin': 'https://product.tdk.com',
+            'priority': 'u=1, i',
             'referer': 'https://product.tdk.com/en/search/ferrite/ferrite/ferrite-core/list',
-            'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24"',
+            'sec-ch-ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"Windows"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'sec-gpc': '1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+            'x-requested-with': 'XMLHttpRequest',
         }
 
         params = {
@@ -821,7 +804,6 @@ class TdkInventory(Stocker):
             headers=headers,
         )
 
-
         data = pandas.read_csv(io.StringIO(response.text), sep=",")
         data = data.where(pandas.notnull(data), None)
         data = data.rename(columns={"Size (IEC62317) A x B x C": "shape",
@@ -837,7 +819,7 @@ class TdkInventory(Stocker):
 
         total_pages = offset + 2 if number_products != 0 else offset
         return {
-            'current_offset' : offset + 1,
+            'current_offset': offset + 1,
             'total': total_pages
         }
 
@@ -1509,7 +1491,7 @@ class MicrometalsInventory(Stocker):
                 if not_included_material in f"{data['material']}":
                     return None
             pprint.pprint(data)
-            assert 0, f"Unknown material in {data['material']}"
+            # assert 0, f"Unknown material in {data['material']}"
             return
 
         if shape is None:

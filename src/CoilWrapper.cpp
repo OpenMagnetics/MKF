@@ -144,7 +144,6 @@ void CoilWrapper::convert_turns_to_polar_coordinates() {
     set_turns_description(turns);
 }
 
-
 CoilWrapper::CoilWrapper(const json& j, size_t interleavingLevel,
                                WindingOrientation windingOrientation,
                                WindingOrientation layersOrientation,
@@ -2081,7 +2080,8 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
             }
 
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                double ringArea = std::numbers::pi * pow(windingWindowRadialHeight - currentSectionCenterRadialHeight, 2) - std::numbers::pi * pow(windingWindowRadialHeight - (currentSectionCenterRadialHeight - currentSectionRadialHeight), 2);
+                double ringArea = std::numbers::pi * pow(windingWindowRadialHeight - currentSectionCenterRadialHeight, 2) - std::numbers::pi * pow(windingWindowRadialHeight - (currentSectionCenterRadialHeight + currentSectionRadialHeight), 2);
+
                 section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ringArea);
             } 
             else {

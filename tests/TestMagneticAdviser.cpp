@@ -986,7 +986,6 @@ SUITE(MagneticAdviser) {
         settings->set_wire_adviser_include_foil(true);
         settings->set_use_toroidal_cores(false);
         settings->set_use_concentric_cores(true);
-        double temperature = 20;
         json inputsJson;
 
         inputsJson["operatingPoints"] = json::array();
@@ -1086,7 +1085,6 @@ SUITE(MagneticAdviser) {
         settings->set_use_only_cores_in_stock(true);
         settings->set_use_toroidal_cores(false);
         settings->set_use_concentric_cores(true);
-        double temperature = 20;
         json inputsJson;
 
 
@@ -1168,7 +1166,6 @@ SUITE(MagneticAdviser) {
         settings->set_use_only_cores_in_stock(true);
         settings->set_use_toroidal_cores(false);
         settings->set_use_concentric_cores(true);
-        double temperature = 20;
         json inputsJson;
 
 
@@ -1244,7 +1241,6 @@ SUITE(MagneticAdviser) {
         settings->set_use_only_cores_in_stock(true);
         settings->set_use_toroidal_cores(false);
         settings->set_use_concentric_cores(true);
-        double temperature = 20;
         json inputsJson;
 
 
@@ -1324,7 +1320,6 @@ SUITE(MagneticAdviser) {
         settings->set_use_only_cores_in_stock(true);
         settings->set_use_toroidal_cores(false);
         settings->set_use_concentric_cores(true);
-        double temperature = 20;
         json inputsJson;
 
 
