@@ -400,7 +400,12 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
             (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
             (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
 
-            wires.push_back(wire);
+            if (!_commonWireStandard || !wire.get_standard()) {
+                wires.push_back(wire);
+            }
+            else if (wire.get_standard().value() == _commonWireStandard){
+                wires.push_back(wire);
+            }
         }
     }
     return get_advised_wire(&wires, coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);

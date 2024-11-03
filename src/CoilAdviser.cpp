@@ -161,7 +161,13 @@ namespace OpenMagnetics {
                 (settings->get_wire_adviser_include_rectangular() || wire.get_type() != WireType::RECTANGULAR) &&
                 (settings->get_wire_adviser_include_litz() || wire.get_type() != WireType::LITZ) &&
                 (settings->get_wire_adviser_include_round() || wire.get_type() != WireType::ROUND)) {
-                wires.push_back(wire);
+
+                if (!_commonWireStandard || !wire.get_standard()) {
+                    wires.push_back(wire);
+                }
+                else if (wire.get_standard().value() == _commonWireStandard){
+                    wires.push_back(wire);
+                }
             }
         }
         return get_advised_coil(&wires, mas, maximumNumberResults);
@@ -437,6 +443,8 @@ namespace OpenMagnetics {
                 throw std::runtime_error("section.get_dimensions()[1] cannot be negative: " + std::to_string(section.get_dimensions()[1]));
             }
         }
+
+        _wireAdviser.set_common_wire_standard(_commonWireStandard);  // TODO, rethink this
 
         if (needsMargin) {
             // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)

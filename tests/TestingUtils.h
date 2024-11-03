@@ -118,5 +118,6 @@ void check_layers_description(OpenMagnetics::CoilWrapper coil,
 
 
 bool check_turns_description(OpenMagnetics::CoilWrapper coil);
+bool check_wire_standards(OpenMagnetics::CoilWrapper coil);
 
 } // namespace OpenMagneticsTesting

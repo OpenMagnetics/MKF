@@ -708,7 +708,7 @@ SUITE(CoilAdviser) {
         settings->reset();
     }
 
-    TEST(Test_CoilAdviser_Random) {
+    TEST(Test_CoilAdviser_Random_Base) {
         auto settings = OpenMagnetics::Settings::GetInstance();
         settings->reset();
         srand (time(NULL));
@@ -830,9 +830,11 @@ SUITE(CoilAdviser) {
             OpenMagnetics::CoilAdviser coilAdviser;
             try {
                 auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
-
                 if (masMagneticsWithCoil.size() > 0) {
                     auto masMagneticWithCoil = masMagneticsWithCoil[0];
+
+                    OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
+
                     if (!masMagneticWithCoil.get_magnetic().get_coil().get_turns_description()) {
                         continue;
                     }
@@ -913,6 +915,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
         }
     }
@@ -968,6 +971,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1030,6 +1034,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1098,6 +1103,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1166,6 +1172,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1236,6 +1243,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1303,6 +1311,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1371,6 +1380,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1439,6 +1449,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1507,6 +1518,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1576,6 +1588,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            // OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             // OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
@@ -1851,6 +1864,7 @@ SUITE(CoilAdviser) {
 
         if (masMagneticsWithCoil.size() > 0) {
             auto masMagneticWithCoil = masMagneticsWithCoil[0];
+            OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;

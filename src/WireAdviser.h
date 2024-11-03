@@ -60,6 +60,7 @@ class WireAdviser {
     protected:
         double _maximumEffectiveCurrentDensity;
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;
+        std::optional<WireStandard> _commonWireStandard;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
         std::string _log;
@@ -93,6 +94,12 @@ class WireAdviser {
         }
         double get_maximum_area_proportion() {
             return _maximumOuterAreaProportion;
+        }
+        void set_common_wire_standard(std::optional<WireStandard> commonWireStandard) {
+            _commonWireStandard = commonWireStandard;
+        }
+        std::optional<WireStandard> get_common_wire_standard() {
+            return _commonWireStandard;
         }
         std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(CoilFunctionalDescription coilFunctionalDescription,
                                                                                    Section section,
