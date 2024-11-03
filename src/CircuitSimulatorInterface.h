@@ -47,7 +47,7 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
     public:
         std::string programName = "Simba";
         double _scale;
-        double _modelSize = 40;
+        double _modelSize = 50;
         std::string generate_id();
         std::mt19937 _gen;
         CircuitSimulatorExporterSimbaModel();
