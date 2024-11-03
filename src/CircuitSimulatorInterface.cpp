@@ -4,6 +4,7 @@
 #include "WindingOhmicLosses.h"
 #include "LeakageInductance.h"
 #include <filesystem>
+#include <ctime>
 
 namespace OpenMagnetics {
 
@@ -36,10 +37,7 @@ CircuitSimulatorExporterSimbaModel::CircuitSimulatorExporterSimbaModel() {
     std::random_device rd;
     _gen = std::mt19937(rd());
 
-    std::seed_seq sseq {
-        std::chrono::duration_cast<std::chrono::hours> (curr_clock.time_since_epoch()).count(), 
-        std::chrono::duration_cast<std::chrono::seconds> (curr_clock.time_since_epoch()).count()
-        };
+    std::seed_seq sseq{time(0)};
     
     _gen.seed(sseq);
 }
