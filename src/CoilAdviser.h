@@ -2,6 +2,7 @@
 #include "WireAdviser.h"
 #include "CoilWrapper.h"
 #include "MasWrapper.h"
+#include "Defaults.h"
 #include <MAS.hpp>
 
 
@@ -12,6 +13,7 @@ class CoilAdviser : public WireAdviser {
         bool _allowMarginTape = true;
         bool _allowInsulatedWire = true;
         OpenMagnetics::WireAdviser _wireAdviser;
+        std::optional<WireStandard> _commonWireStandard = Defaults().commonWireStandard;
     public:
 
         std::vector<MasWrapper> get_advised_coil(MasWrapper mas, size_t maximumNumberResults=1);
@@ -24,6 +26,12 @@ class CoilAdviser : public WireAdviser {
         }
         void set_allow_insulated_wire(bool value) {
             _allowInsulatedWire = value;
+        }
+        void set_common_wire_standard(std::optional<WireStandard> commonWireStandard) {
+            _commonWireStandard = commonWireStandard;
+        }
+        std::optional<WireStandard> get_common_wire_standard() {
+            return _commonWireStandard;
         }
 
 };

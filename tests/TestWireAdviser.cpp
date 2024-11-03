@@ -55,6 +55,50 @@ SUITE(WireAdviser) {
         auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
 
         CHECK(masMagneticsWithCoil.size() > 0);
+
+        CHECK(OpenMagnetics::WireType::ROUND == OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_type());
+    }
+
+
+    TEST(Test_Round_IEC_60317) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        numberTurns = 2;
+        currentRms = 10;
+        currentEffectiveFrequency = 134567;
+        setup();
+        OpenMagnetics::WireAdviser wireAdviser;
+        wireAdviser.set_common_wire_standard(OpenMagnetics::WireStandard::IEC_60317);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_rectangular(false);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_wire_adviser_include_round(true);
+        auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
+        auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+
+        CHECK(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_standard().value() == OpenMagnetics::WireStandard::IEC_60317);
+        CHECK(masMagneticsWithCoil.size() > 0);
+        CHECK(OpenMagnetics::WireType::ROUND == OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_type());
+    }
+
+    TEST(Test_Round_NEMA_MW_1000_C) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        numberTurns = 2;
+        currentRms = 10;
+        currentEffectiveFrequency = 134567;
+        setup();
+        OpenMagnetics::WireAdviser wireAdviser;
+        wireAdviser.set_common_wire_standard(OpenMagnetics::WireStandard::NEMA_MW_1000_C);
+        settings->set_wire_adviser_include_foil(false);
+        settings->set_wire_adviser_include_rectangular(false);
+        settings->set_wire_adviser_include_litz(false);
+        settings->set_wire_adviser_include_round(true);
+        auto masMagneticsWithCoil = wireAdviser.get_advised_wire(coilFunctionalDescription, section, current, temperature, numberSections, maximumNumberResults);
+        auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+
+        CHECK(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_standard().value() == OpenMagnetics::WireStandard::NEMA_MW_1000_C);
+        CHECK(masMagneticsWithCoil.size() > 0);
         CHECK(OpenMagnetics::WireType::ROUND == OpenMagnetics::CoilWrapper::resolve_wire(masMagneticWithCoil).get_type());
     }
 
@@ -272,10 +316,6 @@ SUITE(WireAdviser) {
                                                                  25,
                                                                  1,
                                                                  1);
-        std::cout << bool(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first).get_outer_diameter().value().get_maximum()) << std::endl;
-        std::cout << bool(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first).get_outer_diameter().value().get_nominal()) << std::endl;
-        std::cout << bool(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first).get_outer_diameter().value().get_minimum()) << std::endl;
-        std::cout << OpenMagnetics::resolve_dimensional_values(OpenMagnetics::CoilWrapper::resolve_wire(masMagneticsWithCoil[0].first).get_outer_diameter().value(), OpenMagnetics::DimensionalValues::MAXIMUM) << std::endl;
 
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
