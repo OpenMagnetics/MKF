@@ -155,6 +155,10 @@ ordered_json CircuitSimulatorExporterSimbaModel::create_pin(std::vector<int> coo
     return create_device("Electrical Pin", coordinates, angle, name);
 }
 
+ordered_json CircuitSimulatorExporterSimbaModel::create_magnetic_ground(std::vector<int> coordinates, int angle, std::string name) {
+    return create_device("Magnetic Ground", coordinates, angle, name);
+}
+
 ordered_json CircuitSimulatorExporterSimbaModel::create_connector(std::vector<int> startingCoordinates, std::vector<int> endingCoordinates, std::string name) {
     ordered_json connectorJson;
 
@@ -418,6 +422,14 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
         }
     }
 
+    // Magnetic ground
+    {
+        std::vector<int> columnBottomCoordinatesAux = {0, columnTopCoordinates[0][1]};
+        columnBottomCoordinatesAux[0] += 2;
+        columnBottomCoordinatesAux[1] -= 2;
+        auto groundJson = create_magnetic_ground(columnBottomCoordinatesAux, 180, "Magnetic ground");
+        device["SubcircuitDefinition"]["Devices"].push_back(groundJson);
+    }
 
     for (size_t columnIndex = 1; columnIndex < columns.size(); ++columnIndex) {
         auto connectorJson = create_connector(columnTopCoordinates[0], columnTopCoordinates[columnIndex], "Top Connector between column " + std::to_string(0) + " and columm " + std::to_string(columnIndex));
