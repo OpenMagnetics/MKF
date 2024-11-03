@@ -59,6 +59,7 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         ordered_json create_pin(std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_resistor(double resistance, std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_inductor(double inductance, std::vector<int> coordinates, int angle, std::string name);
+        ordered_json create_magnetic_ground(std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_connector(std::vector<int> startingCoordinates, std::vector<int> endingCoordinates, std::string name);
         ordered_json merge_connectors(ordered_json connectors);
 };
