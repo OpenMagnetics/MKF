@@ -307,11 +307,18 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
 
     std::vector<std::vector<int>> columnBottomCoordinates; 
     std::vector<std::vector<int>> columnTopCoordinates; 
+    
     for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
         auto column = columns[columnIndex];
         auto gapsInThisColumn = core.find_gaps_by_column(column);
         ordered_json coreChunkJson;
-        std::vector<int> columnCoordinates = {static_cast<int>(column.get_coordinates()[0] * _scale), 0};
+        std::vector<int> columnCoordinates;
+        if (column.get_coordinates()[0] == 0 && column.get_coordinates()[2] != 0) {
+            columnCoordinates = {static_cast<int>(column.get_coordinates()[2] * _scale), 0};
+        }
+        else {
+            columnCoordinates = {static_cast<int>(column.get_coordinates()[0] * _scale), 0};
+        }
         if (columnIndex == 0) {
             coreChunkJson = create_core(core.get_initial_permeability(), columnCoordinates, coreEffectiveArea, coreEffectiveLengthMinusColumns, 90, "Core winding column and plates " + std::to_string(columnIndex));
         }
@@ -327,7 +334,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
             if (!gap.get_coordinates()) {
                 throw std::runtime_error("Gap is not processed");
             }
-            std::vector<int> gapCoordinates = {static_cast<int>(gap.get_coordinates().value()[0] * _scale), currentColumnGapHeight};
+            std::vector<int> gapCoordinates = {columnCoordinates[0], currentColumnGapHeight};
 
             auto gapJson = create_air_gap(gapCoordinates, gap.get_area().value(), gap.get_length(), 90, "Column " + std::to_string(columnIndex) + " gap " + std::to_string(gapIndex));
             device["SubcircuitDefinition"]["Devices"].push_back(gapJson);
@@ -383,8 +390,6 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
             bottomPinJson = create_pin(coordinates, 180, winding.get_name() + " Output");
         }
 
-
-
         auto connectorTopCoordinates = columnTopCoordinates[0];
         auto connectorBottomCoordinates = columnTopCoordinates[0];
         if (windingIndex == 0) {
@@ -413,6 +418,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
         }
     }
 
+
     for (size_t columnIndex = 1; columnIndex < columns.size(); ++columnIndex) {
         auto connectorJson = create_connector(columnTopCoordinates[0], columnTopCoordinates[columnIndex], "Top Connector between column " + std::to_string(0) + " and columm " + std::to_string(columnIndex));
         device["SubcircuitDefinition"]["Connectors"].push_back(connectorJson);
@@ -437,8 +443,8 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
         }
     }
 
-
-    library["Devices"] = {device};
+    library["Devices"] = ordered_json::array();
+    library["Devices"].push_back(device);
     simulation["Libraries"].push_back(library);
     return simulation;
 }
@@ -941,7 +947,7 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
     }
 
     operatingPoint.set_excitations_per_winding(excitationsPerWinding);
-    OperatingConditions conditions;
+    [[maybe_unused]] OperatingConditions conditions;
     conditions.set_ambient_temperature(ambientTemperature);
     operatingPoint.set_conditions(conditions);
 

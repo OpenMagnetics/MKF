@@ -1351,11 +1351,11 @@ class DigikeyStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson")
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1375,7 +1375,7 @@ class DigikeyStocker(Stocker):
         pprint.pprint(self.unfound_shapes)
         # core_data = pandas.DataFrame(self.core_data.values())
         self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson", "w")
         ndjson.dump(self.core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -1849,11 +1849,11 @@ class MouserStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson")
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -1873,7 +1873,7 @@ class MouserStocker(Stocker):
         # pprint.pprint(self.core_data)
         # core_data = pandas.DataFrame(self.core_data.values())
         self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson", "w")
         ndjson.dump(self.core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -2034,11 +2034,11 @@ class GatewayStocker(Stocker):
         remaining = 1
         current_offset = 0
 
-        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
-            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson")
+        if not os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") and os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson"):
+            shutil.copy(f"{pathlib.Path(__file__).parent.resolve()}/cores_inventory.ndjson", f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson")
 
-        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
-            with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+        if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson"):
+            with open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") as f:
                 previous_data = ndjson.load(f)
                 for row in previous_data:
                     self.core_data[row['name']] = row
@@ -2058,7 +2058,7 @@ class GatewayStocker(Stocker):
         # pprint.pprint(self.core_data)
         # core_data = pandas.DataFrame(self.core_data.values())
         self.core_data = self.core_data.drop(['manufacturer_reference'], axis=1)
-        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson", "w")
+        out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson", "w")
         ndjson.dump(self.core_data.to_dict('records'), out_file)
         out_file.close()
 
@@ -2075,16 +2075,24 @@ if __name__ == '__main__':  # pragma: no cover
     gatewayStocker.get_cores_stock()
 
     cores = {}
-    if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson"):
-        with open(f"{pathlib.Path(__file__).parent.resolve()}/cores_stock.ndjson") as f:
+    cores_stock = {}
+    if os.path.exists(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson"):
+        with open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson") as f:
             previous_data = ndjson.load(f)
             for row in previous_data:
                 cores[row['name']] = row
+                if 'distributorsInfo' in row and len(row['distributorsInfo']) > 0:
+                    cores_stock[row['name']] = row
                 # cores[row['name']]['functionalDescription']['shape'] = cores[row['name']]['functionalDescription']['shape']['name']
 
     cores = pandas.DataFrame(cores.values())
-    out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/cores.ndjson", "w")
+    cores_stock = pandas.DataFrame(cores_stock.values())
+    out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/commercial_cores.ndjson", "w")
     ndjson.dump(cores.to_dict('records'), out_file)
+    out_file.close()
+
+    out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/stocked_cores.ndjson", "w")
+    ndjson.dump(cores_stock.to_dict('records'), out_file)
     out_file.close()
 
     pprint.pprint(mouserStocker.unfound_descriptions)
