@@ -502,6 +502,8 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
         windingWindowElement.set_angle(bobbinWindingWindowDimensions[1]);
         windingWindowElement.set_area(std::numbers::pi * pow(bobbinWindingWindowDimensions[0], 2) * bobbinWindingWindowDimensions[1] / 360);
         windingWindowElement.set_coordinates(std::vector<double>({bobbinWindingWindowDimensions[0], 0, 0}));
+        coreBobbinProcessedDescription.set_wall_thickness(0);
+        coreBobbinProcessedDescription.set_column_thickness(0);
 
     }
     windingWindowElement.set_shape(bobbinWindingWindowShape);

@@ -1508,7 +1508,6 @@ SUITE(MagneticAdviser) {
 
     //     for (auto [masMagnetic, scoring] : masMagnetics) {
     //         OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
-    //         std::cout << "Mierda 0" << std::endl;
     //         auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
     //         {
@@ -1517,7 +1516,6 @@ SUITE(MagneticAdviser) {
     //             outFile.append(filename);
     //             OpenMagnetics::to_file(outFile, masMagnetic);
     //         }
-    //         std::cout << "Mierda 2" << std::endl;
 
     //         OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
     //         auto outFile = outputFilePath;

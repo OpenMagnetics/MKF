@@ -10,6 +10,7 @@
 #include "MagneticEnergy.h"
 #include "WireWrapper.h"
 #include "Insulation.h"
+#include "Impedance.h"
 #include "BobbinWrapper.h"
 #include "Defaults.h"
 #include "Settings.h"
@@ -819,6 +820,149 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterDimens
     return (*unfilteredMasMagnetics);
 }
 
+std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimumImpedance::filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight, bool firstFilter) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto coilDelimitAndCompactOld = settings->get_coil_delimit_and_compact();
+    if (weight <= 0) {
+        return *unfilteredMasMagnetics;
+    }
+    auto defaults = Defaults();
+    std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
+    std::vector<double> newScoring;
+
+    OpenMagnetics::Impedance impedanceModel;
+
+    std::list<size_t> listOfIndexesToErase;
+    for (size_t masIndex = 0; masIndex < (*unfilteredMasMagnetics).size(); ++masIndex){
+        MasWrapper mas = (*unfilteredMasMagnetics)[masIndex].first;
+        MagneticWrapper magnetic = MagneticWrapper(mas.get_magnetic());
+        auto core = magnetic.get_core();
+
+        if ((*_validScorings).contains(CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE)) {
+            if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE].contains(magnetic.get_manufacturer_info().value().get_reference().value())) {
+                if ((*_validScorings)[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE][magnetic.get_manufacturer_info().value().get_reference().value()]) {
+                    newScoring.push_back((*_scorings)[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE][magnetic.get_manufacturer_info().value().get_reference().value()]);
+                }
+                else {
+                    listOfIndexesToErase.push_back(masIndex);
+                }
+                continue;
+            }
+        }
+
+        std::string shapeName = core.get_shape_name();
+        if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+            auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);
+            magnetic.get_mutable_coil().set_bobbin(bobbin);
+            auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+
+            if (windingWindows[0].get_width()) {
+                if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+                    throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
+                                             " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
+                                             " shapeName: " + shapeName
+                                             );
+                }
+            }
+        }
+
+        auto currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+        OpenMagnetics::NumberTurns numberTurns(currentNumberTurns);
+
+        CoilWrapper coil = magnetic.get_coil();
+
+        if (!inputs.get_design_requirements().get_minimum_impedance()) {
+            throw std::runtime_error("Minimum impedance missing from requirements");
+        }
+
+        auto minimumImpedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
+
+        bool validDesign = true;
+        bool validMaterial = true;
+        double totalImpedanceExtra;
+        int timeout = 100;
+        do {
+            totalImpedanceExtra = 0;
+            validDesign = true;
+            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
+            for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+                auto frequency = impedanceAtFrequency.get_frequency();
+                auto minimumImpedanceRequired = impedanceAtFrequency.get_impedance();
+                try {
+                    auto impedance = abs(impedanceModel.calculate_impedance(core, coil, frequency));
+                    if (core.get_material_name() == "77" ) {
+                        std::cout << core.get_name().value() << std::endl;
+                        std::cout << "impedance: " << impedance << std::endl;
+                        std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
+                    }
+                    if (impedance < minimumImpedanceRequired.get_magnitude()) {
+                        validDesign = false;
+                        break;
+                    }
+                    else {
+                        totalImpedanceExtra += (impedance - minimumImpedanceRequired.get_magnitude());
+                    }
+
+                }
+                catch (const missing_material_data_exception &exc) {
+                    // std::cout << core.get_name().value() << " is not a valid filter material" << std::endl;
+                    validMaterial = false;
+                }
+            }
+            // if (core.get_material_name() == "77" ) {
+            //     std::cout << "validDesign: " << validDesign << std::endl;
+            //     std::cout << "validMaterial: " << validMaterial << std::endl;
+            //     std::cout << "totalImpedanceExtra: " << totalImpedanceExtra << std::endl;
+            //     std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
+            // }
+            timeout--;
+        }
+        while(!validDesign && validMaterial && timeout > 0);
+
+
+
+        if (validDesign && validMaterial) {
+            settings->set_coil_delimit_and_compact(false);
+            coil.try_wind();
+        }
+        if (coil.get_turns_description()) {
+            double scoring = totalImpedanceExtra;
+            newScoring.push_back(scoring);
+            add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE, scoring, firstFilter);
+        }
+        else {
+            listOfIndexesToErase.push_back(masIndex);
+        }
+    }
+
+    for (size_t i = 0; i < (*unfilteredMasMagnetics).size(); ++i) {
+        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
+            listOfIndexesToErase.pop_front();
+        }
+        else {
+            filteredMagneticsWithScoring.push_back((*unfilteredMasMagnetics)[i]);
+        }
+    }
+    // (*unfilteredMasMagnetics).clear();
+
+    std::cout << "filteredMagneticsWithScoring.size(): " << filteredMagneticsWithScoring.size() << std::endl;
+    // if (filteredMagneticsWithScoring.size() == 0) {
+    //     return *unfilteredMasMagnetics;
+    // }
+
+    if (filteredMagneticsWithScoring.size() != newScoring.size()) {
+        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMasMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+
+    if (filteredMagneticsWithScoring.size() > 0) {
+        normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE]);
+    }
+    settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
+    return filteredMagneticsWithScoring;
+}
+
+
 
 CoilWrapper get_dummy_coil(InputsWrapper inputs) {
     double frequency = 0; 
@@ -853,7 +997,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
-        weights[filter] = 1.0;
+        if (filter == CoreAdviserFilters::MINIMUM_IMPEDANCE) {
+            weights[filter] = 0;
+        }
+        else {
+            weights[filter] = 1.0;
+        }
     });
     return get_advised_core(inputs, weights, maximumNumberResults);
 }
@@ -862,7 +1011,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
-        weights[filter] = 1.0;
+        if (filter == CoreAdviserFilters::MINIMUM_IMPEDANCE) {
+            weights[filter] = 0;
+        }
+        else {
+            weights[filter] = 1.0;
+        }
     });
     return get_advised_core(inputs, weights, cores, maximumNumberResults);
 }
@@ -879,7 +1033,12 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
-        weights[filter] = 1.0;
+        if (filter == CoreAdviserFilters::MINIMUM_IMPEDANCE) {
+            weights[filter] = 0;
+        }
+        else {
+            weights[filter] = 1.0;
+        }
     });
     return get_advised_core(inputs, weights, cores, maximumNumberResults, maximumNumberCores);
 }
@@ -1154,6 +1313,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     MagneticCoreFilterCost filterCost;
     MagneticCoreFilterLosses filterLosses;
     MagneticCoreFilterDimensions filterDimensions;
+    MagneticCoreFilterMinimumImpedance filterMinimumImpedance;
 
     filterAreaProduct.set_scorings(&_scorings);
     filterAreaProduct.set_valid_scorings(&_validScorings);
@@ -1175,8 +1335,17 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
     filterDimensions.set_valid_scorings(&_validScorings);
     filterDimensions.set_filter_configuration(&_filterConfiguration);
     filterDimensions.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
+    filterMinimumImpedance.set_scorings(&_scorings);
+    filterMinimumImpedance.set_valid_scorings(&_validScorings);
+    filterMinimumImpedance.set_filter_configuration(&_filterConfiguration);
+    filterMinimumImpedance.set_average_margin_in_winding_window(&_averageMarginInWindingWindow);
 
     CoreAdviserFilters firstFilter = CoreAdviserFilters::AREA_PRODUCT;
+
+    if (weights[CoreAdviserFilters::EFFICIENCY] != 0 && weights[CoreAdviserFilters::MINIMUM_IMPEDANCE] != 0) {
+        throw std::runtime_error("EFFICIENCY and MINIMUM_IMPEDANCE filters cannot be used together in the core Adviser");
+    }
+
     double maxWeight = 0;
 
     for (auto& pair : weights) {
@@ -1224,6 +1393,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
         case CoreAdviserFilters::DIMENSIONS: 
             masMagneticsWithScoring = filterDimensions.filter_magnetics(masMagnetics, weights[CoreAdviserFilters::DIMENSIONS], true);
             break;
+        case CoreAdviserFilters::MINIMUM_IMPEDANCE: 
+            std::cout << "before masMagnetics.size(): " << masMagnetics->size() << std::endl;
+            masMagneticsWithScoring = filterMinimumImpedance.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::MINIMUM_IMPEDANCE], true);
+            std::cout << "after masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
+            break;
     }
 
 
@@ -1263,6 +1437,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
                     break;
                 case CoreAdviserFilters::DIMENSIONS: 
                     masMagneticsWithScoring = filterDimensions.filter_magnetics(&masMagneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS]);
+                    break;
+                case CoreAdviserFilters::MINIMUM_IMPEDANCE: 
+                    std::cout << "before masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
+                    masMagneticsWithScoring = filterMinimumImpedance.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::MINIMUM_IMPEDANCE]);
+                    std::cout << "after masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
                     break;
             }    
             logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " after filtering by " + filterString + ".");

@@ -29,7 +29,11 @@ OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
     coilJson["functionalDescription"] = json::array();
 
     auto core = get_quick_core(shapeName, json::parse("[]"), numberStacks, "Dummy");
-    auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core, !useBobbin);
+    bool auxUseBobbin = useBobbin;
+    if (core.get_shape_family() == OpenMagnetics::CoreShapeFamily::T) {
+        auxUseBobbin = false;
+    }
+    auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core, !auxUseBobbin);
     json bobbinJson;
     OpenMagnetics::to_json(bobbinJson, bobbin);
 

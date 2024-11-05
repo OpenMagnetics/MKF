@@ -138,6 +138,54 @@ SUITE(CoreAdviser) {
         settings->reset();
     }
 
+    TEST(Test_All_Cores_With_Impedance) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_concentric_cores(false);
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_only_cores_in_stock(false);
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 30;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::InputsWrapper inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::map<OpenMagnetics::CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 1;
+
+        OpenMagnetics::ImpedancePoint impedancePoint;
+        impedancePoint.set_magnitude(500);
+        OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+        impedanceAtFrequency.set_frequency(1e6);
+        impedanceAtFrequency.set_impedance(impedancePoint);
+        inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<OpenMagnetics::ImpedanceAtFrequency>{impedanceAtFrequency});
+
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreAdviser coreAdviser;
+        auto cores = load_test_data();
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores);
+
+
+        CHECK(masMagnetics.size() == 1);
+        double bestScoring = masMagnetics[0].second;
+        for (size_t i = 0; i < masMagnetics.size(); ++i)
+        {
+            CHECK(masMagnetics[i].second <= bestScoring);
+        }
+
+        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
+        std::cout << masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
+        settings->reset();
+    }
 
     TEST(Test_All_Cores_Load_Internally_Only_Stock) {
         OpenMagnetics::clear_databases();
