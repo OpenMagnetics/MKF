@@ -19,7 +19,8 @@ class CoreAdviser {
             ENERGY_STORED, 
             COST, 
             EFFICIENCY,
-            DIMENSIONS
+            DIMENSIONS,
+            MINIMUM_IMPEDANCE
         };
     protected:
         std::map<std::string, std::string> _models;
@@ -38,6 +39,7 @@ class CoreAdviser {
                 { CoreAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::MINIMUM_IMPEDANCE,     { {"invert", true}, {"log", true} } },
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
@@ -139,6 +141,11 @@ class CoreAdviser {
     class MagneticCoreFilterDimensions : public MagneticCoreFilter {
         public:
             std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, double weight=1, bool firstFilter=false);
+    };
+    
+    class MagneticCoreFilterMinimumImpedance : public MagneticCoreFilter {
+        public:
+            std::vector<std::pair<MasWrapper, double>> filter_magnetics(std::vector<std::pair<MasWrapper, double>>* unfilteredMasMagnetics, InputsWrapper inputs, double weight=1, bool firstFilter=false);
     };
 
 };

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <complex>
 #include "spline.h"
+#include <exception>
 
 extern std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
@@ -52,6 +53,22 @@ extern std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 
 namespace OpenMagnetics {
+
+class missing_material_data_exception : public std::exception {
+private:
+    std::string message;
+
+public:
+    missing_material_data_exception(std::string msg)
+        : message(msg)
+    {
+    }
+
+    const char* what() const throw()
+    {
+        return message.c_str();
+    }
+};
 
 enum class DimensionalValues : int {
     MAXIMUM,
@@ -181,6 +198,9 @@ IsolationSide get_isolation_side_from_index(size_t index);
 
 std::vector<std::string> split(std::string s, std::string delimiter);
 std::vector<double> linear_spaced_array(double a, double b, size_t N);
+
+double decibels_to_amplitude(double decibels);
+double amplitude_to_decibels(double amplitude);
 
 
 } // namespace OpenMagnetics

@@ -640,12 +640,13 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     if (!waveform.get_time()) {
         throw std::runtime_error("Missing time data");
     }
+
     auto time = waveform.get_time().value();
     auto data = waveform.get_data();
 
     double periodEnd = time.back();
     double periodStart = periodEnd - period;
-    int periodStartIndex = -1;
+    int periodStartIndex = 0;
     int periodStopIndex = -1;
 
     for (int i = time.size() - 1; i >= 0; --i)
@@ -714,6 +715,8 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
     Waveform waveform;
     waveform.set_data(signal.data);
     waveform.set_time(_time.data);
+
+    get_one_period(waveform, frequency, sample);
     return get_one_period(waveform, frequency, sample);
 }
 
@@ -753,13 +756,19 @@ bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
                 column.windingIndex = numbersInColumnName.back();
             }
             else {
+                bool found = false;
                 for (auto [label, windingIndex] : windingLabels) {
                     if (column.name.find(label) != std::string::npos)  {
                         numberFoundIndexes++;
                         indexes.push_back(windingIndex);
                         column.windingIndex = windingIndex;
+                        found = true;
                         break;
                     }
+                }
+                if (!found) {
+                    column.windingIndex = 0;
+                    indexes.push_back(0);
                 }
             }
         }
@@ -929,7 +938,6 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
     OperatingPoint operatingPoint;
 
     std::vector<OperatingPointExcitation> excitationsPerWinding;
-
     if (!mapColumnNames) {
         extract_winding_indexes(numberWindings);
         extract_column_types(frequency);

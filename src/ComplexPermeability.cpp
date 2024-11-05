@@ -14,7 +14,7 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(std::str
 
 std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
     if (!coreMaterial.get_permeability().get_complex()) {
-        throw std::runtime_error("Missing complex data in material " + coreMaterial.get_name());
+        throw missing_material_data_exception("Missing complex data in material " + coreMaterial.get_name());
     }
     auto complexPermeabilityData = coreMaterial.get_permeability().get_complex().value();
 

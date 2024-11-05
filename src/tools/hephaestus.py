@@ -825,7 +825,8 @@ class TdkInventory(Stocker):
 
     def process(self, data):
         constants = PyMKF.get_constants()
-        not_included_materials = ["HF60", "K1", "K10", "M33", "N22", "N45", "N48", "PC40", "PC90", "T", "PE22", "PC95", "PC50", "PC47"]
+        # not_included_materials = ["HF60", "K1", "K10", "M33", "N22", "N45", "N48", "PC40", "PC90", "T", "PE22", "PC95", "PC50", "PC47"]
+        not_included_materials = ["HF60", "PC40", "PC90", "T", "PE22", "PC50"]
         if data['shape'] is None:
             return
 
@@ -1249,7 +1250,7 @@ class FairRiteInventory(Stocker):
 
     def process(self, data):
         constants = PyMKF.get_constants()
-        not_included_materials = ["43", "76", "75", "52", "68"]
+        not_included_materials = []
         if data['shape'] is None:
             family = 'T'
             temptative_shape = f"{family} {self.adaptive_round(float(data['A']))}/{self.adaptive_round(float(data['B']))}/{self.adaptive_round(float(data['C']))}"

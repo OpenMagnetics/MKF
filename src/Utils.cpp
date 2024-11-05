@@ -1201,4 +1201,11 @@ std::vector<double> linear_spaced_array(double a, double b, size_t N) {
 }
 
 
+double decibels_to_amplitude(double decibels) {
+    return pow(10, decibels / 20);
+}
+double amplitude_to_decibels(double amplitude) {
+    return 20 * log10(amplitude);
+}
+
 } // namespace OpenMagnetics

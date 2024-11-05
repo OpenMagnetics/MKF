@@ -1,6 +1,6 @@
 #include "Impedance.h"
 #include "ComplexPermeability.h"
-#include "MagnetizingInductance.h"
+#include "Reluctance.h"
 #include "Constants.h"
 #include "Utils.h"
 #include <cmath>
@@ -16,17 +16,27 @@ std::complex<double>  Impedance::calculate_impedance(MagneticWrapper magnetic, d
 
 std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency) {
     auto constants = Constants();
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    double numberTurns = coil.get_functional_description()[0].get_number_turns();
+    double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
 
     OpenMagnetics::ComplexPermeability complexPermeabilityObj;
     auto coreMaterial = core.resolve_material();
     auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityObj.get_complex_permeability(coreMaterial, frequency);
-    MagnetizingInductance magnetizingInductance;
-    auto airCoredSolenoidInductance = magnetizingInductance.calculate_inductance_air_solenoid(core, coil);
 
-    auto complexPermeability = constants.vacuumPermeability * std::complex<double>(complexPermeabilityRealPart, -complexPermeabilityImaginaryPart);
     auto angularFrequency = 2 * std::numbers::pi * frequency;
-    auto impedance = std::complex<double>(0, angularFrequency * airCoredSolenoidInductance) * complexPermeability;
+    double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
+    auto impedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
+    // if (core.get_material_name() == "77" ) {
+        // std::cout << core.get_name().value() << std::endl;
+    std::cout << "complexPermeabilityRealPart: " << complexPermeabilityRealPart << std::endl;
+    std::cout << "complexPermeabilityImaginaryPart: " << complexPermeabilityImaginaryPart << std::endl;
+    std::cout << "airCoredInductance: " << airCoredInductance << std::endl;
+    std::cout << "impedance: " << impedance << std::endl;
+    std::cout << "abs(impedance): " << abs(impedance) << std::endl;
+        // std::cout << "complexPermeability: " << complexPermeability << std::endl;
+    // }
     return impedance;
 }
 
