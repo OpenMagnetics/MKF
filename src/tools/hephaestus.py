@@ -714,15 +714,7 @@ class FerroxcubeInventory(Stocker):
 
 class TdkInventory(Stocker):
     def read_products(self, offset: int = 0):
-        cookies = {
-            'ak_bmsc': '7CFA1415F1B17AD986FC6CADA8E5E5E1~000000000000000000000000000000~YAAQXLsUArHr9NqSAQAARNFq8Rk1zMKU5kd3TfdGcYLP3WHh8bcIgLdpnqmSIiVL3Bw72gKPNM4p+iiXT6hExsmGk2XEw/+pHIrX/16ufI9fI1yw0dUOR1bzGYZCTpYgFRPgL2YA0K4K38D+T9GV7ndEad3ZJkdWwTE6YZFDU0nbtoBnJHXJ4TH02Cbad5R0jX3HsMkpNKohfkTHzb2qQbLY9T84Uh3NJDFlbnMrLkgqodNt3xgDH3yTOGeWV96ofgWhxw6cV+E4MezJK4U+ER3S2sfl/83dSvA57QGl4VZIdzl42DvlPIQv+P3KKJBHiObaWM4xym44eH0hPxQ15qyBGqiP/hPjPDjmYB/nP4ZQa37oyDf62ANN65iLvZjrAXoI9xIEG6s=',
-            'wooTracker': 'j3nP9mB8lSGt',
-            '_abck': '7738C6273CFB64C2B06FF20E4388A16E~0~YAAQXLsUAmjs9NqSAQAAzehq8QzU7lHLX0vTQWpZK2IDk6RAr0zRep62BFnJmWqmIlr2SJ456Fjkd1VWM/fCkJcWE3cczMscQzsw+PrdCVuBc7LawkloM3yzjOwBZn+RbiyYZy44Lr2C3XYqcNCZ4rZ1hukFT3PiUUEocgn5AZ20f3KQg59nxRJD8elDsZKlRS1ybzsuXJ5zOGj+F7XR3pix6e9QyrzmS9zjsZhc6ZDtNgUd7GYvCiLvS5rom4lMFDC/PaGtiovO4L4DCXzUQzNC5ok47dud1srO7liXXk2H3xMbdyWjIULt0+4HQpszArJmPejlmYVMOJdP7LyUIZ4Gaqtu+GXsjLf7ANpHp2KK6NOOerbRSW92yTvo9NFKbBr+3WmUllOCIB5FbA80JyhGZjgzrgyxTcpaZlq/Baq2Ee7Zh3zeLU4EH7ZJBwWUTYTkN30U~-1~-1~-1',
-            'ps_ls': '0',
-            'bm_sz': 'EAAD71EF804931D7F9B1C5E2EF3A5A14~YAAQXLsUAlf09NqSAQAAI/9r8RlbRu2fzx8H2xuMsUBYW24D1aJ8n+hzgRd+u14jVjp5iL5nADNbgz1kG8emIt18QIn9gAiRNz6IS6Ege40HTc0+VqltPFK3iPOaK7crktk713fbQu6ss8uA55Tt/HIhxfJfEF4juziHN5LYw7i/36YcnqMuS2ONYnKFYDZPtks29/Tt8kx4DK7M1vSy0tl46kxuXHOlolK8tuEZrErwAEPKNnrjP+rMmIPWbvf5EtE5kn6EuBbhQaR03TxUSCxKE0g4QibLqvr0Pxc1bPLwSqmgzWc6FdK5smDmsdi3brSky/mGDbVUXTmciT5PN0xDkIjrZMi+BapwEYSKfDDn+Y/Dgr71HdMlgSVXYhzUrT6xZ5wueJyEvUjCuchuUO5UK5E0YiaWeodF85ihpwTf/blF9kR/N+KjBl0e85PX75nJBzp65QY=~4339766~3421232',
-            'product_search_fw': 'eyJpdiI6InRDU3VJY0xrNGdURmdtYXU2MnBpNHc9PSIsInZhbHVlIjoiVHFROFBpeStnMmlobW44WU93OEU4c0pFVisxUXIvZ2JVZU1rRmV0eGNJNTYrdWpraHBHTzFHamx0RmloK3hFVllvV2c3ZzhZak1lMkNkNDU0clZmR0JaQlRiV0lyc2w2eTdjRUdpSFhibXE3dVczVDI3UE1NNVJGYjU2MThXSUoiLCJtYWMiOiI1NDMxMDY0M2MwNDVjMjg0ZjBmMDc1YjNhYzBhN2ExMjczOWRmNDZkZDBlNTk1OWJlYTJiMTMzMGMxNTI2OTFhIiwidGFnIjoiIn0%3D',
-            'bm_sv': '0BFC2939F3C4F1993632316C3EC706FA~YAAQXLsUApcI9dqSAQAAQD1u8Rko5RQrLOBwuwhxDIkVNbsDWr0IGR6vpFqsIM0jNlGiOcrtytlcrRxqRKJEt70j2wr8rQCevivajFn/7qjaH2plTpNX2KkG+8/jNJ6LyJS4YFM8YvPPQl9LBQ1/2wVIywHKwV5PBztuKtV4CQAIu9LclQXFIORtRmYnHzF9q7QBpeggA16/XY9MWFo2hK47cUbEULsiPZb/K+QgkF3WikJk8N8HqF+/T/OcFA==~1',
-        }
+        cookies = {}
 
         headers = {
             'accept': '*/*',
@@ -1557,9 +1549,9 @@ class MicrometalsInventory(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    ferroxcube_inventory = FerroxcubeInventory()
-    ferroxcube_inventory.remove_current_inventory()
-    ferroxcube_inventory.get_cores_inventory()
+    # ferroxcube_inventory = FerroxcubeInventory()
+    # ferroxcube_inventory.remove_current_inventory()
+    # ferroxcube_inventory.get_cores_inventory()
 
     tdk_inventory = TdkInventory()
     tdk_inventory.get_cores_inventory()

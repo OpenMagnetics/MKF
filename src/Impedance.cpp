@@ -28,15 +28,6 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
     auto impedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
-    // if (core.get_material_name() == "77" ) {
-        // std::cout << core.get_name().value() << std::endl;
-    std::cout << "complexPermeabilityRealPart: " << complexPermeabilityRealPart << std::endl;
-    std::cout << "complexPermeabilityImaginaryPart: " << complexPermeabilityImaginaryPart << std::endl;
-    std::cout << "airCoredInductance: " << airCoredInductance << std::endl;
-    std::cout << "impedance: " << impedance << std::endl;
-    std::cout << "abs(impedance): " << abs(impedance) << std::endl;
-        // std::cout << "complexPermeability: " << complexPermeability << std::endl;
-    // }
     return impedance;
 }
 
