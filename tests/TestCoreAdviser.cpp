@@ -162,7 +162,7 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 1;
 
         OpenMagnetics::ImpedancePoint impedancePoint;
-        impedancePoint.set_magnitude(500);
+        impedancePoint.set_magnitude(50000);
         OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
         impedanceAtFrequency.set_frequency(1e6);
         impedanceAtFrequency.set_impedance(impedancePoint);

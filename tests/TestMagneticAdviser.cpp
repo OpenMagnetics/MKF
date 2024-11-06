@@ -1538,4 +1538,5 @@ SUITE(MagneticAdviser) {
     //     }
     // }
 
+
 }
