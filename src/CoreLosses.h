@@ -144,6 +144,9 @@ class CoreLossesModel {
         if (std::count(methods.begin(), methods.end(), CoreLossesMethodType::MAGNETICS) || std::count(methods.begin(), methods.end(), CoreLossesMethodType::MICROMETALS)) {
             models.push_back(CoreLossesModels::PROPRIETARY);
         }
+        if (std::count(methods.begin(), methods.end(), CoreLossesMethodType::LOSS_FACTOR)) {
+            models.push_back(CoreLossesModels::LOSS_FACTOR);
+        }
         return models;
     }
 
@@ -418,5 +421,38 @@ class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
 
+};
+
+// Based on the formula provided by the manufacturer
+class CoreLossesLossFactorModel : public CoreLossesModel {
+  private:
+    std::string _modelName = "Loss Factor";
+  public:
+    CoreLossesOutput get_core_losses(CoreWrapper core,
+                                     OperatingPointExcitation excitation,
+                                     double temperature);
+    double get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                     OperatingPointExcitation excitation,
+                                     double temperature) {
+        return get_core_volumetric_losses(coreMaterial, excitation, temperature, 1);
+    }
+
+    double get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                     OperatingPointExcitation excitation,
+                                     double temperature,
+                                     double magnetizingInductance);
+
+    double get_frequency_from_core_losses(CoreWrapper core,
+                                          SignalDescriptor magneticFluxDensity,
+                                          double temperature,
+                                          double coreLosses) {
+        return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
+    }
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+                                                                        double frequency,
+                                                                        double temperature,
+                                                                        double coreLosses) {
+        return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
+    }
 };
 } // namespace OpenMagnetics

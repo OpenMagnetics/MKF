@@ -651,7 +651,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                 coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
                 // coil = CoilWrapper(coil);
                 settings->set_coil_delimit_and_compact(false);
-                coil.try_wind();
+                coil.fast_wind();
 
                 auto aux = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
                 auto magnetizingInductance = aux.first;
@@ -661,7 +661,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
                     coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
                     // coil = CoilWrapper(coil);
                     settings->set_coil_delimit_and_compact(false);
-                    coil.try_wind();
+                    coil.fast_wind();
                     break;
                 }
                 else {
@@ -891,11 +891,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
                 auto minimumImpedanceRequired = impedanceAtFrequency.get_impedance();
                 try {
                     auto impedance = abs(impedanceModel.calculate_impedance(core, coil, frequency));
-                    if (core.get_material_name() == "77" ) {
-                        std::cout << core.get_name().value() << std::endl;
-                        std::cout << "impedance: " << impedance << std::endl;
-                        std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
-                    }
                     if (impedance < minimumImpedanceRequired.get_magnitude()) {
                         validDesign = false;
                         break;
@@ -906,16 +901,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
                 }
                 catch (const missing_material_data_exception &exc) {
-                    // std::cout << core.get_name().value() << " is not a valid filter material" << std::endl;
                     validMaterial = false;
                 }
             }
-            // if (core.get_material_name() == "77" ) {
-            //     std::cout << "validDesign: " << validDesign << std::endl;
-            //     std::cout << "validMaterial: " << validMaterial << std::endl;
-            //     std::cout << "totalImpedanceExtra: " << totalImpedanceExtra << std::endl;
-            //     std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
-            // }
+
             timeout--;
         }
         while(!validDesign && validMaterial && timeout > 0);
@@ -923,17 +912,20 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
 
         if (validDesign && validMaterial) {
-            settings->set_coil_delimit_and_compact(false);
-            coil.try_wind();
+            coil.fast_wind();
         }
         if (coil.get_turns_description()) {
             double scoring = totalImpedanceExtra;
+            mas.get_mutable_magnetic().set_coil(std::move(coil));
+            (*unfilteredMasMagnetics)[masIndex].first = mas;
+
             newScoring.push_back(scoring);
             add_scoring(magnetic.get_manufacturer_info().value().get_reference().value(), CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE, scoring, firstFilter);
         }
         else {
             listOfIndexesToErase.push_back(masIndex);
         }
+
     }
 
     for (size_t i = 0; i < (*unfilteredMasMagnetics).size(); ++i) {
@@ -944,12 +936,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
             filteredMagneticsWithScoring.push_back((*unfilteredMasMagnetics)[i]);
         }
     }
-    // (*unfilteredMasMagnetics).clear();
-
-    std::cout << "filteredMagneticsWithScoring.size(): " << filteredMagneticsWithScoring.size() << std::endl;
-    // if (filteredMagneticsWithScoring.size() == 0) {
-    //     return *unfilteredMasMagnetics;
-    // }
 
     if (filteredMagneticsWithScoring.size() != newScoring.size()) {
         throw std::runtime_error("Something wrong happened while filtering, size of unfilteredMasMagnetics: " + std::to_string(filteredMagneticsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
@@ -958,6 +944,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
     if (filteredMagneticsWithScoring.size() > 0) {
         normalize_scoring(&filteredMagneticsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE]);
     }
+
+
     settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
     return filteredMagneticsWithScoring;
 }
@@ -1276,7 +1264,11 @@ void add_initial_turns(std::vector<std::pair<MasWrapper, double>> *masMagneticsW
             core.process_data();
             core.process_gap();
         }
-        double initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        double initialNumberTurns = (*masMagneticsWithScoring)[i].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns();
+
+        if (initialNumberTurns == 1) {
+            initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(core, &inputs, DimensionalValues::MINIMUM);
+        }
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
             OpenMagnetics::NumberTurns numberTurns(initialNumberTurns, inputs.get_design_requirements());
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
@@ -1394,12 +1386,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
             masMagneticsWithScoring = filterDimensions.filter_magnetics(masMagnetics, weights[CoreAdviserFilters::DIMENSIONS], true);
             break;
         case CoreAdviserFilters::MINIMUM_IMPEDANCE: 
-            std::cout << "before masMagnetics.size(): " << masMagnetics->size() << std::endl;
             masMagneticsWithScoring = filterMinimumImpedance.filter_magnetics(masMagnetics, inputs, weights[CoreAdviserFilters::MINIMUM_IMPEDANCE], true);
-            std::cout << "after masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
             break;
     }
-
 
     std::string firstFilterString = std::string{magic_enum::enum_name(firstFilter)};
     logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " magnetics after the first filter, which was " + firstFilterString + ".");
@@ -1416,7 +1405,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
         logEntry("Added initial number of turns to " + std::to_string(masMagneticsWithScoring.size()) + " magnetics.");
     }
     
-
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
         if (filter != firstFilter) {
@@ -1439,9 +1427,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
                     masMagneticsWithScoring = filterDimensions.filter_magnetics(&masMagneticsWithScoring, weights[CoreAdviserFilters::DIMENSIONS]);
                     break;
                 case CoreAdviserFilters::MINIMUM_IMPEDANCE: 
-                    std::cout << "before masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
                     masMagneticsWithScoring = filterMinimumImpedance.filter_magnetics(&masMagneticsWithScoring, inputs, weights[CoreAdviserFilters::MINIMUM_IMPEDANCE]);
-                    std::cout << "after masMagneticsWithScoring.size(): " << masMagneticsWithScoring.size() << std::endl;
                     break;
             }    
             logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " after filtering by " + filterString + ".");

@@ -303,7 +303,7 @@ CoilAlignment CoilWrapper::get_section_alignment() {
     return _sectionAlignment;
 }
 
-bool CoilWrapper::try_wind() {
+bool CoilWrapper::fast_wind() {
     auto settings = Settings::GetInstance();
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool hasSectionsData = false;
@@ -311,25 +311,23 @@ bool CoilWrapper::try_wind() {
     bool hasTurnsData = false;
     _strict = false;
 
-    if (get_sections_description()) {
-        hasSectionsData = true;
+    wind_by_sections();
+    if (!get_sections_description()) {
+        return false;
     }
-    if (get_layers_description()) {
-        hasLayersData = true;
+    wind_by_layers();
+    if (!get_layers_description()) {
+        return false;
     }
-    if (get_turns_description()) {
-        hasTurnsData = true;
-    }
-    auto delimitAndCompact = settings->get_coil_delimit_and_compact();
+    auto previousIncludeAdditionalCoordinates = settings->get_coil_include_additional_coordinates();
+    settings->set_coil_include_additional_coordinates(false);
+    wind_by_turns();
+    settings->set_coil_include_additional_coordinates(previousIncludeAdditionalCoordinates);
 
-    if (!hasSectionsData || !hasLayersData || (!hasTurnsData && (windEvenIfNotFit || are_sections_and_layers_fitting()))) {
-        if (wind() && delimitAndCompact) {
-            _strict = true;
-            return delimit_and_compact();
-        }
+    if (!get_turns_description()) {
+        return false;
     }
-    _strict = true;
-    return false;
+    return true;
 }
 
 bool CoilWrapper::wind() {
@@ -1589,6 +1587,10 @@ bool CoilWrapper::wind_by_sections(std::vector<double> proportionPerWinding, std
     bobbin.set_processed_description(bobbinProcessedDescription);
     set_bobbin(bobbin);
 
+    set_sections_description(std::nullopt);
+    set_layers_description(std::nullopt);
+    set_turns_description(std::nullopt);
+
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         return wind_by_rectangular_sections(proportionPerWinding, pattern, repetitions);
@@ -1861,6 +1863,20 @@ void CoilWrapper::remove_insulation_if_margin_is_enough(std::vector<std::pair<si
 
     for (size_t sectionIndex = 0; sectionIndex < orderedSections.size(); ++sectionIndex) {
         size_t indexForMarginLeftSection = sectionIndex * multiplier;
+        size_t indexForMarginRightSection;
+        if (sectionIndex != (orderedSections.size() - 1)) {
+            indexForMarginRightSection = (sectionIndex + 1) * multiplier;
+        }
+        else {
+            indexForMarginRightSection = 0;
+        }
+        while (indexForMarginLeftSection >= _marginsPerSection.size() || indexForMarginRightSection >= _marginsPerSection.size()) {
+            _marginsPerSection.push_back({0, 0});
+        }
+    }    
+
+    for (size_t sectionIndex = 0; sectionIndex < orderedSections.size(); ++sectionIndex) {
+        size_t indexForMarginLeftSection = sectionIndex * multiplier;
         // size_t indexForMarginLeftSection = sectionIndex;
         size_t indexForMarginRightSection;
         size_t leftWindingIndex = orderedSections[sectionIndex].first;
@@ -1902,6 +1918,7 @@ void CoilWrapper::remove_insulation_if_margin_is_enough(std::vector<std::pair<si
 }
 
 bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+
     auto settings = Settings::GetInstance();
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;

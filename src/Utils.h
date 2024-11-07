@@ -44,6 +44,8 @@ extern double maxWindingWindowHeight;
 extern std::map<std::string, tk::spline> complexPermeabilityRealInterps;
 extern std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 
+extern std::map<std::string, tk::spline> lossFactorInterps;
+
 extern bool _addInternalData;
 
 extern std::map<std::string, double> minWireConductingDimensions;

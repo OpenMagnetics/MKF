@@ -8,9 +8,9 @@ SUITE(Sweeper) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_Sweeper) {
-        std::vector<int64_t> numberTurns = {16, 1};
-        std::vector<int64_t> numberParallels = {2, 1};
-        std::string shapeName = "PQ 35/35";
+        std::vector<int64_t> numberTurns = {110, 110};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::string shapeName = "T 12.5/7.5/5";
         std::vector<OpenMagnetics::WireWrapper> wires;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -18,14 +18,14 @@ SUITE(Sweeper) {
                                                          shapeName);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "N22";
-        auto gapping = OpenMagneticsTesting::get_residual_gap();
+        std::string coreMaterial = "A07";
+        std::vector<OpenMagnetics::CoreGap> gapping;
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(magnetic, 10000, 1000e6, 10000);
+        auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 200000, 1000);
         std::cout << impedanceSweep.get_x_points().size() << std::endl;
         std::cout << impedanceSweep.get_y_points().size() << std::endl;
 

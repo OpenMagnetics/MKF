@@ -18,13 +18,13 @@ class InitialPermeability {
     private:
     protected:
     public:
-        double get_initial_permeability(std::string coreMaterialName,
+        static double get_initial_permeability(std::string coreMaterialName,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
                                         std::optional<double> magneticFluxDensity = std::nullopt);
 
-        double get_initial_permeability(CoreMaterial coreMaterial,
+        static double get_initial_permeability(CoreMaterial coreMaterial,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,

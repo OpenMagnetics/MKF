@@ -241,7 +241,8 @@ class Stocker():
                 print(distributor_info["link"])
                 print(product_url)
                 print("Distributor already in list")
-                assert 0
+                return
+                # assert 0
 
         distributor_info = {
             "name": distributor_name,

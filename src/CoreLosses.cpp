@@ -1,9 +1,11 @@
 #include "CoreLosses.h"
 #include "Resistivity.h"
 #include "Settings.h"
+#include "InitialPermeability.h"
 
 #include "Constants.h"
 #include "InputsWrapper.h"
+#include "Reluctance.h"
 
 #include <cmath>
 #include <cfloat>
@@ -19,6 +21,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+std::map<std::string, tk::spline> lossFactorInterps;
 
 namespace OpenMagnetics {
 
@@ -56,10 +60,13 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
     else if (modelName == CoreLossesModels::PROPRIETARY) {
         return std::make_shared<CoreLossesProprietaryModel>();
     }
+    else if (modelName == CoreLossesModels::LOSS_FACTOR) {
+        return std::make_shared<CoreLossesLossFactorModel>();
+    }
 
     else
         throw std::runtime_error("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, BARG, ALBACH, "
-                                 "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY}");
+                                 "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR}");
 }
 
 CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string method) {
@@ -856,7 +863,7 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
         }
     }
     return volumetricLosses;
-} 
+}
  
 double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
                                                                 SignalDescriptor magneticFluxDensity,
@@ -915,6 +922,95 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
     processed.set_peak_to_peak(magneticFluxDensityAcPeak * 2);
     magneticFluxDensity.set_processed(processed);
     return magneticFluxDensity;
+}
+
+CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
+                                                        OperatingPointExcitation excitation,
+                                                        double temperature) {
+    if (!excitation.get_magnetizing_current()) {
+        throw std::runtime_error("Missing magnetizing current in excitation");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()) {
+        throw std::runtime_error("Magnetizing current not processed");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
+        throw std::runtime_error("Missing RMS value in magnetizing current");
+    }
+    auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
+    auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
+    auto coreMaterial = core.resolve_material();
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+    double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
+
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+    int64_t numberTurns = magneticFluxDensityPeak / currentPeak * reluctance * effectiveArea;
+
+    double magnetizingInductance = numberTurns * numberTurns / reluctance;
+
+    auto volumetricLosses = get_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
+
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(magneticFluxDensity);
+    result.set_method_used(_modelName);
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
+
+    return result;
+} 
+
+double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+                                                             OperatingPointExcitation excitation,
+                                                             double temperature,
+                                                             double magnetizingInductance) {
+    
+
+    auto current = excitation.get_magnetizing_current().value();
+    if (!excitation.get_magnetizing_current()) {
+        throw std::runtime_error("Missing magnetizing current in excitation");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()) {
+        throw std::runtime_error("Magnetizing current not processed");
+    }
+    if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
+        throw std::runtime_error("Missing RMS value in magnetizing current");
+    }
+    auto currentRms = excitation.get_magnetizing_current()->get_processed()->get_rms().value();
+    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    CoreLossesOutput result;
+    double volumetricLosses = -1;
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+
+    if (!lossFactorInterps.contains(coreMaterial.get_name())) {
+
+        auto lossFactorData = get_method_data(coreMaterial, "loss_factor");
+        auto lossFactorPoints = lossFactorData.get_factors().value();
+
+        int n = lossFactorPoints.size();
+        std::vector<double> x, y;
+
+
+        for (int i = 0; i < n; i++) {
+            if (x.size() == 0 || (*lossFactorPoints[i].get_frequency()) != x.back()) {
+                x.push_back(*lossFactorPoints[i].get_frequency());
+                y.push_back(lossFactorPoints[i].get_value());
+            }
+        }
+
+        tk::spline interp(x, y, tk::spline::cspline_hermite);
+        lossFactorInterps[coreMaterial.get_name()] = interp;
+    }
+    double lossFactorValue = lossFactorInterps[coreMaterial.get_name()](frequency);
+
+    auto lossTangent = lossFactorValue * initialPermeability;
+    auto seriesResistance = lossTangent * 2 * std::numbers::pi * frequency * magnetizingInductance;
+    volumetricLosses = seriesResistance * pow(currentRms, 2);
+
+    return volumetricLosses;
 }
 
 double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,

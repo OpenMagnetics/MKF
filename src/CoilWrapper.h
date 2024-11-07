@@ -57,7 +57,7 @@ class CoilWrapper : public Coil {
         CoilWrapper(const json& j, bool windInConstructor);
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
-        bool try_wind();
+        bool fast_wind();
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);

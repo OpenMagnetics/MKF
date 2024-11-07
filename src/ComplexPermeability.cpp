@@ -26,12 +26,6 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     auto realPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(realPart);
     auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(imaginaryPart);
 
-    // std::cout << "realPermeabilityPoints.size(): " << realPermeabilityPoints.size() << std::endl;
-    // std::cout << "imaginaryPermeabilityPoints.size(): " << imaginaryPermeabilityPoints.size() << std::endl;
-    // if (imaginaryPermeabilityPoints.size() != realPermeabilityPoints.size()) {
-    //     throw std::runtime_error("Different number of points for real and complex permeability for " + coreMaterial.get_name());
-    // }
-
     if (realPermeabilityPoints.size() < 2) {
         throw std::runtime_error("Not enough complex permeability data for  " + coreMaterial.get_name());
     }
