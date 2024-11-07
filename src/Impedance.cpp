@@ -26,9 +26,21 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
 
     auto angularFrequency = 2 * std::numbers::pi * frequency;
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-    auto impedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
+    auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
-    return impedance;
+    // auto capacitance= 4e-11;
+    // auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
+    // // auto resistiveImpedance = std::complex<double>(1e5, 0);
+
+    // auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
+    // // auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance + 1.0 / resistiveImpedance);
+    // std::cout << "**********************************" << std::endl;
+    // std::cout << "inductiveImpedance: " << inductiveImpedance << std::endl;
+    // std::cout << "capacitiveImpedance: " << capacitiveImpedance << std::endl;
+    // // std::cout << "resistiveImpedance: " << resistiveImpedance << std::endl;
+    // std::cout << "impedance: " << impedance << std::endl;
+
+    return inductiveImpedance;
 }
 
 } // namespace OpenMagnetics

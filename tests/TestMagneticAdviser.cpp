@@ -3,6 +3,8 @@
 #include "CircuitSimulatorInterface.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
+#include "Sweeper.h"
+#include "Impedance.h"
 #include "Settings.h"
 
 #include <UnitTest++.h>
@@ -11,6 +13,89 @@
 SUITE(MagneticAdviser) {
     bool plot = true;
     auto settings = OpenMagnetics::Settings::GetInstance();
+
+    TEST(Test_MagneticAdviser_Filter) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_concentric_cores(false);
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_only_cores_in_stock(false);
+        srand (time(NULL));
+
+        std::vector<double> turnsRatios;
+
+        std::vector<int64_t> numberTurns = {24, 78, 76};
+
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+
+        double frequency = 507026;
+        double magnetizingInductance = 100e-6;
+        double temperature = 25;
+        OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        double peakToPeak = 100;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        OpenMagnetics::ImpedancePoint impedancePoint;
+        impedancePoint.set_magnitude(50000);
+        OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+        impedanceAtFrequency.set_frequency(1e6);
+        impedanceAtFrequency.set_impedance(impedancePoint);
+        inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<OpenMagnetics::ImpedanceAtFrequency>{impedanceAtFrequency});
+
+        OpenMagnetics::MasWrapper masMagnetic;
+        inputs.process_waveforms();
+
+        OpenMagnetics::MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
+
+        for (auto [masMagnetic, scoring] : masMagnetics) {
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetic.get_mutable_magnetic(), 1e6);
+            CHECK(abs(impedance) >= 50000);
+
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            if (plot) {
+                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                // {
+                //     auto outFile = outputFilePath;
+                //     std::string filename = "Test_MagneticAdviser_Filter_" + std::to_string(scoring) + ".svg";
+                //     outFile.append(filename);
+                //     settings->set_painter_include_fringing(false);
+                //     OpenMagnetics::Painter painter(outFile, true);
+
+                //     painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+                //     painter.paint_core(masMagnetic.get_mutable_magnetic());
+                //     painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+                //     painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                //     painter.export_svg();
+                // }
+                {
+                    auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(masMagnetic.get_mutable_magnetic(), 10000, 400e6, 1000);
+                    std::cout << impedanceSweep.get_x_points().size() << std::endl;
+                    std::cout << impedanceSweep.get_y_points().size() << std::endl;
+
+                    auto outFile = outputFilePath;
+
+                    outFile.append("Test_MagneticAdviser_Filter_Sweep_Impedance_Over_Frequency_" + std::to_string(scoring) + ".svg");
+                    std::filesystem::remove(outFile);
+                    OpenMagnetics::Painter painter(outFile, false, true);
+                    painter.paint_curve(impedanceSweep);
+                    painter.export_svg();
+                }
+            }
+        }
+        settings->reset();
+    }
 
     TEST(Test_MagneticAdviser_High_Current) {
         srand (time(NULL));

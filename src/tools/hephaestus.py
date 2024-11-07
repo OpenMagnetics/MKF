@@ -1549,9 +1549,9 @@ class MicrometalsInventory(Stocker):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    # ferroxcube_inventory = FerroxcubeInventory()
-    # ferroxcube_inventory.remove_current_inventory()
-    # ferroxcube_inventory.get_cores_inventory()
+    ferroxcube_inventory = FerroxcubeInventory()
+    ferroxcube_inventory.remove_current_inventory()
+    ferroxcube_inventory.get_cores_inventory()
 
     tdk_inventory = TdkInventory()
     tdk_inventory.get_cores_inventory()

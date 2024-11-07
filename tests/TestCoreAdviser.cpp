@@ -3,6 +3,7 @@
 #include "Utils.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
+#include "Impedance.h"
 
 #include <UnitTest++.h>
 #include <filesystem>
@@ -181,9 +182,11 @@ SUITE(CoreAdviser) {
             CHECK(masMagnetics[i].second <= bestScoring);
         }
 
-        std::cout << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
-        std::cout << masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 22/14/6.4 - 61 - Ungapped");
+
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), 1e6);
+        CHECK(abs(impedance) >= 50000);
+
         settings->reset();
     }
 
@@ -283,7 +286,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ 125 - Ungapped");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
         settings->reset();
     }
 

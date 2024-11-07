@@ -35,7 +35,8 @@ enum class CoreLossesModels : int {
     ROSHEN,
     ALBACH,
     NSE,
-    MSE
+    MSE,
+    LOSS_FACTOR
 };
 
 
