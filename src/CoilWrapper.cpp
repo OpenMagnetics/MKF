@@ -605,6 +605,42 @@ std::vector<std::string> CoilWrapper::get_turns_names_by_section(std::string sec
     }
     return foundTurns;
 }
+    
+std::vector<size_t> CoilWrapper::get_turns_indexes_by_layer(std::string layerName) {
+    auto turns = get_turns_description().value();
+    std::vector<size_t> foundTurns;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto turnLayerName = turns[turnIndex].get_layer().value();
+        if (turnLayerName == layerName) {
+            foundTurns.push_back(turnIndex);
+        }
+    }
+    return foundTurns;
+}
+
+std::vector<size_t> CoilWrapper::get_turns_indexes_by_winding(std::string windingName) {
+    auto turns = get_turns_description().value();
+    std::vector<size_t> foundTurns;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto turnWindingName = turns[turnIndex].get_winding();
+        if (turnWindingName == windingName) {
+            foundTurns.push_back(turnIndex);
+        }
+    }
+    return foundTurns;
+}
+
+std::vector<size_t> CoilWrapper::get_turns_indexes_by_section(std::string sectionName) {
+    auto turns = get_turns_description().value();
+    std::vector<size_t> foundTurns;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto turnSectionName = turns[turnIndex].get_section().value();
+        if (turnSectionName == sectionName) {
+            foundTurns.push_back(turnIndex);
+        }
+    }
+    return foundTurns;
+}
 
 const std::vector<Section> CoilWrapper::get_sections_by_type(ElectricalType electricalType) const {
     auto sections = get_sections_description().value();
@@ -4959,6 +4995,16 @@ double CoilWrapper::get_insulation_section_relative_permittivity(CoilWrapper coi
     }
     return averagerelativePermittivity / layers.size();
 }
+
+std::vector<double> CoilWrapper::get_turns_ratios() {
+    std::vector<double>  turnsRatios;
+    for (size_t windingIndex = 1; windingIndex < get_functional_description().size(); ++windingIndex) {
+        turnsRatios.push_back(get_functional_description()[0].get_number_turns() / get_functional_description()[windingIndex].get_number_turns());
+    }
+
+    return turnsRatios;
+}
+
 
 } // namespace OpenMagnetics
  

@@ -780,7 +780,7 @@ SUITE(MagneticAdviser) {
             std::cout << "name: " << name << std::endl;
             if (name == "T 13/7.1/4.8 - 67 - Ungapped") {
                 // Check manually that the colors are distributed evenly
-                std::string filename = "Test_MagneticAdviser_Web_4_" + OpenMagnetics::Painter::fix_filename(name) + ".svg";
+                std::string filename = "Test_MagneticAdviser_Web_4_" + OpenMagnetics::fix_filename(name) + ".svg";
                 outFile.append(filename);
                 OpenMagnetics::Painter painter(outFile, true);
 

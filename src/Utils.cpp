@@ -1140,12 +1140,16 @@ std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPo
 
     std::vector<size_t> mainHarmonicIndexes;
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+        if (maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] == 0) {
+            continue;
+        }
+
         auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
         for (size_t harmonicIndex = 1; harmonicIndex < maximumCommonIndex; ++harmonicIndex) {
 
-            // if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
-            //     continue;
-            // }
+            if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
+                continue;
+            }
             if (std::find(mainHarmonicIndexes.begin(), mainHarmonicIndexes.end(), harmonicIndex) == mainHarmonicIndexes.end()) {
 
                 mainHarmonicIndexes.push_back(harmonicIndex);
@@ -1201,11 +1205,35 @@ std::vector<double> linear_spaced_array(double a, double b, size_t N) {
 }
 
 
+std::vector<double> logarithmic_spaced_array(double a, double b, size_t N) {
+    double logmin = log10(a);
+    double logmax = log10(b);
+
+    double h = (logmax - logmin) / static_cast<double>(N-1);
+    std::vector<double> xs(N);
+    std::vector<double>::iterator x;
+    double val;
+    for (x = xs.begin(), val = log10(a); x != xs.end(); ++x, val += h) {
+        *x = pow(10, val);
+    }
+    return xs;
+}
+
+
 double decibels_to_amplitude(double decibels) {
     return pow(10, decibels / 20);
 }
 double amplitude_to_decibels(double amplitude) {
     return 20 * log10(amplitude);
+}
+
+std::string fix_filename(std::string filename) {
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\,"), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\."), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\:"), "_")).string();
+    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\/"), "_")).string();
+    return filename;
 }
 
 } // namespace OpenMagnetics

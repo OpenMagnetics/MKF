@@ -384,15 +384,6 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrappe
     matplot::yticks({});
 }
 
-std::string Painter::fix_filename(std::string filename) {
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex(" "), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\,"), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\."), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\:"), "_")).string();
-    filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\/"), "_")).string();
-    return filename;
-}
-
 void Painter::export_svg() {
     auto outFile = std::string {_filepath.string()};
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
@@ -2035,8 +2026,14 @@ void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector
     matplot::plot(x, y);
 }
 
-void Painter::paint_curve(Curve2D curve2D) {
-    matplot::plot(curve2D.get_x_points(), curve2D.get_y_points());
+void Painter::paint_curve(Curve2D curve2D, bool logScale) {
+    // matplot::xticks({})
+    if (logScale) {
+        matplot::loglog(curve2D.get_x_points(), curve2D.get_y_points());
+    }
+    else {
+        matplot::plot(curve2D.get_x_points(), curve2D.get_y_points());
+    }
 }
 
 } // namespace OpenMagnetics

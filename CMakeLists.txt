@@ -38,6 +38,7 @@ option(EMBED_MAS_INSULATION_MATERIALS "Embed cores in executable" ON)
 option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
 option(BUILD_TESTS      "Build tests"    OFF)
 option(BUILD_EXAMPLES   "Build examples" OFF)
+option(BUILD_DEMO   "Build examples" FALSE)
 option(UTPP_INCLUDE_TESTS_IN_BUILD   "Build tests" OFF)
 option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
 option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
@@ -120,17 +121,46 @@ add_custom_target(MAS ALL
 
 include_directories("${MAS_DIRECTORY}")
 
-
+if( NOT EXISTS ${CMAKE_BINARY_DIR}/_deps/levmar-2.6 )
+    if( NOT EXISTS ${CMAKE_BINARY_DIR}/_deps/levmar-2.6.tgz )
+        file(DOWNLOAD https://users.ics.forth.gr/~lourakis/levmar/levmar-2.6.tgz ${CMAKE_BINARY_DIR}/_deps/levmar-2.6.tgz SHOW_PROGRESS)
+    endif()
+    
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xzvf ${CMAKE_BINARY_DIR}/_deps/levmar-2.6.tgz)
+    execute_process(COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_BINARY_DIR}/levmar-2.6 ${CMAKE_BINARY_DIR}/_deps/levmar-2.6)
+endif()
+add_subdirectory("${CMAKE_BINARY_DIR}/_deps/levmar-2.6")
+include_directories("${CMAKE_BINARY_DIR}/_deps/levmar-2.6")
 
 file(GLOB SOURCES
     "src/*.cpp")
+
+SET(LIBS levmar data::insulation_standards)
+
+LINK_DIRECTORIES(${CMAKE_BINARY_DIR}) # location of the levmar library
+LINK_DIRECTORIES(${LAPACKBLAS_DIR})
+
+# libraries the demo depends on
+IF(HAVE_PLASMA)
+    LINK_DIRECTORIES(${PLASMA_DIR}/lib)
+    SET(LIBS ${LIBS} ${PLASMA_LIB_NAMES})
+ENDIF(HAVE_PLASMA)
+
+IF(HAVE_LAPACK)
+    IF(NEED_F2C)
+        SET(LIBS ${LIBS} ${LAPACKBLAS_LIB_NAMES} ${F2C_LIB_NAME})
+    ELSE(NEED_F2C)
+        SET(LIBS ${LIBS} ${LAPACKBLAS_LIB_NAMES})
+    ENDIF(NEED_F2C)
+ENDIF(HAVE_LAPACK)
 
 add_library(MKF SHARED ${SOURCES})
 set_property(TARGET MKF PROPERTY POSITION_INDEPENDENT_CODE ON)
 add_dependencies(MKF MAS)
 
 cmrc_add_resource_library(insulation_standards ALIAS data::insulation_standards NAMESPACE insulationData src/data/insulation_standards/IEC_60664-1.json src/data/insulation_standards/IEC_60664-4.json src/data/insulation_standards/IEC_60664-5.json src/data/insulation_standards/IEC_62368-1.json src/data/insulation_standards/IEC_61558-1.json src/data/insulation_standards/IEC_61558-2-16.json src/data/insulation_standards/IEC_60335-1.json)
-target_link_libraries(MKF data::insulation_standards)
+target_link_libraries(MKF ${LIBS})
+ADD_DEPENDENCIES(MKF levmar)
 
 set(DATA_LIST "")
 if(EMBED_MAS_DATA)
@@ -166,7 +196,6 @@ target_link_libraries(MKF data::data)
 target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
 
 target_include_directories(MKF PUBLIC "${PROJECT_SOURCE_DIR}/src/")
-
 
 if(INCLUDE_MKF_TESTS)
     file(GLOB TESTS_SOURCES "tests/*.cpp" )
