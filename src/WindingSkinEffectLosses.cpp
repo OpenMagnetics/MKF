@@ -132,23 +132,8 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
         throw std::runtime_error("Input has no waveform. TODO: get waveform from processed data");
     }
 
-    std::vector<std::shared_ptr<WindingSkinEffectLossesModel>> lossesModelPerWinding;
+    auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
-    auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
-
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex)
-    {
-        auto model = get_model(coil.get_wire_type(windingIndex));
-        lossesModelPerWinding.push_back(model);
-
-        WindingLossElement skinEffectLosses;
-        skinEffectLosses.set_method_used(model->methodName);
-        skinEffectLosses.set_origin(ResultOrigin::SIMULATION);
-        skinEffectLosses.get_mutable_harmonic_frequencies().push_back(0);
-        skinEffectLosses.get_mutable_losses_per_harmonic().push_back(0);
-
-        windingLossesPerWinding[windingIndex].set_skin_effect_losses(skinEffectLosses);
-    }
     double totalSkinEffectLosses = 0;
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
@@ -162,17 +147,22 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
 
         auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], windingLossesHarmonicAmplitudeThreshold).second;
 
+        WindingLossElement skinEffectLosses;
+        auto model = get_model(coil.get_wire_type(windingIndex));
+        skinEffectLosses.set_method_used(model->methodName);
+        skinEffectLosses.set_origin(ResultOrigin::SIMULATION);
+        skinEffectLosses.get_mutable_harmonic_frequencies().push_back(0);
+        skinEffectLosses.get_mutable_losses_per_harmonic().push_back(0);
+
         for (auto& lossesPerMeter : lossesPerMeterPerHarmonic) {
-            auto skinEffectLosses = windingLossesPerWinding[windingIndex].get_skin_effect_losses().value();
             skinEffectLosses.get_mutable_harmonic_frequencies().push_back(lossesPerMeter.second);
             skinEffectLosses.get_mutable_losses_per_harmonic().push_back(lossesPerMeter.first * wireLength);
             totalSkinEffectLosses += lossesPerMeter.first * wireLength;
-            windingLossesPerWinding[windingIndex].set_skin_effect_losses(skinEffectLosses);
         }
+        windingLossesPerTurn[turnIndex].set_skin_effect_losses(skinEffectLosses);
 
     }
-    // throw std::runtime_error("totalSkinEffectLosses: " + Convert.ToString(totalSkinEffectLosses));
-    windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
+    windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
     windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + totalSkinEffectLosses);

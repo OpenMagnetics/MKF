@@ -124,23 +124,8 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     }
     auto turns = coil.get_turns_description().value();
 
-    std::vector<std::shared_ptr<WindingProximityEffectLossesModel>> lossesModelPerWinding;
+    auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
-    auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
-
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex)
-    {
-        auto model = get_model(coil.get_wire_type(windingIndex));
-        lossesModelPerWinding.push_back(model);
-
-        WindingLossElement proximityEffectLosses;
-        proximityEffectLosses.set_method_used(model->methodName);
-        proximityEffectLosses.set_origin(ResultOrigin::SIMULATION);
-        proximityEffectLosses.get_mutable_harmonic_frequencies().push_back(0);
-        proximityEffectLosses.get_mutable_losses_per_harmonic().push_back(0);
-
-        windingLossesPerWinding[windingIndex].set_proximity_effect_losses(proximityEffectLosses);
-    }
     double totalProximityEffectLosses = 0;
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
@@ -168,22 +153,29 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             fields.push_back(complexField);
         }
 
-        auto lossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, fields).second;
+        auto lossesPerHarmonicThisTurn = calculate_proximity_effect_losses_per_meter(wire, temperature, fields).second;
 
-        for (auto& lossesThisHarmonic : lossesPerHarmonic) {
-            auto proximityEffectLosses = windingLossesPerWinding[windingIndex].get_proximity_effect_losses().value();
-            proximityEffectLosses.get_mutable_harmonic_frequencies().push_back(lossesThisHarmonic.second);
+
+        WindingLossElement proximityEffectLossesThisTurn;
+        auto model = get_model(coil.get_wire_type(windingIndex));
+        proximityEffectLossesThisTurn.set_method_used(model->methodName);
+        proximityEffectLossesThisTurn.set_origin(ResultOrigin::SIMULATION);
+        proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(0);
+        proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(0);
+
+        for (auto& lossesThisHarmonic : lossesPerHarmonicThisTurn) {
             if (std::isnan(lossesThisHarmonic.first)) {
                 throw std::runtime_error("NaN found in proximity effect losses");
             }
-            proximityEffectLosses.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
+            proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(lossesThisHarmonic.second);
+            proximityEffectLossesThisTurn.get_mutable_losses_per_harmonic().push_back(lossesThisHarmonic.first * wireLength);
+
             totalProximityEffectLosses += lossesThisHarmonic.first * wireLength;
 
-            windingLossesPerWinding[windingIndex].set_proximity_effect_losses(proximityEffectLosses);
         }
-
+        windingLossesPerTurn[turnIndex].set_proximity_effect_losses(proximityEffectLossesThisTurn);
     }
-    windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
+    windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
 
     windingLossesOutput.set_method_used("AnalyticalModels");
     windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + totalProximityEffectLosses);
@@ -427,12 +419,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
 
-    if ((wireConductingDimension / 2) < skinDepth) {
-        factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
-    }
-    else {
-        factor = 2.0 * std::numbers::pi * resistivity * ((wireConductingDimension / 2) / skinDepth - 1.0 / 2);
-    }
+    factor = 2.0 * std::numbers::pi * resistivity * pow((wireConductingDimension / 2) / skinDepth, 4) / 4;
 
     return factor;
 }
@@ -459,7 +446,6 @@ double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(WireWr
     Hy /= data.size();
 
     double turnLosses = (pow(Hx, 2) + pow(Hy, 2)) * proximityFactor;
-
     turnLosses *= wire.get_number_conductors().value();
 
     if (std::isnan(turnLosses)) {

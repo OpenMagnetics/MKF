@@ -3,8 +3,12 @@
 #include "CircuitSimulatorInterface.h"
 #include "WindingOhmicLosses.h"
 #include "LeakageInductance.h"
+#include "MagnetizingInductance.h"
+#include "Sweeper.h"
 #include <filesystem>
 #include <ctime>
+#include "levmar.h"
+#include <float.h>
 
 namespace OpenMagnetics {
 
@@ -32,8 +36,65 @@ CircuitSimulatorExporter::CircuitSimulatorExporter() {
     _model = CircuitSimulatorExporterModel::factory(CircuitSimulatorExporterModels::SIMBA);
 }
 
+double model(double x[], double frequency) {
+    return x[0] + x[1] * sqrt(frequency) + x[2] * frequency + x[3] * log(frequency) + x[4] * pow(frequency, x[5]); 
+}
+
+void modelling_function(double *p, double *x, int m, int n, void *data) {
+    double* frequencies = static_cast <double*> (data);
+    for(int i=0; i<n; ++i) {
+        x[i]=model(p, frequencies[i]);
+    }
+}
+
+std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic) {
+    size_t numberUnknowns = 6;
+    size_t numberElements = 100;
+    size_t maxIterations = 10000;
+    double startingFrequency = 0.1;
+    double endingFrequency = 1000000;
+    auto coil = magnetic.get_coil();
+
+    std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        Curve2D windingAcResistanceData = Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        double frequencies[frequenciesVector.size()];
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            frequencies[index] = frequenciesVector[index];
+        }
+
+        auto points = windingAcResistanceData.get_y_points();
+        double acResistances[points.size()];
+        for (size_t index = 0; index < points.size(); ++index) {
+            acResistances[index] = points[index];
+            std::cout << "frequency: " << frequenciesVector[index] << ": " << points[index] << std::endl;
+
+        }
+        int m = numberUnknowns;
+        int n = frequenciesVector.size();
+
+        double coefficients[numberUnknowns];
+        for (size_t index = 0; index < numberUnknowns; ++index) {
+            coefficients[index] = 1.0;
+        }
+        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+
+        dlevmar_dif(modelling_function, coefficients, acResistances, m, n, 10000, NULL, info, NULL, NULL, static_cast<void*>(&frequencies));  // no Jacobian
+        acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
+        for (auto coefficient : coefficients) {
+            std::cout << "coefficient: " << coefficient << std::endl;
+            acResistanceCoefficientsPerWinding.back().push_back(coefficient);
+        }
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            std::cout << "frequency: " << frequenciesVector[index] << ": " << model(coefficients, frequenciesVector[index]) << std::endl;
+        }
+
+    }
+    return acResistanceCoefficientsPerWinding;
+}
+
 CircuitSimulatorExporterSimbaModel::CircuitSimulatorExporterSimbaModel() {
-    auto curr_clock = std::chrono::high_resolution_clock::now();
     std::random_device rd;
     _gen = std::mt19937(rd());
 
@@ -49,12 +110,14 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
     else if (programName == CircuitSimulatorExporterModels::NGSPICE) {
         return std::make_shared<CircuitSimulatorExporterNgspiceModel>();
     }
+    else if (programName == CircuitSimulatorExporterModels::LTSPICE) {
+        return std::make_shared<CircuitSimulatorExporterLtspiceModel>();
+    }
     else
-        throw std::runtime_error("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE}");
+        throw std::runtime_error("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
 }
 
-
-ordered_json CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
     auto result = _model->export_magnetic_as_subcircuit(magnetic, filePathOrFile);
     if (outputFilename) {
         std::ofstream o(outputFilename.value());
@@ -63,6 +126,14 @@ ordered_json CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWra
     return result;
 }
 
+std::string CircuitSimulatorExporter::export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
+    auto result = _model->export_magnetic_as_symbol(magnetic, filePathOrFile);
+    if (outputFilename) {
+        std::ofstream o(outputFilename.value());
+        o << std::setw(2) << result << std::endl;
+    }
+    return result;
+}
 
 std::string CircuitSimulatorExporterSimbaModel::generate_id() {
     // generator for hex numbers from 0 to F
@@ -245,8 +316,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::merge_connectors(ordered_json c
     return mergeConnectors;
 }
 
-
-ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
     ordered_json simulation;
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -458,14 +528,113 @@ ordered_json CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(M
     library["Devices"] = ordered_json::array();
     library["Devices"].push_back(device);
     simulation["Libraries"].push_back(library);
-    return simulation;
+    return simulation.dump(2);
 }
 
+std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+    std::string headerString = "* Magnetic model made with OpenMagnetics\n";
+    headerString += "* " + magnetic.get_reference() + "\n\n";
+    headerString += ".subckt " + fix_filename(magnetic.get_reference());
+    std::string circuitString = "";
+    std::string parametersString = "";
+    std::string footerString = ".ends " + fix_filename(magnetic.get_reference());
 
-ordered_json CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
-    return json();
+    auto coil = magnetic.get_coil();
+
+    double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+    auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, Defaults().ambientTemperature);
+    auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
+
+    parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
+    parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
+    for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+        std::string is = std::to_string(index + 1);
+        parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(dcResistancePerWinding[index]) + "\n";
+        parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
+        if (index > 0) {
+            double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
+            parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
+        }
+
+        circuitString += "Rac_" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+        circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+        if (index > 0) {
+            circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
+        }
+
+        headerString += " P" + is + "+ P" + is + "-";
+
+    }
+
+    return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 
+std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+    std::string symbolString = "Version 4\n";
+    symbolString += "SymbolType BLOCK\n";
+
+    auto coil = magnetic.get_coil();
+
+    int rectangleSemiWidth = 72;
+
+    int leftSideSize = 16;
+    int rightSideSize = 16;
+    for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+        if (coil.get_functional_description()[index].get_isolation_side() == IsolationSide::PRIMARY) {
+            leftSideSize += 64;
+        }
+        else {
+            rightSideSize += 64;
+        }
+    }
+
+    int rectangleHeight = std::max(leftSideSize, rightSideSize);
+
+
+    symbolString += "TEXT " + std::to_string(-rectangleSemiWidth + 8) + " " + std::to_string(-rectangleHeight / 2 + 8) + " Left 0 " + magnetic.get_reference() + "\n";
+    symbolString += "TEXT " + std::to_string(-rectangleSemiWidth + 8) + " " + std::to_string(rectangleHeight / 2 - 8) + " Left 0 Made with OpenMagnetics\n";
+
+
+    symbolString += "RECTANGLE Normal " + std::to_string(-rectangleSemiWidth) + " -" + std::to_string(rectangleHeight / 2) + " " + std::to_string(rectangleSemiWidth) + " " + std::to_string(rectangleHeight / 2) + "\n";
+    symbolString += "SYMATTR Prefix X\n";
+    symbolString += "SYMATTR Value " + fix_filename(magnetic.get_reference()) + "\n";
+    symbolString += "SYMATTR ModelFile " + fix_filename(magnetic.get_reference()) + ".cir\n";
+
+    int currentSpiceOrder = 1;
+    int currentRectangleLeftSideHeight = -leftSideSize / 2 + 24;
+    int currentRectangleRightSideHeight = -rightSideSize / 2 + 24;
+    for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+
+        if (coil.get_functional_description()[index].get_isolation_side() == IsolationSide::PRIMARY) {
+            symbolString += "PIN " + std::to_string(-rectangleSemiWidth) + " " + std::to_string(currentRectangleLeftSideHeight) + " LEFT 8\n";
+            currentRectangleLeftSideHeight += 32;
+        }
+        else{
+            symbolString += "PIN " + std::to_string(rectangleSemiWidth) + " " + std::to_string(currentRectangleRightSideHeight) + " RIGHT 8\n";
+            currentRectangleRightSideHeight += 32;
+        }
+        symbolString += "PINATTR PinName P" + std::to_string(index + 1) + "+\n";
+        symbolString += "PINATTR SpiceOrder " + std::to_string(currentSpiceOrder) + "\n";
+        currentSpiceOrder++;
+
+        if (coil.get_functional_description()[index].get_isolation_side() == IsolationSide::PRIMARY) {
+            symbolString += "PIN " + std::to_string(-rectangleSemiWidth) + " " + std::to_string(currentRectangleLeftSideHeight) + " LEFT 8\n";
+            currentRectangleLeftSideHeight += 32;
+        }
+        else {
+            symbolString += "PIN " + std::to_string(rectangleSemiWidth) + " " + std::to_string(currentRectangleRightSideHeight) + " RIGHT 8\n";
+            currentRectangleRightSideHeight += 32;
+        }
+        symbolString += "PINATTR PinName P" + std::to_string(index + 1) + "-\n";
+        symbolString += "PINATTR SpiceOrder " + std::to_string(currentSpiceOrder) + "\n";
+        currentSpiceOrder++;
+    }
+
+
+    return symbolString;
+}
 
 void CircuitSimulationReader::process_line(std::string line, char separator) {
     std::stringstream ss(line);
@@ -527,7 +696,6 @@ CircuitSimulationReader::CircuitSimulationReader(std::string filePathOrFile) {
     }
 
     _time = find_time(_columns);
-
 }
 
 std::vector<std::string> CircuitSimulationReader::extract_column_names() {
@@ -538,7 +706,6 @@ std::vector<std::string> CircuitSimulationReader::extract_column_names() {
 
     return names;
 }
-
 
 bool CircuitSimulationReader::can_be_time(std::vector<double> data) {
     if (data.size() == 0) {
@@ -634,7 +801,6 @@ char CircuitSimulationReader::guess_separator(std::string line){
     throw std::runtime_error("No column separator found");
 }
 
-
 Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample) {
     double period = 1.0 / frequency;
     if (!waveform.get_time()) {
@@ -698,7 +864,6 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     else {
         return newWaveform;
     }
-
 }
 
 CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_time(std::vector<CircuitSimulationReader::CircuitSimulationSignal> columns) {

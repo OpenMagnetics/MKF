@@ -93,6 +93,11 @@ class InputsWrapper : public Inputs {
                                                                   double dutyCycle,
                                                                   double dcCurrent,
                                                                   std::vector<double> turnsRatios = {});
+    static OperatingPoint create_operating_point_with_sinusoidal_current_mask(double frequency,
+                                                                              double magnetizingInductance,
+                                                                              double temperature,
+                                                                              std::vector<double> turnsRatios,
+                                                                              std::vector<double> currentPeakMask);
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
     static Waveform create_waveform(Processed processed, double frequency);

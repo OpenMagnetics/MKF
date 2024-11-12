@@ -200,9 +200,11 @@ IsolationSide get_isolation_side_from_index(size_t index);
 
 std::vector<std::string> split(std::string s, std::string delimiter);
 std::vector<double> linear_spaced_array(double a, double b, size_t N);
+std::vector<double> logarithmic_spaced_array(double a, double b, size_t N);
 
 double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
+std::string fix_filename(std::string filename);
 
 } // namespace OpenMagnetics

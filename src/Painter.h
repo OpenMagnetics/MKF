@@ -63,7 +63,6 @@ class Painter{
     std::vector<double> get_image_size(MagneticWrapper magnetic);
     void set_image_size(WireWrapper wire);
 
-    static std::string fix_filename(std::string filename);
     void export_svg();
     void export_png();
     std::string paint_rectangle(std::vector<double> cornerData, bool fill=true, double strokeWidth=0);
@@ -101,7 +100,7 @@ class Painter{
     void paint_waveform(Waveform waveform);
     void paint_waveform(std::vector<double> waveform, std::optional<std::vector<double>> time = std::nullopt);
 
-    void paint_curve(Curve2D curve2D);
+    void paint_curve(Curve2D curve2D, bool logScale = false);
 
     void paint_background(MagneticWrapper magnetic);
 };

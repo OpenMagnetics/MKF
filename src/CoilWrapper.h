@@ -186,6 +186,10 @@ class CoilWrapper : public Coil {
         std::vector<std::string> get_turns_names_by_section(std::string sectionName);
         std::vector<std::string> get_turns_names_by_winding(std::string windingName);
 
+        std::vector<size_t> get_turns_indexes_by_layer(std::string layerName);
+        std::vector<size_t> get_turns_indexes_by_section(std::string sectionName);
+        std::vector<size_t> get_turns_indexes_by_winding(std::string windingName);
+
         std::vector<uint64_t> get_number_parallels();
         void set_number_parallels(std::vector<uint64_t> numberParallels);
 
@@ -230,5 +234,7 @@ class CoilWrapper : public Coil {
         static double get_insulation_layer_relative_permittivity(CoilWrapper coil, std::string layerName);
         double get_insulation_section_relative_permittivity(std::string sectionName);
         static double get_insulation_section_relative_permittivity(CoilWrapper coil, std::string sectionName);
+
+        std::vector<double> get_turns_ratios();
 };
 } // namespace OpenMagnetics

@@ -12,10 +12,25 @@ SUITE(Impedance) {
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 12.5/7.5/5";
         std::vector<OpenMagnetics::WireWrapper> wires;
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+        wires.push_back(wire);
+        wires.push_back(wire);
 
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         shapeName);
+                                                         shapeName,
+                                                         1,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A07";
@@ -44,10 +59,25 @@ SUITE(Impedance) {
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 12.5/7.5/5";
         std::vector<OpenMagnetics::WireWrapper> wires;
+        auto wire = OpenMagnetics::find_wire_by_name("Round 0.425 - Grade 1");
+        wires.push_back(wire);
+        wires.push_back(wire);
 
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         shapeName);
+                                                         shapeName,
+                                                         1,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A07";
@@ -77,10 +107,25 @@ SUITE(Impedance) {
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 36/23/15";
         std::vector<OpenMagnetics::WireWrapper> wires;
+        auto wire = OpenMagnetics::find_wire_by_name("Round 2.50 - Grade 1");
+        wires.push_back(wire);
+        wires.push_back(wire);
 
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         shapeName);
+                                                         shapeName,
+                                                         1,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A05";
@@ -101,18 +146,33 @@ SUITE(Impedance) {
             auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
             CHECK_CLOSE(expectedImpedance, abs(impedance), expectedImpedance * maximumError);
         }
-
     }
+
     TEST(Test_Impedance_Few_Turns_Larger_Core) {
 
         std::vector<int64_t> numberTurns = {17, 17};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 36/23/15";
         std::vector<OpenMagnetics::WireWrapper> wires;
+        auto wire = OpenMagnetics::find_wire_by_name("Round 1.40 - Grade 1");
+        wires.push_back(wire);
+        wires.push_back(wire);
 
+        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
+        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         shapeName);
+                                                         shapeName,
+                                                         1,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A05";

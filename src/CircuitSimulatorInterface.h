@@ -12,7 +12,8 @@ namespace OpenMagnetics {
 
 enum class CircuitSimulatorExporterModels : int {
     SIMBA,
-    NGSPICE
+    NGSPICE,
+    LTSPICE
 };
 
 
@@ -20,7 +21,8 @@ class CircuitSimulatorExporterModel {
     private:
     public:
         std::string programName = "Default";
-        virtual ordered_json export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) = 0;
+        virtual std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) = 0;
+        virtual std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) = 0;
         static std::shared_ptr<CircuitSimulatorExporterModel> factory(CircuitSimulatorExporterModels programName);
 
 };
@@ -32,7 +34,9 @@ class CircuitSimulatorExporter {
     public:
         CircuitSimulatorExporter(CircuitSimulatorExporterModels program);
         CircuitSimulatorExporter();
-        ordered_json export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic);
+        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
 };
 
 class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel {
@@ -51,7 +55,10 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         std::string generate_id();
         std::mt19937 _gen;
         CircuitSimulatorExporterSimbaModel();
-        ordered_json export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
+            return "Not supported";
+        }
+        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
         ordered_json create_device(std::string libraryName, std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_air_gap(std::vector<int> coordinates, double area, double length, int angle, std::string name);
         ordered_json create_core(double initialPermeability, std::vector<int> coordinates, double area, double length, int angle, std::string name);
@@ -67,7 +74,16 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
 class CircuitSimulatorExporterNgspiceModel : public CircuitSimulatorExporterModel {
     public:
         std::string programName = "Ngspice";
-        ordered_json export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
+            return "Not supported";
+        }
+        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+};
+
+class CircuitSimulatorExporterLtspiceModel : public CircuitSimulatorExporterNgspiceModel {
+    public:
+        std::string programName = "Ltspice";
+        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
 };
 
 class CircuitSimulationReader {

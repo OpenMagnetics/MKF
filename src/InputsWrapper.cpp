@@ -803,8 +803,8 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
     result.first = true;
     result.second = "";
 
-    for (auto& operating_point : operatingPoints) {
-        if (operating_point.get_excitations_per_winding().size() == 0) {
+    for (auto& operatingPoint : operatingPoints) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0) {
             result.first = false;
             throw std::invalid_argument("Missing excitation for primary");
         }
@@ -1255,13 +1255,79 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
 }
 
 void InputsWrapper::process_waveforms() {
-    auto operating_points = get_mutable_operating_points();
+    auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
-    for (auto& operating_point : operating_points) {
+    for (auto& operatingPoint : operatingPoints) {
         processed_operating_points.push_back(process_operating_point(
-            operating_point, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
+            operatingPoint, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
     }
     set_operating_points(processed_operating_points);
+}
+
+
+OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mask(double frequency,
+                                                                                  double magnetizingInductance,
+                                                                                  double temperature,
+                                                                                  std::vector<double> turnsRatios,
+                                                                                  std::vector<double> currentPeakMask) {
+
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(temperature);
+    conditions.set_ambient_relative_humidity(std::nullopt);
+    conditions.set_cooling(std::nullopt);
+    conditions.set_name(std::nullopt);
+    operatingPoint.set_conditions(conditions);
+    {
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor current;
+        Processed processed;
+        processed.set_label(WaveformLabel::SINUSOIDAL);
+        processed.set_peak_to_peak(2 * currentPeakMask[0]);
+        processed.set_duty_cycle(0.5);
+        processed.set_offset(0);
+        current.set_processed(processed);
+        current = standarize_waveform(current, frequency);
+        calculate_basic_processed_data(current.get_waveform().value());
+        excitation.set_current(current);
+        if (magnetizingInductance > 0) {
+            auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
+            excitation.set_voltage(voltage);
+        calculate_basic_processed_data(voltage.get_waveform().value());
+            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0);
+            excitation.set_magnetizing_current(magnetizingCurrent);
+        calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+    for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
+        auto turnsRatio = turnsRatios[turnRatioIndex];
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        SignalDescriptor current;
+        Processed processed;
+        processed.set_label(WaveformLabel::SINUSOIDAL);
+        processed.set_peak_to_peak(2 * currentPeakMask[turnRatioIndex + 1]);
+        processed.set_duty_cycle(0.5);
+        processed.set_offset(0);
+        current.set_processed(processed);
+        current.set_processed(processed);
+        current = standarize_waveform(current, frequency);
+        excitation.set_current(current);
+        if (magnetizingInductance > 0) {
+            auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
+            excitation.set_voltage(voltage);
+        calculate_basic_processed_data(voltage.get_waveform().value());
+            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0);
+            excitation.set_magnetizing_current(magnetizingCurrent);
+        calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+        }
+        operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    }
+
+    return process_operating_point(operatingPoint, magnetizingInductance);
+
 }
 
 InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,

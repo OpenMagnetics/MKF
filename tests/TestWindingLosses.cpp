@@ -2525,3 +2525,64 @@ SUITE(WindingLossesToroidalCores) {
     }
 
 }
+
+
+SUITE(WindingLossesResistanceMatrix) {
+    TEST(Test_Resistance_Matrix) {
+        std::vector<int64_t> numberTurns = {80, 8, 6};
+        std::vector<int64_t> numberParallels = {1, 2, 6};
+        std::vector<double> turnsRatios = {16, 13};
+        std::string shapeName = "ER 28";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round T21A01TXXX-1");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         true);
+
+        coil.wind({0, 1, 2}, 1);
+
+        double temperature = 20;
+        double frequency = 123456;
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C95";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto resistanceMatrixAtFrequency = OpenMagnetics::WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
+
+        CHECK(resistanceMatrixAtFrequency.get_matrix().size() == magnetic.get_coil().get_functional_description().size());
+        for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+            CHECK(resistanceMatrixAtFrequency.get_matrix()[windingIndex].size() == magnetic.get_coil().get_functional_description().size());
+            CHECK(OpenMagnetics::resolve_dimensional_values(resistanceMatrixAtFrequency.get_matrix()[windingIndex][windingIndex]) > 0);
+        }
+
+    }
+}

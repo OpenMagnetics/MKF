@@ -981,8 +981,19 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
     }
     auto currentRms = excitation.get_magnetizing_current()->get_processed()->get_rms().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
+
+    auto seriesResistance = get_core_losses_series_resistance(coreMaterial, frequency, temperature, magnetizingInductance);
+    double volumetricLosses = seriesResistance * pow(currentRms, 2);
+
+    return volumetricLosses;
+}
+
+double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial coreMaterial,
+                                                                    double frequency,
+                                                                    double temperature,
+                                                                    double magnetizingInductance) {
+
     CoreLossesOutput result;
-    double volumetricLosses = -1;
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
 
     if (!lossFactorInterps.contains(coreMaterial.get_name())) {
@@ -1008,9 +1019,8 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
 
     auto lossTangent = lossFactorValue * initialPermeability;
     auto seriesResistance = lossTangent * 2 * std::numbers::pi * frequency * magnetizingInductance;
-    volumetricLosses = seriesResistance * pow(currentRms, 2);
 
-    return volumetricLosses;
+    return seriesResistance;
 }
 
 double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,

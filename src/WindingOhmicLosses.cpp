@@ -131,7 +131,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil,
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = turn.get_parallel();
 
-        auto currentDividerThisTurn = dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
+        auto currentDividerThisTurn = dcCurrentPerWinding[windingIndex] == 0? 0 : dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
         double windingOhmicLossesInTurn = pow(currentDividerThisTurn, 2) * dcResistancePerTurn[turnIndex];
         OhmicLosses ohmicLosses;
         WindingLossesPerElement windingLossesThisTurn;
