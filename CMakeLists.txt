@@ -132,7 +132,7 @@ if( NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6 )
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar -xzvf ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6.tgz)
     execute_process(COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_CURRENT_BINARY_DIR}/levmar-2.6 ${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6)
 endif()
-add_subdirectory("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
+add_subdirectory("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6" "${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
 
 file(GLOB SOURCES
