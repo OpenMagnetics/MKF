@@ -55,8 +55,8 @@ message("Embeding MAS InsulationMaterials: ${EMBED_MAS_INSULATION_MATERIALS}")
 
 
 file(DOWNLOAD "https://raw.githubusercontent.com/vector-of-bool/cmrc/master/CMakeRC.cmake"
-                 "${CMAKE_CURRENT_BINARY_DIR}/CMakeRC.cmake")
-include("${CMAKE_CURRENT_BINARY_DIR}/CMakeRC.cmake")
+                 "${CMAKE_BINARY_DIR}/CMakeRC.cmake")
+include("${CMAKE_BINARY_DIR}/CMakeRC.cmake")
 
 
 include(FetchContent)
@@ -65,15 +65,15 @@ FetchContent_Declare(json
     GIT_REPOSITORY https://github.com/nlohmann/json/
     GIT_TAG  tags/v3.11.3)
 FetchContent_MakeAvailable(json)
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/json-src/include/nlohmann/")
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/json-src/include/")
+include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
+include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 
 
 FetchContent_Declare(magic-enum
     GIT_REPOSITORY https://github.com/Neargye/magic_enum
     GIT_TAG  tags/v0.9.6)
 FetchContent_MakeAvailable(magic-enum)
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
+include_directories("${CMAKE_BINARY_DIR}/_deps/magic-enum-src/include/magic_enum")
 
 FetchContent_Declare(matplotplusplus
     GIT_REPOSITORY https://github.com/alandefreitas/matplotplusplus
@@ -87,7 +87,7 @@ endif()
 FetchContent_Declare(spline
     GIT_REPOSITORY https://github.com/AlfVII/spline.git)
 FetchContent_MakeAvailable(spline)
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/spline-src/src")
+include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
 
 
 if(INCLUDE_MKF_TESTS)
@@ -95,7 +95,7 @@ FetchContent_Declare(UnitTest++
     GIT_REPOSITORY https://github.com/unittest-cpp/unittest-cpp.git
     GIT_TAG  tags/v2.0.0)
     FetchContent_MakeAvailable(UnitTest++)
-    include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
+    include_directories("${CMAKE_BINARY_DIR}/_deps/unittest++-src/UnitTest++/")
 endif(INCLUDE_MKF_TESTS)
 
 # MAS
@@ -103,14 +103,14 @@ find_program(NAMES quicktype REQUIRED)
 find_program(NAMES libgtest-dev REQUIRED)
 
 if(NOT DEFINED MAS_DIRECTORY)
-    set(MAS_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/MAS/")
+    set(MAS_DIRECTORY "${CMAKE_BINARY_DIR}/MAS/")
 endif(NOT DEFINED MAS_DIRECTORY)
 
 if(NOT DEFINED MAS_DIR)
     set(MAS_DIR "${PROJECT_SOURCE_DIR}/MAS")
 endif(NOT DEFINED MAS_DIR)
 
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/MAS")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
@@ -223,10 +223,10 @@ if(INCLUDE_PYMKF)
                           /bin/echo "RUNNING PyMASGeneration"
                           DEPENDS "${MAS_DIRECTORY}/MAS.hpp")
         add_dependencies(MKF PyMASGeneration)
-        include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/pybind11-src/include/")
-        include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
+        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src/include/")
+        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11_json-src/include/pybind11_json/")
         target_link_libraries(MKF pybind11_json pybind11::embed)
-        include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/pybind11-src")
+        include_directories("${CMAKE_BINARY_DIR}/_deps/pybind11-src")
         pybind11_add_module(PyMKF src/PyMKF/PyMKFWrapper.cpp )
         target_link_libraries(PyMKF PRIVATE MKF pybind11_json)
 
