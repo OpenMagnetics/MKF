@@ -261,5 +261,66 @@ SUITE(Sweeper) {
 
         settings->reset();
     }
+
+    TEST(Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns) {
+        double temperature = 20;
+        std::vector<int64_t> numberTurns = {80, 8, 6};
+        std::vector<int64_t> numberParallels = {1, 2, 6};
+        std::vector<double> turnsRatios = {16, 13};
+        std::string shapeName = "ER 28";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round T21A01TXXX-1");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         true);
+
+        coil.wind({0, 1, 2}, 1);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C95";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto coreSweep = OpenMagnetics::Sweeper().sweep_core_resistance_over_frequency(magnetic, 10000, 120000, 20);
+
+        auto outFile = outputFilePath;
+
+        outFile.append("Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, false, true);
+        painter.paint_curve(coreSweep, true);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+
+        settings->reset();
+    }
 }
 

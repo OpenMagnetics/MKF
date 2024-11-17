@@ -194,9 +194,22 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
     return dutyCycle;
 }
 
+bool InputsWrapper::is_standardized(SignalDescriptor signal) {
+    if (!signal.get_waveform()) {
+        return false;
+    }
+
+    if (signal.get_waveform() && !signal.get_waveform()->get_time()) {
+        return false;
+    }
+
+    return true;
+}
+
 // In case the waveform comes defined with processed data only, we create a MAS format waveform from it, as the rest of
 // the code depends on it.
 SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, double frequency) {
+    // SignalDescriptor standardized_signal = signal;
     SignalDescriptor standardized_signal(signal);
     if (!signal.get_waveform()) {
         if (!signal.get_processed() && !signal.get_harmonics()) {
@@ -359,6 +372,9 @@ bool InputsWrapper::is_waveform_sampled(Waveform waveform) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     if (!waveform.get_time()) {
         return false;
+    }
+    else if (is_waveform_imported(waveform)) {
+        return is_size_power_of_2(waveform.get_data());
     }
     else {
         return waveform.get_data().size() == settings->get_inputs_number_points_sampled_waveforms();
@@ -1226,9 +1242,18 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
         // Here we processed this excitation current
         if (excitation.get_current()) {
             auto current_excitation = excitation.get_current().value();
-            current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
+
+            if (!is_standardized(current_excitation)) {
+                current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
+            }
             auto waveform = current_excitation.get_waveform().value();
-            auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            Waveform sampledWaveform;
+            if (!is_waveform_sampled(waveform)) {
+                sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            }
+            else {
+                sampledWaveform = waveform;
+            }
             current_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
             current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform, true, current_excitation.get_processed()));
             excitation.set_current(current_excitation);
@@ -1236,9 +1261,17 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
         // Here we processed this excitation voltage
         if (excitation.get_voltage()) {
             auto voltage_excitation = excitation.get_voltage().value();
-            voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
+            if (!is_standardized(voltage_excitation)) {
+                voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
+            }
             auto waveform = voltage_excitation.get_waveform().value();
-            auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            Waveform sampledWaveform;
+            if (!is_waveform_sampled(waveform)) {
+                sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+            }
+            else {
+                sampledWaveform = waveform;
+            }
             voltage_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
             voltage_excitation.set_processed(calculate_processed_data(voltage_excitation, sampledWaveform));
             excitation.set_voltage(voltage_excitation);

@@ -1,5 +1,6 @@
 #include "CircuitSimulatorInterface.h"
 #include "TestingUtils.h"
+#include "Sweeper.h"
 #include "Painter.h"
 #include <UnitTest++.h>
 
@@ -31,7 +32,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -59,7 +60,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile, flyback_jsimba_path);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -72,7 +73,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ur.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile, flyback_jsimba_path);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -85,7 +86,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile, flyback_jsimba_path);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -98,7 +99,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile, flyback_jsimba_path);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -111,7 +112,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ep_Core.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, jsimbaFile, flyback_jsimba_path);
+        OpenMagnetics::CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -142,7 +143,7 @@ SUITE(CircuitSimulatorExporterNgspice) {
         cirFile.append("./Test_CircuitSimulatorExporter_Ngspice_Only_Magnetic.cir");
 
         std::filesystem::remove(cirFile);
-        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, cirFile);
+        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile);
         CHECK(std::filesystem::exists(cirFile));
     }
 
@@ -173,7 +174,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         auto cirFile = outputFilePath;
         cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
         std::filesystem::remove(cirFile);
-        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, cirFile);
+        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile);
         CHECK(std::filesystem::exists(cirFile));
 
         auto asyFile = outputFilePath;
@@ -183,9 +184,9 @@ SUITE(CircuitSimulatorExporterLtspice) {
         CHECK(std::filesystem::exists(asyFile));
     }
 
-    TEST(Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients) {
-        std::vector<int64_t> numberTurns = {30, 10};
-        std::vector<int64_t> numberParallels = {1, 1};
+    TEST(Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Analytical) {
+        std::vector<int64_t> numberTurns = {30};
+        std::vector<int64_t> numberParallels = {1};
         std::string shapeName = "PQ 35/35";
         std::vector<OpenMagnetics::WireWrapper> wires;
 
@@ -201,14 +202,85 @@ SUITE(CircuitSimulatorExporterLtspice) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
+        auto coefficientsPerWinding = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, OpenMagnetics::CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
 
-        auto coefficientsPerWinding = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic);
-        for (auto coefficients : coefficientsPerWinding) {
-            for (auto coefficient : coefficients) {
-                std::cout << "coefficient: " << coefficient << std::endl;
+        size_t numberElements = 100;
+        size_t windingIndex = 0;
+        double startingFrequency = 0.1;
+        double endingFrequency = 1000000;
+
+        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        auto acResistanceVector = windingAcResistanceData.get_y_points();
+
+        double errorAverage = 0;
+        for (size_t index = 0; index < acResistanceVector.size(); ++index) {
+            double c[coefficientsPerWinding[0].size()];
+            for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+                c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
             }
+            auto frequency = frequenciesVector[index];
+            double modeledAcResistance = OpenMagnetics::CircuitSimulatorExporter::analytical_model(c, frequency);
+            double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
+            errorAverage += error;
         }
 
+        errorAverage /= acResistanceVector.size();
+
+        CHECK(0.25 > errorAverage);
+
+    }
+
+    TEST(Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder) {
+        std::vector<int64_t> numberTurns = {10};
+        std::vector<int64_t> numberParallels = {1};
+        std::string shapeName = "PQ 35/35";
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "95";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto coefficientsPerWinding = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, OpenMagnetics::CircuitSimulatorExporterCurveFittingModes::LADDER);
+
+        size_t numberElements = 100;
+        size_t windingIndex = 0;
+        double startingFrequency = 0.1;
+        double endingFrequency = 1000000;
+
+        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+        auto acResistanceVector = windingAcResistanceData.get_y_points();
+
+        for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+            std::cout << coefficientIndex << std::endl;
+            std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+        }
+
+        double errorAverage = 0;
+        for (size_t index = 0; index < acResistanceVector.size(); ++index) {
+            double c[coefficientsPerWinding[0].size()];
+            for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+                c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
+            }
+            auto frequency = frequenciesVector[index];
+            double modeledAcResistance = OpenMagnetics::CircuitSimulatorExporter::ladder_model(c, frequency, acResistanceVector[0]);
+            double error = fabs(acResistanceVector[index] - modeledAcResistance) / acResistanceVector[index];
+            errorAverage += error;
+        }
+
+        errorAverage /= acResistanceVector.size();
+        std::cout << "errorAverage: " << errorAverage << std::endl;
+
+        CHECK(0.01 > errorAverage);
     }
 
 }
@@ -767,5 +839,73 @@ SUITE(CircuitSimulationReader) {
         CHECK(!mapColumnNames[1]["time"].compare("Time"));
         CHECK(!mapColumnNames[1]["current"].compare("Isec"));
         CHECK(!mapColumnNames[1]["voltage"].compare("Vsec"));
+    }
+
+    TEST(Test_PFC) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/PFC.csv");
+
+        double frequency = 50;
+        std::cout << "Mierda 1" << std::endl;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        std::cout << "Mierda 2" << std::endl;
+        auto operatingPoint = reader.extract_operating_point(1, frequency);
+        std::cout << "Mierda 3" << std::endl;
+
+        std::cout << "operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed(): " << bool(operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()) << std::endl;
+        std::cout << "operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics(): " << bool(operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics()) << std::endl;
+        std::cout << "operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed(): " << bool(operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed()) << std::endl;
+        std::cout << "operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_harmonics(): " << bool(operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_harmonics()) << std::endl;
+
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 500e-6);
+        std::cout << "Mierda 4" << std::endl;
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 1);
+        std::cout << "Mierda 5" << std::endl;
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+
+        CHECK_EQUAL(frequency, primaryFrequency);
+        CHECK_CLOSE(1.25, primaryCurrent.get_processed().value().get_rms().value(), 1.25 * max_error);
+        CHECK_CLOSE(29.7, primaryVoltage.get_processed().value().get_rms().value(), 29.7 * max_error);
+
+        {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            json inputsJson;
+            inputsJson["operatingPoints"] = json::array();
+            inputsJson["designRequirements"] = json();
+            inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 500e-6;
+            inputsJson["designRequirements"]["turnsRatios"] = json::array();
+            OpenMagnetics::InputsWrapper inputs(inputsJson);
+            inputs.get_mutable_operating_points().push_back(operatingPoint);
+
+            std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY};
+            inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+
+            auto outFile = outputFilePath;
+            std::string filename = "PFC_Inputs.mas.json";
+            outFile.append(filename);
+            OpenMagnetics::to_file(outFile, inputs);
+        }
     }
 }

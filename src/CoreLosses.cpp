@@ -6,6 +6,7 @@
 #include "Constants.h"
 #include "InputsWrapper.h"
 #include "Reluctance.h"
+#include "MagneticField.h"
 
 #include <cmath>
 #include <cfloat>
@@ -162,6 +163,9 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
 double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                             OperatingPointExcitation excitation,
                                                             double temperature) {
+    if (!excitation.get_magnetic_flux_density()) {
+        throw std::runtime_error("Missing magnetizing flux density in excitation");
+    }
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value();
@@ -191,6 +195,34 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
 
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 };
+
+double CoreLossesModel::get_core_losses_series_resistance(CoreWrapper core,
+                                                          double frequency,
+                                                          double temperature,
+                                                          double magnetizingInductance) {
+
+    double virtualCurrentRms = 1;
+    auto coreMaterial = core.resolve_material();
+    double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
+
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+
+    int64_t numberTurnsPrimary = sqrt(magnetizingInductance * reluctance);
+    auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, {}, {virtualCurrentRms * sqrt(2)});
+    operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(excitation.get_magnetizing_current().value(), reluctance, numberTurnsPrimary);
+    auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+
+    double coreLosses = get_core_losses(core, excitation, temperature).get_core_losses();
+
+    auto seriesResistance = coreLosses / pow(virtualCurrentRms, 2);
+
+    return seriesResistance;
+}
 
 double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
     auto settings = OpenMagnetics::Settings::GetInstance();

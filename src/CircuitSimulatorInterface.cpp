@@ -4,7 +4,9 @@
 #include "WindingOhmicLosses.h"
 #include "LeakageInductance.h"
 #include "MagnetizingInductance.h"
+#include "WindingLosses.h"
 #include "Sweeper.h"
+#include "Settings.h"
 #include <filesystem>
 #include <ctime>
 #include "levmar.h"
@@ -36,19 +38,58 @@ CircuitSimulatorExporter::CircuitSimulatorExporter() {
     _model = CircuitSimulatorExporterModel::factory(CircuitSimulatorExporterModels::SIMBA);
 }
 
-double model(double x[], double frequency) {
-    return x[0] + x[1] * sqrt(frequency) + x[2] * frequency + x[3] * log(frequency) + x[4] * pow(frequency, x[5]); 
+double CircuitSimulatorExporter::analytical_model(double x[], double frequency) {
+    return x[0] + x[1] * sqrt(frequency) + x[2] * frequency; 
 }
 
-void modelling_function(double *p, double *x, int m, int n, void *data) {
+void CircuitSimulatorExporter::analytical_func(double *p, double *x, int m, int n, void *data) {
     double* frequencies = static_cast <double*> (data);
     for(int i=0; i<n; ++i) {
-        x[i]=model(p, frequencies[i]);
+        x[i]=analytical_model(p, frequencies[i]);
     }
 }
 
-std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic) {
-    size_t numberUnknowns = 6;
+std::complex<double> parallel(std::complex<double> z0, std::complex<double> z1) {
+    return 1.0 / (1.0 / z0 + 1.0 / z1);
+}
+
+double CircuitSimulatorExporter::ladder_model(double x[], double frequency, double dcResistance) {
+    double w = 2 * std::numbers::pi * frequency;
+    auto R0 = std::complex<double>(dcResistance);
+    auto R1 = std::complex<double>(x[0], 0);
+    auto L1 = std::complex<double>(0, w * x[1]);
+    auto R2 = std::complex<double>(x[2], 0);
+    auto L2 = std::complex<double>(0, w * x[3]);
+    auto R3 = std::complex<double>(x[4], 0);
+    auto L3 = std::complex<double>(0, w * x[5]);
+    auto R4 = std::complex<double>(x[6], 0);
+    auto L4 = std::complex<double>(0, w * x[7]);
+    auto R5 = std::complex<double>(x[8], 0);
+    auto L5 = std::complex<double>(0, w * x[9]);
+
+    // for(int i=0; i<10; ++i) {
+    //     if (x[i] < 0) {
+    //         return 0;
+    //     }
+    // }
+
+    return (R0 + parallel(L1, R1 + parallel(L2, R2 + parallel(L3, R3 + parallel(L4, R4 + parallel(L5, R5)))))).real();
+}
+
+void CircuitSimulatorExporter::ladder_func(double *p, double *x, int m, int n, void *data) {
+    double* dcResistanceAndFrequencies = static_cast <double*> (data);
+    double dcResistance = dcResistanceAndFrequencies[0];
+
+    for(int i=0; i<n; ++i)
+        x[i]=ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
+}
+
+std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode) {
+    size_t numberUnknowns = 4;
+    if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
+        numberUnknowns = 10;
+    }
+
     size_t numberElements = 100;
     size_t maxIterations = 10000;
     double startingFrequency = 0.1;
@@ -59,35 +100,52 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         Curve2D windingAcResistanceData = Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
         auto frequenciesVector = windingAcResistanceData.get_x_points();
-        double frequencies[frequenciesVector.size()];
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            frequencies[index] = frequenciesVector[index];
-        }
 
         auto points = windingAcResistanceData.get_y_points();
         double acResistances[points.size()];
         for (size_t index = 0; index < points.size(); ++index) {
             acResistances[index] = points[index];
-            std::cout << "frequency: " << frequenciesVector[index] << ": " << points[index] << std::endl;
-
         }
         int m = numberUnknowns;
         int n = frequenciesVector.size();
 
         double coefficients[numberUnknowns];
         for (size_t index = 0; index < numberUnknowns; ++index) {
-            coefficients[index] = 1.0;
+            coefficients[index] = 1;
         }
         double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
 
-        dlevmar_dif(modelling_function, coefficients, acResistances, m, n, 10000, NULL, info, NULL, NULL, static_cast<void*>(&frequencies));  // no Jacobian
+        double lmInitMu = 1e-03;
+        double lmStopThresh = 1e-25;
+        double lmDiffDelta = 1e-19;
+
+        opts[0]= lmInitMu;
+        opts[1]= lmStopThresh;
+        opts[2]= lmStopThresh;
+        opts[3]= lmStopThresh;
+        opts[4]= lmDiffDelta;
+
+        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+            double frequencies[frequenciesVector.size()];
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                frequencies[index] = frequenciesVector[index];
+            }
+
+            dlevmar_dif(analytical_func, coefficients, acResistances, m, n, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
+        }
+        else {
+            double dcResistanceAndfrequencies[frequenciesVector.size() + 1];
+            dcResistanceAndfrequencies[0] = acResistances[0];
+            // coefficients[1] = 1e-7;
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
+            }
+
+            dlevmar_dif(ladder_func, coefficients, acResistances, m, n, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+        }
         acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
         for (auto coefficient : coefficients) {
-            std::cout << "coefficient: " << coefficient << std::endl;
             acResistanceCoefficientsPerWinding.back().push_back(coefficient);
-        }
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            std::cout << "frequency: " << frequenciesVector[index] << ": " << model(coefficients, frequenciesVector[index]) << std::endl;
         }
 
     }
@@ -117,8 +175,8 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
         throw std::runtime_error("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
 }
 
-std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
-    auto result = _model->export_magnetic_as_subcircuit(magnetic, filePathOrFile);
+std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+    auto result = _model->export_magnetic_as_subcircuit(magnetic, frequency, filePathOrFile, mode);
     if (outputFilename) {
         std::ofstream o(outputFilename.value());
         o << std::setw(2) << result << std::endl;
@@ -316,7 +374,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::merge_connectors(ordered_json c
     return mergeConnectors;
 }
 
-std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     ordered_json simulation;
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -418,10 +476,11 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         columnBottomCoordinates.push_back(columnBottomCoordinate);
         columnTopCoordinates.push_back(columnTopCoordinate);
     }
-    auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, Defaults().ambientTemperature);
-    double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding()[0]);
+
+    double leakageInductance = resolve_dimensional_values(LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0]);
 
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, windingIndex, frequency, Defaults().ambientTemperature);
         auto winding = coil.get_functional_description()[windingIndex];
         std::vector<int> coordinates = {columnTopCoordinates[0][0] - 2, columnTopCoordinates[0][1] - 6};
         ordered_json windingJson;
@@ -437,7 +496,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
 
         if (winding.get_isolation_side() == IsolationSide::PRIMARY) {
             coordinates[0] -= 6;
-            acResistorJson = create_resistor(dcResistancePerWinding[windingIndex], coordinates, 180, winding.get_name() + " AC resistance");
+            acResistorJson = create_resistor(effectiveResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
             if (windingIndex == 0) {
                 coordinates[0] -= 6;
                 auto leakageInductanceJson = create_inductor(leakageInductance, coordinates, 0, winding.get_name() + " Leakage inductance");
@@ -456,7 +515,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
         }
         else {
             coordinates[0] += 4;
-            acResistorJson = create_resistor(dcResistancePerWinding[windingIndex], coordinates, 180, winding.get_name() + " AC resistance");
+            acResistorJson = create_resistor(effectiveResistanceThisWinding, coordinates, 180, winding.get_name() + " AC resistance");
             coordinates[0] += 6;
             topPinJson = create_pin(coordinates, 180, winding.get_name() + " Input");
             coordinates[1] += 4;
@@ -531,7 +590,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     return simulation.dump(2);
 }
 
-std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
     headerString += "* " + magnetic.get_reference() + "\n\n";
     headerString += ".subckt " + fix_filename(magnetic.get_reference());
@@ -542,14 +601,14 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     auto coil = magnetic.get_coil();
 
     double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
-    auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, Defaults().ambientTemperature);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, frequency, Defaults().ambientTemperature);
         std::string is = std::to_string(index + 1);
-        parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(dcResistancePerWinding[index]) + "\n";
+        parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
         if (index > 0) {
             double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
@@ -559,6 +618,52 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         }
 
         circuitString += "Rac_" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+        circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+        if (index > 0) {
+            circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
+        }
+
+        headerString += " P" + is + "+ P" + is + "-";
+
+    }
+
+    return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
+}
+
+std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+    std::string headerString = "* Magnetic model made with OpenMagnetics\n";
+    headerString += "* " + magnetic.get_reference() + "\n\n";
+    headerString += ".subckt " + fix_filename(magnetic.get_reference());
+    std::string circuitString = "";
+    std::string parametersString = "";
+    std::string footerString = ".ends " + fix_filename(magnetic.get_reference());
+
+    auto coil = magnetic.get_coil();
+
+    double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic);
+    auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
+
+    parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
+    parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
+    for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
+        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, frequency, Defaults().ambientTemperature);
+        std::string is = std::to_string(index + 1);
+        parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
+        parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
+        if (index > 0) {
+            double leakageInductance = resolve_dimensional_values(leakageInductances[index - 1]);
+            double couplingCoefficient = sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance);
+            parametersString += ".param Llk_" + is + "_Value=" + std::to_string(leakageInductance) + "\n";
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
+        }
+
+        std::vector<std::string> c;
+        for (auto coeff : acResistanceCoefficientsPerWinding[index]){
+            c.push_back(std::to_string(coeff));
+        }
+        
+        circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi) + " + c[3] + " * log(abs(s)/(2*pi)) + " + c[4] + " * pow(abs(s)/(2*pi), " + c[5] + "))\n";
         circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
         if (index > 0) {
             circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
@@ -877,12 +982,37 @@ CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_t
 }
 
 Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
+    auto settings = Settings::GetInstance();
     Waveform waveform;
     waveform.set_data(signal.data);
     waveform.set_time(_time.data);
 
-    get_one_period(waveform, frequency, sample);
-    return get_one_period(waveform, frequency, sample);
+
+    std::cout << "Getting one period" << std::endl;
+    auto waveformOnePeriod = get_one_period(waveform, frequency, sample);
+    if (sample) {
+        std::cout << "waveformOnePeriod.get_data().size(): " << waveformOnePeriod.get_data().size() << std::endl;
+        std::cout << "Getting harmonics" << std::endl;
+        // std::cout << "settings->get_harmonic_amplitude_threshold(): " << settings->get_harmonic_amplitude_threshold() << std::endl;
+        // settings->set_harmonic_amplitude_threshold(0.1);
+        // std::cout << "settings->get_harmonic_amplitude_threshold(): " << settings->get_harmonic_amplitude_threshold() << std::endl;
+        auto harmonics = InputsWrapper::calculate_harmonics_data(waveformOnePeriod, frequency);
+        std::cout << "Reconstructing" << std::endl;
+        std::cout << "harmonics.get_frequencies().size(): " << harmonics.get_frequencies().size() << std::endl;
+        settings->set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
+        std::cout << "(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency)): " << (2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency)) << std::endl;
+        std::cout << "harmonics.get_frequencies()[0]: " << harmonics.get_frequencies()[0] << std::endl;
+        std::cout << "harmonics.get_frequencies()[1]: " << harmonics.get_frequencies()[1] << std::endl;
+        std::cout << "harmonics.get_frequencies()[2]: " << harmonics.get_frequencies()[2] << std::endl;
+        auto reconstructedWaveform = InputsWrapper::reconstruct_signal(harmonics, frequency);
+        std::cout << "Reconstructed" << std::endl;
+        std::cout << "reconstructedWaveform.get_data().size(): " << reconstructedWaveform.get_data().size() << std::endl;
+
+        return reconstructedWaveform;
+    }
+    else {
+        return waveformOnePeriod;
+    }
 }
 
 std::vector<int> get_numbers_in_string(std::string s) {

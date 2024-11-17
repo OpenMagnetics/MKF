@@ -23,6 +23,7 @@ class WindingLosses
         }
 
         WindingLossesOutput calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature);
+        static double calculate_effective_resistance_of_winding(MagneticWrapper magnetic, size_t windingIndex, double frequency, double temperature);
         ResistanceMatrixAtFrequency calculate_resistance_matrix(MagneticWrapper magnetic, double temperature, double frequency);
         static double calculate_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
         static double calculate_effective_resistance_per_meter(const WireWrapper& wire, double effectiveFrequency, double temperature);
