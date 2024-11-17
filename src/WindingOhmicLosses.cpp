@@ -132,7 +132,8 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil,
         auto parallelIndex = turn.get_parallel();
 
         auto currentDividerThisTurn = dcCurrentPerWinding[windingIndex] == 0? 0 : dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
-        double windingOhmicLossesInTurn = pow(currentDividerThisTurn, 2) * dcResistancePerTurn[turnIndex];
+
+        double windingOhmicLossesInTurn = pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2) * dcResistancePerTurn[turnIndex];
         OhmicLosses ohmicLosses;
         WindingLossesPerElement windingLossesThisTurn;
         ohmicLosses.set_losses(windingOhmicLossesInTurn);
@@ -156,6 +157,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil,
         for (size_t parallelIndex = 0; parallelIndex < coil.get_number_parallels(windingIndex); ++parallelIndex) {
             windingOhmicLossesInWinding += seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] * pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2);
         }
+
         OhmicLosses ohmicLosses;
         WindingLossesPerElement windingLossesThisWinding;
         ohmicLosses.set_losses(windingOhmicLossesInWinding);

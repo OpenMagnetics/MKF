@@ -1089,6 +1089,9 @@ SUITE(MagneticAdviser) {
         CHECK(masMagnetics.size() > 0);
 
         for (auto [masMagnetic, scoring] : masMagnetics) {
+
+            OpenMagneticsTesting::check_winding_losses(masMagnetic);
+
             OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
