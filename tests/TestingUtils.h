@@ -4,6 +4,7 @@
 #include "CoreWrapper.h"
 #include "CoilWrapper.h"
 #include "MagneticWrapper.h"
+#include "MasWrapper.h"
 
 #include <filesystem>
 #include <fstream>
@@ -119,5 +120,6 @@ void check_layers_description(OpenMagnetics::CoilWrapper coil,
 
 bool check_turns_description(OpenMagnetics::CoilWrapper coil);
 bool check_wire_standards(OpenMagnetics::CoilWrapper coil);
+void check_winding_losses(OpenMagnetics::MasWrapper mas);
 
 } // namespace OpenMagneticsTesting

@@ -663,4 +663,131 @@ bool check_wire_standards(OpenMagnetics::CoilWrapper coil) {
     return true;
 }
 
+void check_winding_losses(OpenMagnetics::MasWrapper mas) {
+    for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
+        auto output = mas.get_outputs()[operatingPointIndex];
+        auto windingLosses = output.get_winding_losses().value();
+        double totalWindingLosses = windingLosses.get_winding_losses();
+        double totalWindingLossesByTurn = 0;
+        double totalWindingLossesByLayer = 0;
+        double totalWindingLossesBySection = 0;
+        double totalWindingLossesByWinding = 0;
+
+        auto windingLossesPerTurn = windingLosses.get_winding_losses_per_turn().value();
+        auto windingLossesPerLayer = windingLosses.get_winding_losses_per_layer().value();
+        auto windingLossesPerSection = windingLosses.get_winding_losses_per_section().value();
+        auto windingLossesPerWinding = windingLosses.get_winding_losses_per_winding().value();
+
+        {
+            double ohmicLossesPerTurn = 0;
+            double ohmicLossesPerLayer = 0;
+            double ohmicLossesPerSection = 0;
+            double ohmicLossesPerWinding = 0;
+            for (auto lossesElement : windingLossesPerTurn) {
+                ohmicLossesPerTurn += lossesElement.get_ohmic_losses()->get_losses();
+            }
+            for (auto lossesElement : windingLossesPerLayer) {
+                ohmicLossesPerLayer += lossesElement.get_ohmic_losses()->get_losses();
+            }
+            for (auto lossesElement : windingLossesPerSection) {
+                ohmicLossesPerSection += lossesElement.get_ohmic_losses()->get_losses();
+            }
+            for (auto lossesElement : windingLossesPerWinding) {
+                ohmicLossesPerWinding += lossesElement.get_ohmic_losses()->get_losses();
+            }
+            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerLayer, ohmicLossesPerTurn * 0.001);
+            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerSection, ohmicLossesPerTurn * 0.001);
+            CHECK_CLOSE(ohmicLossesPerTurn, ohmicLossesPerWinding, ohmicLossesPerTurn * 0.001);
+            totalWindingLossesByTurn += ohmicLossesPerTurn;
+            totalWindingLossesByLayer += ohmicLossesPerLayer;
+            totalWindingLossesBySection += ohmicLossesPerSection;
+            totalWindingLossesByWinding += ohmicLossesPerWinding;
+        }
+
+
+        {
+            double skinLossesPerTurn = 0;
+            double skinLossesPerLayer = 0;
+            double skinLossesPerSection = 0;
+            double skinLossesPerWinding = 0;
+            for (auto lossesElement : windingLossesPerTurn) {
+                auto harmonicLosses = lossesElement.get_skin_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    skinLossesPerTurn += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerLayer) {
+                auto harmonicLosses = lossesElement.get_skin_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    skinLossesPerLayer += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerSection) {
+                auto harmonicLosses = lossesElement.get_skin_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    skinLossesPerSection += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerWinding) {
+                auto harmonicLosses = lossesElement.get_skin_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    skinLossesPerWinding += harmonicLoss;
+                }
+            }
+            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerLayer, skinLossesPerTurn * 0.001);
+            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerSection, skinLossesPerTurn * 0.001);
+            CHECK_CLOSE(skinLossesPerTurn, skinLossesPerWinding, skinLossesPerTurn * 0.001);
+            totalWindingLossesByTurn += skinLossesPerTurn;
+            totalWindingLossesByLayer += skinLossesPerLayer;
+            totalWindingLossesBySection += skinLossesPerSection;
+            totalWindingLossesByWinding += skinLossesPerWinding;
+        }
+
+
+        {
+            double proximityLossesPerTurn = 0;
+            double proximityLossesPerLayer = 0;
+            double proximityLossesPerSection = 0;
+            double proximityLossesPerWinding = 0;
+            for (auto lossesElement : windingLossesPerTurn) {
+                auto harmonicLosses = lossesElement.get_proximity_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    proximityLossesPerTurn += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerLayer) {
+                auto harmonicLosses = lossesElement.get_proximity_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    proximityLossesPerLayer += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerSection) {
+                auto harmonicLosses = lossesElement.get_proximity_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    proximityLossesPerSection += harmonicLoss;
+                }
+            }
+            for (auto lossesElement : windingLossesPerWinding) {
+                auto harmonicLosses = lossesElement.get_proximity_effect_losses()->get_losses_per_harmonic();
+                for(auto harmonicLoss : harmonicLosses) {
+                    proximityLossesPerWinding += harmonicLoss;
+                }
+            }
+            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerLayer, proximityLossesPerTurn * 0.001);
+            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerSection, proximityLossesPerTurn * 0.001);
+            CHECK_CLOSE(proximityLossesPerTurn, proximityLossesPerWinding, proximityLossesPerTurn * 0.001);
+            totalWindingLossesByTurn += proximityLossesPerTurn;
+            totalWindingLossesByLayer += proximityLossesPerLayer;
+            totalWindingLossesBySection += proximityLossesPerSection;
+            totalWindingLossesByWinding += proximityLossesPerWinding;
+        }
+
+        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByTurn, totalWindingLosses * 0.001);
+        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByLayer, totalWindingLosses * 0.001);
+        CHECK_CLOSE(totalWindingLosses, totalWindingLossesBySection, totalWindingLosses * 0.001);
+        CHECK_CLOSE(totalWindingLosses, totalWindingLossesByWinding, totalWindingLosses * 0.001);
+    }
+}
+
+
 } // namespace OpenMagneticsTesting
