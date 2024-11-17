@@ -46,6 +46,7 @@ class InputsWrapper : public Inputs {
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
 
+    static bool is_standardized(SignalDescriptor signal);
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
     static Waveform reconstruct_signal(Harmonics harmonics, double frequency);
     OperatingPoint get_operating_point(size_t index);
@@ -146,18 +147,27 @@ class InputsWrapper : public Inputs {
     double get_maximum_current_peak(size_t windingIndex);
     double get_maximum_current_rms(size_t windingIndex);
 
-    void from_json(const json& j, Inputs& x);
-    void to_json(json& j, const Inputs& x);
-
-    inline void from_json(const json& j, InputsWrapper& x) {
-        x.set_design_requirements(j.at("designRequirements").get<DesignRequirements>());
-        x.set_operating_points(j.at("operatingPoints").get<std::vector<OperatingPoint>>());
-    }
-    inline void to_json(json& j, const InputsWrapper& x) {
-        j = json::object();
-        j["designRequirements"] = x.get_design_requirements();
-        j["operatingPoints"] = x.get_operating_points();
-    }
-
 };
+void from_json(const json& j, Inputs& x);
+void to_json(json& j, const Inputs& x);
+void to_file(std::filesystem::path filepath, const InputsWrapper & x);
+
+inline void from_json(const json& j, InputsWrapper& x) {
+    x.set_design_requirements(j.at("designRequirements").get<DesignRequirements>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<OperatingPoint>>());
+}
+inline void to_json(json& j, const InputsWrapper& x) {
+    j = json::object();
+    j["designRequirements"] = x.get_design_requirements();
+    j["operatingPoints"] = x.get_operating_points();
+}
+inline void to_file(std::filesystem::path filepath, const InputsWrapper & x) {
+    json masJson;
+    to_json(masJson, x);
+
+    std::ofstream myfile;
+    myfile.open(filepath);
+    myfile << masJson;
+}
+
 } // namespace OpenMagnetics

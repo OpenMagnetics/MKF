@@ -2,6 +2,7 @@
 #include "ComplexPermeability.h"
 #include "Constants.h"
 #include "WindingLosses.h"
+#include "CoreLosses.h"
 #include "Settings.h"
 #include <cmath>
 
@@ -36,9 +37,6 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
     for (auto turnsRatio : turnsRatios) {
         currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
     }
-    auto settings = OpenMagnetics::Settings::GetInstance();
-
-    settings->set_magnetic_field_include_fringing(false);
 
     std::vector<double> effectiveResistances;
     for (auto frequency : frequencies) {
@@ -57,9 +55,28 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
         // std::cout << "effectiveResistance: " << effectiveResistance << std::endl;
     }
 
+    return Curve2D(frequencies, effectiveResistances, title);
+}
+
+Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string title) {
+    auto frequencies = linear_spaced_array(start, stop, numberElements);
+    // auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
-    return Curve2D(frequencies, effectiveResistances, title);
+
+    auto magnetizingInductanceModel = MagnetizingInductance();
+    auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance());
+
+    std::vector<double> coreResistances;
+    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    for (auto frequency : frequencies) {
+        auto coreResistance =  coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
+        coreResistances.push_back(coreResistance);
+        // std::cout << "frequency: " << frequency << std::endl;
+        // std::cout << "coreResistance: " << coreResistance << std::endl;
+    }
+
+    return Curve2D(frequencies, coreResistances, title);
 }
 
 } // namespace OpenMagnetics

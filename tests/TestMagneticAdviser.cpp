@@ -970,8 +970,8 @@ SUITE(MagneticAdviser) {
         settings->set_use_toroidal_cores(true);
         settings->set_use_concentric_cores(false);
 
-        std::string file_path = __FILE__;
-        auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
+        std::string filePath = __FILE__;
+        auto inventory_path = filePath.substr(0, filePath.rfind("/")).append("/testData/pfc_current_waveform.ndjson");
         std::ifstream ndjsonFile(inventory_path);
         std::string jsonLine;
 
@@ -1061,6 +1061,63 @@ SUITE(MagneticAdviser) {
             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
             painter.export_svg();
         }
+    }
+
+    TEST(Test_MagneticAdviser_Inductor_PFC2) {
+        srand (time(NULL));
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(false);
+
+        std::string filePath = __FILE__;
+        auto inputFilepath = filePath.substr(0, filePath.rfind("/")).append("/testData/PFC_Inputs.mas.json");
+
+        std::ifstream f(inputFilepath);
+        json inputsJson;
+        std::string str;
+        if(static_cast<bool>(f)) {
+            std::ostringstream ss;
+            ss << f.rdbuf(); // reading data
+            inputsJson = json::parse(ss.str());
+        }
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
+
+        CHECK(masMagnetics.size() > 0);
+
+        for (auto [masMagnetic, scoring] : masMagnetics) {
+            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_MagneticAdviser_Inductor_PFC2_" + std::to_string(scoring) + ".svg";
+                outFile.append(filename);
+                OpenMagnetics::Painter painter(outFile, true);
+
+                settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+                settings->set_painter_logarithmic_scale(false);
+                settings->set_painter_include_fringing(true);
+                settings->set_painter_maximum_value_colorbar(std::nullopt);
+                settings->set_painter_minimum_value_colorbar(std::nullopt);
+                // settings->set_painter_number_points_x(200);
+                // settings->set_painter_number_points_y(200);
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+                painter.paint_core(masMagnetic.get_mutable_magnetic());
+                // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+                painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                painter.export_svg();
+            }
+            {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_MagneticAdviser_Inductor_PFC2_" +  std::to_string(scoring) + ".mas.json";
+                outFile.append(filename);
+                OpenMagnetics::to_file(outFile, masMagnetic);
+            }
+        } 
     }
 
     TEST(Test_IEEE_Article_0) {
@@ -1173,8 +1230,8 @@ SUITE(MagneticAdviser) {
         json inputsJson;
 
 
-        std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/psim_simulation.csv");
+        std::string filePath = __FILE__;
+        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/psim_simulation.csv");
 
         double frequency = 120000;
         auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
@@ -1254,8 +1311,8 @@ SUITE(MagneticAdviser) {
         json inputsJson;
 
 
-        std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/plecs_simulation.csv");
+        std::string filePath = __FILE__;
+        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/plecs_simulation.csv");
 
         double frequency = 50;
         auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
@@ -1329,8 +1386,8 @@ SUITE(MagneticAdviser) {
         json inputsJson;
 
 
-        std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/ltspice_simulation.txt");
+        std::string filePath = __FILE__;
+        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/ltspice_simulation.txt");
 
         double frequency = 372618;
         auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
@@ -1408,8 +1465,8 @@ SUITE(MagneticAdviser) {
         json inputsJson;
 
 
-        std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
+        std::string filePath = __FILE__;
+        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/simba_simulation.csv");
 
         double frequency = 100000;
         auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);

@@ -67,10 +67,10 @@ class CoreLossesModel {
         _steinmetzDatum = steinmetzDatum;
     }
 
-    virtual double get_core_losses_series_resistance(CoreMaterial coreMaterial,
+    double get_core_losses_series_resistance(CoreWrapper core,
                                              double frequency,
                                              double temperature,
-                                             double magnetizingInductance) = 0;
+                                             double magnetizingInductance);
 
     double get_magnetic_flux_density_from_volumetric_losses(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum, double volumetricLosses, double frequency, double temperature) {
         double temperatureTerm = 1;
@@ -226,12 +226,6 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses);
-    double get_core_losses_series_resistance(CoreMaterial coreMaterial,
-                                             double frequency,
-                                             double temperature,
-                                             double magnetizingInductance) {
-        return -1;
-    }
     SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,
@@ -305,12 +299,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    double get_core_losses_series_resistance(CoreMaterial coreMaterial,
-                                             double frequency,
-                                             double temperature,
-                                             double magnetizingInductance) {
-        return -1;
-    }
+
     SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
                                                                         double frequency,
                                                                         double temperature,

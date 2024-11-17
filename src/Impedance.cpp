@@ -95,7 +95,7 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
 
     auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(CoreLossesModels::LOSS_FACTOR);
 
-    auto seriesResistance = coreLossesModel->get_core_losses_series_resistance(coreMaterial, frequency, temperature, abs(inductiveImpedance));
+    auto seriesResistance = coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, abs(inductiveImpedance));
     auto resistiveImpedance = std::complex<double>(seriesResistance, 0);
 
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance + 1.0 / resistiveImpedance);
