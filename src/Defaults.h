@@ -32,6 +32,7 @@ struct Defaults {
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultSectionsOrientation = WindingOrientation::OVERLAPPING;
+    const std::string defaultEnamelledInsulationMaterial = "Polyurethane 155";
     const std::string defaultInsulationMaterial = "ETFE";
     const std::string defaultLayerInsulationMaterial = "Kapton HN";
     const double overlappingFactorSurroundingTurns = 0.7;
