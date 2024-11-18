@@ -843,7 +843,7 @@ SUITE(CircuitSimulationReader) {
 
     TEST(Test_PFC) {
         std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/PFC.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/PFC inductor current & voltage.txt");
 
         double frequency = 50;
         std::cout << "Mierda 1" << std::endl;

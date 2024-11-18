@@ -157,8 +157,19 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
                 result.second = magneticFluxDensity;
                 auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
+                double switchingFrequency = InputsWrapper::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
 
-                modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, magneticFieldStrength.get_processed().value().get_mutable_offset(), frequency);
+                double hFieldDcBias = magneticFieldStrength.get_processed().value().get_offset();
+                if (magneticFieldStrength.get_harmonics().value().get_frequencies()[1] < switchingFrequency) {
+                    for (size_t i = 0; i < magneticFieldStrength.get_harmonics().value().get_frequencies().size() - 1; ++i) {
+                        if (magneticFieldStrength.get_harmonics().value().get_frequencies()[i] >= switchingFrequency) {
+                            break;
+                        }
+                        hFieldDcBias = std::max(hFieldDcBias, magneticFieldStrength.get_harmonics().value().get_amplitudes()[i]);
+                    }
+                }
+
+                modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
             }
 
             timeout--;

@@ -1067,8 +1067,9 @@ SUITE(MagneticAdviser) {
         srand (time(NULL));
         settings->reset();
         OpenMagnetics::clear_databases();
-        settings->set_use_toroidal_cores(true);
-        settings->set_use_concentric_cores(false);
+        settings->set_use_only_cores_in_stock(false);
+        // settings->set_use_toroidal_cores(true);
+        // settings->set_use_concentric_cores(false);
 
         std::string filePath = __FILE__;
         auto inputFilepath = filePath.substr(0, filePath.rfind("/")).append("/testData/PFC_Inputs.mas.json");
