@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include "Constants.h"
+#include "Defaults.h"
 #include "Utils.h"
 #include "spline.h"
 
@@ -1455,7 +1456,7 @@ namespace OpenMagnetics {
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material("Polyurethane 155");
+                coating->set_material(Defaults.defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
@@ -1478,7 +1479,14 @@ namespace OpenMagnetics {
         auto coating = resolve_coating(wire);
 
         if (!coating->get_material())
-            throw std::runtime_error("Coating is missing material information");
+        {
+            if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
+                coating->set_material(Defaults.defaultEnamelledInsulationMaterial);
+            }
+            else {
+                throw std::runtime_error("Coating is missing material information");
+            }
+        }
 
         auto insulationMaterial = coating->get_material().value();
         // If the material is a string, we have to load its data from the database
