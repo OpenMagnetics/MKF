@@ -84,13 +84,11 @@ void CircuitSimulatorExporter::ladder_func(double *p, double *x, int m, int n, v
         x[i]=ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
 }
 
-std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode) {
-    size_t numberUnknowns = 4;
-    if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
-        numberUnknowns = 10;
-    }
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(MagneticWrapper magnetic) {
+    const size_t numberUnknowns = 10;
 
-    size_t numberElements = 100;
+    const size_t numberElements = 100;
+    const size_t numberElementsPlusOne = 101;
     size_t maxIterations = 10000;
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
@@ -102,12 +100,10 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
         auto frequenciesVector = windingAcResistanceData.get_x_points();
 
         auto points = windingAcResistanceData.get_y_points();
-        double acResistances[points.size()];
+        double acResistances[numberElements];
         for (size_t index = 0; index < points.size(); ++index) {
             acResistances[index] = points[index];
         }
-        int m = numberUnknowns;
-        int n = frequenciesVector.size();
 
         double coefficients[numberUnknowns];
         for (size_t index = 0; index < numberUnknowns; ++index) {
@@ -125,24 +121,15 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
         opts[3]= lmStopThresh;
         opts[4]= lmDiffDelta;
 
-        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
-            double frequencies[frequenciesVector.size()];
-            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-                frequencies[index] = frequenciesVector[index];
-            }
-
-            dlevmar_dif(analytical_func, coefficients, acResistances, m, n, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
+        double dcResistanceAndfrequencies[numberElementsPlusOne];
+        dcResistanceAndfrequencies[0] = acResistances[0];
+        // coefficients[1] = 1e-7;
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
         }
-        else {
-            double dcResistanceAndfrequencies[frequenciesVector.size() + 1];
-            dcResistanceAndfrequencies[0] = acResistances[0];
-            // coefficients[1] = 1e-7;
-            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-                dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
-            }
 
-            dlevmar_dif(ladder_func, coefficients, acResistances, m, n, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
-        }
+        dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+
         acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
         for (auto coefficient : coefficients) {
             acResistanceCoefficientsPerWinding.back().push_back(coefficient);
@@ -150,6 +137,69 @@ std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistan
 
     }
     return acResistanceCoefficientsPerWinding;
+}
+
+
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(MagneticWrapper magnetic) {
+    const size_t numberUnknowns = 4;
+    const size_t numberElements = 100;
+
+    size_t maxIterations = 10000;
+    double startingFrequency = 0.1;
+    double endingFrequency = 1000000;
+    auto coil = magnetic.get_coil();
+
+    std::vector<std::vector<double>> acResistanceCoefficientsPerWinding;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        Curve2D windingAcResistanceData = Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        auto frequenciesVector = windingAcResistanceData.get_x_points();
+
+        auto points = windingAcResistanceData.get_y_points();
+        double acResistances[numberElements];
+        for (size_t index = 0; index < points.size(); ++index) {
+            acResistances[index] = points[index];
+        }
+
+        double coefficients[numberUnknowns];
+        for (size_t index = 0; index < numberUnknowns; ++index) {
+            coefficients[index] = 1;
+        }
+        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+
+        double lmInitMu = 1e-03;
+        double lmStopThresh = 1e-25;
+        double lmDiffDelta = 1e-19;
+
+        opts[0]= lmInitMu;
+        opts[1]= lmStopThresh;
+        opts[2]= lmStopThresh;
+        opts[3]= lmStopThresh;
+        opts[4]= lmDiffDelta;
+
+        double frequencies[numberElements];
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            frequencies[index] = frequenciesVector[index];
+        }
+
+        dlevmar_dif(CircuitSimulatorExporter::analytical_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&frequencies));
+
+        acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
+        for (auto coefficient : coefficients) {
+            acResistanceCoefficientsPerWinding.back().push_back(coefficient);
+        }
+
+    }
+    return acResistanceCoefficientsPerWinding;
+}
+
+
+std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode) {
+    if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
+        return calculate_ac_resistance_coefficients_per_winding_ladder(magnetic);
+    }
+    else {
+        return calculate_ac_resistance_coefficients_per_winding_analytical(magnetic);
+    }
 }
 
 CircuitSimulatorExporterSimbaModel::CircuitSimulatorExporterSimbaModel() {
