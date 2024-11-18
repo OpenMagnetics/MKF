@@ -1456,7 +1456,7 @@ namespace OpenMagnetics {
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(Defaults.defaultEnamelledInsulationMaterial);
+                coating->set_material(Defaults().defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
@@ -1481,7 +1481,7 @@ namespace OpenMagnetics {
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(Defaults.defaultEnamelledInsulationMaterial);
+                coating->set_material(Defaults().defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
