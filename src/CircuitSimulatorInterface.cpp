@@ -1038,28 +1038,15 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
     waveform.set_time(_time.data);
 
 
-    std::cout << "Getting one period" << std::endl;
     auto waveformOnePeriod = get_one_period(waveform, frequency, sample);
     Waveform reconstructedWaveform = waveform;
     if (sample) {
         double originalThreshold = settings->get_harmonic_amplitude_threshold();
         while (reconstructedWaveform.get_data().size() > 8192) {
-            std::cout << "waveformOnePeriod.get_data().size(): " << waveformOnePeriod.get_data().size() << std::endl;
-            std::cout << "Getting harmonics" << std::endl;
-            std::cout << "settings->get_harmonic_amplitude_threshold(): " << settings->get_harmonic_amplitude_threshold() << std::endl;
             settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
-            std::cout << "settings->get_harmonic_amplitude_threshold(): " << settings->get_harmonic_amplitude_threshold() << std::endl;
             auto harmonics = InputsWrapper::calculate_harmonics_data(waveformOnePeriod, frequency);
-            std::cout << "Reconstructing" << std::endl;
-            std::cout << "harmonics.get_frequencies().size(): " << harmonics.get_frequencies().size() << std::endl;
             settings->set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
-            std::cout << "(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency)): " << (2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency)) << std::endl;
-            std::cout << "harmonics.get_frequencies()[0]: " << harmonics.get_frequencies()[0] << std::endl;
-            std::cout << "harmonics.get_frequencies()[1]: " << harmonics.get_frequencies()[1] << std::endl;
-            std::cout << "harmonics.get_frequencies()[2]: " << harmonics.get_frequencies()[2] << std::endl;
             reconstructedWaveform = InputsWrapper::reconstruct_signal(harmonics, frequency);
-            std::cout << "Reconstructed" << std::endl;
-            std::cout << "reconstructedWaveform.get_data().size(): " << reconstructedWaveform.get_data().size() << std::endl;
         }
 
         settings->set_harmonic_amplitude_threshold(originalThreshold);

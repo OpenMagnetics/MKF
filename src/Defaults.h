@@ -8,8 +8,7 @@ namespace OpenMagnetics {
 struct Defaults {
     Defaults() {};
     const OpenMagnetics::CoreLossesModels coreLossesModelDefault = OpenMagnetics::CoreLossesModels::IGSE;
-    const OpenMagnetics::CoreTemperatureModels coreTemperatureModelDefault =
-        OpenMagnetics::CoreTemperatureModels::MANIKTALA;
+    const OpenMagnetics::CoreTemperatureModels coreTemperatureModelDefault = OpenMagnetics::CoreTemperatureModels::MANIKTALA;
     const OpenMagnetics::ReluctanceModels reluctanceModelDefault = OpenMagnetics::ReluctanceModels::ZHANG;
     const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
     const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;

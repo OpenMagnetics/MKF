@@ -4,6 +4,7 @@
 
 #include <CoreWrapper.h>
 #include <InputsWrapper.h>
+#include <Settings.h>
 #include <Utils.h>
 #include <cmath>
 #include <filesystem>
@@ -468,4 +469,33 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
 };
+
+class CoreLosses {
+    private:
+        std::vector<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _coreLossesModels;
+    public:
+
+    CoreLosses() {
+        auto settings = Settings::GetInstance();
+        for (auto modelName : settings->get_core_losses_model_names()) {
+            _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
+        }
+    }
+    virtual ~CoreLosses() = default;
+
+    void set_core_losses_model_name(CoreLossesModels model) {
+        auto settings = Settings::GetInstance();
+        settings->set_core_losses_preferred_model_name(model);
+        _coreLossesModels.clear();
+        for (auto modelName : settings->get_core_losses_model_names()) {
+            _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
+        }
+    }
+
+    CoreLossesOutput calculate_core_losses(CoreWrapper core, OperatingPointExcitation excitation, double temperature);
+    std::shared_ptr<CoreLossesModel> get_core_losses_model(std::string materialName);
+    double get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature);
+    double get_core_losses_series_resistance(CoreWrapper core, double frequency, double temperature, double magnetizingInductance);
+};
+
 } // namespace OpenMagnetics

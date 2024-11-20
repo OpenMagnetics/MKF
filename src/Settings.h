@@ -82,6 +82,9 @@ class Settings
         bool _harmonicAmplitudeThresholdQuickMode = true;
         double _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
 
+
+        std::vector<CoreLossesModels> _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+
         bool _verbose = false;
 
     public:
@@ -269,6 +272,9 @@ class Settings
 
         double get_harmonic_amplitude_threshold() const;
         void set_harmonic_amplitude_threshold(double value);
+
+        std::vector<CoreLossesModels> get_core_losses_model_names() const;
+        void set_core_losses_preferred_model_name(CoreLossesModels value);
 
     };
 } // namespace OpenMagnetics
