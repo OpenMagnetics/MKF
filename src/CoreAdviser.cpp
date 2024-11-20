@@ -850,6 +850,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
             }
         }
 
+
         std::string shapeName = core.get_shape_name();
         if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
             auto bobbin = OpenMagnetics::BobbinWrapper::create_quick_bobbin(core);

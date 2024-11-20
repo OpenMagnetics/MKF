@@ -27,6 +27,46 @@ std::map<std::string, tk::spline> lossFactorInterps;
 
 namespace OpenMagnetics {
 
+
+std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string materialName) {
+    std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
+
+    auto availableMethodsForMaterial = CoreLossesModel::get_methods(materialName);
+    for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
+        if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
+            coreLossesModelForMaterial = coreLossesModel;
+            break;
+        }
+    }
+    if (coreLossesModelForMaterial == nullptr) {
+        throw std::runtime_error("No model found for material: " + materialName);
+    }
+
+    return coreLossesModelForMaterial;
+}
+
+
+CoreLossesOutput CoreLosses::calculate_core_losses(CoreWrapper core, OperatingPointExcitation excitation, double temperature) {
+    auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
+
+    CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
+    return coreLossesOutput;
+}
+double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
+    auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial.get_name());
+
+    double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(coreMaterial, excitation, temperature);
+    return coreVolumetricLosses;
+}
+
+double CoreLosses::get_core_losses_series_resistance(CoreWrapper core, double frequency, double temperature, double magnetizingInductance){
+    auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
+
+    double coreLossesSeriesResistance = coreLossesModelForMaterial->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
+    return coreLossesSeriesResistance;
+}
+
+
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(std::map<std::string, std::string> models) {
     return factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(models["coreLosses"]).value());
 }
