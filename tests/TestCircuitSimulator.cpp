@@ -89,4 +89,53 @@ SUITE(CircuitSimulator) {
 
     //     net->dumpMatrix();
     // }
+
+    TEST(Test_Circuit_Simulator_R) {
+        NetList * net = new NetList(3);
+
+        // node 1 is +12V
+        net->addComponent(new Voltage(+12, 2, 0));
+
+        // bias for base
+        net->addComponent(new Resistor(100e3, 1, 0));
+        net->addComponent(new Resistor(200e3, 2, 1));
+
+        net->buildSystem();
+
+        // get DC solution (optional)
+        net->simulateTick();
+        net->printHeaders();
+
+        net->dumpMatrix();
+    }
+
+    double sinVoltage(double time) {
+        double angle = 2 * std::numbers::pi * time;
+        return sin(angle);
+    }
+
+    TEST(Test_Circuit_Simulator_C) {
+        NetList * net = new NetList(3);
+        // node 1 is +12V
+        net->addComponent(new Function(sinVoltage, 2, 0));
+
+        // bias for base
+        net->addComponent(new Capacitor(10e-12, 1, 0));
+        net->addComponent(new Capacitor(10e-12, 2, 1));
+
+        net->buildSystem();
+
+        // get DC solution (optional)
+        net->simulateTick();
+        net->setTimeStep(1e-4);
+        net->printHeaders();
+
+        for(int i = 0; i < 100; ++i)
+        {
+            net->simulateTick();
+        }
+        net->printHeaders();
+
+        net->dumpMatrix();
+    }
 }

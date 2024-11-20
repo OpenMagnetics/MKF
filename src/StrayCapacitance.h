@@ -60,7 +60,7 @@ class StrayCapacitance{
     public:
 
         StrayCapacitance(){
-            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::ALBACH);
+            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::MASSARINI);
         };
         virtual ~StrayCapacitance() = default;
 
