@@ -84,20 +84,20 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     double temperatureAfterLosses = temperature;
     SignalDescriptor magneticFluxDensity;
     CoreLossesOutput coreLossesOutput;
-    std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
+    // std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
 
-    auto availableMethodsForMaterial = CoreLossesModel::get_methods(magnetic.get_mutable_core().get_material_name());
-    for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
-        for (auto& availableMethod : availableMethodsForMaterial) {
-        }
-        if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
-            coreLossesModelForMaterial = coreLossesModel;
-            break;
-        }
-    }
-    if (coreLossesModelForMaterial == nullptr) {
-        throw std::runtime_error("No model found for material: " + magnetic.get_mutable_core().get_material_name());
-    }
+    // auto availableMethodsForMaterial = CoreLossesModel::get_methods(magnetic.get_mutable_core().get_material_name());
+    // for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
+    //     for (auto& availableMethod : availableMethodsForMaterial) {
+    //     }
+    //     if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
+    //         coreLossesModelForMaterial = coreLossesModel;
+    //         break;
+    //     }
+    // }
+    // if (coreLossesModelForMaterial == nullptr) {
+    //     throw std::runtime_error("No model found for material: " + magnetic.get_mutable_core().get_material_name());
+    // }
 
     do {
         temperature = temperatureAfterLosses;
@@ -109,7 +109,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
 
-        coreLossesOutput = coreLossesModelForMaterial->get_core_losses(magnetic.get_core(), excitation, temperature);
+        coreLossesOutput = _coreLossesModel.calculate_core_losses(magnetic.get_core(), excitation, temperature);
 
         auto temperatureResult = _coreTemperatureModel->get_core_temperature(magnetic.get_core(), coreLossesOutput.get_core_losses(), operatingPoint.get_conditions().get_ambient_temperature());
         temperatureAfterLosses = temperatureResult.get_maximum_temperature();

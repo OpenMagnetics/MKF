@@ -182,7 +182,7 @@ SUITE(CoreAdviser) {
             CHECK(masMagnetics[i].second <= bestScoring);
         }
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 22/14/6.4 - 61 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 17/10.7/6.8 - 80 - Ungapped");
 
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), 1e6);
         CHECK(abs(impedance) >= 50000);
