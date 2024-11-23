@@ -1,7 +1,6 @@
 #include "Impedance.h"
 #include "ComplexPermeability.h"
 #include "Reluctance.h"
-#include "CoreLosses.h"
 #include "Constants.h"
 #include "Utils.h"
 #include <cmath>
@@ -83,9 +82,15 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
 
     double ctt = capacitance_turn_to_turn(turnDiameter, wireRadius, centerSeparation);
     double cts = capacitance_turn_to_shield(turnDiameter, wireRadius, distanceTurnsToCore);
-    double cabValue = cab(numberTurns, ctt, cts);
+    double C2;
     double casValue = cas(numberTurns, ctt, cts);
-    double C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
+    if (numberTurns > 1) {
+        double cabValue = cab(numberTurns, ctt, cts);
+        C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
+    }
+    else {
+        C2 = casValue;
+    }
 
     auto capacitance = C2 * 2;
     if (coil.get_layers_description()) {
@@ -93,9 +98,7 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
     }
     auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
 
-    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(CoreLossesModels::LOSS_FACTOR);
-
-    auto seriesResistance = coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, abs(inductiveImpedance));
+    auto seriesResistance = _coreLossesModel.get_core_losses_series_resistance(core, frequency, temperature, abs(inductiveImpedance));
     auto resistiveImpedance = std::complex<double>(seriesResistance, 0);
 
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance + 1.0 / resistiveImpedance);

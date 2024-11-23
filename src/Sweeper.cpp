@@ -72,8 +72,6 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, 
     for (auto frequency : frequencies) {
         auto coreResistance =  coreLossesModel->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
         coreResistances.push_back(coreResistance);
-        // std::cout << "frequency: " << frequency << std::endl;
-        // std::cout << "coreResistance: " << coreResistance << std::endl;
     }
 
     return Curve2D(frequencies, coreResistances, title);

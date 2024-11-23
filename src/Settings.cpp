@@ -507,4 +507,11 @@ namespace OpenMagnetics {
         _harmonicAmplitudeThreshold = value;
     }
 
+    std::vector<CoreLossesModels> Settings::get_core_losses_model_names() const {
+        return _coreLossesModelNames;
+    }
+    void Settings::set_core_losses_preferred_model_name(CoreLossesModels value) {
+        _coreLossesModelNames = {value, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+    }
+
 } // namespace OpenMagnetics
