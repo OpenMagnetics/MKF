@@ -144,15 +144,33 @@ namespace OpenMagnetics {
         std::vector<double> voltagePerTurn;
         StrayCapacitanceOutput strayCapacitanceOutput;
         for (auto turn : turns) {
-            auto turn_winding = turn.get_winding();
-            auto turn_parallel = turn.get_parallel();
-            double voltageDividerCenterThisTurn = (double(numberTurnsPerWinding[turn_winding] - 1) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel]) / (numberTurnsPerWinding[turn_winding] - 1);
-            double voltageDividerStartThisTurn = (double(numberTurnsPerWinding[turn_winding]) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel]) / numberTurnsPerWinding[turn_winding];
-            double voltageDividerEndThisTurn = (double(numberTurnsPerWinding[turn_winding]) - turnIndexPerWindingPerParallel[turn_winding][turn_parallel] - 1) / numberTurnsPerWinding[turn_winding];
+            auto turnWinding = turn.get_winding();
+            auto turnParallel = turn.get_parallel();
+
+            double voltageDividerCenterThisTurn;
+            double voltageDividerStartThisTurn;
+            double voltageDividerEndThisTurn;
+            if (numberTurnsPerWinding[turnWinding] > 1) {
+                voltageDividerCenterThisTurn = (double(numberTurnsPerWinding[turnWinding] - 1) - turnIndexPerWindingPerParallel[turnWinding][turnParallel]) / (numberTurnsPerWinding[turnWinding] - 1);
+                voltageDividerStartThisTurn = (double(numberTurnsPerWinding[turnWinding]) - turnIndexPerWindingPerParallel[turnWinding][turnParallel]) / numberTurnsPerWinding[turnWinding];
+                voltageDividerEndThisTurn = (double(numberTurnsPerWinding[turnWinding]) - turnIndexPerWindingPerParallel[turnWinding][turnParallel] - 1) / numberTurnsPerWinding[turnWinding];
+            }
+            else  {
+                voltageDividerCenterThisTurn = 0.5;
+                voltageDividerStartThisTurn = 1;
+                voltageDividerEndThisTurn = 0;
+            }
             voltageDividerStartPerTurn.push_back(voltageDividerStartThisTurn);
             voltageDividerEndPerTurn.push_back(voltageDividerEndThisTurn);
-            voltagePerTurn.push_back(voltageRmsPerWinding[turn_winding] * voltageDividerCenterThisTurn);
-            turnIndexPerWindingPerParallel[turn_winding][turn_parallel]++;
+            double voltage = voltageRmsPerWinding[turnWinding] * voltageDividerCenterThisTurn;
+            if (std::isnan(voltage)) {
+                throw std::runtime_error("voltage cannot be nan");
+            }
+            if (std::isinf(voltage)) {
+                throw std::runtime_error("voltage cannot be inf");
+            }
+            voltagePerTurn.push_back(voltageRmsPerWinding[turnWinding] * voltageDividerCenterThisTurn);
+            turnIndexPerWindingPerParallel[turnWinding][turnParallel]++;
         }
 
         strayCapacitanceOutput.set_voltage_divider_start_per_turn(voltageDividerStartPerTurn);
@@ -371,161 +389,147 @@ namespace OpenMagnetics {
         return capacitanceAmongTurns;
     }
 
-    std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_layers(CoilWrapper coil) {
-        if (!coil.get_layers_description()) {
-            throw std::invalid_argument("Missing layers description");
-        }
+
+    std::map<std::string, double> StrayCapacitance::calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio) {
+        std::map<std::string, double> result;
+
+        double C0 = energy * 2 / pow(voltageDrop, 2);
+
+        auto gamma1 = -C0 / 6;
+        auto gamma2 = -C0 / 6;
+        auto gamma3 = C0 / 3;
+        auto gamma4 = C0 / 3;
+        auto gamma5 = C0 / 6;
+        auto gamma6 = C0 / 6;
+
+        result["C11"] = gamma1 + relativeTurnsRatio * (gamma4 + gamma5);
+        result["C12"] = -2 * gamma4;
+        result["C13"] = 2 * relativeTurnsRatio * gamma5;
+        result["C22"] = gamma2 + gamma4 + gamma6;
+        result["C23"] = 2 * gamma6;
+        result["C33"] = gamma3 + gamma5 + gamma6;
+
+
+        result["C1"] = gamma1 + relativeTurnsRatio * gamma2;
+        result["C2"] = gamma5 + gamma6;
+        result["C3"] = gamma3;
+
+        return result;
+    }
+
+
+    std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_windings(CoilWrapper coil) {
         auto capacitanceAmongTurns = calculate_capacitance_among_turns(coil);
 
         std::map<std::string, double> voltageRmsPerWinding;
-        std::map<std::string, double> turnsRatioPerWinding;
+        double primaryNumberTurns = coil.get_functional_description()[0].get_number_turns();
         for (auto winding : coil.get_functional_description()) {
-            double turnsRatio = coil.get_functional_description()[0].get_number_turns() /  winding.get_number_turns();
-            turnsRatioPerWinding[winding.get_name()] = turnsRatio;
+            double turnsRatio = primaryNumberTurns /  winding.get_number_turns();
             voltageRmsPerWinding[winding.get_name()] = 10.0 / turnsRatio;
         }
 
 
         auto voltagesPerTurn = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
-        auto layers = coil.get_layers_description_conduction();
-        std::map<std::pair<std::string, std::string>, double> capacitanceMapPerLayers;
-        for (auto firstLayer : layers) {
-            auto turnsInFirstLayer = coil.get_turns_names_by_layer(firstLayer.get_name());
-            auto firstLayerWinding = firstLayer.get_partial_windings()[0].get_winding();
-            double minVoltageInFirstLayer = 1;
-            double maxVoltageInFirstLayer = 0;
-            double minVoltageInSecondLayer = 1;
-            double maxVoltageInSecondLayer = 0;
-            for (auto secondLayer : layers) {
-                auto layersKey = std::make_pair(firstLayer.get_name(), secondLayer.get_name());
-                if (capacitanceMapPerLayers.contains(layersKey) || capacitanceMapPerLayers.contains(std::make_pair(secondLayer.get_name(), firstLayer.get_name()))) {
+        auto windings = coil.get_functional_description();
+        std::map<std::pair<std::string, std::string>, double> capacitanceMapPerWindings;
+        for (auto firstWinding : windings) {
+            auto turnsInFirstWinding = coil.get_turns_names_by_winding(firstWinding.get_name());
+            auto firstWindingName = firstWinding.get_name();
+            double minVoltageInFirstWinding = 1;
+            double maxVoltageInFirstWinding = 0;
+            double minVoltageInSecondWinding = 1;
+            double maxVoltageInSecondWinding = 0;
+            for (auto secondWinding : windings) {
+                auto windingsKey = std::make_pair(firstWinding.get_name(), secondWinding.get_name());
+                if (capacitanceMapPerWindings.contains(windingsKey) || capacitanceMapPerWindings.contains(std::make_pair(secondWinding.get_name(), firstWinding.get_name()))) {
                     continue;
                 }
-                std::cout << "*****************************************" << std::endl;
-                std::cout << "firstLayer.get_name():" << firstLayer.get_name() << std::endl;
-                std::cout << "secondLayer.get_name():" << secondLayer.get_name() << std::endl;
-
-                auto secondLayerWinding = secondLayer.get_partial_windings()[0].get_winding();
+                auto secondWindingName = secondWinding.get_name();
 
                 double V3 = 42;
                 double V3calculated = 0;
 
-                if (firstLayerWinding == secondLayerWinding) {
+                if (firstWindingName == secondWindingName) {
                     V3calculated = 0;
+                    // capacitanceMapPerWindings[windingsKey] = 0;
+                    // continue;
                 }
 
                 while (V3 != V3calculated) {
-                    std::cout << "----------------------" << std::endl;
                     V3 = V3calculated;
-                    double energyInBetweenTheseLayers = 0;
-                    double voltageDropInBetweenTheseLayers = 0;
-                    double C0 = 0;
-                    auto turnsInSecondLayer = coil.get_turns_names_by_layer(secondLayer.get_name());
-                    for (auto turnInFirstLayer : turnsInFirstLayer) {
-                        auto firstTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInFirstLayer)];
-                        std::cout << "firstTurnVoltage:" << firstTurnVoltage << std::endl;
-                        minVoltageInFirstLayer = std::min(minVoltageInFirstLayer, firstTurnVoltage);
-                        maxVoltageInFirstLayer = std::max(maxVoltageInFirstLayer, firstTurnVoltage);
-                        for (auto turnInSecondLayer : turnsInSecondLayer) {
-                            auto secondTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInSecondLayer)];
-                            if (firstLayerWinding != secondLayerWinding) {
+                    double energyInBetweenTheseWindings = 0;
+                    double voltageDropInBetweenTheseWindings = 0;
+                    // double C0 = 0;
+                    auto turnsInSecondWinding = coil.get_turns_names_by_winding(secondWinding.get_name());
+                    bool windingAreNotAdjacent = true;
+                    for (auto turnInFirstWinding : turnsInFirstWinding) {
+                        auto firstTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInFirstWinding)];
+                        minVoltageInFirstWinding = std::min(minVoltageInFirstWinding, firstTurnVoltage);
+                        maxVoltageInFirstWinding = std::max(maxVoltageInFirstWinding, firstTurnVoltage);
+                        for (auto turnInSecondWinding : turnsInSecondWinding) {
+                            auto secondTurnVoltage = voltagesPerTurn[coil.get_turn_index_by_name(turnInSecondWinding)];
+                            if (firstWindingName != secondWindingName) {
                                 secondTurnVoltage = -secondTurnVoltage;
                             }
-                            minVoltageInSecondLayer = std::min(minVoltageInSecondLayer, secondTurnVoltage);
-                            maxVoltageInSecondLayer = std::max(maxVoltageInSecondLayer, secondTurnVoltage);
-                            auto turnsKey = std::make_pair(turnInFirstLayer, turnInSecondLayer);
+                            minVoltageInSecondWinding = std::min(minVoltageInSecondWinding, secondTurnVoltage);
+                            maxVoltageInSecondWinding = std::max(maxVoltageInSecondWinding, secondTurnVoltage);
+                            auto turnsKey = std::make_pair(turnInFirstWinding, turnInSecondWinding);
                             if (capacitanceAmongTurns.contains(turnsKey)) {
-                                std::cout << "secondTurnVoltage:" << secondTurnVoltage << std::endl;
-                                std::cout << "capacitanceAmongTurns[turnsKey]:" << capacitanceAmongTurns[turnsKey] << std::endl;
-                                energyInBetweenTheseLayers += 0.5 * capacitanceAmongTurns[turnsKey] * pow(V3 + firstTurnVoltage - secondTurnVoltage, 2);
-                                C0 += capacitanceAmongTurns[turnsKey];
-                                std::cout << "energyInBetweenTheseLayers:" << energyInBetweenTheseLayers << std::endl;
+                                windingAreNotAdjacent = false;
+                                energyInBetweenTheseWindings += 0.5 * capacitanceAmongTurns[turnsKey] * pow(V3 + firstTurnVoltage - secondTurnVoltage, 2);
+                                if (std::isnan(energyInBetweenTheseWindings)) {
+                                    throw std::runtime_error("Energy cannot be nan");
+                                }
                             }
                         }
                     }
-                    double voltageDropBetweenLayers = maxVoltageInFirstLayer - minVoltageInSecondLayer + V3;
-                    std::cout << "minVoltageInSecondLayer:" << minVoltageInSecondLayer << std::endl;
-                    std::cout << "maxVoltageInSecondLayer:" << maxVoltageInSecondLayer << std::endl;
-                    std::cout << "minVoltageInFirstLayer:" << minVoltageInFirstLayer << std::endl;
-                    std::cout << "maxVoltageInFirstLayer:" << maxVoltageInFirstLayer << std::endl;
-                    std::cout << "voltageDropBetweenLayers:" << voltageDropBetweenLayers << std::endl;
+                    if (windingAreNotAdjacent) {
+                        capacitanceMapPerWindings[windingsKey] = 0;
+                        continue;
 
-                    // double C0 = energyInBetweenTheseLayers * 2 / pow(voltageDropBetweenLayers, 2);
-                    std::cout << "energyInBetweenTheseLayers:" << energyInBetweenTheseLayers << std::endl;
-                    std::cout << "C0:" << C0 << std::endl;
-
-                    auto gamma1 = -C0 / 6;
-                    auto gamma2 = -C0 / 6;
-                    auto gamma3 = C0 / 3;
-                    auto gamma4 = C0 / 3;
-                    auto gamma5 = C0 / 6;
-                    auto gamma6 = C0 / 6;
-
-                    auto C11 = gamma1 + turnsRatioPerWinding[secondLayerWinding] * (gamma4 + gamma5);
-                    auto C12 = -2 * gamma4;
-                    auto C13 = 2 * turnsRatioPerWinding[secondLayerWinding] * gamma5;
-                    auto C22 = gamma2 + gamma4 + gamma6;
-                    auto C23 = 2 * gamma6;
-                    auto C33 = gamma3 + gamma5 + gamma6;
-
-                    std::cout << "C11:" << C11 << std::endl;
-                    std::cout << "C12:" << C12 << std::endl;
-                    std::cout << "C13:" << C13 << std::endl;
-                    std::cout << "C22:" << C22 << std::endl;
-                    std::cout << "C23:" << C23 << std::endl;
-                    std::cout << "C33:" << C33 << std::endl;
-                    if (firstLayerWinding != secondLayerWinding) {
-                        V3calculated = fabs(-(C13 * maxVoltageInFirstLayer + C23 * fabs(minVoltageInSecondLayer)) / C33);
-                        // V3calculated = -(C13 * maxVoltageInFirstLayer + C23 * fabs(minVoltageInSecondLayer)) / C33;
                     }
-                    std::cout << "V3:" << V3 << std::endl;
-                    std::cout << "V3calculated:" << V3calculated << std::endl;
-                    capacitanceMapPerLayers[layersKey] = energyInBetweenTheseLayers * 2 / pow(voltageDropBetweenLayers, 2);
-
-
-                    auto C1 = gamma1 + turnsRatioPerWinding[secondLayerWinding] * gamma2;
-                    auto C2 = gamma5 + gamma6;
-                    auto C3 = gamma3;
-                    std::cout << "C1:" << C1 << std::endl;
-                    std::cout << "C2:" << C2 << std::endl;
-                    std::cout << "C3:" << C3 << std::endl;
+                    double voltageDropBetweenWindings = maxVoltageInFirstWinding - minVoltageInSecondWinding + V3;
+                    double relativeTurnsRatio = static_cast<double>(firstWinding.get_number_turns()) / secondWinding.get_number_turns(); 
+                    auto matrix = calculate_capacitance_matrix(energyInBetweenTheseWindings, voltageDropBetweenWindings, relativeTurnsRatio);
+                    if (firstWindingName != secondWindingName) {
+                        V3calculated = fabs(-(matrix["C13"] * maxVoltageInFirstWinding + matrix["C23"] * fabs(minVoltageInSecondWinding)) / matrix["C33"]);
+                    }
+                    capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
                 }
-
             }
-
         }
-
-        return capacitanceMapPerLayers;
+        return capacitanceMapPerWindings;
     }
 
-    std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_windings(CoilWrapper coil) {
-        auto capacitanceAmongLayers = calculate_capacitance_among_layers(coil);
+    std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_maxwell_capacitance_matrix(CoilWrapper coil) {
+        auto capacitanceMapPerWindings = calculate_capacitance_among_windings(coil);
+        std::map<std::pair<std::string, std::string>, double> result;
+        auto windings = coil.get_functional_description();
 
-        std::map<std::pair<std::string, std::string>, double> capacitanceMapPerWindings;
-        for (auto firstWinding : coil.get_functional_description()) {
-            auto layersInFirstWinding = coil.get_layers_names_by_winding(firstWinding.get_name());
-            for (auto secondwinding : coil.get_functional_description()) {
-                auto windingsKey = std::make_pair(firstWinding.get_name(), secondwinding.get_name());
-                if (capacitanceMapPerWindings.contains(windingsKey) || capacitanceMapPerWindings.contains(std::make_pair(secondwinding.get_name(), firstWinding.get_name()))) {
-                    continue;
-                }
-
-                double capacitanceInBetweenTheseWindings = 0;
-                auto layersInSecondWinding = coil.get_layers_names_by_winding(secondwinding.get_name());
-                for (auto layerInFirstWinding : layersInFirstWinding) {
-                    for (auto layerInSecondWinding : layersInSecondWinding) {
-                        auto layersKey = std::make_pair(layerInFirstWinding, layerInSecondWinding);
-                        if (capacitanceAmongLayers.contains(layersKey)) {
-                            capacitanceInBetweenTheseWindings += capacitanceAmongLayers[layersKey];
-                        }
+        for (auto firstWinding : windings) {
+            double capacitanceSum = 0;
+            for (auto secondWinding : windings) {
+                auto key = std::make_pair(firstWinding.get_name(), secondWinding.get_name());
+                auto mirroredKey = std::make_pair(secondWinding.get_name(), firstWinding.get_name());
+                if (capacitanceMapPerWindings.contains(key)) {
+                    capacitanceSum += capacitanceMapPerWindings[key];
+                    if (firstWinding.get_name() != secondWinding.get_name()) {
+                        result[key] = -capacitanceMapPerWindings[key];
+                        result[mirroredKey] = -capacitanceMapPerWindings[key];
                     }
                 }
-                capacitanceMapPerWindings[windingsKey] = capacitanceInBetweenTheseWindings;
+                else {
+                    capacitanceSum += capacitanceMapPerWindings[mirroredKey];
+                    if (firstWinding.get_name() != secondWinding.get_name()) {
+                        result[key] = -capacitanceMapPerWindings[mirroredKey];
+                        result[mirroredKey] = -capacitanceMapPerWindings[mirroredKey];
+                    }
+                }
             }
-
+            result[std::make_pair(firstWinding.get_name(), firstWinding.get_name())] = capacitanceSum;
         }
 
-        return capacitanceMapPerWindings;
+        return result;
     }
 
 

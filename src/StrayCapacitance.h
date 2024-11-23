@@ -60,7 +60,7 @@ class StrayCapacitance{
     public:
 
         StrayCapacitance(){
-            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::MASSARINI);
+            _model = StrayCapacitanceModel::factory(StrayCapacitanceModels::ALBACH);
         };
         virtual ~StrayCapacitance() = default;
 
@@ -71,12 +71,11 @@ class StrayCapacitance{
         static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, CoilWrapper coil);
         double calculate_static_capacitance_between_two_turns(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil);
 
-        // This function, if scaled properly, should give the 6 capacitors equivalent, following Kolar's paper for connecting layers, but with turns
         std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_turns(CoilWrapper coil);
-        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_layers(CoilWrapper coil);
 
-        // This function, if done properly, should give the 3 capacitors equivalent
         std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_windings(CoilWrapper coil);
+        static std::map<std::string, double> calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio);
+        std::map<std::pair<std::string, std::string>, double> calculate_maxwell_capacitance_matrix(CoilWrapper coil);
 
 };
 } // namespace OpenMagnetics
