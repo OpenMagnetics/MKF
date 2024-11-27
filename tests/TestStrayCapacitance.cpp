@@ -79,6 +79,20 @@ SUITE(StrayCapacitance) {
             CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
         }
 
+        OpenMagnetics::MagneticWrapper magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Get_Capacitance_Among_Windings_2_Windings_8_Turns_1_Parallels.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+
     }
     TEST(Test_Get_Capacitance_Among_Windings_2_Windings_16_8_Turns_1_Parallels) {
         settings->reset();
@@ -107,20 +121,6 @@ SUITE(StrayCapacitance) {
         for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
             CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
         }
-
-        OpenMagnetics::MagneticWrapper magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-
-
-        auto outFile = outputFilePath;
-        outFile.append("Test_Get_Capacitance_Among_Windings_2_Windings_8_Turns_1_Parallels.svg");
-        std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile);
-        painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
 
     }
     TEST(Test_Get_Capacitance_Among_Windings_3_Windings_8_Turns_1_Parallels) {
@@ -212,40 +212,48 @@ SUITE(StrayCapacitance) {
     // }
 
 
-    // TEST(Test_Get_Surrounding_Turns_All) {
-    //     settings->reset();
-    //     std::string file_path = __FILE__;
-    //     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/dont_worry_this_is_just_a_dummy_mas.json");
-    //     std::ifstream jsonFile(inventory_path);
-    //     json masJson;
-    //     jsonFile >> masJson;
+    TEST(Test_Get_Surrounding_Turns_All) {
+        settings->reset();
+        json coilJson = json::parse(R"({"_interleavingLevel": 1, "_windingOrientation": "overlapping", "_layersOrientation": "overlapping", "_turnsAlignment": "spread", "_sectionAlignment": "inner or top", "bobbin": {"processedDescription": {"columnDepth": 0.0062, "columnShape": "rectangular", "columnThickness": 0.0011999999999999997, "columnWidth": 0.0062, "coordinates": [0, 0, 0 ], "wallThickness": 0.0011999999999999997, "windingWindows": [{"coordinates": [0.00935, 0, 0 ], "height": 0.022600000000000002, "width": 0.006300000000000001 } ] } }, "functionalDescription": [{"connections": [{"pinName": "4", "type": "Pin" }, {"pinName": "5", "type": "Pin" }, {"pinName": "6", "type": "Pin" }, {"pinName": "7", "type": "Pin" }, {"pinName": "8", "type": "Pin" }, {"pinName": "9", "type": "Pin" }, {"pinName": "10", "type": "Pin" }, {"pinName": "11", "type": "Pin" } ], "isolationSide": "primary", "name": "primary", "numberParallels": 2, "numberTurns": 16, "wire": "Round 19.0 - Heavy Build" }, {"connections": [{"pinName": "13", "type": "Pin" }, {"pinName": "3", "type": "Pin" } ], "isolationSide": "secondary", "name": "secondary", "numberParallels": 2, "numberTurns": 40, "wire": {"conductingDiameter": {"maximum": 0.000457, "minimum": 0.00045000000000000004, "nominal": 0.000455 }, "material": "copper", "outerDiameter": {"maximum": 0.000516, "minimum": 0.000495, "nominal": 0.000505 }, "coating": {"breakdownVoltage": 2370, "grade": 2, "type": "enamelled" }, "manufacturerInfo": {"name": "Elektrisola" }, "name": "Round 25.0 - Heavy Build", "numberConductors": 1, "standard": "NEMA MW 1000 C", "standardName": "25.0", "type": "round" } } ] })");
+        json coreJson = json::parse(R"({"functionalDescription": {"gapping": [{"area": 0.0001, "coordinates": [0, 0.00055, 0 ], "distanceClosestNormalSurface": 0.01195, "distanceClosestParallelSurface": 0.007500000000000001, "length": 0.0011, "sectionDimensions": [0.01, 0.01 ], "shape": "rectangular", "type": "subtractive" }, {"area": 0.000051, "coordinates": [0.015001, 0, 0 ], "distanceClosestNormalSurface": 0.0125, "distanceClosestParallelSurface": 0.007500000000000001, "length": 0.000005, "sectionDimensions": [0.005001, 0.01 ], "shape": "rectangular", "type": "residual" }, {"area": 0.000051, "coordinates": [-0.015001, 0, 0 ], "distanceClosestNormalSurface": 0.0125, "distanceClosestParallelSurface": 0.007500000000000001, "length": 0.000005, "sectionDimensions": [0.005001, 0.01 ], "shape": "rectangular", "type": "residual" } ], "material": "TP4A", "numberStacks": 1, "shape": {"aliases": ["E 35" ], "dimensions": {"A": {"maximum": 0.0355, "minimum": 0.0345 }, "B": {"maximum": 0.01775, "minimum": 0.01725 }, "C": {"maximum": 0.0103, "minimum": 0.0097 }, "D": {"maximum": 0.01275, "minimum": 0.01225 }, "E": {"maximum": 0.0255, "minimum": 0.0245 }, "F": {"maximum": 0.0103, "minimum": 0.0097 } }, "family": "e", "magneticCircuit": "open", "name": "E 35/18/10", "type": "standard" }, "type": "two-piece set" }, "processedDescription": {"columns": [{"area": 0.0001, "coordinates": [0, 0, 0 ], "depth": 0.01, "height": 0.025, "shape": "rectangular", "type": "central", "width": 0.01 }, {"area": 0.000051, "coordinates": [0.015001, 0, 0 ], "depth": 0.01, "height": 0.025, "shape": "rectangular", "type": "lateral", "width": 0.005001 }, {"area": 0.000051, "coordinates": [-0.015001, 0, 0 ], "depth": 0.01, "height": 0.025, "shape": "rectangular", "type": "lateral", "width": 0.005001 } ], "depth": 0.01, "effectiveParameters": {"effectiveArea": 0.00010000000000000002, "effectiveLength": 0.08070796326794898, "effectiveVolume": 0.000008070796326794898, "minimumArea": 0.0001 }, "height": 0.035, "width": 0.035, "windingWindows": [{"area": 0.00018750000000000003, "coordinates": [0.005, 0 ], "height": 0.025, "width": 0.007500000000000001 } ] } })");
 
-    //     auto mas = OpenMagnetics::MasWrapper(masJson);
+        auto core = OpenMagnetics::CoreWrapper(coreJson);
+        auto coil = OpenMagnetics::CoilWrapper(coilJson);
 
-    //     auto turns = mas.get_magnetic().get_coil().get_turns_description().value();
+        core.process_data();
+        core.process_gap();
+        coil.set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(core));
+        coil.wind();
 
-    //     size_t index = 0;
-    //     for (auto turn : turns) {
+        auto turns = coil.get_turns_description().value();
 
-    //         std::cout << turn.get_name() << std::endl;
-    //         auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turn, turns);
-    //         std::cout << surroundingTurns.size() << std::endl;
-    //         std::vector<OpenMagnetics::Turn> newTurns = surroundingTurns;
-    //         newTurns.push_back(turn);
+        OpenMagnetics::MagneticWrapper magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
 
-    //         mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(newTurns);
+        size_t index = 0;
+        for (auto turn : turns) {
 
-    //         auto outFile = outputFilePath;
-    //         outFile.append("Test_Get_Surrounding_Turns_" + std::to_string(index) + ".svg");
-    //         std::filesystem::remove(outFile);
-    //         OpenMagnetics::Painter painter(outFile);
-    //         painter.paint_core(mas.get_mutable_magnetic());
-    //         painter.paint_bobbin(mas.get_mutable_magnetic());
-    //         painter.paint_coil_turns(mas.get_mutable_magnetic());
-    //         painter.export_svg();
-    //         index++;
-    //     }
+            std::cout << turn.get_name() << std::endl;
+            auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turn, turns);
+            std::cout << surroundingTurns.size() << std::endl;
+            std::vector<OpenMagnetics::Turn> newTurns = surroundingTurns;
+            newTurns.push_back(turn);
 
-    // }
+            // magnetic.get_mutable_coil().set_turns_description(newTurns);
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_Get_Surrounding_Turns_" + std::to_string(index) + ".svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            index++;
+            break;
+        }
+
+    }
 
 }
