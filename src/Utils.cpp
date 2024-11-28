@@ -378,6 +378,19 @@ OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
         return coreMaterialDatabase[name];
     }
     else {
+        for (auto [name, coreMaterial] : coreMaterialDatabase) {
+            std::string commercialName;
+            if (coreMaterial.get_commercial_name()) {
+                commercialName = coreMaterial.get_commercial_name().value();
+            }
+            else {
+                commercialName = coreMaterial.get_manufacturer_info().get_name() + " " + coreMaterial.get_name();
+            }
+
+            if (commercialName == name) {
+                return coreMaterial;
+            }
+        }
         throw std::runtime_error("Core material not found: " + name);
     }
 }
