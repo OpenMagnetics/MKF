@@ -31,20 +31,18 @@ public:
     virtual ~TemperatureNodeConnection() = default;
 
 private:
-    TemperatureNode firstNode;
-    TemperatureNode secondNode;
+    TemperatureNode* firstNode;
+    TemperatureNode* secondNode;
     std::vector<double> thermalResistances;
     ThermalResistanceConnectionTypes connectionType;
 
 public:
 
-    const TemperatureNode & get_first_node() const { return firstNode; }
-    TemperatureNode & get_mutable_first_node() { return firstNode; }
-    void set_first_node(const TemperatureNode & value) { this->firstNode = value; }
+    TemperatureNode* get_first_node() { return firstNode; } 
+    void set_first_node(TemperatureNode* & value) { this->firstNode = value; }
 
-    const TemperatureNode & get_second_node() const { return secondNode; }
-    TemperatureNode & get_mutable_second_node() { return secondNode; }
-    void set_second_node(const TemperatureNode & value) { this->secondNode = value; }
+    TemperatureNode* get_second_node() { return secondNode; }
+    void set_second_node(TemperatureNode* & value) { this->secondNode = value; }
 
     const std::vector<double> & get_thermal_resistances() const { return thermalResistances; }
     std::vector<double> & get_mutable_thermal_resistances() { return thermalResistances; }

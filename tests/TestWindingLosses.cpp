@@ -23,6 +23,80 @@ SUITE(WindingLossesRound) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.15;
 
+    TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+
+        double temperature = 20;
+        std::vector<int64_t> numberTurns({1});
+        std::vector<int64_t> numberParallels({1});
+        std::string shapeName = "E 42/21/20";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::WireWrapper> wires;
+        OpenMagnetics::WireWrapper wire;
+        wire.set_nominal_value_conducting_diameter(0.00071);
+        wire.set_nominal_value_outer_diameter(0.000762);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wires.push_back(wire);
+        int64_t numberStacks = 2;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         true,
+                                                         numberStacks);
+
+        std::string coreMaterial = "3C97";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(2e-5);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        double offset = 0;
+        double peakToPeak = 2 * 1.4142;
+        double dutyCycle = 0.5;
+        double magnetizingInductance = 1e-3;
+
+        std::vector<std::pair<double, double>> expectedWindingLosses({{0.01, 0.0049}});
+
+        for (auto& testPoint : expectedWindingLosses) {
+
+            OpenMagnetics::Processed processed;
+            processed.set_label(label);
+            processed.set_offset(offset);
+            processed.set_peak_to_peak(peakToPeak);
+            processed.set_duty_cycle(dutyCycle);
+            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+                                                                                                  magnetizingInductance,
+                                                                                                  temperature,
+                                                                                                  label,
+                                                                                                  peakToPeak,
+                                                                                                  dutyCycle,
+                                                                                                  offset);
+
+
+            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
+        }
+        settings->reset();
+    }
+
+
     TEST(Test_Winding_Losses_One_Turn_Round_Tendency) {
         settings->reset();
         OpenMagnetics::clear_databases();
