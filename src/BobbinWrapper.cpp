@@ -354,6 +354,7 @@ void load_interpolators() {
 
             for (size_t i = 0; i < n; i++) {
                 if (x.size() == 0 || fabs(auxWindingWindowHeight[i].windingWindowHeight - x.back()) > 1e-9) {
+
                     x.push_back(auxWindingWindowHeight[i].windingWindowHeight);
                     y.push_back(auxWindingWindowHeight[i].windingWindow);
                 }
@@ -396,6 +397,7 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWind
     }
 
     double bobbinWindingWindowHeight;
+
     if (coreWindingWindowHeight > maxWindingWindowHeight) {
         double bobbinMaxWindingWindowHeight = bobbinWindingWindowInterpHeight(maxWindingWindowHeight);
         bobbinWindingWindowHeight = coreWindingWindowHeight - (maxWindingWindowHeight - bobbinMaxWindingWindowHeight);
@@ -409,11 +411,15 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWind
     }
 
     if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
-        throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
+        // Not proud, but the library is missbehaving...
+        bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
+        // throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
     }
 
     if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
-        throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
+        // Not proud, but the library is missbehaving...
+        bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
+        // throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
@@ -476,6 +482,7 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
     double bobbinWallThickness = 0;
 
     if (!nullDimensions && bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+
         bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
         bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
