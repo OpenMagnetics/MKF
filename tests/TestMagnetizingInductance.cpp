@@ -62,7 +62,7 @@ SUITE(MagnetizingInductance) {
         OpenMagnetics::CoreWrapper core;
         OpenMagnetics::CoilWrapper winding;
         OpenMagnetics::InputsWrapper inputs;
-        OpenMagnetics::MagnetizingInductance magnetizing_inductance("ZHANG");
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
 
         double expectedValue = 23.3e-3;
 
@@ -70,8 +70,7 @@ SUITE(MagnetizingInductance) {
                                 coreMaterial, core, winding, inputs);
 
         auto operatingPoint = inputs.get_operating_point(0);
-        double magnetizingInductance =
-            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
     }

@@ -78,4 +78,18 @@ class StrayCapacitance{
         std::map<std::pair<std::string, std::string>, double> calculate_maxwell_capacitance_matrix(CoilWrapper coil);
 
 };
+
+
+
+class StrayCapacitanceOneLayer{
+
+    public:
+
+        StrayCapacitanceOneLayer(){
+        };
+        virtual ~StrayCapacitanceOneLayer() = default;
+        double calculate_capacitance(CoilWrapper coil);
+
+
+};
 } // namespace OpenMagnetics

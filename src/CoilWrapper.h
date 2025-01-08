@@ -58,6 +58,7 @@ class CoilWrapper : public Coil {
         CoilWrapper() = default;
         virtual ~CoilWrapper() = default;
         bool fast_wind();
+        bool unwind();
         bool wind();
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
@@ -203,6 +204,8 @@ class CoilWrapper : public Coil {
         std::vector<WireWrapper> get_wires();
         WireType get_wire_type(size_t windingIndex);
         static WireType get_wire_type(CoilFunctionalDescription coilFunctionalDescription);
+        std::string get_wire_name(size_t windingIndex);
+        static std::string get_wire_name(CoilFunctionalDescription coilFunctionalDescription);
         WireWrapper resolve_wire(size_t windingIndex);
         static WireWrapper resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
 

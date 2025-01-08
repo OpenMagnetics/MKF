@@ -330,6 +330,13 @@ bool CoilWrapper::fast_wind() {
     return true;
 }
 
+bool CoilWrapper::unwind() {
+    set_sections_description(std::nullopt);
+    set_layers_description(std::nullopt);
+    set_turns_description(std::nullopt);
+    return true;
+}
+
 bool CoilWrapper::wind() {
     std::vector<double> proportionPerWinding;
 
@@ -4455,6 +4462,20 @@ WireType CoilWrapper::get_wire_type(CoilFunctionalDescription coilFunctionalDesc
 
 WireType CoilWrapper::get_wire_type(size_t windingIndex) {
     return get_wire_type(get_functional_description()[windingIndex]);
+}
+
+std::string CoilWrapper::get_wire_name(CoilFunctionalDescription coilFunctionalDescription) {
+    auto name = resolve_wire(coilFunctionalDescription).get_name();
+    if (name) {
+        return name.value();
+    }
+    else {
+        return "Custom";
+    }
+}
+
+std::string CoilWrapper::get_wire_name(size_t windingIndex) {
+    return get_wire_name(get_functional_description()[windingIndex]);
 }
 
 BobbinWrapper CoilWrapper::resolve_bobbin(CoilWrapper coil) { 
