@@ -32,7 +32,15 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
     auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
-    auto capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+    double capacitance;
+    if (_fastCapacitance) {
+        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+    }
+    else {
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance_among_windings(coil);
+        auto windingsKey = std::make_pair(coil.get_functional_description()[0].get_name(), coil.get_functional_description()[0].get_name());
+        capacitance = capacitanceMatrix[windingsKey];
+    }
 
     auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
 
@@ -49,7 +57,16 @@ double Impedance::calculate_self_resonant_frequency(MagneticWrapper magnetic, do
 
 double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrapper coil, double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
-    auto capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+    double capacitance;
+    if (_fastCapacitance) {
+        capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+    }
+    else {
+        auto capacitanceMatrix = StrayCapacitance().calculate_capacitance_among_windings(coil);
+        auto windingsKey = std::make_pair(coil.get_functional_description()[0].get_name(), coil.get_functional_description()[0].get_name());
+        capacitance = capacitanceMatrix[windingsKey];
+    }
+    std::cout << "capacitance: " << capacitance << std::endl;
 
     OperatingPoint operatingPoint;
     OperatingConditions conditions;
@@ -59,12 +76,6 @@ double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrappe
     double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil, nullptr).get_magnetizing_inductance().get_nominal().value();
 
     double selfResonantFrequency = 1.0 / (2 * std::numbers::pi * sqrt(magnetizingInductance * capacitance));
-
-    if (settings->_debug) {
-        std::cout << "capacitance: " << capacitance << std::endl;
-        std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
-        std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
-    }
 
     return selfResonantFrequency;
 }

@@ -886,12 +886,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
             throw std::runtime_error("Minimum impedance missing from requirements");
         }
 
-        // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
-        //     settings->_debug = true;
-        //     std::cout << "coil.get_wire_name(0): " << coil.get_wire_name(0) << std::endl;
-        // }
-
         auto minimumImpedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
+        auto windingWindowArea = magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_area();
 
         bool validDesign = true;
         bool validMaterial = true;
@@ -901,17 +897,13 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
             totalImpedanceExtra = 0;
             validDesign = true;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+
+            if (numberTurnsCombination[0] * std::numbers::pi * pow(resolve_dimensional_values(wire.get_outer_diameter().value()) / 2, 2) >= windingWindowArea) {
+                validMaterial = false;
+                break;
+            }
             coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
             auto selfResonantFrequency = impedanceModel.calculate_self_resonant_frequency(core, coil);
-
-
-
-            // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
-            //     // settings->_debug = true;
-            //     std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
-            //     std::cout << "core.get_name().value(): " << core.get_name().value() << std::endl;
-            //     std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
-            // }
 
             for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
                 auto frequency = impedanceAtFrequency.get_frequency();
@@ -927,14 +919,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
             for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
                 auto frequency = impedanceAtFrequency.get_frequency();
-                std::cout << "core.get_name().value(): " << core.get_name().value() << std::endl;
                 auto minimumImpedanceRequired = impedanceAtFrequency.get_impedance();
                 try {
                     auto impedance = abs(impedanceModel.calculate_impedance(core, coil, frequency));
-            // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
-            //     // settings->_debug = true;
-            //     std::cout << "impedance: " << impedance << std::endl;
-            // }
                     if (impedance < minimumImpedanceRequired.get_magnitude()) {
                         validDesign = false;
                         break;
@@ -1120,6 +1107,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     size_t maximumMagneticsAfterFiltering = defaults.coreAdviserMaximumMagneticsAfterFiltering;
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     bool needToAddStacks = false;
+    bool onlyMaterialsForFilters = weights[CoreAdviserFilters::MINIMUM_IMPEDANCE] > 0;
 
     if (settings->get_core_adviser_include_margin() && inputs.get_design_requirements().get_insulation()) {
         auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
@@ -1128,7 +1116,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     }
 
     if (firstFilter == CoreAdviserFilters::EFFICIENCY) {
-        masMagnetics = create_mas_dataset(inputs, cores, true);
+        masMagnetics = create_mas_dataset(inputs, cores, true, onlyMaterialsForFilters);
         logEntry("We start the search with " + std::to_string(masMagnetics.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.");
         std::string firstFilterString = std::string{magic_enum::enum_name(firstFilter)};
         logEntry("We include stacks of cores in our search because the most important selectd filter is " + firstFilterString + ".");
@@ -1140,7 +1128,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
     }
     else {
         needToAddStacks = true;
-        masMagnetics = create_mas_dataset(inputs, cores, false);
+        masMagnetics = create_mas_dataset(inputs, cores, false, onlyMaterialsForFilters);
         logEntry("We start the search with " + std::to_string(masMagnetics.size()) + " magnetics for the first filter, culling to " + std::to_string(maximumMagneticsAfterFiltering) + " for the remaining filters.");
         logEntry("We don't include stacks of cores in our search.");
         auto filteredMasMagnetics = apply_filters(&masMagnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
@@ -1149,20 +1137,18 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
         }
     }
 
-    // masMagnetics = create_mas_dataset(inputs, cores, true);
     auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
     if (needToAddStacks && globalIncludeStacks) {
         expand_mas_dataset_with_stacks(inputs, cores, &masMagnetics);
     }
 
-    // auto masMagnetics = create_mas_dataset(inputs, cores, true);
     logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(masMagnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.");
     maximumMagneticsAfterFiltering = masMagnetics.size();
     auto filteredMasMagnetics = apply_filters(&masMagnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
     return filteredMasMagnetics;
 }
 
-std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(InputsWrapper inputs, std::vector<CoreWrapper>* cores, bool includeStacks) {
+std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(InputsWrapper inputs, std::vector<CoreWrapper>* cores, bool includeStacks, bool onlyMaterialsForFilters) {
     auto defaults = Defaults();
     std::vector<std::pair<MasWrapper, double>> masMagnetics;
     CoilWrapper coil = get_dummy_coil(inputs);
@@ -1187,6 +1173,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
     magnetic.set_coil(std::move(coil));
     for (auto& core : *cores){
         if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
+            continue;
+        }
+
+        if (onlyMaterialsForFilters && !core.can_be_used_for_filtering()) {
             continue;
         }
 

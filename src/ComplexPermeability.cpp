@@ -36,6 +36,11 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
         std::vector<double> x, y;
 
 
+        std::sort(realPermeabilityPoints.begin(), realPermeabilityPoints.end(), [](const PermeabilityPoint& b1, const PermeabilityPoint& b2) {
+            return b1.get_frequency().value() < b2.get_frequency().value();
+        });
+
+
         for (int i = 0; i < n; i++) {
             if (x.size() == 0 || (*realPermeabilityPoints[i].get_frequency()) != x.back()) {
                 x.push_back(*realPermeabilityPoints[i].get_frequency());
@@ -56,6 +61,10 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     {
         int n = imaginaryPermeabilityPoints.size();
         std::vector<double> x, y;
+
+        std::sort(imaginaryPermeabilityPoints.begin(), imaginaryPermeabilityPoints.end(), [](const PermeabilityPoint& b1, const PermeabilityPoint& b2) {
+            return b1.get_frequency().value() < b2.get_frequency().value();
+        });
 
 
         for (int i = 0; i < n; i++) {

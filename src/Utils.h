@@ -130,7 +130,7 @@ OpenMagnetics::CoreWrapper find_core_by_name(std::string name);
 OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
 OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
 OpenMagnetics::WireWrapper find_wire_by_name(std::string name);
-OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt);
+OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true);
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name);
 OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name);
 OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);

@@ -666,7 +666,7 @@ OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
 }
 
 
-OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard) {
+OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard, bool obfuscate) {
     if (wireDatabase.empty()) {
         load_wires();
     }
@@ -717,8 +717,10 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
             minimumDistanceWire = wire;
         }
     }
-    minimumDistanceWire.set_name(std::nullopt);
-    minimumDistanceWire.set_coating(std::nullopt);
+    if (obfuscate) {
+        minimumDistanceWire.set_name(std::nullopt);
+        minimumDistanceWire.set_coating(std::nullopt);
+    }
 
     return minimumDistanceWire;
 }
