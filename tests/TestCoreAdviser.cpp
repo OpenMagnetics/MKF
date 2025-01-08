@@ -160,13 +160,12 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
-        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 1;
 
         std::vector<std::pair<double, double>> impedancePoints = {
             {1e6, 1000},
             {2e6, 5000},
-            // {3e6, 100000},
         };
 
         std::vector<OpenMagnetics::ImpedanceAtFrequency> minimumImpedance;
@@ -193,18 +192,28 @@ SUITE(CoreAdviser) {
             CHECK(masMagnetics[i].second <= bestScoring);
         }
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 17/10.7/6.8 - 80 - Ungapped");
-
-        auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), 1e6);
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 12.7/7.9/6.35 - 61 - Ungapped");
         std::cout << "masMagnetics[0].first.get_magnetic().get_core().get_name().value(): " << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
+        auto magnetic = masMagnetics[0].first.get_magnetic();
 
-        std::cout << "masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns(): " << masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
-        std::cout << "abs(impedance): " << abs(impedance) << std::endl;
-        settings->_debug = true;
-        auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+        auto selfResonantFrequencyFast = OpenMagnetics::Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
+        std::cout << "impedance: " << impedance << std::endl;
+        std::cout << "selfResonantFrequencyFast: " << selfResonantFrequencyFast << std::endl;
+            CHECK(frequencyPoint < selfResonantFrequencyFast * 0.50);
+            CHECK(abs(impedance) >= impedanceMagnitudePoint);
+        }
+
+        auto selfResonantFrequency = OpenMagnetics::Impedance(false).calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            auto impedance = OpenMagnetics::Impedance(false).calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
+        std::cout << "impedance: " << impedance << std::endl;
         std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
-
-        CHECK(abs(impedance) >= 50000);
+            CHECK(frequencyPoint < selfResonantFrequency * 0.50);
+            CHECK(abs(impedance) >= impedanceMagnitudePoint);
+        }
 
         {
 

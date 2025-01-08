@@ -83,7 +83,7 @@ class CoreAdviser {
         std::vector<std::pair<MasWrapper, double>> get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, std::vector<CoreWrapper>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
 
         std::vector<std::pair<MasWrapper, double>> apply_filters(std::vector<std::pair<MasWrapper, double>>* masMagnetics, InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-        std::vector<std::pair<MasWrapper, double>> create_mas_dataset(InputsWrapper inputs, std::vector<CoreWrapper>* cores, bool includeStacks);
+        std::vector<std::pair<MasWrapper, double>> create_mas_dataset(InputsWrapper inputs, std::vector<CoreWrapper>* cores, bool includeStacks, bool onlyMaterialsForFilters=false);
         void expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vector<CoreWrapper>* cores, std::vector<std::pair<MasWrapper, double>>* masMagnetics);
     
     class MagneticCoreFilter {

@@ -1691,7 +1691,7 @@ namespace OpenMagnetics {
             return wire;
         }
         else {
-            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317);
+            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
             return wire;
         }
     }
@@ -1708,7 +1708,7 @@ namespace OpenMagnetics {
             return wire;
         }
         else {
-            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317);
+            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
             return wire;
         }
     }

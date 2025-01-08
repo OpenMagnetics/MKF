@@ -13,10 +13,15 @@ namespace OpenMagnetics {
 
 class Impedance {
     private:
-        MagnetizingInductance _magnetizingInductanceModel;
-        CoreLosses _coreLossesModel;
+        bool _fastCapacitance;
     protected:
     public:
+    Impedance(bool fastCapacitance=true) {
+        _fastCapacitance = fastCapacitance;
+    } 
+
+    virtual ~Impedance() = default;
+
     std::complex<double> calculate_impedance(MagneticWrapper magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     std::complex<double> calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(MagneticWrapper magnetic, double temperature = Defaults().ambientTemperature);

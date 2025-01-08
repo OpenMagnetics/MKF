@@ -65,6 +65,7 @@ class BobbinWrapper : public Bobbin {
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
     static std::vector<double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
     std::vector<double> get_winding_window_dimensions(size_t windingWindowIndex = 0);
+    double get_winding_window_area(size_t windingWindowIndex = 0);
     WindingWindowShape get_winding_window_shape(size_t windingWindowIndex = 0);
     std::vector<double> get_winding_window_coordinates(size_t windingWindowIndex = 0);
     WindingOrientation get_winding_window_sections_orientation(size_t windingWindowIndex = 0);

@@ -559,6 +559,29 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(size_t windingW
     }
 }
 
+
+double BobbinWrapper::get_winding_window_area(size_t windingWindowIndex) {
+    if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
+        throw std::runtime_error("Winding window does not exist");
+    }
+    auto windingWindow = get_processed_description()->get_winding_windows()[windingWindowIndex];
+    if (get_processed_description()->get_winding_windows()[windingWindowIndex].get_area()) {
+        return windingWindow.get_area().value();
+    }
+    else {
+        if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
+            double width = windingWindow.get_width().value();
+            double height = windingWindow.get_height().value();
+            return width * height;
+        }
+        else {
+            double radialHeight = windingWindow.get_radial_height().value();
+            double angle = windingWindow.get_angle().value();
+            return std::numbers::pi * pow(radialHeight, 2) * angle / 360;
+        }
+    }
+}
+
 std::vector<double> BobbinWrapper::get_winding_window_coordinates(size_t windingWindowIndex) {
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_coordinates().value();
 }

@@ -2961,6 +2961,37 @@ std::vector<CoreLossesMethodType> CoreWrapper::get_available_core_losses_methods
     return methods;
 }
 
+
+bool CoreWrapper::can_be_used_for_filtering(){
+    auto permeability = resolve_material().get_permeability();
+
+    if (!permeability.get_complex()) {
+        return false;
+    }
+    else {
+        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_real())) {
+            return false;
+        }
+        else {
+            auto realPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_real());
+            if (realPermeabilityPoints.size() < 2) {
+                return false;
+            }
+        }
+
+        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_imaginary())) {
+            return false;
+        }
+        else {
+            auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_imaginary());
+            if (imaginaryPermeabilityPoints.size() < 2) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
 OpenMagnetics::CoreType CoreWrapper::get_type() {
     return get_functional_description().get_type();
 }
