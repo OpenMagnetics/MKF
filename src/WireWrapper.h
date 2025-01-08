@@ -228,6 +228,8 @@ class WireWrapper : public Wire {
         double get_relative_cost();
 
         static WireWrapper get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
+        static WireWrapper get_wire_for_frequency(double effectiveFrequency, double temperature=Defaults().ambientTemperature, bool exact=false);
+        static WireWrapper get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
 
 };
 } // namespace OpenMagnetics

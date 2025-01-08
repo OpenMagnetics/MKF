@@ -830,6 +830,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
+    double primaryCurrentRms = 0;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        primaryCurrentRms = std::max(primaryCurrentRms, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_processed().value().get_rms().value());
+    }
+
     OpenMagnetics::Impedance impedanceModel;
 
     std::list<size_t> listOfIndexesToErase;
@@ -872,9 +877,19 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
         CoilWrapper coil = magnetic.get_coil();
 
+        double conductingArea = primaryCurrentRms / defaults.maximumCurrentDensity;
+        auto wire = WireWrapper::get_wire_for_conducting_area(conductingArea, Defaults().ambientTemperature, false);
+        coil.get_mutable_functional_description()[0].set_wire(wire);
+        coil.unwind();
+
         if (!inputs.get_design_requirements().get_minimum_impedance()) {
             throw std::runtime_error("Minimum impedance missing from requirements");
         }
+
+        // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
+        //     settings->_debug = true;
+        //     std::cout << "coil.get_wire_name(0): " << coil.get_wire_name(0) << std::endl;
+        // }
 
         auto minimumImpedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
 
@@ -887,11 +902,39 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
             validDesign = true;
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
             coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
+            auto selfResonantFrequency = impedanceModel.calculate_self_resonant_frequency(core, coil);
+
+
+
+            // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
+            //     // settings->_debug = true;
+            //     std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
+            //     std::cout << "core.get_name().value(): " << core.get_name().value() << std::endl;
+            //     std::cout << "numberTurnsCombination[0]: " << numberTurnsCombination[0] << std::endl;
+            // }
+
             for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
                 auto frequency = impedanceAtFrequency.get_frequency();
+                if (frequency > 0.5 * selfResonantFrequency) {  // hardcoded 50% of SRF
+                    validDesign = false;
+                    break;
+                }
+            }
+
+            if (!validDesign) {
+                break;
+            }
+
+            for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+                auto frequency = impedanceAtFrequency.get_frequency();
+                std::cout << "core.get_name().value(): " << core.get_name().value() << std::endl;
                 auto minimumImpedanceRequired = impedanceAtFrequency.get_impedance();
                 try {
                     auto impedance = abs(impedanceModel.calculate_impedance(core, coil, frequency));
+            // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
+            //     // settings->_debug = true;
+            //     std::cout << "impedance: " << impedance << std::endl;
+            // }
                     if (impedance < minimumImpedanceRequired.get_magnitude()) {
                         validDesign = false;
                         break;
@@ -911,6 +954,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
         while(!validDesign && validMaterial && timeout > 0);
 
 
+
+        // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
+        //     settings->_debug = false;
+        // }
 
         if (validDesign && validMaterial) {
             coil.fast_wind();
@@ -964,11 +1011,7 @@ CoilWrapper get_dummy_coil(InputsWrapper inputs) {
     auto skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
 
     // Set round wire with diameter to two times the skin depth 
-    WireWrapper wire;
-    wire.set_nominal_value_conducting_diameter(skinDepth * 2);
-    wire.set_nominal_value_outer_diameter(skinDepth * 2.05); // Hardcoded
-    wire.set_material("copper");
-    wire.set_type(WireType::ROUND);
+    auto wire = WireWrapper::get_wire_for_frequency(frequency, temperature, true);
     CoilFunctionalDescription primaryCoilFunctionalDescription;
     primaryCoilFunctionalDescription.set_isolation_side(IsolationSide::PRIMARY);
     primaryCoilFunctionalDescription.set_name("primary");

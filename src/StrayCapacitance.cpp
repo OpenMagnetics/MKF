@@ -24,6 +24,12 @@ std::vector<Turn> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std:
             continue;
         }
 
+        double distance = hypot(x2 - x1, y2 - y1);
+
+        if (distance > 4e-5) {
+            continue;
+        }
+
         double maximumDimensionOf12 = (std::max(potentiallySurroundingTurn.get_dimensions().value()[0], potentiallySurroundingTurn.get_dimensions().value()[1]) + 
                                                std::max(currentTurn.get_dimensions().value()[0], currentTurn.get_dimensions().value()[1])) / 2;
         bool thereIsTurnBetween12 = false;
@@ -79,9 +85,16 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
 
     auto bobbin = coil.resolve_bobbin();
     auto layerOrientation = bobbin.get_winding_window_sections_orientation(0);
+    auto windingWindowShape = bobbin.get_winding_window_shape(0);
     if (layerOrientation == WindingOrientation::OVERLAPPING) {
         double x1 = firstTurn.get_coordinates()[0];
         double x2 = secondTurn.get_coordinates()[0];
+
+        if (windingWindowShape == WindingWindowShape::ROUND) {
+            x1 = coil.cartesian_to_polar(firstTurn.get_coordinates())[0];
+            x2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[0];
+        }
+
 
         for (auto layer : layers) {
             if (layer.get_coordinates()[0] > std::min(x1, x2) && layer.get_coordinates()[0] < std::max(x1, x2)) {
@@ -90,15 +103,42 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
         }
     }
     else {
-        double y1 = firstTurn.get_coordinates()[1];
-        double y2 = secondTurn.get_coordinates()[1];
 
-        // TODO: take into account round winding windows?
-        for (auto layer : layers) {
-            if (layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
-                layersInBetween.push_back(layer);
+        if (windingWindowShape == WindingWindowShape::ROUND) {
+            double y1 = coil.cartesian_to_polar(firstTurn.get_coordinates())[1];
+            double y2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[1];
+            if (y1 < 90 && y2 > 270) {
+                for (auto layer : layers) {
+                    if (layer.get_coordinates()[1] > y2) {
+                        layersInBetween.push_back(layer);
+                    }
+                }
+            }
+            else if (y2 < 90 && y1 > 270) {
+                for (auto layer : layers) {
+                    if (layer.get_coordinates()[1] > y1) {
+                        layersInBetween.push_back(layer);
+                    }
+                }
+            }
+            else {
+                for (auto layer : layers) {
+                    if (layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
+                        layersInBetween.push_back(layer);
+                    }
+                }
             }
         }
+        else {
+            double y1 = firstTurn.get_coordinates()[1];
+            double y2 = secondTurn.get_coordinates()[1];
+            for (auto layer : layers) {
+                if (layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
+                    layersInBetween.push_back(layer);
+                }
+            }
+        }
+
     }
 
     return layersInBetween;
@@ -234,13 +274,15 @@ std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, WireW
 
     double distanceBetweenTurns = hypot(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]);
     distanceBetweenTurns -= outerDiameterFirstWire / 2 + outerDiameterSecondWire / 2;
-    distanceBetweenTurns = roundFloat(distanceBetweenTurns, 9);
+    distanceBetweenTurns = roundFloat(distanceBetweenTurns, 6);
     double distanceThroughLayers = 0;
     std::vector<double> distancesThroughLayers;
     std::vector<double> relativePermittivityLayers;
     double effectiveRelativePermittivityLayers = 1;
             
     std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil);
+
+
 
     for (auto layer : insulationLayersInBetween) {
         auto distance = coil.get_insulation_layer_thickness(layer);
@@ -312,7 +354,7 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     }
 
     double zeta = 1 - insulationThickness / (epsilonD * conductingRadius);
-    double beta = 1.0 / zeta * (1 + distanceThroughLayers / (2 * effectiveRelativePermittivity * conductingRadius));
+    double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * conductingRadius));
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
     double Z = 1.0 / (pow(beta, 2) - 1)*((pow(beta, 2) - 2) * V - beta / 2) - std::numbers::pi / 4;
     double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * epsilonD) * pow(distanceThroughLayers / conductingRadius, 2) * Z / zeta);
@@ -350,6 +392,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     double distanceThroughAir = aux[4];
     double epsilonD = aux[5];
     double epsilonF = aux[6];
+
     return _model->calculate_static_capacitance_between_two_turns(insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, epsilonF);
 }
 
@@ -494,12 +537,14 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
                 if (firstWindingName != secondWindingName) {
                     V3calculated = fabs(-(matrix["C13"] * maxVoltageInFirstWinding + matrix["C23"] * fabs(minVoltageInSecondWinding)) / matrix["C33"]);
                 }
+
                 capacitanceMapPerWindings[windingsKey] = energyInBetweenTheseWindings * 2 / pow(voltageDropBetweenWindings, 2);
             }
         }
     }
     return capacitanceMapPerWindings;
 }
+
 
 std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_maxwell_capacitance_matrix(CoilWrapper coil) {
     auto capacitanceMapPerWindings = calculate_capacitance_among_windings(coil);
@@ -530,6 +575,94 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
     }
 
     return result;
+}
+
+
+double capacitance_turn_to_turn(double turnDiameter, double wireRadius, double centerSeparation) {
+    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
+    double epsilon0 = Constants().vacuumPermittivity;
+    double ctt = pow(std::numbers::pi, 2) * turnDiameter * epsilon0 / log(centerSeparation / (2 * wireRadius) + sqrt(pow(centerSeparation / (2 * wireRadius), 2) - 1));
+    return ctt;
+}
+
+double capacitance_turn_to_shield(double turnDiameter, double wireRadius, double distance) {
+    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
+    double epsilon0 = Constants().vacuumPermittivity;
+    double cts = 2 * pow(std::numbers::pi, 2) * turnDiameter * epsilon0 / log(distance / wireRadius + sqrt(pow(distance / wireRadius, 2) - 1));
+    return cts;
+}
+
+double cab(double n, double ctt, double cts) {
+    if (n == 2) {
+        return ctt + cts / 2;
+    }
+    else if (n == 3) {
+        return ctt / 2 + cts / 2;
+    }
+    else {
+        double cabValue = cab(n - 2, ctt, cts);
+        return (cabValue * ctt / 2) / (cabValue  + ctt / 2) + cts / 2;
+    }
+}
+
+double cas(double n, double ctt, double cts) {
+    if (n == 1) {
+        return cts;
+    }
+    else {
+        double casValue = cas(n - 1, ctt, cts);
+        return (casValue * ctt) / (casValue  + ctt) + cts;
+    }
+}
+
+double StrayCapacitanceOneLayer::calculate_capacitance(CoilWrapper coil) {
+    // Baed on https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
+    double numberTurns = coil.get_functional_description()[0].get_number_turns();
+    auto wireRadius = coil.resolve_wire(0).get_maximum_conducting_width() / 2;
+    double distanceTurnsToCore = coil.resolve_bobbin().get_processed_description()->get_column_thickness() + coil.resolve_wire(0).get_maximum_outer_width() / 2;
+    double turnDiameter = 2 * std::numbers::pi * (coil.resolve_bobbin().get_processed_description()->get_column_width().value() + wireRadius);
+    double centerSeparation = coil.resolve_wire(0).get_maximum_outer_width();
+    if (coil.get_turns_description()) {
+        if (coil.get_turns_description().value().size() > 1) {
+            auto firstTurn = coil.get_turns_description().value()[0];
+            auto secondTurn = coil.get_turns_description().value()[1];
+            centerSeparation = sqrt(pow(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], 2) + pow(firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1], 2));
+        }
+    }
+
+    double ctt = capacitance_turn_to_turn(turnDiameter, wireRadius, centerSeparation);
+    double cts = capacitance_turn_to_shield(turnDiameter, wireRadius, distanceTurnsToCore);
+    double C2;
+    double casValue = cas(numberTurns, ctt, cts);
+
+    if (std::isnan(casValue)) {
+        std::cout << "coil.resolve_wire(0).get_maximum_outer_width(): " << coil.resolve_wire(0).get_maximum_outer_width() << std::endl;
+        std::cout << "bool(coil.get_turns_description()): " << bool(coil.get_turns_description()) << std::endl;
+        std::cout << "turnDiameter: " << turnDiameter << std::endl;
+        std::cout << "wireRadius: " << wireRadius << std::endl;
+        std::cout << "centerSeparation: " << centerSeparation << std::endl;
+        std::cout << "numberTurns: " << numberTurns << std::endl;
+        std::cout << "ctt: " << ctt << std::endl;
+        std::cout << "cts: " << cts << std::endl;
+        std::cout << "casValue: " << casValue << std::endl;
+        throw std::runtime_error("capacitance cannot be NaN");
+    }
+
+    if (numberTurns > 1) {
+        double cabValue = cab(numberTurns, ctt, cts);
+        C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
+    }
+    else {
+        C2 = casValue;
+    }
+
+
+    auto capacitance = C2 * 2;
+    if (coil.get_layers_description()) {
+        capacitance *= coil.get_layers_by_winding_index(0).size();
+    }
+
+    return capacitance;
 }
 
 } // namespace OpenMagnetics

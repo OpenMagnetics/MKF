@@ -3,6 +3,7 @@
 #include "Utils.h"
 #include "InputsWrapper.h"
 #include "TestingUtils.h"
+#include "Sweeper.h"
 #include "Impedance.h"
 
 #include <UnitTest++.h>
@@ -139,7 +140,7 @@ SUITE(CoreAdviser) {
         settings->reset();
     }
 
-    TEST(Test_All_Cores_With_Impedance) {
+    TEST(Test_Toroidal_Cores_With_Impedance) {
         OpenMagnetics::clear_databases();
         settings->set_use_concentric_cores(false);
         settings->set_use_toroidal_cores(true);
@@ -159,15 +160,25 @@ SUITE(CoreAdviser) {
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::COST] = 0;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
-        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 0;
+        weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
         weights[OpenMagnetics::CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 1;
 
-        OpenMagnetics::ImpedancePoint impedancePoint;
-        impedancePoint.set_magnitude(50000);
-        OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
-        impedanceAtFrequency.set_frequency(1e6);
-        impedanceAtFrequency.set_impedance(impedancePoint);
-        inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<OpenMagnetics::ImpedanceAtFrequency>{impedanceAtFrequency});
+        std::vector<std::pair<double, double>> impedancePoints = {
+            {1e6, 1000},
+            {2e6, 5000},
+            // {3e6, 100000},
+        };
+
+        std::vector<OpenMagnetics::ImpedanceAtFrequency> minimumImpedance;
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            OpenMagnetics::ImpedancePoint impedancePoint;
+            impedancePoint.set_magnitude(impedanceMagnitudePoint);
+            OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+            impedanceAtFrequency.set_frequency(frequencyPoint);
+            impedanceAtFrequency.set_impedance(impedancePoint);
+            minimumImpedance.push_back(impedanceAtFrequency);
+        }
+        inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
 
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreAdviser coreAdviser;
@@ -185,7 +196,31 @@ SUITE(CoreAdviser) {
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 17/10.7/6.8 - 80 - Ungapped");
 
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), 1e6);
+        std::cout << "masMagnetics[0].first.get_magnetic().get_core().get_name().value(): " << masMagnetics[0].first.get_magnetic().get_core().get_name().value() << std::endl;
+
+        std::cout << "masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns(): " << masMagnetics[0].first.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << std::endl;
+        std::cout << "abs(impedance): " << abs(impedance) << std::endl;
+        settings->_debug = true;
+        auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+        std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
+
         CHECK(abs(impedance) >= 50000);
+
+        {
+
+            auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(masMagnetics[0].first.get_magnetic(), 1000, 4000000, 1000);
+
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+
+            outFile.append("Test_Toroidal_Cores_With_Impedance.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_curve(impedanceSweep, true);
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+
+        }
 
         settings->reset();
     }

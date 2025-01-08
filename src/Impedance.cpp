@@ -1,8 +1,11 @@
 #include "Impedance.h"
 #include "ComplexPermeability.h"
 #include "Reluctance.h"
+#include "StrayCapacitance.h"
+#include "MagnetizingInductance.h"
 #include "Constants.h"
 #include "Utils.h"
+#include "Settings.h"
 #include <cmath>
 
 
@@ -14,46 +17,8 @@ std::complex<double>  Impedance::calculate_impedance(MagneticWrapper magnetic, d
     return calculate_impedance(core, coil, frequency, temperature);
 }
 
-double capacitance_turn_to_turn(double turnDiameter, double wireRadius, double centerSeparation) {
-    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
-    double epsilon0 = Constants().vacuumPermittivity;
-    double ctt = pow(std::numbers::pi, 2) * turnDiameter * epsilon0 / log(centerSeparation / (2 * wireRadius) + sqrt(pow(centerSeparation / (2 * wireRadius), 2) - 1));
-    return ctt;
-}
-
-double capacitance_turn_to_shield(double turnDiameter, double wireRadius, double distance) {
-    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
-    double epsilon0 = Constants().vacuumPermittivity;
-    double cts = 2 * pow(std::numbers::pi, 2) * turnDiameter * epsilon0 / log(distance / wireRadius + sqrt(pow(distance / wireRadius, 2) - 1));
-    return cts;
-}
-
-double cab(double n, double ctt, double cts) {
-    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
-    if (n == 2) {
-        return ctt + cts / 2;
-    }
-    else if (n == 3) {
-        return ctt / 2 + cts / 2;
-    }
-    else {
-        double cabValue = cab(n - 2, ctt, cts);
-        return (cabValue * ctt / 2) / (cabValue  + ctt / 2) + cts / 2;
-    }
-}
-
-double cas(double n, double ctt, double cts) {
-    // According to https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
-    if (n == 1) {
-        return cts;
-    }
-    else {
-        double casValue = cas(n - 1, ctt, cts);
-        return (casValue * ctt) / (casValue  + ctt) + cts;
-    }
-}
-
 std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency, double temperature) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
     auto constants = Constants();
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
@@ -67,43 +32,41 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
     auto inductiveImpedance = angularFrequency * airCoredInductance * std::complex<double>(complexPermeabilityImaginaryPart, -complexPermeabilityRealPart);
 
-    // We are assuming one layer for now, because i fogot to push to good code in Osma
-    auto wireRadius = coil.resolve_wire(0).get_maximum_conducting_width() / 2;
-    double distanceTurnsToCore = coil.resolve_bobbin().get_processed_description()->get_column_thickness() + coil.resolve_wire(0).get_maximum_outer_width() / 2;
-    double turnDiameter = 2 * std::numbers::pi * (coil.resolve_bobbin().get_processed_description()->get_column_width().value() + wireRadius);
-    double centerSeparation = coil.resolve_wire(0).get_maximum_outer_width();
-    if (coil.get_turns_description()) {
-        if (coil.get_turns_description().value().size() > 1) {
-            auto firstTurn = coil.get_turns_description().value()[0];
-            auto secondTurn = coil.get_turns_description().value()[1];
-            centerSeparation = sqrt(pow(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0], 2) + pow(firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1], 2));
-        }
-    }
+    auto capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
 
-    double ctt = capacitance_turn_to_turn(turnDiameter, wireRadius, centerSeparation);
-    double cts = capacitance_turn_to_shield(turnDiameter, wireRadius, distanceTurnsToCore);
-    double C2;
-    double casValue = cas(numberTurns, ctt, cts);
-    if (numberTurns > 1) {
-        double cabValue = cab(numberTurns, ctt, cts);
-        C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
-    }
-    else {
-        C2 = casValue;
-    }
-
-    auto capacitance = C2 * 2;
-    if (coil.get_layers_description()) {
-        capacitance *= coil.get_layers_by_winding_index(0).size();
-    }
     auto capacitiveImpedance = std::complex<double>(0, 1.0 / (angularFrequency * capacitance));
 
-    auto seriesResistance = _coreLossesModel.get_core_losses_series_resistance(core, frequency, temperature, abs(inductiveImpedance));
-    auto resistiveImpedance = std::complex<double>(seriesResistance, 0);
-
-    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance + 1.0 / resistiveImpedance);
+    auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
     return impedance;
+}
+
+double Impedance::calculate_self_resonant_frequency(MagneticWrapper magnetic, double temperature) {
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    return calculate_self_resonant_frequency(core, coil, temperature);
+}
+
+double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrapper coil, double temperature) {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
+
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(temperature);
+    operatingPoint.set_conditions(conditions);
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil, nullptr).get_magnetizing_inductance().get_nominal().value();
+
+    double selfResonantFrequency = 1.0 / (2 * std::numbers::pi * sqrt(magnetizingInductance * capacitance));
+
+    if (settings->_debug) {
+        std::cout << "capacitance: " << capacitance << std::endl;
+        std::cout << "magnetizingInductance: " << magnetizingInductance << std::endl;
+        std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
+    }
+
+    return selfResonantFrequency;
 }
 
 } // namespace OpenMagnetics

@@ -48,9 +48,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double temperature = Defaults().ambientTemperature;
 
     if (operatingPoint) {
-        InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
         temperature = operatingPoint->get_conditions().get_ambient_temperature();
-        frequency = operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency();
+        if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
+            InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
+            frequency = operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency();
+        }
     }
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
@@ -68,36 +70,38 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double currentMagnetizingInductance;
 
     if (operatingPoint) {
-        OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
-        if (!excitation.get_voltage()) {
-            auto current = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value();
-            auto currentWaveform = current.get_waveform().value();
-            if (!is_size_power_of_2(currentWaveform.get_data())) {
-                auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
-                current.set_waveform(currentSampledWaveform);
-                operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
-            }
-        }
-
-        if (excitation.get_voltage()) {
-            auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value().get_waveform().value();
-            if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
-                throw std::invalid_argument("voltage_data vector size is not a power of 2");
-            }
-        }
-        if (excitation.get_current()) {
-            auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value().get_waveform().value();
-            if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
-                throw std::invalid_argument("current_data vector size is not a power of 2");
-            }
-        }
-        if (!excitation.get_voltage()) {
-            InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
-            auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
-            if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
-                throw std::invalid_argument("magnetizing_current_data vector size from current is not a power of 2");
+        if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
+            OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+            if (!excitation.get_voltage()) {
+                auto current = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value();
+                auto currentWaveform = current.get_waveform().value();
+                if (!is_size_power_of_2(currentWaveform.get_data())) {
+                    auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
+                    current.set_waveform(currentSampledWaveform);
+                    operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
+                }
             }
 
+            if (excitation.get_voltage()) {
+                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value().get_waveform().value();
+                if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+                    throw std::invalid_argument("voltage_data vector size is not a power of 2");
+                }
+            }
+            if (excitation.get_current()) {
+                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value().get_waveform().value();
+                if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+                    throw std::invalid_argument("current_data vector size is not a power of 2");
+                }
+            }
+            if (!excitation.get_voltage()) {
+                InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
+                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+                if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+                    throw std::invalid_argument("magnetizing_current_data vector size from current is not a power of 2");
+                }
+
+            }
         }
     }
 
@@ -117,59 +121,61 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
 
             if (operatingPoint) {
-                OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
-                if (numberWindings == 1 && excitation.get_current()) {
-                    InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
-                }
-                else if (InputsWrapper::is_multiport_inductor(*operatingPoint)) {
-                    auto magnetizingCurrent = InputsWrapper::get_multiport_inductor_magnetizing_current(*operatingPoint);
-                    excitation.set_magnetizing_current(magnetizingCurrent);
-                    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
-                }
-                else if (excitation.get_voltage()) {
-                    auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
-                    auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
-
-                    auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation,
-                                                                                           sampledVoltageWaveform,
-                                                                                           modifiedMagnetizingInductance,
-                                                                                           false);
-
-                    auto sampledMagnetizingCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
-                    magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
-                    magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
-
-                    excitation.set_magnetizing_current(magnetizingCurrent);
-                    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
-                }
-
-                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
-                if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
-                    throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2");
-                }
-
-                if (!operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_time()) {
-                    auto magnetizingCurrent = InputsWrapper::standarize_waveform(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), excitation.get_frequency());
-                    operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
-                }
-
-                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
-                auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
-                result.second = magneticFluxDensity;
-                auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
-                double switchingFrequency = InputsWrapper::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
-
-                double hFieldDcBias = magneticFieldStrength.get_processed().value().get_offset();
-                if (magneticFieldStrength.get_harmonics().value().get_frequencies()[1] < switchingFrequency) {
-                    for (size_t i = 0; i < magneticFieldStrength.get_harmonics().value().get_frequencies().size() - 1; ++i) {
-                        if (magneticFieldStrength.get_harmonics().value().get_frequencies()[i] >= switchingFrequency) {
-                            break;
-                        }
-                        hFieldDcBias = std::max(hFieldDcBias, magneticFieldStrength.get_harmonics().value().get_amplitudes()[i]);
+                if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
+                    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+                    if (numberWindings == 1 && excitation.get_current()) {
+                        InputsWrapper::set_current_as_magnetizing_current(operatingPoint);
                     }
-                }
+                    else if (InputsWrapper::is_multiport_inductor(*operatingPoint)) {
+                        auto magnetizingCurrent = InputsWrapper::get_multiport_inductor_magnetizing_current(*operatingPoint);
+                        excitation.set_magnetizing_current(magnetizingCurrent);
+                        operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                    }
+                    else if (excitation.get_voltage()) {
+                        auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
+                        auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
-                modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                        auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation,
+                                                                                               sampledVoltageWaveform,
+                                                                                               modifiedMagnetizingInductance,
+                                                                                               false);
+
+                        auto sampledMagnetizingCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
+                        magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+                        magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
+
+                        excitation.set_magnetizing_current(magnetizingCurrent);
+                        operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                    }
+
+                    auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+                    if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
+                        throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2");
+                    }
+
+                    if (!operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_time()) {
+                        auto magnetizingCurrent = InputsWrapper::standarize_waveform(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), excitation.get_frequency());
+                        operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                    }
+
+                    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
+                    auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
+                    result.second = magneticFluxDensity;
+                    auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
+                    double switchingFrequency = InputsWrapper::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
+
+                    double hFieldDcBias = magneticFieldStrength.get_processed().value().get_offset();
+                    if (magneticFieldStrength.get_harmonics().value().get_frequencies()[1] < switchingFrequency) {
+                        for (size_t i = 0; i < magneticFieldStrength.get_harmonics().value().get_frequencies().size() - 1; ++i) {
+                            if (magneticFieldStrength.get_harmonics().value().get_frequencies()[i] >= switchingFrequency) {
+                                break;
+                            }
+                            hFieldDcBias = std::max(hFieldDcBias, magneticFieldStrength.get_harmonics().value().get_amplitudes()[i]);
+                        }
+                    }
+
+                    modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                }
             }
 
             timeout--;
@@ -181,9 +187,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     } while (fabs(currentMagnetizingInductance - modifiedMagnetizingInductance) / modifiedMagnetizingInductance >= 0.01);
 
     if (operatingPoint) {
-        OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
-        if (!excitation.get_voltage()) {
-            operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, currentMagnetizingInductance));
+        if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
+            OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+            if (!excitation.get_voltage()) {
+                operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(InputsWrapper::calculate_induced_voltage(excitation, currentMagnetizingInductance));
+            }
         }
     }
 

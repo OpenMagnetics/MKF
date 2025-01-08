@@ -1676,6 +1676,43 @@ namespace OpenMagnetics {
 
         return coating;
     }
+    
+
+    WireWrapper WireWrapper::get_wire_for_frequency(double effectiveFrequency, double temperature, bool exact) {
+        auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency, temperature);
+        double wireConductingDiameter = skinDepth * 2;
+        if (exact) {
+            WireWrapper wire;
+            wire.set_nominal_value_conducting_diameter(wireConductingDiameter);
+
+            wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
+            wire.set_material("copper");
+            wire.set_type(WireType::ROUND);
+            return wire;
+        }
+        else {
+            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317);
+            return wire;
+        }
+    }
+    
+
+    WireWrapper WireWrapper::get_wire_for_conducting_area(double conductingArea, double temperature, bool exact) {
+        double wireConductingDiameter = sqrt(4 * conductingArea / std::numbers::pi);
+        if (exact) {
+            WireWrapper wire;
+            wire.set_nominal_value_conducting_diameter(wireConductingDiameter);
+            wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
+            wire.set_material("copper");
+            wire.set_type(WireType::ROUND);
+            return wire;
+        }
+        else {
+            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317);
+            return wire;
+        }
+    }
+
 
     WireWrapper WireWrapper::get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency, double temperature) {
 

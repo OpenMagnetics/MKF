@@ -50,6 +50,49 @@ SUITE(StrayCapacitance) {
         }
     }
 
+    TEST(Test_Get_Capacitance_Among_Windings_1_Windings_8_Turns_1_Parallels) {
+        settings->reset();
+        json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" } ] })");
+        json coreJson = json::parse(R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "RM 10/I", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })");
+
+        auto core = OpenMagnetics::CoreWrapper(coreJson);
+        auto coil = OpenMagnetics::CoilWrapper(coilJson);
+
+        core.process_data();
+        core.process_gap();
+        coil.set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(core));
+        coil.wind();
+
+        OpenMagnetics::StrayCapacitance strayCapacitance;
+
+        std::map<std::pair<std::string, std::string>, double> expectedValues = {
+            {{"Primary", "Primary"}, 10.166e-12 - 9.8337e-12},
+        };
+
+
+        auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+        CHECK(maxwellCapacitanceMatrix.size() == 1);
+        for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+
+            CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
+        }
+
+        OpenMagnetics::MagneticWrapper magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Get_Capacitance_Among_Windings_1_Windings_8_Turns_1_Parallels.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+
+    }
+
     TEST(Test_Get_Capacitance_Among_Windings_2_Windings_8_Turns_1_Parallels) {
         settings->reset();
         json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })");
@@ -123,6 +166,7 @@ SUITE(StrayCapacitance) {
         }
 
     }
+
     TEST(Test_Get_Capacitance_Among_Windings_3_Windings_8_Turns_1_Parallels) {
         settings->reset();
         json coilJson = json::parse(R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" }, {"name": "Tertiary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "tertiary", "wire": "Round 1.00 - Grade 1" } ] })");
@@ -159,6 +203,123 @@ SUITE(StrayCapacitance) {
             else {
                 CHECK_CLOSE(expectedValues[keys], capacitance, 1e-12);
             }
+        }
+
+    }
+
+    TEST(Test_One_Versus_Two_Windings) {
+        {
+            std::vector<int64_t> numberTurns = {110};
+            std::vector<int64_t> numberParallels = {1};
+            std::string shapeName = "T 12.5/7.5/5";
+            std::vector<OpenMagnetics::WireWrapper> wires;
+            auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+            wires.push_back(wire);
+            wires.push_back(wire);
+
+            OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+            OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+            OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+            OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+            
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                             numberParallels,
+                                                             shapeName,
+                                                             1,
+                                                             windingOrientation,
+                                                             layersOrientation,
+                                                             turnsAlignment,
+                                                             sectionsAlignment,
+                                                             wires,
+                                                             false);
+
+            int64_t numberStacks = 1;
+            std::string coreMaterial = "A07";
+            std::vector<OpenMagnetics::CoreGap> gapping = {};
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            OpenMagnetics::StrayCapacitance strayCapacitance;
+
+            std::map<std::pair<std::string, std::string>, double> expectedValues = {
+                {{"winding 0", "winding 0"}, 3.15617e-12 -3.14887e-12},
+            };
+
+            auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+            CHECK(maxwellCapacitanceMatrix.size() == 1);
+            for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+                CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
+            }
+
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_One_Versus_Two_Windings_One.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+        {
+            std::vector<int64_t> numberTurns = {110, 110};
+            std::vector<int64_t> numberParallels = {1, 1};
+            std::string shapeName = "T 12.5/7.5/5";
+            std::vector<OpenMagnetics::WireWrapper> wires;
+            auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+            wires.push_back(wire);
+            wires.push_back(wire);
+
+            OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+            OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
+            OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+            OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+            
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                             numberParallels,
+                                                             shapeName,
+                                                             1,
+                                                             windingOrientation,
+                                                             layersOrientation,
+                                                             turnsAlignment,
+                                                             sectionsAlignment,
+                                                             wires,
+                                                             false);
+
+            int64_t numberStacks = 1;
+            std::string coreMaterial = "A07";
+            std::vector<OpenMagnetics::CoreGap> gapping = {};
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+
+            OpenMagnetics::StrayCapacitance strayCapacitance;
+
+            std::map<std::pair<std::string, std::string>, double> expectedValues = {
+                {{"winding 0", "winding 0"}, 3.15617e-12},
+                {{"winding 0", "winding 1"}, -3.14887e-12},
+                {{"winding 1", "winding 0"}, -3.14887e-12},
+                {{"winding 1", "winding 1"}, 3.15674e-12},
+            };
+
+            auto maxwellCapacitanceMatrix = strayCapacitance.calculate_maxwell_capacitance_matrix(coil);
+            CHECK(maxwellCapacitanceMatrix.size() == 4);
+            for (auto [keys, capacitance] : maxwellCapacitanceMatrix) {
+
+                CHECK_CLOSE(expectedValues[keys], capacitance, fabs(expectedValues[keys]) * maximumError);
+            }
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_One_Versus_Two_Windings_Two.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_core(magnetic);
+            painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
         }
 
     }
@@ -234,9 +395,7 @@ SUITE(StrayCapacitance) {
         size_t index = 0;
         for (auto turn : turns) {
 
-            std::cout << turn.get_name() << std::endl;
             auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turn, turns);
-            std::cout << surroundingTurns.size() << std::endl;
             std::vector<OpenMagnetics::Turn> newTurns = surroundingTurns;
             newTurns.push_back(turn);
 
