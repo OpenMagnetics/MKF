@@ -907,7 +907,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
             for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
                 auto frequency = impedanceAtFrequency.get_frequency();
-                if (frequency > 0.5 * selfResonantFrequency) {  // hardcoded 50% of SRF
+                if (frequency > 0.25 * selfResonantFrequency) {  // hardcoded 20% of SRF
                     validDesign = false;
                     break;
                 }
@@ -942,14 +942,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterMinimu
 
 
 
-        // if (core.get_name().value() == "T 3.9/2.2/1.3 - 61 - Ungapped") {
-        //     settings->_debug = false;
-        // }
-
         if (validDesign && validMaterial) {
             coil.fast_wind();
+
         }
-        if (coil.get_turns_description()) {
+        if (coil.are_sections_and_layers_fitting() && coil.get_turns_description()) {
             double scoring = totalImpedanceExtra;
             mas.get_mutable_magnetic().set_coil(std::move(coil));
             (*unfilteredMasMagnetics)[masIndex].first = mas;

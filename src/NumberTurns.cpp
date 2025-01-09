@@ -12,21 +12,25 @@
 
 namespace OpenMagnetics {
 
-std::vector<uint64_t> NumberTurns::get_next_number_turns_combination() {
+std::vector<uint64_t> NumberTurns::get_next_number_turns_combination(size_t multiple) {
     auto currentNumberTurns = _currentNumberTurns;
-    increment_number_turns();
+    increment_number_turns(multiple);
 
     return currentNumberTurns;
 }
 
-void NumberTurns::increment_number_turns() {
+void NumberTurns::increment_number_turns(size_t multiple) {
     uint64_t timeout = 1000;
     uint64_t primaryNumberTurns = _currentNumberTurns[0];
     bool allRequirementsPassed = false;
     while (!allRequirementsPassed) {
         _currentNumberTurns.clear();
         allRequirementsPassed = true;
-        primaryNumberTurns++;
+        primaryNumberTurns += multiple;
+        while (primaryNumberTurns % multiple != 0) {
+            primaryNumberTurns++;
+        }
+
         _currentNumberTurns.push_back(primaryNumberTurns);
         for (size_t turnsRatioIndex = 0; turnsRatioIndex < _turnsRatios.size(); ++turnsRatioIndex) {
             auto turnsRatioRequirement = _turnsRatiosRequirements[turnsRatioIndex];

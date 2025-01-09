@@ -1460,6 +1460,102 @@ SUITE(MagneticAdviser) {
         }
     }
 
+    TEST(Test_Magnetic_Adviser_CMC) {
+        OpenMagnetics::clear_databases();
+        settings->set_use_concentric_cores(false);
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_only_cores_in_stock(false);
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 30;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::InputsWrapper inputs;
+
+
+        OpenMagnetics::DesignRequirements designRequirements = inputs.get_design_requirements();
+        inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(frequency, desiredMagnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, dcCurrent, turnsRatios);
+        if (designRequirements.get_insulation()) {
+            inputs.get_mutable_design_requirements().set_insulation(designRequirements.get_insulation().value());
+        }
+
+        std::vector<std::pair<double, double>> impedancePoints = {
+            {1e6, 1000},
+            {2e6, 2000},
+        };
+
+        std::vector<OpenMagnetics::ImpedanceAtFrequency> minimumImpedance;
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            OpenMagnetics::ImpedancePoint impedancePoint;
+            impedancePoint.set_magnitude(impedanceMagnitudePoint);
+            OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+            impedanceAtFrequency.set_frequency(frequencyPoint);
+            impedanceAtFrequency.set_impedance(impedancePoint);
+            minimumImpedance.push_back(impedanceAtFrequency);
+        }
+        inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+
+        OpenMagnetics::MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 50);
+
+
+        // CHECK(masMagnetics.size() == 1);
+        // double bestScoring = masMagnetics[0].second;
+        // for (size_t i = 0; i < masMagnetics.size(); ++i)
+        // {
+        //     CHECK(masMagnetics[i].second <= bestScoring);
+        // }
+
+        // CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 25.3/14.8/20 - N30 - Ungapped");
+        // auto magnetic = masMagnetics[0].first.get_magnetic();
+
+        // auto selfResonantFrequencyFast = OpenMagnetics::Impedance().calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+
+        // for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+        //     auto impedance = OpenMagnetics::Impedance().calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
+        //     CHECK(frequencyPoint < selfResonantFrequencyFast * 0.50);
+        //     CHECK(abs(impedance) >= impedanceMagnitudePoint);
+        // }
+
+        // auto selfResonantFrequency = OpenMagnetics::Impedance(false).calculate_self_resonant_frequency(masMagnetics[0].first.get_magnetic());
+        // for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+        //     auto impedance = OpenMagnetics::Impedance(false).calculate_impedance(masMagnetics[0].first.get_magnetic(), frequencyPoint);
+        //     CHECK(frequencyPoint < selfResonantFrequency * 0.50);
+        //     CHECK(abs(impedance) >= impedanceMagnitudePoint);
+        // }
+
+        // {
+        //     auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(masMagnetics[0].first.get_magnetic(), 1000, 40000000, 1000);
+
+        //     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        //     auto outFile = outputFilePath;
+
+        //     outFile.append("Test_Magnetic_Adviser_CMC_Impedance.svg");
+        //     std::filesystem::remove(outFile);
+        //     OpenMagnetics::Painter painter(outFile, false, true);
+        //     painter.paint_curve(impedanceSweep, true);
+        //     painter.export_svg();
+        //     CHECK(std::filesystem::exists(outFile));
+        // }
+        {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+
+            outFile.append("Test_Magnetic_Adviser_CMC.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_core(masMagnetics[0].first.get_magnetic());
+            painter.paint_bobbin(masMagnetics[0].first.get_magnetic());
+            painter.paint_coil_turns(masMagnetics[0].first.get_magnetic());
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+
+        }
+
+        settings->reset();
+    }
+
     // TEST(Test_Planar) {
     //     srand (time(NULL));
     //     settings->reset();
