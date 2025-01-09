@@ -24,7 +24,12 @@ std::vector<Turn> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std:
             continue;
         }
 
-        double distance = hypot(x2 - x1, y2 - y1);
+        auto dx1 = currentTurn.get_dimensions().value()[0];
+        auto dy1 = currentTurn.get_dimensions().value()[1];
+        auto dx2 = potentiallySurroundingTurn.get_dimensions().value()[0];
+        auto dy2 = potentiallySurroundingTurn.get_dimensions().value()[1];
+
+        double distance = hypot(x2 - x1, y2 - y1) - std::max(dx1, dy1) / 2 - std::max(dx2, dy2) / 2;
 
         if (distance > 4e-5) {
             continue;
@@ -636,28 +641,29 @@ double StrayCapacitanceOneLayer::calculate_capacitance(CoilWrapper coil) {
     double casValue = cas(numberTurns, ctt, cts);
 
     if (std::isnan(casValue)) {
-        std::cout << "coil.resolve_wire(0).get_maximum_outer_width(): " << coil.resolve_wire(0).get_maximum_outer_width() << std::endl;
-        std::cout << "bool(coil.get_turns_description()): " << bool(coil.get_turns_description()) << std::endl;
-        std::cout << "turnDiameter: " << turnDiameter << std::endl;
-        std::cout << "wireRadius: " << wireRadius << std::endl;
-        std::cout << "centerSeparation: " << centerSeparation << std::endl;
-        std::cout << "numberTurns: " << numberTurns << std::endl;
-        std::cout << "ctt: " << ctt << std::endl;
-        std::cout << "cts: " << cts << std::endl;
-        std::cout << "casValue: " << casValue << std::endl;
         throw std::runtime_error("capacitance cannot be NaN");
     }
 
     if (numberTurns > 1) {
         double cabValue = cab(numberTurns, ctt, cts);
         C2 = 2 * cabValue * casValue / (4 * cabValue - casValue);
+        double C1 = cabValue - cabValue * casValue / (4 * cabValue - casValue);
+        // std::cout << "C2: " << C2 << std::endl;
+        // std::cout << "C1: " << C1 << std::endl;
+
+        C2 = C2 * 2;
+
+        if (C1 > 1e-13) {
+            C2 =  1.0 / (1.0 / C2 + 1.0 / C1);
+        }
+
     }
     else {
         C2 = casValue;
     }
 
 
-    auto capacitance = C2 * 2;
+    auto capacitance = C2;
     if (coil.get_layers_description()) {
         capacitance *= coil.get_layers_by_winding_index(0).size();
     }

@@ -123,6 +123,23 @@ class Curve2D {
         std::string & get_mutable_title() { return title; }
         void set_title(const std::string & value) { this->title = value; }
 };
+                
+void from_json(const json & j, Curve2D & x);
+void to_json(json & j, const Curve2D & x);
+
+inline void from_json(const json & j, Curve2D& x) {
+    x.set_x_points(j.at("xPoints").get<std::vector<double>>());
+    x.set_y_points(j.at("yPoints").get<std::vector<double>>());
+    x.set_title(j.at("title").get<std::string>());
+}
+
+inline void to_json(json & j, const Curve2D & x) {
+    j = json::object();
+    j["xPoints"] = x.get_x_points();
+    j["yPoints"] = x.get_y_points();
+    j["title"] = x.get_title();
+}
+
 
 double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 bool check_requirement(DimensionWithTolerance requirement, double value);

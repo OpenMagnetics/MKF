@@ -62,11 +62,14 @@ double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrappe
         capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);
     }
     else {
+        if (!coil.get_turns_description()) {
+            coil.wind();
+        }
         auto capacitanceMatrix = StrayCapacitance().calculate_capacitance_among_windings(coil);
         auto windingsKey = std::make_pair(coil.get_functional_description()[0].get_name(), coil.get_functional_description()[0].get_name());
+
         capacitance = capacitanceMatrix[windingsKey];
     }
-    std::cout << "capacitance: " << capacitance << std::endl;
 
     OperatingPoint operatingPoint;
     OperatingConditions conditions;

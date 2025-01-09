@@ -33,8 +33,8 @@ class NumberTurns {
             increment_number_turns();
         }
 
-        std::vector<uint64_t> get_next_number_turns_combination();
-        void increment_number_turns();
+        std::vector<uint64_t> get_next_number_turns_combination(size_t multiple = 1);
+        void increment_number_turns(size_t multiple = 1);
 };
 
 
