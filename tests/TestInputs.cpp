@@ -1530,7 +1530,7 @@ SUITE(Inputs) {
 
         double expectedValue = 5;
 
-        auto current = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance);
+        auto current = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
 
         CHECK_CLOSE(expectedValue, current.get_processed().value().get_peak().value(), max_error * expectedValue);
     }
@@ -1967,7 +1967,7 @@ SUITE(Inputs) {
 
         auto derivativeSignal = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, magnetizingInductance);
         excitation.set_voltage(derivativeSignal);
-        auto integrationSignal = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance);
+        auto integrationSignal = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, offset);
 
         auto calculatedProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(integrationSignal.get_waveform().value());
         CHECK_CLOSE(peakToPeak, calculatedProcessed.get_peak_to_peak().value(), max_error * peakToPeak);
@@ -1991,7 +1991,7 @@ SUITE(Inputs) {
         excitation.set_voltage(voltage);
         excitation.set_frequency(frequency);
 
-        auto integrationSignal = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance);
+        auto integrationSignal = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
         excitation.set_current(integrationSignal);
         auto derivativeSignal = OpenMagnetics::InputsWrapper::calculate_induced_voltage(excitation, magnetizingInductance);
 

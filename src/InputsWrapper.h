@@ -37,10 +37,10 @@ class InputsWrapper : public Inputs {
     static bool is_waveform_sampled(Waveform waveform);
     static bool is_waveform_imported(Waveform waveform);
     static bool is_multiport_inductor(OperatingPoint operatingPoint);
-    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency = 0);
-    static Processed calculate_processed_data(Waveform waveform, std::optional<double> frequency = std::nullopt, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
-    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
-    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData = true, std::optional<Processed> processed = std::nullopt);
+    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0);
+    static Processed calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
+    static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
+    static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
     // static OperatingPointExcitation reflect_waveforms(OperatingPointExcitation excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
@@ -50,21 +50,31 @@ class InputsWrapper : public Inputs {
     static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
     static Waveform reconstruct_signal(Harmonics harmonics, double frequency);
     OperatingPoint get_operating_point(size_t index);
-    OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex = 0, size_t windingIndex = 0);
-    OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex = 0);
+    OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex=0, size_t windingIndex=0);
+    OperatingPointExcitation get_primary_excitation(size_t operatingPointIndex=0);
     static OperatingPointExcitation get_primary_excitation(OperatingPoint operatingPoint);
 
     static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation,
                                                         double magnetizingInductance);
+    static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
-                                                            bool compress = true,
-                                                            double offset=0);
+                                                            bool compress,
+                                                            bool addOffset);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
-                                                            Waveform sampledWaveform,
+                                                            Waveform voltageSampledWaveform,
                                                             double magnetizingInductance,
-                                                            bool compress = true,
-                                                            double offset=0);
+                                                            bool compress,
+                                                            bool addOffset);
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                            double magnetizingInductance,
+                                                            bool compress,
+                                                            double dcCurrent=0);
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                            Waveform voltageSampledWaveform,
+                                                            double magnetizingInductance,
+                                                            bool compress,
+                                                            double dcCurrent=0);
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);
@@ -77,7 +87,7 @@ class InputsWrapper : public Inputs {
                                                       double peakToPeak,
                                                       double dutyCycle,
                                                       double dcCurrent,
-                                                      std::vector<double> turnsRatios = {});
+                                                      std::vector<double> turnsRatios={});
     static InputsWrapper create_quick_operating_point_only_current(double frequency,
                                                                   double magnetizingInductance,
                                                                   double temperature,
@@ -85,7 +95,7 @@ class InputsWrapper : public Inputs {
                                                                   double peakToPeak,
                                                                   double dutyCycle,
                                                                   double dcCurrent,
-                                                                  std::vector<double> turnsRatios = {});
+                                                                  std::vector<double> turnsRatios={});
     static InputsWrapper create_quick_operating_point_only_current(double frequency,
                                                                   double magnetizingInductance,
                                                                   double temperature,
@@ -93,7 +103,7 @@ class InputsWrapper : public Inputs {
                                                                   std::vector<double> peakToPeaks,
                                                                   double dutyCycle,
                                                                   double dcCurrent,
-                                                                  std::vector<double> turnsRatios = {});
+                                                                  std::vector<double> turnsRatios={});
     static OperatingPoint create_operating_point_with_sinusoidal_current_mask(double frequency,
                                                                               double magnetizingInductance,
                                                                               double temperature,
@@ -108,7 +118,7 @@ class InputsWrapper : public Inputs {
     static Waveform calculate_derivative_waveform(Waveform waveform);
     static Waveform calculate_integral_waveform(Waveform waveform);
 
-    static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label = WaveformLabel::CUSTOM);
+    static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label=WaveformLabel::CUSTOM);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
