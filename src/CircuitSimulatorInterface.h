@@ -105,7 +105,8 @@ class CircuitSimulationReader {
     enum class DataType : int {
         TIME,
         VOLTAGE,
-        CURRENT
+        CURRENT,
+        UNKNOWN
     };
 
   private:
@@ -129,8 +130,8 @@ class CircuitSimulationReader {
     CircuitSimulationSignal _time;
 
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
-    std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It"};
-    std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt"};
+    std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It", "Id", "Ipri"};
+    std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt", "Vout", "Vpri"};
 
   public:
 

@@ -376,6 +376,41 @@ SUITE(CircuitSimulationReader) {
         }
     }
 
+    TEST(Test_Rosano_Web) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/rosano_web.csv");
+
+        double turnsRatio = 1.333;
+        double frequency = 200000;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 121e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+    }
+
+
     TEST(Test_Simba) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/simba_simulation.csv");
