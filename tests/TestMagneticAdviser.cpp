@@ -1380,6 +1380,99 @@ SUITE(MagneticAdviser) {
         }
     }
 
+    TEST(Test_Magnetic_Adviser_Rosano_Web) {
+        srand (time(NULL));
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        settings->set_use_only_cores_in_stock(false);
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+        json inputsJson;
+
+
+        std::string filePath = __FILE__;
+        auto simulation_path = filePath.substr(0, filePath.rfind("/")).append("/testData/rosano_web.csv");
+
+        double frequency = 200000;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        std::vector<std::map<std::string, std::string>> mapColumnNames;
+        std::map<std::string, std::string> primaryColumnNames;
+        std::map<std::string, std::string> secondaryColumnNames;
+        primaryColumnNames["time"] = "Time";
+        primaryColumnNames["current"] = "Ipri";
+        primaryColumnNames["voltage"] = "Vpri";
+        mapColumnNames.push_back(primaryColumnNames);
+        secondaryColumnNames["time"] = "Time";
+        secondaryColumnNames["current"] = "Id";
+        secondaryColumnNames["voltage"] = "Vout";
+        mapColumnNames.push_back(secondaryColumnNames);
+        auto operatingPoint = reader.extract_operating_point(2, frequency, mapColumnNames);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 121e-6);
+
+
+        inputsJson["designRequirements"] = json();
+        inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 121e-6;
+        inputsJson["designRequirements"]["turnsRatios"] = json::array();
+        json turnRatioSecondary;
+        turnRatioSecondary["minimum"] = 1.3;
+        turnRatioSecondary["nominal"] = 1.33;
+        turnRatioSecondary["maximum"] = 1.4;
+        inputsJson["designRequirements"]["turnsRatios"].push_back(turnRatioSecondary);
+        inputsJson["operatingPoints"] = json::array();
+        json operatingPointJson;
+
+        to_json(operatingPointJson, operatingPoint);
+        inputsJson["operatingPoints"].push_back(operatingPointJson);
+
+        OpenMagnetics::InputsWrapper inputs(inputsJson);
+
+
+        std::vector<OpenMagnetics::IsolationSide> isolationSides = {OpenMagnetics::IsolationSide::PRIMARY,
+                                                                    OpenMagnetics::IsolationSide::SECONDARY};
+
+
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        inputs.process_waveforms();
+        OpenMagnetics::MagneticAdviser MagneticAdviser;
+
+        auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
+
+        CHECK(masMagnetics.size() > 0);
+
+        if (plot)
+        for (auto [masMagnetic, scoring] : masMagnetics) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+
+            {
+                auto outFile = outputFilePath;
+                std::string filename = "Test_Magnetic_Adviser_Rosano_Web_" +  std::to_string(scoring) + ".mas.json";
+                outFile.append(filename);
+                OpenMagnetics::to_file(outFile, masMagnetic);
+            }
+
+            OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outFile = outputFilePath;
+            std::string filename = "Test_Magnetic_Adviser_Rosano_Web_" + std::to_string(scoring) + ".svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile, true);
+
+            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_logarithmic_scale(true);
+            settings->set_painter_include_fringing(true);
+            settings->set_painter_maximum_value_colorbar(std::nullopt);
+            settings->set_painter_minimum_value_colorbar(std::nullopt);
+            // settings->set_painter_number_points_x(200);
+            // settings->set_painter_number_points_y(200);
+            painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            // painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
+    }
+
     TEST(Test_Magnetic_Adviser_PFC_Only_Current) {
         srand (time(NULL));
         settings->reset();

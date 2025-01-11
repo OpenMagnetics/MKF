@@ -121,6 +121,65 @@ Waveform sum_waveform(Waveform waveform, double scalarValue){
     return scaledWaveform;
 }
 
+bool is_close_enough(double x, double y, double error){
+    return fabs(x - y) <= error;
+}
+
+// bool include_dc_offset_into_magnetizing_current(Waveform voltageSampledWaveform) {
+//     double maximumVoltage = 0;
+//     for (auto point : voltageSampledWaveform.get_data()) {
+//         maximumVoltage = std::max(maximumVoltage, fabs(point));
+//     }
+
+//     size_t numberPointsClosedToZero = 0;
+//     for (auto point : voltageSampledWaveform.get_data()) {
+//         if (fabs(point) < maximumVoltage * 0.05) {
+//             numberPointsClosedToZero++;
+//         }
+//     }
+
+//     if (numberPointsClosedToZero > voltageSampledWaveform.get_data().size() * 0.02) {
+//         return true;
+//     }
+//     else {
+//         return false;
+//     }
+// }
+
+bool InputsWrapper::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
+    auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
+    if (excitationPerWinding.size() == 1) {
+        return true;
+    } 
+
+    double primaryRms = 0;
+    // We limit the comparison to one secondary to avoid auxiliaries
+    for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+        auto excitation = excitationPerWinding[windingIndex];
+        double currentRms = 0;
+        if (!excitation.get_current()->get_processed()) {
+            auto processed = InputsWrapper::calculate_processed_data(excitation.get_current()->get_waveform().value());
+            currentRms = processed.get_rms().value();
+        }
+        else {
+            currentRms = excitation.get_current()->get_processed()->get_rms().value();
+        }
+
+        if (windingIndex == 0) {
+            primaryRms = currentRms;
+        }
+        else {
+            double scaledCurrentRms = currentRms / turnsRatios[windingIndex - 1];
+            if (!is_close_enough(primaryRms, scaledCurrentRms, primaryRms * 0.3)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+
 double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel label) {
     if (label != WaveformLabel::CUSTOM) {
         switch(label) {
@@ -426,7 +485,6 @@ SignalDescriptor InputsWrapper::get_multiport_inductor_magnetizing_current(Opera
     }
 
     double rms = excitation.get_current()->get_processed()->get_rms().value();
-    double offset = excitation.get_current()->get_processed()->get_offset();
     double triangularPeak = rms * sqrt(3);
 
     Processed triangularProcessed;
@@ -826,9 +884,15 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         }
     }
 
-    for (size_t i = 0; i < operatingPoints.size(); ++i) {
-        std::vector<OperatingPointExcitation> processed_excitations_per_winding;
+    std::vector<double> turnsRatiosValues;
+    for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
+        double turnsRatio = resolve_dimensional_values(turnsRatios[turnRatioIndex]);
+        turnsRatiosValues.push_back(turnsRatio);
+    }
 
+    for (size_t i = 0; i < operatingPoints.size(); ++i) {
+        std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
+        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
 
         for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
@@ -847,11 +911,11 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
                 excitation.set_current(
-                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
+                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, true, includeDcOffsetIntoMagnetizingCurrent));
             }
-            processed_excitations_per_winding.push_back(excitation);
+            processedExcitationsPerWinding.push_back(excitation);
         }
-        operatingPoints[i].set_excitations_per_winding(processed_excitations_per_winding);
+        operatingPoints[i].set_excitations_per_winding(processedExcitationsPerWinding);
     }
 
     for (size_t i = 0; i < operatingPoints.size(); ++i) {
@@ -1156,16 +1220,17 @@ Waveform InputsWrapper::compress_waveform(Waveform waveform) {
     return waveform;
 }
 
+
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
-                                                                Waveform sampledWaveform,
+                                                                Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,
                                                                 bool compress,
-                                                                double offset) {
+                                                                bool addOffset) {
     double dcCurrent = 0;
     if (magnetizingInductance <= 0) {
         throw std::runtime_error("magnetizingInductance cannot be zero or negative");
     }
-    if (excitation.get_current()) {
+    if (addOffset && excitation.get_current()) {
 
         if (!excitation.get_current()->get_processed()) {
             auto currentExcitation = excitation.get_current().value();
@@ -1178,9 +1243,33 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
 
         dcCurrent = excitation.get_current()->get_processed()->get_offset();
     }
-    else {
-        dcCurrent = offset;
+    return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
+}
+
+SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                                double magnetizingInductance,
+                                                                bool compress,
+                                                                bool addOffset) {
+    if (!excitation.get_voltage()) {
+        throw std::invalid_argument("Missing voltage signal");
     }
+    auto voltage_excitation = excitation.get_voltage().value();
+    voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
+    auto waveform = voltage_excitation.get_waveform().value();
+
+    auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+    return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, addOffset);
+}
+
+SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                                Waveform voltageSampledWaveform,
+                                                                double magnetizingInductance,
+                                                                bool compress,
+                                                                double dcCurrent) {
+    if (magnetizingInductance <= 0) {
+        throw std::runtime_error("magnetizingInductance cannot be zero or negative");
+    }
+
 
     SignalDescriptor magnetizingCurrentExcitation;
     Waveform sampledMagnetizingCurrentWaveform;
@@ -1200,8 +1289,10 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());            
     }
     else {
-        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sampledWaveform);
+        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform);
         SignalDescriptor magnetizingCurrentExcitation;
+
+
 
         sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
         sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
@@ -1218,13 +1309,14 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
     magnetizingCurrentExcitation.set_processed(
         calculate_processed_data(magnetizingCurrentExcitation, sampledMagnetizingCurrentWaveform));
+
     return magnetizingCurrentExcitation;
 }
 
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 double magnetizingInductance,
                                                                 bool compress,
-                                                                double offset) {
+                                                                double dcCurrent) {
     if (!excitation.get_voltage()) {
         throw std::invalid_argument("Missing voltage signal");
     }
@@ -1232,12 +1324,15 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
     auto waveform = voltage_excitation.get_waveform().value();
 
-    auto sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
-    return calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, compress, offset);
+    auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+    return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
 
 OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance) {
-    std::vector<OperatingPointExcitation> processed_excitations_per_winding;
+    std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
+    std::vector<Waveform> voltageSampledWaveforms;
+    bool allExcitationHaveVoltage = true;
+
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
         // Here we processed this excitation current
         if (excitation.get_current()) {
@@ -1272,24 +1367,44 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             else {
                 sampledWaveform = waveform;
             }
+            voltageSampledWaveforms.push_back(sampledWaveform);
             voltage_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
             voltage_excitation.set_processed(calculate_processed_data(voltage_excitation, sampledWaveform));
             excitation.set_voltage(voltage_excitation);
+        }
+        else {
+            allExcitationHaveVoltage = false;
+        }
+        processedExcitationsPerWinding.push_back(excitation);
+    }
+    if (allExcitationHaveVoltage) {
+        std::vector<double> turnsRatios;
+        double primaryVoltageRms = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed()->get_rms().value();
+        for (size_t windingIndex = 1; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+            double turnsRatio = primaryVoltageRms / excitation.get_voltage()->get_processed()->get_rms().value();
+            turnsRatios.push_back(turnsRatio);
+        }
+
+        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
+
+        for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
 
             if (!excitation.get_magnetizing_current() && magnetizingInductance > 0) {
-                excitation.set_magnetizing_current(
-                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance));
+                excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, voltageSampledWaveforms[windingIndex], magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent));
             }
+            processedExcitationsPerWinding[windingIndex] = excitation;
         }
-        processed_excitations_per_winding.push_back(excitation);
     }
-    operatingPoint.set_excitations_per_winding(processed_excitations_per_winding);
+    operatingPoint.set_excitations_per_winding(processedExcitationsPerWinding);
     return operatingPoint;
 }
 
 void InputsWrapper::process_waveforms() {
     auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
+
     for (auto& operatingPoint : operatingPoints) {
         processed_operating_points.push_back(process_operating_point(
             operatingPoint, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
@@ -1328,7 +1443,7 @@ OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mas
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
             excitation.set_voltage(voltage);
         calculate_basic_processed_data(voltage.get_waveform().value());
-            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0);
+            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
             excitation.set_magnetizing_current(magnetizingCurrent);
         calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
         }
@@ -1352,7 +1467,7 @@ OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mas
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
             excitation.set_voltage(voltage);
         calculate_basic_processed_data(voltage.get_waveform().value());
-            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0);
+            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
             excitation.set_magnetizing_current(magnetizingCurrent);
         calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
         }
@@ -1747,10 +1862,6 @@ double InputsWrapper::calculate_instantaneous_power(OperatingPointExcitation exc
     double instantaneousPower = std::accumulate(std::begin(powerPoints), std::end(powerPoints), 0.0) /
                              powerPoints.size();
     return instantaneousPower;
-}
-
-bool is_close_enough(double x, double y, double error){
-    return fabs(x - y) <= error;
 }
 
 WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {

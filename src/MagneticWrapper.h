@@ -47,6 +47,7 @@ class MagneticWrapper : public Magnetic {
 
         BobbinWrapper get_bobbin();
         std::vector<WireWrapper> get_wires();
+        std::vector<double> get_turns_ratios();
         WireWrapper get_wire(size_t windingIndex=0);
         std::string get_reference();
 };
