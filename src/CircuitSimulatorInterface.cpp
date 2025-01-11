@@ -1037,10 +1037,10 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
     waveform.set_data(signal.data);
     waveform.set_time(_time.data);
 
-
     auto waveformOnePeriod = get_one_period(waveform, frequency, sample);
-    Waveform reconstructedWaveform = waveform;
-    if (sample) {
+    Waveform reconstructedWaveform = waveformOnePeriod;
+
+    if (false) {
         double originalThreshold = settings->get_harmonic_amplitude_threshold();
         while (reconstructedWaveform.get_data().size() > 8192) {
             settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
@@ -1208,7 +1208,8 @@ bool CircuitSimulationReader::extract_column_types(double frequency) {
                     timeout--;
                 } 
                 if (timeout == 0) {
-                    throw std::runtime_error("Unknown type");
+                    column.type = DataType::UNKNOWN;
+                    // throw std::runtime_error("Unknown type");
                 }
             }
             columnsWithTypes.push_back(column);
