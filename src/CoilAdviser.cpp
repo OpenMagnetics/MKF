@@ -396,21 +396,11 @@ namespace OpenMagnetics {
     }
 
     std::vector<Section> CoilAdviser::get_advised_sections(MasWrapper mas, std::vector<size_t> pattern, size_t repetitions){
-        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
-        if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
-            coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
-            coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
-        }
-        else {
-            coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
-            coil.set_section_alignment(CoilAlignment::SPREAD);
-            if (filterMode) {
-                coil.set_turns_alignment(CoilAlignment::CENTERED);
-            }
-        }
+
+        std::cout << magic_enum::enum_name(coil.get_winding_orientation()) << std::endl;
 
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
@@ -424,12 +414,27 @@ namespace OpenMagnetics {
     }
 
     std::vector<MasWrapper> CoilAdviser::get_advised_coil_for_pattern(std::vector<WireWrapper>* wires, MasWrapper mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
+        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
         auto settings = Settings::GetInstance();
         size_t maximumNumberWires = settings->get_coil_adviser_maximum_number_wires();
         auto defaults = Defaults();
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
+
+        if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+            coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
+            coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
+        }
+        else {
+            coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+            coil.set_section_alignment(CoilAlignment::SPREAD);
+            if (filterMode) {
+                coil.set_turns_alignment(CoilAlignment::CENTERED);
+            }
+        }
+        mas.get_mutable_magnetic().set_coil(coil);
+
         size_t numberWindings = coil.get_functional_description().size();
 
         auto needsMargin = needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);

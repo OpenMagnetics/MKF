@@ -72,6 +72,9 @@ class BobbinWrapper : public Bobbin {
     static BobbinWrapper create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
     static BobbinWrapper create_quick_bobbin(CoreWrapper core, bool nullDimensions = false);
     bool check_if_fits(double dimension, bool isHorizontalOrRadial = true, size_t windingWindowIndex = 0);
+    void set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex = 0);
+    std::optional<WindingOrientation> get_winding_orientation(size_t windingWindowIndex = 0);
+
 
 };
 } // namespace OpenMagnetics

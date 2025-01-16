@@ -229,6 +229,11 @@ size_t CoilWrapper::get_interleaving_level() {
 
 void CoilWrapper::set_winding_orientation(WindingOrientation windingOrientation) {
     _windingOrientation = windingOrientation;
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_processed_description()) {
+        bobbin.set_winding_orientation(windingOrientation);
+        set_bobbin(bobbin);
+    }
 }
 
 void CoilWrapper::set_layers_orientation(WindingOrientation layersOrientation, std::optional<std::string> sectionName) {
@@ -255,18 +260,17 @@ void CoilWrapper::set_section_alignment(CoilAlignment sectionAlignment) {
 
 WindingOrientation CoilWrapper::get_winding_orientation() {
     auto bobbin = resolve_bobbin();
-    if (!bobbin.get_processed_description()) {
+    auto windingOrientationFromBobbin = bobbin.get_winding_orientation();
+
+    std::cout << "bool(windingOrientationFromBobbin): " << bool(windingOrientationFromBobbin) << std::endl;
+    if (!windingOrientationFromBobbin) {
+        std::cout << "magic_enum::enum_name(_windingOrientation): " << magic_enum::enum_name(_windingOrientation) << std::endl;
         return _windingOrientation;
     }
-    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
-    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    if (windingWindows.size() > 1) {
-        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+    else {
+        std::cout << "magic_enum::enum_name(windingOrientationFromBobbin.value()): " << magic_enum::enum_name(windingOrientationFromBobbin.value()) << std::endl;
+        return windingOrientationFromBobbin.value();
     }
-    if (windingWindows[0].get_sections_orientation()) {
-        return windingWindows[0].get_sections_orientation().value();
-    }
-    return _windingOrientation;
 }
 
 WindingOrientation CoilWrapper::get_layers_orientation() {
@@ -1974,6 +1978,7 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
 
     double spaceForSections = 0;
     auto windingOrientation = get_winding_orientation();
+    std::cout << "magic_enum::enum_name(windingOrientation): " << magic_enum::enum_name(windingOrientation) << std::endl;
 
     if (windingOrientation == WindingOrientation::OVERLAPPING) {
         spaceForSections = windingWindowRadialHeight;
