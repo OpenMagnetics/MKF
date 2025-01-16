@@ -18,8 +18,15 @@ namespace OpenMagnetics {
         return get_advised_magnetic(inputs, weights, maximumNumberResults);
     }
     std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults) {
+        bool filterMode = bool(inputs.get_design_requirements().get_minimum_impedance());
         auto settings = OpenMagnetics::Settings::GetInstance();
         std::vector<MasWrapper> masData;
+
+        if (filterMode) {
+            settings->set_use_toroidal_cores(true);
+            settings->set_use_only_cores_in_stock(false);
+            settings->set_use_concentric_cores(false);
+        }
 
         if (coreDatabase.empty()) {
             load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
@@ -32,16 +39,20 @@ namespace OpenMagnetics {
         settings->set_coil_include_additional_coordinates(false);
 
         std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
-        coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
-        coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
         coreWeights[CoreAdviser::CoreAdviserFilters::COST] = weights[MagneticAdviser::MagneticAdviserFilters::COST];
         coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = weights[MagneticAdviser::MagneticAdviserFilters::DIMENSIONS];
 
-        if (inputs.get_design_requirements().get_minimum_impedance()) {
+        std::cout << "inputs.get_design_requirements().get_minimum_impedance(): " << bool(inputs.get_design_requirements().get_minimum_impedance()) << std::endl;
+
+        if (filterMode) {
+            coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
+            coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 0;
             coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = weights[MagneticAdviser::MagneticAdviserFilters::EFFICIENCY];
             coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
         }
         else {
+            coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
+            coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
             coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = weights[MagneticAdviser::MagneticAdviserFilters::EFFICIENCY];
             coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 0;
         }

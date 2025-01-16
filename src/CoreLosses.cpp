@@ -1006,7 +1006,11 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
         throw std::runtime_error("Magnetizing current not processed");
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
-        throw std::runtime_error("Missing RMS value in magnetizing current");
+        auto magnetizingCurrent = excitation.get_magnetizing_current().value();
+        magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
+        excitation.set_magnetizing_current(magnetizingCurrent);
+
+        // throw std::runtime_error("Missing RMS value in magnetizing current");
     }
     auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
     auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
@@ -1049,7 +1053,10 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
         throw std::runtime_error("Magnetizing current not processed");
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
-        throw std::runtime_error("Missing RMS value in magnetizing current");
+        auto magnetizingCurrent = excitation.get_magnetizing_current().value();
+        magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
+        excitation.set_magnetizing_current(magnetizingCurrent);
+        // throw std::runtime_error("Missing RMS value in magnetizing current");
     }
     auto currentRms = excitation.get_magnetizing_current()->get_processed()->get_rms().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);

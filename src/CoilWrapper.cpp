@@ -5020,7 +5020,7 @@ double CoilWrapper::get_insulation_section_relative_permittivity(CoilWrapper coi
 std::vector<double> CoilWrapper::get_turns_ratios() {
     std::vector<double>  turnsRatios;
     for (size_t windingIndex = 1; windingIndex < get_functional_description().size(); ++windingIndex) {
-        turnsRatios.push_back(get_functional_description()[0].get_number_turns() / get_functional_description()[windingIndex].get_number_turns());
+        turnsRatios.push_back(double(get_functional_description()[0].get_number_turns()) / get_functional_description()[windingIndex].get_number_turns());
     }
 
     return turnsRatios;
