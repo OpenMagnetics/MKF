@@ -885,8 +885,8 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
     }
 
     std::vector<double> turnsRatiosValues;
-    for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
-        double turnsRatio = resolve_dimensional_values(turnsRatios[turnRatioIndex]);
+    for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
+        double turnsRatio = resolve_dimensional_values(turnsRatios[turnsRatioIndex]);
         turnsRatiosValues.push_back(turnsRatio);
     }
 
@@ -897,15 +897,15 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
             if (excitation.get_voltage()) {
-                auto voltage_excitation = excitation.get_voltage().value();
-                voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
-                excitation.set_voltage(voltage_excitation);
+                auto voltageExcitation = excitation.get_voltage().value();
+                voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+                excitation.set_voltage(voltageExcitation);
             }
             // Here we processed this excitation current
             if (excitation.get_current()) {
-                auto current_excitation = excitation.get_current().value();
-                current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
-                excitation.set_current(current_excitation);
+                auto currentExcitation = excitation.get_current().value();
+                currentExcitation = standarize_waveform(currentExcitation, excitation.get_frequency());
+                excitation.set_current(currentExcitation);
             }
             else {
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
@@ -923,18 +923,18 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         if (turnsRatios.size() > operatingPoints[i].get_excitations_per_winding().size() - 1) {
             if (turnsRatios.size() == 1 && operatingPoints[i].get_excitations_per_winding().size() == 1) {
                 // We are missing excitation only for secondary
-                for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
-                    if (turnRatioIndex >= operatingPoints[i].get_excitations_per_winding().size() - 1) {
-                        double turnRatio = resolve_dimensional_values(turnsRatios[turnRatioIndex]);
+                for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
+                    if (turnsRatioIndex >= operatingPoints[i].get_excitations_per_winding().size() - 1) {
+                        double turnsRatio = resolve_dimensional_values(turnsRatios[turnsRatioIndex]);
                         auto excitationOfPrimaryWinding = operatingPoints[i].get_excitations_per_winding()[0];
                         OperatingPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
 
                         excitationOfThisWinding.set_voltage(
-                            reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnRatio));
+                            reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnsRatio));
 
 
                         excitationOfThisWinding.set_current(
-                            reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnRatio));
+                            reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnsRatio));
                         operatingPoints[i].get_mutable_excitations_per_winding().push_back(excitationOfThisWinding);
                     }
                 }
@@ -1253,9 +1253,9 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     if (!excitation.get_voltage()) {
         throw std::invalid_argument("Missing voltage signal");
     }
-    auto voltage_excitation = excitation.get_voltage().value();
-    voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
-    auto waveform = voltage_excitation.get_waveform().value();
+    auto voltageExcitation = excitation.get_voltage().value();
+    voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+    auto waveform = voltageExcitation.get_waveform().value();
 
     auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, addOffset);
@@ -1320,28 +1320,30 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     if (!excitation.get_voltage()) {
         throw std::invalid_argument("Missing voltage signal");
     }
-    auto voltage_excitation = excitation.get_voltage().value();
-    voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
-    auto waveform = voltage_excitation.get_waveform().value();
+    auto voltageExcitation = excitation.get_voltage().value();
+    voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+    auto waveform = voltageExcitation.get_waveform().value();
 
     auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
 
-OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance) {
+OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios) {
     std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
     std::vector<Waveform> voltageSampledWaveforms;
     bool allExcitationHaveVoltage = true;
 
-    for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+    for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
         // Here we processed this excitation current
-        if (excitation.get_current()) {
-            auto current_excitation = excitation.get_current().value();
 
-            if (!is_standardized(current_excitation)) {
-                current_excitation = standarize_waveform(current_excitation, excitation.get_frequency());
+        if (excitation.get_current()) {
+            auto currentExcitation = excitation.get_current().value();
+
+            if (!is_standardized(currentExcitation)) {
+                currentExcitation = standarize_waveform(currentExcitation, excitation.get_frequency());
             }
-            auto waveform = current_excitation.get_waveform().value();
+            auto waveform = currentExcitation.get_waveform().value();
             Waveform sampledWaveform;
             if (!is_waveform_sampled(waveform)) {
                 sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
@@ -1349,17 +1351,35 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             else {
                 sampledWaveform = waveform;
             }
-            current_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            current_excitation.set_processed(calculate_processed_data(current_excitation, sampledWaveform, true, current_excitation.get_processed()));
-            excitation.set_current(current_excitation);
+            currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
+            excitation.set_current(currentExcitation);
+        }
+        else {
+            if (operatingPoint.get_excitations_per_winding().size() == 2 && windingIndex == 1 && operatingPoint.get_excitations_per_winding()[0].get_current() && turnsRatios) {
+                auto turnsRatio = turnsRatios.value()[0];
+                auto currentExcitation = reflect_waveform(operatingPoint.get_excitations_per_winding()[0].get_current().value(), turnsRatio);
+                auto waveform = currentExcitation.get_waveform().value();
+                Waveform sampledWaveform;
+                if (!is_waveform_sampled(waveform)) {
+                    sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+                }
+                else {
+                    sampledWaveform = waveform;
+                }
+                currentExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+                currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
+                excitation.set_current(currentExcitation);
+            }
+
         }
         // Here we processed this excitation voltage
         if (excitation.get_voltage()) {
-            auto voltage_excitation = excitation.get_voltage().value();
-            if (!is_standardized(voltage_excitation)) {
-                voltage_excitation = standarize_waveform(voltage_excitation, excitation.get_frequency());
+            auto voltageExcitation = excitation.get_voltage().value();
+            if (!is_standardized(voltageExcitation)) {
+                voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
             }
-            auto waveform = voltage_excitation.get_waveform().value();
+            auto waveform = voltageExcitation.get_waveform().value();
             Waveform sampledWaveform;
             if (!is_waveform_sampled(waveform)) {
                 sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
@@ -1368,15 +1388,34 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
                 sampledWaveform = waveform;
             }
             voltageSampledWaveforms.push_back(sampledWaveform);
-            voltage_excitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
-            voltage_excitation.set_processed(calculate_processed_data(voltage_excitation, sampledWaveform));
-            excitation.set_voltage(voltage_excitation);
+            voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+            voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform));
+            excitation.set_voltage(voltageExcitation);
         }
         else {
-            allExcitationHaveVoltage = false;
+            if (operatingPoint.get_excitations_per_winding().size() == 2 && windingIndex == 1 && operatingPoint.get_excitations_per_winding()[0].get_voltage() && turnsRatios) {
+                auto turnsRatio = turnsRatios.value()[0];
+                auto voltageExcitation = reflect_waveform(operatingPoint.get_excitations_per_winding()[0].get_voltage().value(), 1 / turnsRatio);
+                auto waveform = voltageExcitation.get_waveform().value();
+                Waveform sampledWaveform;
+                if (!is_waveform_sampled(waveform)) {
+                    sampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+                }
+                else {
+                    sampledWaveform = waveform;
+                }
+                voltageExcitation.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+                voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform, true, voltageExcitation.get_processed()));
+                excitation.set_voltage(voltageExcitation);
+            }
+            else {
+                allExcitationHaveVoltage = false;
+            }
         }
         processedExcitationsPerWinding.push_back(excitation);
     }
+    operatingPoint.set_excitations_per_winding(processedExcitationsPerWinding);
+
     if (allExcitationHaveVoltage) {
         std::vector<double> turnsRatios;
         double primaryVoltageRms = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_processed()->get_rms().value();
@@ -1449,14 +1488,14 @@ OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mas
         }
         operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
     }
-    for (size_t turnRatioIndex = 0; turnRatioIndex < turnsRatios.size(); ++turnRatioIndex) {
-        auto turnsRatio = turnsRatios[turnRatioIndex];
+    for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
+        auto turnsRatio = turnsRatios[turnsRatioIndex];
         OperatingPointExcitation excitation;
         excitation.set_frequency(frequency);
         SignalDescriptor current;
         Processed processed;
         processed.set_label(WaveformLabel::SINUSOIDAL);
-        processed.set_peak_to_peak(2 * currentPeakMask[turnRatioIndex + 1]);
+        processed.set_peak_to_peak(2 * currentPeakMask[turnsRatioIndex + 1]);
         processed.set_duty_cycle(0.5);
         processed.set_offset(0);
         current.set_processed(processed);

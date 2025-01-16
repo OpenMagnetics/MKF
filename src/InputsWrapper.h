@@ -32,7 +32,7 @@ class InputsWrapper : public Inputs {
 
     std::pair<bool, std::string> check_integrity();
     void process_waveforms();
-    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance);
+    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt);
 
     static bool is_waveform_sampled(Waveform waveform);
     static bool is_waveform_imported(Waveform waveform);
