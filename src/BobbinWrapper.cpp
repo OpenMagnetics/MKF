@@ -646,4 +646,39 @@ bool BobbinWrapper::check_if_fits(double dimension, bool isHorizontalOrRadial, s
     }
 }
 
+
+
+void BobbinWrapper::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        throw std::runtime_error("Boobbin has not been processed yet");
+    }
+
+    auto bobbinProcessedDescription = get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (windingWindows.size() > 1) {
+        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+    }
+    windingWindows[windingWindowIndex].set_sections_orientation(windingOrientation);
+    bobbinProcessedDescription.set_winding_windows(windingWindows);
+    set_processed_description(bobbinProcessedDescription);
+}
+
+
+std::optional<WindingOrientation> BobbinWrapper::get_winding_orientation(size_t windingWindowIndex) {
+    if (!get_processed_description()) {
+        return std::nullopt;
+    }
+
+    auto bobbinProcessedDescription = get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    if (windingWindows.size() > 1) {
+        throw std::runtime_error("Bobbins with more than winding window not implemented yet");
+    }
+    if (windingWindows[windingWindowIndex].get_sections_orientation()) {
+        return windingWindows[windingWindowIndex].get_sections_orientation().value();
+    }
+
+    return std::nullopt;
+}
+
 } // namespace OpenMagnetics

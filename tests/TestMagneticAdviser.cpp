@@ -875,6 +875,22 @@ SUITE(MagneticAdviser) {
         
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, weights, 6);
 
+        if (plot && masMagnetics.size() > 0) {
+            std::cout << magic_enum::enum_name(masMagnetics[0].first.get_mutable_magnetic().get_mutable_coil().get_winding_orientation()) << std::endl;
+            auto masMagnetic = masMagnetics[0].first;
+            // OpenMagnetics::MagneticAdviser::preview_magnetic(masMagnetic);
+            OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_MagneticAdviser_Web_7.svg";
+            outFile.append(filename);
+            OpenMagnetics::Painter painter(outFile, true);
+
+            painter.paint_core(masMagnetic.get_mutable_magnetic());
+            painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+            painter.export_svg();
+        }
     }
 
     TEST(Test_MagneticAdviser_Inductor) {
