@@ -3293,14 +3293,22 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                         bool tryMinus45Degrees = true;
                         bool try60Degrees = true;
                         bool tryMinus60Degrees = true;
+                        bool tryAvoidingCollisionDistance = true;
                         double previousCollisionDistance = 0;
                         std::vector<double> originalCollidedCoordinate;
                         double restoredHeightAfter60Degrees = 0;
 
                         double collisionDistance = collisions[0].first;
                         auto collidedCoordinate = collisions[0].second;
+
+                        uint64_t timeout = 1000;
                         while (newCoordinates[0] > additionalCoordinates[0]) {
-                            if (collisionDistance < 1e-6) {
+                            timeout--;
+                            if (timeout == 0) {
+                                throw std::runtime_error("timeout in wind_toroidal_additional_turns");
+                            }
+                            if (tryAvoidingCollisionDistance && collisionDistance < 1e-6) {
+                                tryAvoidingCollisionDistance = false;
                                 if (collidedCoordinate[1] > newCoordinates[1]) {
                                     newCoordinates[1] -= ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
                                 }
@@ -3398,6 +3406,7 @@ bool CoilWrapper::wind_toroidal_additional_turns() {
                                 try60Degrees = true;
                                 tryMinus60Degrees = true;
                                 tryAngularMove = true;
+                                tryAvoidingCollisionDistance = true;
                                 previousCollisionDistance = 0;
                                 if (restoredHeightAfter60Degrees != 0) {
                                     newCoordinates[0] = restoredHeightAfter60Degrees;
