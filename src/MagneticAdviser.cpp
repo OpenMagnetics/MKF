@@ -42,8 +42,6 @@ namespace OpenMagnetics {
         coreWeights[CoreAdviser::CoreAdviserFilters::COST] = weights[MagneticAdviser::MagneticAdviserFilters::COST];
         coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = weights[MagneticAdviser::MagneticAdviserFilters::DIMENSIONS];
 
-        std::cout << "inputs.get_design_requirements().get_minimum_impedance(): " << bool(inputs.get_design_requirements().get_minimum_impedance()) << std::endl;
-
         if (filterMode) {
             coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
             coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 0;
