@@ -396,6 +396,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Section> CoilAdviser::get_advised_sections(MasWrapper mas, std::vector<size_t> pattern, size_t repetitions){
+        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
         auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs());
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
@@ -406,6 +407,9 @@ namespace OpenMagnetics {
         else {
             coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
             coil.set_section_alignment(CoilAlignment::SPREAD);
+            if (filterMode) {
+                coil.set_turns_alignment(CoilAlignment::CENTERED);
+            }
         }
 
         coil.set_strict(false);
