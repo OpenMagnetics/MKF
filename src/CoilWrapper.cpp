@@ -262,13 +262,10 @@ WindingOrientation CoilWrapper::get_winding_orientation() {
     auto bobbin = resolve_bobbin();
     auto windingOrientationFromBobbin = bobbin.get_winding_orientation();
 
-    std::cout << "bool(windingOrientationFromBobbin): " << bool(windingOrientationFromBobbin) << std::endl;
     if (!windingOrientationFromBobbin) {
-        std::cout << "magic_enum::enum_name(_windingOrientation): " << magic_enum::enum_name(_windingOrientation) << std::endl;
         return _windingOrientation;
     }
     else {
-        std::cout << "magic_enum::enum_name(windingOrientationFromBobbin.value()): " << magic_enum::enum_name(windingOrientationFromBobbin.value()) << std::endl;
         return windingOrientationFromBobbin.value();
     }
 }
@@ -1978,7 +1975,6 @@ bool CoilWrapper::wind_by_round_sections(std::vector<double> proportionPerWindin
 
     double spaceForSections = 0;
     auto windingOrientation = get_winding_orientation();
-    std::cout << "magic_enum::enum_name(windingOrientation): " << magic_enum::enum_name(windingOrientation) << std::endl;
 
     if (windingOrientation == WindingOrientation::OVERLAPPING) {
         spaceForSections = windingWindowRadialHeight;

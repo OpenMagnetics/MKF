@@ -400,8 +400,6 @@ namespace OpenMagnetics {
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
 
-        std::cout << magic_enum::enum_name(coil.get_winding_orientation()) << std::endl;
-
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
         coil.calculate_insulation(true);
