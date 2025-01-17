@@ -138,7 +138,7 @@ class CircuitSimulationReader {
     CircuitSimulationReader() = default;
     virtual ~CircuitSimulationReader() = default;
 
-    CircuitSimulationReader(std::string filePathOrFile);
+    CircuitSimulationReader(std::string filePathOrFile, bool forceFile=false);
 
     void process_line(std::string line, char separator);
     bool extract_winding_indexes(size_t numberWindings);
