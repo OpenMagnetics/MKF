@@ -928,4 +928,37 @@ SUITE(CircuitSimulationReader) {
         CHECK(!mapColumnNames[1]["current"].compare("Isec"));
         CHECK(!mapColumnNames[1]["voltage"].compare("Vsec"));
     }
+
+
+    TEST(Test_Extract_Column_Names_Web_0) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
+
+        double frequency = 372618;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        auto mapColumnNames = reader.extract_map_column_names(2, frequency);
+
+        CHECK(mapColumnNames.size() == 2);
+        CHECK(!mapColumnNames[0]["time"].compare("Time / s"));
+        CHECK(!mapColumnNames[0]["current"].compare("I_trafo_HV"));
+        CHECK(!mapColumnNames[0]["voltage"].compare("U_trafo_HV"));
+        CHECK(!mapColumnNames[1]["time"].compare("Time / s"));
+        CHECK(!mapColumnNames[1]["current"].compare("I_trafo_LV"));
+        CHECK(!mapColumnNames[1]["voltage"].compare("U_trafo_LV"));
+    }
+
+    TEST(Test_Import_Csv_Web_0) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
+
+        double frequency = 250000;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 10e-6);
+    std::cout << "Mierdon 7" << std::endl;
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+    }
+
 }

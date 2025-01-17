@@ -1081,6 +1081,8 @@ bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
         {"a", 0},
         {"b", 1},
         {"c", 2},
+        {"HV", 0},
+        {"LV", 1},
     };
 
     std::vector<CircuitSimulationSignal> columnsWithIndexes;
@@ -1279,12 +1281,21 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
     OperatingPoint operatingPoint;
 
     std::vector<OperatingPointExcitation> excitationsPerWinding;
+    std::cout << "Mierda 0" << std::endl;
     if (!mapColumnNames) {
+    std::cout << "Mierda 1" << std::endl;
         extract_winding_indexes(numberWindings);
+    std::cout << "Mierda 2" << std::endl;
         extract_column_types(frequency);
+    std::cout << "Mierda 3" << std::endl;
     }
     else {
         assign_column_names(mapColumnNames.value());
+    }
+    std::cout << "Mierda 4" << std::endl;
+    for (auto column : _columns) {
+        std::cout << column.name << std::endl;
+        std::cout << magic_enum::enum_name(column.type) << std::endl;
     }
 
     for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
@@ -1306,11 +1317,13 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
         }
         excitationsPerWinding.push_back(excitation);
     }
+    std::cout << "Mierda 5" << std::endl;
 
     operatingPoint.set_excitations_per_winding(excitationsPerWinding);
     [[maybe_unused]] OperatingConditions conditions;
     conditions.set_ambient_temperature(ambientTemperature);
     operatingPoint.set_conditions(conditions);
+    std::cout << "Mierda 6" << std::endl;
 
     return operatingPoint;
 }
