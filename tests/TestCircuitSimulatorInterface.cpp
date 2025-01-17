@@ -934,7 +934,21 @@ SUITE(CircuitSimulationReader) {
         std::string file_path = __FILE__;
         auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_0.csv");
 
-        double frequency = 372618;
+        std::string file = "";
+        std::string line;
+        std::ifstream is(simulation_path);
+        if(is.is_open()) {
+            while(getline(is, line)) {
+                file += line;
+                file += "\n";
+            }
+            is.close();
+        }
+        else {
+            throw std::runtime_error("File not found");
+        }
+
+        double frequency = 250000;
         auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
         auto mapColumnNames = reader.extract_map_column_names(2, frequency);
 
