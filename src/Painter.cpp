@@ -121,6 +121,33 @@ void Painter::increment_current_map_index() {
 ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
     auto settings = OpenMagnetics::Settings::GetInstance();
 
+
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+        throw std::runtime_error("Current is missing in excitation");
+    }
+    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
+        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
+            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            if (!current.get_waveform()) {
+                throw std::runtime_error("Waveform is missing from current");
+            }
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = InputsWrapper::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            current.set_harmonics(harmonics);
+            if (!current.get_processed()) {
+                auto processed = InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, true);
+                current.set_processed(processed);
+            }
+            else {
+                if (!current.get_processed()->get_rms()) {
+                    auto processed = InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, true);
+                    current.set_processed(processed);
+                }
+            }
+            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+        }
+    }
+
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
 
