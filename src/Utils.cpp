@@ -673,7 +673,8 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
 
     auto wires = get_wires(wireType, wireStandard);
     double minimumDistance = DBL_MAX;
-    OpenMagnetics::WireWrapper minimumDistanceWire;
+    OpenMagnetics::WireWrapper chosenWire;
+    double minimumDimension = DBL_MAX;
     for (auto wire : wires) {
         double distance = 0;
 
@@ -714,15 +715,21 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
         }
         if (distance < minimumDistance) {
             minimumDistance = distance;
-            minimumDistanceWire = wire;
+            chosenWire = wire;
+        }
+        else if (distance == minimumDistance) {
+            if (wire.get_maximum_outer_dimension() < minimumDimension) {
+                minimumDimension = wire.get_maximum_outer_dimension();
+                chosenWire = wire;
+            }
         }
     }
     if (obfuscate) {
-        minimumDistanceWire.set_name(std::nullopt);
-        minimumDistanceWire.set_coating(std::nullopt);
+        chosenWire.set_name(std::nullopt);
+        chosenWire.set_coating(std::nullopt);
     }
 
-    return minimumDistanceWire;
+    return chosenWire;
 }
 
 OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
