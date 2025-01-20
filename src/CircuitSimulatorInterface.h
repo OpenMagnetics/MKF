@@ -16,6 +16,26 @@ enum class CircuitSimulatorExporterModels : int {
     LTSPICE
 };
 
+void from_json(const json & j, CircuitSimulatorExporterModels & x);
+void to_json(json & j, const CircuitSimulatorExporterModels & x);
+
+inline void from_json(const json & j, CircuitSimulatorExporterModels & x) {
+    if (j == "Group I") x = CircuitSimulatorExporterModels::SIMBA;
+    else if (j == "Group II") x = CircuitSimulatorExporterModels::NGSPICE;
+    else if (j == "Group IIIA") x = CircuitSimulatorExporterModels::LTSPICE;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const CircuitSimulatorExporterModels & x) {
+    switch (x) {
+        case CircuitSimulatorExporterModels::SIMBA: j = "SIMBA"; break;
+        case CircuitSimulatorExporterModels::NGSPICE: j = "NgSpice"; break;
+        case CircuitSimulatorExporterModels::LTSPICE: j = "LtSpice"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+
 enum class CircuitSimulatorExporterCurveFittingModes : int {
     ANALYTICAL,
     LADDER
