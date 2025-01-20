@@ -605,7 +605,7 @@ SUITE(Wire_Equivalents) {
     double max_error = 0.05;
 
     TEST(Test_Find_Round_By_Dimension_European) {
-        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::ROUND, OpenMagnetics::WireStandard::IEC_60317);
+        auto wire = OpenMagnetics::find_wire_by_dimension(0.00072, OpenMagnetics::WireType::ROUND, OpenMagnetics::WireStandard::IEC_60317, false);
         CHECK_EQUAL(wire.get_standard_name().value(), "0.71 mm");
     }
 
