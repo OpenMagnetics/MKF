@@ -52,14 +52,6 @@ class CircuitSimulatorExporter {
 };
 
 class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel {
-    enum class SimbaSupportedDeviceTypes : int {
-        AIR_GAP,
-        LINEAR_CORE,
-        WINDING,
-        ELECTRICAL_PIN
-    };
-
-
     public:
         std::string programName = "Simba";
         double _scale;
