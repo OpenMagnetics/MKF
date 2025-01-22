@@ -798,6 +798,9 @@ void CircuitSimulationReader::process_line(std::string line, char separator) {
     if (_columns.size() == 0) {
         // Getting column names
         while(getline(ss, token, separator)) {
+            if (int(token[0]) < 32) {
+                continue;
+            }
             CircuitSimulationSignal circuitSimulationSignal;
             token.erase(std::remove(token.begin(), token.end(), (char)13), token.end());
             token.erase(std::remove(token.begin(), token.end(), '\"'), token.end());
@@ -808,6 +811,9 @@ void CircuitSimulationReader::process_line(std::string line, char separator) {
     else {
         size_t currentColumnIndex = 0;
         while(getline(ss, token, separator)) {
+            if (int(token[0]) < 32) {
+                continue;
+            }
             _columns[currentColumnIndex].data.push_back(stod(token));
             currentColumnIndex++;
         }
