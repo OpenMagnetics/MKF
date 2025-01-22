@@ -970,7 +970,19 @@ SUITE(CircuitSimulationReader) {
         auto operatingPoint = reader.extract_operating_point(2, frequency);
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 10e-6);
-    std::cout << "Mierdon 7" << std::endl;
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+    }
+
+    TEST(Test_Import_Csv_Web_1) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_1.csv");
+
+        double frequency = 919963.201472;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 10e-6);
 
         CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
     }
