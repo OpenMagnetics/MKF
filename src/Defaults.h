@@ -34,6 +34,7 @@ struct Defaults {
     const std::string defaultEnamelledInsulationMaterial = "Polyurethane 155";
     const std::string defaultInsulationMaterial = "ETFE";
     const std::string defaultLayerInsulationMaterial = "Kapton HN";
+    const std::string defaultConductorMaterial = "copper";
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
 };

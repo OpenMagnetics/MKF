@@ -352,6 +352,9 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(WireWrap
     }
 
     double turnLosses = proximityFactor * pow(He, 2);
+    if (!wire.get_number_conductors()) {
+        wire.set_number_conductors(1);
+    }
     turnLosses *= wire.get_number_conductors().value();
 
     return turnLosses;
