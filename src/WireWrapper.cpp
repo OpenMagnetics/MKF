@@ -138,8 +138,10 @@ namespace OpenMagnetics {
             return resolve_material(strand);
         }
 
-        if (!get_material())
-            throw std::runtime_error("Wire is missing material information");
+        if (!get_material()) {
+            set_material(Defaults().defaultConductorMaterial);
+            // throw std::runtime_error("Wire is missing material information");
+        }
 
         auto material = get_material().value();
         // If the material is a string, we have to load its data from the database
@@ -158,8 +160,10 @@ namespace OpenMagnetics {
             auto strand = wire.resolve_strand();
             return resolve_material(strand);
         }
-        if (!wire.get_material())
-            throw std::runtime_error("Wire is missing material information");
+        if (!wire.get_material()) {
+            wire.set_material(Defaults().defaultConductorMaterial);
+            // throw std::runtime_error("Wire is missing material information");
+        }
 
         auto material = wire.get_material().value();
         // If the material is a string, we have to load its data from the database
@@ -175,8 +179,10 @@ namespace OpenMagnetics {
 
 
     WireMaterial WireWrapper::resolve_material(WireRound wire) { 
-        if (!wire.get_material())
-            throw std::runtime_error("Wire is missing material information");
+        if (!wire.get_material()) {
+            wire.set_material(Defaults().defaultConductorMaterial);
+            // throw std::runtime_error("Wire is missing material information");
+        }
 
         auto material = wire.get_material().value();
         // If the material is a string, we have to load its data from the database
