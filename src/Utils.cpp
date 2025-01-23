@@ -880,6 +880,14 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
         return requirement.get_nominal().value() * (1 - defaults.magnetizingInductanceThresholdValidity) <= value &&
         value <= requirement.get_nominal().value() * (1 + defaults.magnetizingInductanceThresholdValidity);
     }
+    else if (requirement.get_minimum() && !requirement.get_nominal() && !requirement.get_maximum()) {
+        auto defaults = Defaults();
+        return value > requirement.get_minimum().value();
+    }
+    else if (!requirement.get_minimum() && !requirement.get_nominal() && requirement.get_maximum()) {
+        auto defaults = Defaults();
+        return value > requirement.get_maximum().value();
+    }
 
     return false;
 }

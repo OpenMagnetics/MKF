@@ -681,4 +681,29 @@ std::optional<WindingOrientation> BobbinWrapper::get_winding_orientation(size_t 
     return std::nullopt;
 }
 
+std::vector<double> BobbinWrapper::get_maximum_dimensions() {
+    if (!get_processed_description()) {
+        process_data();
+    }
+
+    auto bobbinProcessedDescription = get_processed_description().value();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+
+    double width = 0;
+    double height = 0;
+    double depth = 0;
+
+    auto windingWindowDimensions = get_winding_window_dimensions();
+    if (get_winding_window_shape(0) == WindingWindowShape::RECTANGULAR) {
+        width = 2 * (bobbinProcessedDescription.get_column_width().value() + windingWindowDimensions[0]);
+        height = 2 * bobbinProcessedDescription.get_wall_thickness() + windingWindowDimensions[1];
+        depth = 2 * (bobbinProcessedDescription.get_column_depth() + windingWindowDimensions[0]);
+    }
+    else {
+    }
+
+    return {width, height, depth};
+}
+
+
 } // namespace OpenMagnetics

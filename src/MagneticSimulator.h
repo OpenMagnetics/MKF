@@ -45,8 +45,8 @@ class MagneticSimulator {
             _coreLossesModel.set_core_losses_model_name(model);
         }
 
-        MasWrapper simulate(MasWrapper mas);
-        MasWrapper simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic);
+        MasWrapper simulate(MasWrapper mas, bool fastMode=false);
+        MasWrapper simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic, bool fastMode=false);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);

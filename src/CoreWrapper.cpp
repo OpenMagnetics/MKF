@@ -3106,4 +3106,15 @@ bool CoreWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotation) 
         throw std::runtime_error("Not sure how this happened");
     }
 }
+
+std::vector<double> CoreWrapper::get_maximum_dimensions() {
+    if (!get_processed_description()) {
+        process_data();
+    }
+
+    auto coreProcessedDescription = get_processed_description().value();
+    return {coreProcessedDescription.get_width(), coreProcessedDescription.get_height(), coreProcessedDescription.get_depth()};
+}
+
+
 } // namespace OpenMagnetics
