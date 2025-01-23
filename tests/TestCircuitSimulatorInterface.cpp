@@ -325,7 +325,7 @@ SUITE(CircuitSimulationReader) {
         OpenMagnetics::Waveform waveform;
         waveform.set_time(columns[0]);
         waveform.set_data(columns[1]);
-        auto waveformOnePeriod = OpenMagnetics::CircuitSimulationReader::get_one_period(waveform, 100000);
+        auto waveformOnePeriod = OpenMagnetics::CircuitSimulationReader().get_one_period(waveform, 100000);
         CHECK_EQUAL(128, waveformOnePeriod.get_data().size());
     }
 
@@ -376,9 +376,9 @@ SUITE(CircuitSimulationReader) {
         }
     }
 
-    TEST(Test_Rosano_Web) {
+    TEST(Test_Import_Csv_Rosano_Forward) {
         std::string file_path = __FILE__;
-        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/rosano_web.csv");
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/forward_case.csv");
 
         double turnsRatio = 1.333;
         double frequency = 200000;
@@ -388,11 +388,12 @@ SUITE(CircuitSimulationReader) {
         std::map<std::string, std::string> secondaryColumnNames;
         primaryColumnNames["time"] = "Time";
         primaryColumnNames["current"] = "Ipri";
+        primaryColumnNames["magnetizingCurrent"] = "Im";
         primaryColumnNames["voltage"] = "Vpri";
         mapColumnNames.push_back(primaryColumnNames);
         secondaryColumnNames["time"] = "Time";
-        secondaryColumnNames["current"] = "Id";
-        secondaryColumnNames["voltage"] = "Vout";
+        secondaryColumnNames["current"] = "Isec";
+        secondaryColumnNames["voltage"] = "Vsec";
         mapColumnNames.push_back(secondaryColumnNames);
         auto operatingPoint = reader.extract_operating_point(2, frequency, mapColumnNames);
 
@@ -436,6 +437,80 @@ SUITE(CircuitSimulationReader) {
             outFile.append("primaryVoltage.svg");
             OpenMagnetics::Painter painter(outFile, false, true);
             painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Import_Csv_Rosano_Flyback) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/flyback_case.csv");
+
+        double turnsRatio = 1.333;
+        double frequency = 200000;
+        auto reader = OpenMagnetics::CircuitSimulationReader(simulation_path);
+        std::vector<std::map<std::string, std::string>> mapColumnNames;
+        std::map<std::string, std::string> primaryColumnNames;
+        std::map<std::string, std::string> secondaryColumnNames;
+        primaryColumnNames["time"] = "Time";
+        primaryColumnNames["current"] = "Ipri";
+        primaryColumnNames["magnetizingCurrent"] = "Imag";
+        primaryColumnNames["voltage"] = "Vpri";
+        mapColumnNames.push_back(primaryColumnNames);
+        secondaryColumnNames["time"] = "Time";
+        secondaryColumnNames["current"] = "Isec";
+        secondaryColumnNames["voltage"] = "Vsec";
+        mapColumnNames.push_back(secondaryColumnNames);
+        auto operatingPoint = reader.extract_operating_point(2, frequency, mapColumnNames);
+
+        operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 50e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+        auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+        auto secondaryExcitation = operatingPoint.get_excitations_per_winding()[1];
+        auto primaryFrequency = primaryExcitation.get_frequency();
+        auto primaryCurrent = primaryExcitation.get_current().value();
+        auto secondaryCurrent = secondaryExcitation.get_current().value();
+        auto primaryMagnetizingCurrent = primaryExcitation.get_magnetizing_current().value();
+        auto primaryVoltage = primaryExcitation.get_voltage().value();
+        auto secondaryVoltage = secondaryExcitation.get_voltage().value();
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryMagnetizingCurrent.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryMagnetizingCurrent.get_waveform().value());
+            painter.export_svg();
+        }
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("primaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(primaryVoltage.get_waveform().value());
+            painter.export_svg();
+        }
+        if (true) {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("secondaryVoltage.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_waveform(secondaryVoltage.get_waveform().value());
             painter.export_svg();
         }
     }
