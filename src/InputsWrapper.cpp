@@ -125,56 +125,56 @@ bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
-// bool include_dc_offset_into_magnetizing_current(Waveform voltageSampledWaveform) {
-//     double maximumVoltage = 0;
-//     for (auto point : voltageSampledWaveform.get_data()) {
-//         maximumVoltage = std::max(maximumVoltage, fabs(point));
-//     }
+bool include_dc_offset_into_magnetizing_current_rosano(Waveform voltageSampledWaveform) {
+    double maximumVoltage = 0;
+    for (auto point : voltageSampledWaveform.get_data()) {
+        maximumVoltage = std::max(maximumVoltage, fabs(point));
+    }
 
-//     size_t numberPointsClosedToZero = 0;
-//     for (auto point : voltageSampledWaveform.get_data()) {
-//         if (fabs(point) < maximumVoltage * 0.05) {
-//             numberPointsClosedToZero++;
-//         }
-//     }
-
-//     if (numberPointsClosedToZero > voltageSampledWaveform.get_data().size() * 0.02) {
-//         return true;
-//     }
-//     else {
-//         return false;
-//     }
-// }
-
-bool InputsWrapper::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
-    auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
-    if (excitationPerWinding.size() == 1) {
-        return true;
-    } 
-
-    double primaryRms = 0;
-    // We limit the comparison to one secondary to avoid auxiliaries
-    for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
-        auto excitation = excitationPerWinding[windingIndex];
-        double currentRms = 0;
-        if (!excitation.get_current()->get_processed()) {
-            auto processed = InputsWrapper::calculate_processed_data(excitation.get_current()->get_waveform().value());
-            currentRms = processed.get_rms().value();
-        }
-        else {
-            currentRms = excitation.get_current()->get_processed()->get_rms().value();
-        }
-
-        if (windingIndex == 0) {
-            primaryRms = currentRms;
-        }
-        else {
-            double scaledCurrentRms = currentRms / turnsRatios[windingIndex - 1];
-            if (!is_close_enough(primaryRms, scaledCurrentRms, primaryRms * 0.3)) {
-                return false;
-            }
+    size_t numberPointsClosedToZero = 0;
+    for (auto point : voltageSampledWaveform.get_data()) {
+        if (fabs(point) < maximumVoltage * 0.05) {
+            numberPointsClosedToZero++;
         }
     }
+
+    if (numberPointsClosedToZero > voltageSampledWaveform.get_data().size() * 0.02) {
+        return false;
+    }
+    else {
+        return true;
+    }
+}
+
+bool InputsWrapper::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
+//     auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
+//     if (excitationPerWinding.size() == 1) {
+//         return true;
+//     } 
+
+//     double primaryRms = 0;
+//     // We limit the comparison to one secondary to avoid auxiliaries
+//     for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+//         auto excitation = excitationPerWinding[windingIndex];
+//         double currentRms = 0;
+//         if (!excitation.get_current()->get_processed()) {
+//             auto processed = InputsWrapper::calculate_processed_data(excitation.get_current()->get_waveform().value());
+//             currentRms = processed.get_rms().value();
+//         }
+//         else {
+//             currentRms = excitation.get_current()->get_processed()->get_rms().value();
+//         }
+
+//         if (windingIndex == 0) {
+//             primaryRms = currentRms;
+//         }
+//         else {
+//             double scaledCurrentRms = currentRms / turnsRatios[windingIndex - 1];
+//             if (!is_close_enough(primaryRms, scaledCurrentRms, primaryRms * 0.3)) {
+//                 return false;
+//             }
+//         }
+//     }
 
     return true;
 }
@@ -250,6 +250,26 @@ double InputsWrapper::try_guess_duty_cycle(Waveform waveform, WaveformLabel labe
         }
     }
     auto dutyCycle = roundFloat((maximum_index + 1.0) / settings->get_inputs_number_points_sampled_waveforms(), 2);
+
+    if (dutyCycle <= 0.03 || dutyCycle >= 0.97) {
+
+        double maximum = *max_element(data.begin(), data.end());
+        double threshold = maximum * 0.05;
+
+        double numberPointsOn = 0;
+        double numberPointsOff = 0;
+        for (size_t i = 0; i < data.size() - 1; ++i) {
+            if (data[i] < threshold) {
+                numberPointsOff++;
+            }
+            else {
+                numberPointsOn++;
+            }
+        }
+
+        dutyCycle = numberPointsOn / data.size();
+    }
+
     return dutyCycle;
 }
 
@@ -715,7 +735,6 @@ Waveform InputsWrapper::calculate_derivative_waveform(Waveform waveform) {
     return derivativeWaveform;
 }
 
-
 Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform) {
     std::vector<double> data = waveform.get_data();
     std::vector<double> time = waveform.get_time().value();
@@ -731,8 +750,8 @@ Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform) {
     }
     resultWaveform.set_data(integration);
 
-    double integrationAverage = calculate_waveform_average(resultWaveform);
-    resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
+    // double integrationAverage = calculate_waveform_average(resultWaveform);
+    // resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
 
     std::vector<double> distinctData;
     std::vector<double> distinctTime;
@@ -884,15 +903,15 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
         }
     }
 
-    std::vector<double> turnsRatiosValues;
-    for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
-        double turnsRatio = resolve_dimensional_values(turnsRatios[turnsRatioIndex]);
-        turnsRatiosValues.push_back(turnsRatio);
-    }
+    // std::vector<double> turnsRatiosValues;
+    // for (size_t turnsRatioIndex = 0; turnsRatioIndex < turnsRatios.size(); ++turnsRatioIndex) {
+    //     double turnsRatio = resolve_dimensional_values(turnsRatios[turnsRatioIndex]);
+    //     turnsRatiosValues.push_back(turnsRatio);
+    // }
 
     for (size_t i = 0; i < operatingPoints.size(); ++i) {
         std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
-        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
+        // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
 
         for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
@@ -910,6 +929,7 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
             else {
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
+                bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
                 excitation.set_current(
                     calculate_magnetizing_current(excitation, sampledWaveform, magnetizingInductance, true, includeDcOffsetIntoMagnetizingCurrent));
             }
@@ -1220,6 +1240,31 @@ Waveform InputsWrapper::compress_waveform(Waveform waveform) {
     return waveform;
 }
 
+double get_ac_ripple(Waveform waveform) {
+    Waveform sampledWaveform;
+    if (!InputsWrapper::is_waveform_sampled(waveform)) {
+        sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, 0);
+    }
+    else {
+        sampledWaveform = waveform;
+    }
+ 
+    std::vector<double> data = sampledWaveform.get_data();
+
+    double maximum = *max_element(data.begin(), data.end());
+    double threshold = maximum * 0.05;
+
+    double minimumAcRipple = DBL_MAX;
+    double maximumAcRipple = 0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (data[i] > threshold) {
+            minimumAcRipple = std::min(minimumAcRipple, data[i]);
+            maximumAcRipple = std::max(maximumAcRipple, data[i]);
+        }
+    }
+
+    return maximumAcRipple - minimumAcRipple;
+}
 
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
@@ -1230,6 +1275,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     if (magnetizingInductance <= 0) {
         throw std::runtime_error("magnetizingInductance cannot be zero or negative");
     }
+
     if (addOffset && excitation.get_current()) {
 
         if (!excitation.get_current()->get_processed()) {
@@ -1241,7 +1287,19 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
             excitation.set_current(currentExcitation);
         }
 
-        dcCurrent = excitation.get_current()->get_processed()->get_offset();
+        if (excitation.get_current()->get_waveform()) {
+            double acRipple = get_ac_ripple(excitation.get_current()->get_waveform().value());
+            if (!excitation.get_current()->get_processed()->get_peak()) {
+                auto currentExcitation = excitation.get_current().value();
+                auto processed = calculate_processed_data(excitation.get_current()->get_waveform().value());
+                currentExcitation.set_processed(processed);
+                excitation.set_current(currentExcitation);
+
+            }
+
+            dcCurrent = excitation.get_current()->get_processed()->get_peak().value() - acRipple / 2;
+        }
+        dcCurrent = excitation.get_current()->get_processed()->get_rms().value();
     }
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
@@ -1291,6 +1349,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     else {
         sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform);
         SignalDescriptor magnetizingCurrentExcitation;
+
 
 
 
@@ -1422,10 +1481,12 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
         for (size_t windingIndex = 1; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
             double turnsRatio = primaryVoltageRms / excitation.get_voltage()->get_processed()->get_rms().value();
+
             turnsRatios.push_back(turnsRatio);
         }
 
-        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
+        // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
+        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(voltageSampledWaveforms[0]);
 
         for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
             auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];

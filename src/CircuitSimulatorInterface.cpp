@@ -976,32 +976,40 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     int periodStartIndex = 0;
     int periodStopIndex = -1;
 
-    for (int i = time.size() - 1; i >= 0; --i)
-    {
-        if (time[i] <= periodStart) {
-            periodStartIndex = i;
-            break;
-        }
+    if (_periodStartIndex && _periodStopIndex) {
+        periodStartIndex = _periodStartIndex.value();
+        periodStopIndex = _periodStopIndex.value();
     }
-
-    double previousData = data[periodStartIndex];
-    for (int i = periodStartIndex - 1; i >= 0; --i)
-    {
-        if ((data[i] >= 0 && previousData < 0) || (data[i] <= 0 && previousData > 0)) {
-            periodStartIndex = i;
-            periodStart = time[i];
-            break;
+    else {
+        for (int i = time.size() - 1; i >= 0; --i)
+        {
+            if (time[i] <= periodStart) {
+                periodStartIndex = i;
+                break;
+            }
         }
-        previousData = data[i];
-    }
 
-
-    for (int i = periodStartIndex; i < time.size(); ++i)
-    {
-        if (time[i] >= periodStart + period) {
-            periodStopIndex = i + 1;
-            break;
+        double previousData = data[periodStartIndex];
+        for (int i = periodStartIndex - 1; i >= 0; --i)
+        {
+            if ((data[i] >= 0 && previousData < 0) || (data[i] <= 0 && previousData > 0)) {
+                periodStartIndex = i;
+                periodStart = time[i];
+                break;
+            }
+            previousData = data[i];
         }
+
+
+        for (int i = periodStartIndex; i < time.size(); ++i)
+        {
+            if (time[i] >= periodStart + period) {
+                periodStopIndex = i + 1;
+                break;
+            }
+        }
+        _periodStartIndex = periodStartIndex;
+        _periodStopIndex = periodStopIndex;
     }
 
     auto periodData = std::vector<double>(data.begin() + periodStartIndex, data.begin() + periodStopIndex);
@@ -1171,6 +1179,11 @@ std::optional<CircuitSimulationReader::DataType> CircuitSimulationReader::guess_
             return CircuitSimulationReader::DataType::CURRENT;
         }
     }
+    for (auto magnetizingCurrentAlias : _magnetizingCurrentAliases) {
+        if (name.find(magnetizingCurrentAlias) != std::string::npos)  {
+            return CircuitSimulationReader::DataType::MAGNETIZING_CURRENT;
+        }
+    }
     for (auto voltageAlias : _voltageAliases) {
         if (name.find(voltageAlias) != std::string::npos)  {
             return CircuitSimulationReader::DataType::VOLTAGE;
@@ -1242,6 +1255,9 @@ std::vector<std::map<std::string, std::string>> CircuitSimulationReader::extract
             if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
                 columnNameToSignal["current"] = column.name;
             }
+            if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
+                columnNameToSignal["magnetizingCurrent"] = column.name;
+            }
             if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
                 columnNameToSignal["voltage"] = column.name;
             }
@@ -1261,6 +1277,11 @@ bool CircuitSimulationReader::assign_column_names(std::vector<std::map<std::stri
             for (auto column : _columns) {
                 if (column.name == columnName && columnType == "current") {
                     column.type = DataType::CURRENT;
+                    column.windingIndex = windingIndex;
+                    assignedColumns.push_back(column);
+                }
+                if (column.name == columnName && columnType == "magnetizingCurrent") {
+                    column.type = DataType::MAGNETIZING_CURRENT;
                     column.windingIndex = windingIndex;
                     assignedColumns.push_back(column);
                 }
@@ -1304,6 +1325,13 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 SignalDescriptor current;
                 current.set_waveform(waveform);
                 excitation.set_current(current);
+            }
+            if (column.windingIndex == int(windingIndex) && column.type == DataType::MAGNETIZING_CURRENT) {
+                auto waveform = extract_waveform(column, frequency);
+                SignalDescriptor current;
+                current.set_waveform(waveform);
+                std::cout << column.name << std::endl;
+                excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == int(windingIndex) && column.type == DataType::VOLTAGE) {
                 auto waveform = extract_waveform(column, frequency);

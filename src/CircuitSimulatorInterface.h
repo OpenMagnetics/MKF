@@ -118,6 +118,7 @@ class CircuitSimulationReader {
         TIME,
         VOLTAGE,
         CURRENT,
+        MAGNETIZING_CURRENT,
         UNKNOWN
     };
 
@@ -141,7 +142,11 @@ class CircuitSimulationReader {
     std::vector<Waveform> _waveforms;
     CircuitSimulationSignal _time;
 
+    std::optional<int> _periodStartIndex = std::nullopt;
+    std::optional<int> _periodStopIndex = std::nullopt;
+
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
+    std::vector<std::string> _magnetizingCurrentAliases = {"MAG", "mag", "Im", "Imag"};
     std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It", "Id", "Ipri", "I_", "i_"};
     std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt", "Vout", "Vpri", "V_", "v_"};
 
@@ -161,7 +166,7 @@ class CircuitSimulationReader {
     std::vector<std::string> extract_column_names();
     Waveform extract_waveform(CircuitSimulationSignal signal, double frequency, bool sample=true);
     static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
-    static Waveform get_one_period(Waveform waveform, double frequency, bool sample=true);
+    Waveform get_one_period(Waveform waveform, double frequency, bool sample=true);
     static char guess_separator(std::string line);
     static bool can_be_voltage(std::vector<double> data, double limit=0.05);
     static bool can_be_time(std::vector<double> data);
