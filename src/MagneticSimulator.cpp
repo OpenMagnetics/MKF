@@ -6,10 +6,10 @@
 
 namespace OpenMagnetics {
 
-MasWrapper MagneticSimulator::simulate(MasWrapper mas){
-    return simulate(mas.get_mutable_inputs(), mas.get_mutable_magnetic());
+MasWrapper MagneticSimulator::simulate(MasWrapper mas, bool fastMode){
+    return simulate(mas.get_mutable_inputs(), mas.get_mutable_magnetic(), fastMode);
 }
-MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic){
+MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic, bool fastMode){
     MasWrapper mas;
     std::vector<OutputsWrapper> outputs;
     std::vector<OperatingPoint> simulatedOperatingPoints;
@@ -23,9 +23,11 @@ MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const Magnet
         output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
         std::cout << "Simulating winding_losses" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
-        if (magnetic.get_coil().get_functional_description().size() > 1) {
-            std::cout << "Simulating leakage inductance" << std::endl;
-            output.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
+        if (!fastMode) {
+            if (magnetic.get_coil().get_functional_description().size() > 1) {
+                std::cout << "Simulating leakage inductance" << std::endl;
+                output.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
+            }
         }
         std::cout << "Simulation complete" << std::endl;
 

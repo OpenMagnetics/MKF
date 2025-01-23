@@ -152,5 +152,6 @@ class CoreWrapper : public MagneticCore {
     bool can_be_used_for_filtering();
     OpenMagnetics::CoreType get_type();
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
+    std::vector<double> get_maximum_dimensions();
 };
 } // namespace OpenMagnetics

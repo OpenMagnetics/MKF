@@ -239,5 +239,6 @@ class CoilWrapper : public Coil {
         static double get_insulation_section_relative_permittivity(CoilWrapper coil, std::string sectionName);
 
         std::vector<double> get_turns_ratios();
+        std::vector<double> get_maximum_dimensions();
 };
 } // namespace OpenMagnetics

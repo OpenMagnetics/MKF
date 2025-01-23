@@ -1828,3 +1828,255 @@ SUITE(MagneticAdviser) {
 
 
 }
+SUITE(CatalogAdviser) {
+    bool plot = true;
+
+    // TEST(Test_CatalogAdviser_Found) {
+    //     srand (time(NULL));
+
+    //     std::vector<double> turnsRatios;
+
+    //     std::vector<int64_t> numberTurns = {24, 24};
+    //     std::vector<int64_t> numberParallels = {1, 1};
+
+    //     for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+    //         turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+    //     }
+
+    //     double frequency = 507026;
+    //     double magnetizingInductance = 100e-6;
+    //     double temperature = 25;
+    //     OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
+    //     double peakToPeak = 1;
+    //     double dutyCycle = 0.5;
+    //     double dcCurrent = 0;
+
+    //     auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+    //                                                                                           magnetizingInductance,
+    //                                                                                           temperature,
+    //                                                                                           waveShape,
+    //                                                                                           peakToPeak,
+    //                                                                                           dutyCycle,
+    //                                                                                           dcCurrent,
+    //                                                                                           turnsRatios);
+
+
+    //     auto requirements = inputs.get_mutable_design_requirements();
+    //     auto insulationRequirements = requirements.get_insulation().value();
+    //     auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+    //     insulationRequirements.set_standards(standards);
+    //     requirements.set_insulation(insulationRequirements);
+    //     OpenMagnetics::MaximumDimensions maximumDimensions;
+    //     maximumDimensions.set_depth(0.05);
+    //     maximumDimensions.set_height(0.05);
+    //     maximumDimensions.set_width(0.05);
+    //     requirements.set_maximum_dimensions(maximumDimensions);
+
+    //     OpenMagnetics::DimensionWithTolerance magnetizingInductanceWithTolerance;
+    //     magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance);
+    //     magnetizingInductanceWithTolerance.set_nominal(std::nullopt);
+    //     magnetizingInductanceWithTolerance.set_maximum(std::nullopt);
+
+    //     requirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
+
+    //     inputs.set_design_requirements(requirements);
+
+    //     OpenMagnetics::MasWrapper masMagnetic;
+    //     inputs.process_waveforms();
+
+
+    //     std::vector<std::pair<double, double>> impedancePoints = {
+    //         {1e5, 10000},
+    //         {2e5, 20000},
+    //     };
+
+    //     std::vector<OpenMagnetics::ImpedanceAtFrequency> minimumImpedance;
+    //     for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+    //         OpenMagnetics::ImpedancePoint impedancePoint;
+    //         impedancePoint.set_magnitude(impedanceMagnitudePoint);
+    //         OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+    //         impedanceAtFrequency.set_frequency(frequencyPoint);
+    //         impedanceAtFrequency.set_impedance(impedancePoint);
+    //         minimumImpedance.push_back(impedanceAtFrequency);
+    //     }
+    //     inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+
+
+
+    //     std::vector <OpenMagnetics::MagneticWrapper> catalog;
+    //     std::string file_path = __FILE__;
+    //     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+
+    //     std::ifstream ndjsonFile(inventory_path);
+    //     std::string jsonLine;
+    //     json coresJson = json::array();
+    //     while (std::getline(ndjsonFile, jsonLine)) {
+    //         json jf = json::parse(jsonLine);
+    //         OpenMagnetics::MagneticWrapper magnetic(jf);
+    //         catalog.push_back(magnetic);
+    //     }
+
+
+    //     OpenMagnetics::MagneticAdviser magneticAdviser;
+    //     auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, catalog, 1);
+    //     CHECK(masMagnetics.size() > 0);
+
+    //     auto scorings = magneticAdviser.get_scorings();
+    //     // std::cout << "scorings.size(): " << scorings.size() << std::endl;
+    //     for (auto [name, values] : scorings) {
+    //         double scoringTotal = 0;
+    //         // std::cout << name << std::endl;
+    //         for (auto [key, value] : values) {
+    //             // std::cout << magic_enum::enum_name(key) << std::endl;
+    //             // std::cout << value << std::endl;
+    //             scoringTotal += value;
+    //         }
+    //         // std::cout << "scoringTotal: " << scoringTotal << std::endl;
+    //     }
+
+    //     for (auto masMagneticWithScoring : masMagnetics) {
+    //         auto masMagnetic = masMagneticWithScoring.first;
+    //         // std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
+    //         // std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
+    //         OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+    //         if (plot) {
+    //             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    //             auto outFile = outputFilePath;
+    //             std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
+    //             outFile.append(filename);
+    //             OpenMagnetics::Painter painter(outFile, true);
+
+    //             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+    //             painter.paint_core(masMagnetic.get_mutable_magnetic());
+    //             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+    //             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+    //             painter.export_svg();
+    //         }
+    //     }
+    // }
+
+    // TEST(Test_CatalogAdviser_Not_Found) {
+    //     srand (time(NULL));
+
+    //     std::vector<double> turnsRatios;
+
+    //     std::vector<int64_t> numberTurns = {24, 24};
+    //     std::vector<int64_t> numberParallels = {1, 1};
+
+    //     for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+    //         turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+    //     }
+
+    //     double frequency = 507026;
+    //     double magnetizingInductance = 100e-6;
+    //     double temperature = 25;
+    //     OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
+    //     double peakToPeak = 1;
+    //     double dutyCycle = 0.5;
+    //     double dcCurrent = 0;
+
+    //     auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+    //                                                                                           magnetizingInductance,
+    //                                                                                           temperature,
+    //                                                                                           waveShape,
+    //                                                                                           peakToPeak,
+    //                                                                                           dutyCycle,
+    //                                                                                           dcCurrent,
+    //                                                                                           turnsRatios);
+
+
+    //     auto requirements = inputs.get_mutable_design_requirements();
+    //     auto insulationRequirements = requirements.get_insulation().value();
+    //     auto standards = std::vector<OpenMagnetics::InsulationStandards>{OpenMagnetics::InsulationStandards::IEC_606641};
+    //     insulationRequirements.set_standards(standards);
+    //     requirements.set_insulation(insulationRequirements);
+    //     OpenMagnetics::MaximumDimensions maximumDimensions;
+    //     maximumDimensions.set_depth(0.001);
+    //     maximumDimensions.set_height(0.001);
+    //     maximumDimensions.set_width(0.001);
+    //     requirements.set_maximum_dimensions(maximumDimensions);
+
+    //     OpenMagnetics::DimensionWithTolerance magnetizingInductanceWithTolerance;
+    //     magnetizingInductanceWithTolerance.set_minimum(magnetizingInductance);
+    //     magnetizingInductanceWithTolerance.set_nominal(std::nullopt);
+    //     magnetizingInductanceWithTolerance.set_maximum(std::nullopt);
+
+    //     requirements.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
+
+    //     inputs.set_design_requirements(requirements);
+
+    //     OpenMagnetics::MasWrapper masMagnetic;
+    //     inputs.process_waveforms();
+
+
+    //     std::vector<std::pair<double, double>> impedancePoints = {
+    //         {1e5, 10000},
+    //         {2e5, 20000},
+    //     };
+
+    //     std::vector<OpenMagnetics::ImpedanceAtFrequency> minimumImpedance;
+    //     for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+    //         OpenMagnetics::ImpedancePoint impedancePoint;
+    //         impedancePoint.set_magnitude(impedanceMagnitudePoint);
+    //         OpenMagnetics::ImpedanceAtFrequency impedanceAtFrequency;
+    //         impedanceAtFrequency.set_frequency(frequencyPoint);
+    //         impedanceAtFrequency.set_impedance(impedancePoint);
+    //         minimumImpedance.push_back(impedanceAtFrequency);
+    //     }
+    //     inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+
+
+
+    //     std::vector <OpenMagnetics::MagneticWrapper> catalog;
+    //     std::string file_path = __FILE__;
+    //     auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+
+    //     std::ifstream ndjsonFile(inventory_path);
+    //     std::string jsonLine;
+    //     json coresJson = json::array();
+    //     while (std::getline(ndjsonFile, jsonLine)) {
+    //         json jf = json::parse(jsonLine);
+    //         OpenMagnetics::MagneticWrapper magnetic(jf);
+    //         catalog.push_back(magnetic);
+    //     }
+
+
+    //     OpenMagnetics::MagneticAdviser magneticAdviser;
+    //     auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, catalog, 1);
+    //     CHECK(masMagnetics.size() > 0);
+
+    //     auto scorings = magneticAdviser.get_scorings();
+    //     // std::cout << "scorings.size(): " << scorings.size() << std::endl;
+    //     for (auto [name, values] : scorings) {
+    //         double scoringTotal = 0;
+    //         // std::cout << name << std::endl;
+    //         for (auto [key, value] : values) {
+    //             // std::cout << magic_enum::enum_name(key) << std::endl;
+    //             // std::cout << value << std::endl;
+    //             scoringTotal += value;
+    //         }
+    //         // std::cout << "scoringTotal: " << scoringTotal << std::endl;
+    //     }
+
+    //     for (auto masMagneticWithScoring : masMagnetics) {
+    //         auto masMagnetic = masMagneticWithScoring.first;
+    //         // std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
+    //         // std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
+    //         OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
+    //         if (plot) {
+    //             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+    //             auto outFile = outputFilePath;
+    //             std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
+    //             outFile.append(filename);
+    //             OpenMagnetics::Painter painter(outFile, true);
+
+    //             painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+    //             painter.paint_core(masMagnetic.get_mutable_magnetic());
+    //             painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+    //             painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+    //             painter.export_svg();
+    //         }
+    //     }
+    // }
+
+}

@@ -50,6 +50,8 @@ class MagneticWrapper : public Magnetic {
         std::vector<double> get_turns_ratios();
         WireWrapper get_wire(size_t windingIndex=0);
         std::string get_reference();
+        std::vector<double> get_maximum_dimensions();
+        bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 };
 
 void from_json(const json & j, MagneticWrapper & x);

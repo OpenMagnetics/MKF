@@ -5037,5 +5037,45 @@ std::vector<double> CoilWrapper::get_turns_ratios() {
 }
 
 
+std::vector<double> CoilWrapper::get_maximum_dimensions() {
+    std::vector<double> bobbinMaximumDimensions = resolve_bobbin().get_maximum_dimensions();
+
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns");
+    }
+    auto turns = get_turns_description().value();
+
+    double width = 0;
+    double height = 0;
+    double depth = 0;
+
+    for (auto turn : turns) {
+        double turnMaxWidthPosition = 0;
+        double turnMaxHeightPosition = 0;
+        if (turn.get_additional_coordinates()) {
+            auto additionalCoordinates = turn.get_additional_coordinates().value();
+            turnMaxWidthPosition = fabs(additionalCoordinates[0][0]) + turn.get_dimensions().value()[0] / 2;
+            turnMaxHeightPosition = fabs(additionalCoordinates[0][1]) + turn.get_dimensions().value()[1] / 2;
+        }
+        else {
+            turnMaxWidthPosition = fabs(turn.get_coordinates()[0]) + turn.get_dimensions().value()[0] / 2;
+            turnMaxHeightPosition = fabs(turn.get_coordinates()[1]) + turn.get_dimensions().value()[1] / 2;
+        }
+
+        width = std::max(width, turnMaxWidthPosition);
+        height = std::max(height, turnMaxHeightPosition);
+    }
+
+    double bobbinExtraDepthDimension = bobbinMaximumDimensions[0] - bobbinMaximumDimensions[2];
+    depth = width + bobbinExtraDepthDimension;
+
+    width = std::max(width, bobbinMaximumDimensions[0]);
+    height = std::max(height, bobbinMaximumDimensions[1]);
+    depth = std::max(depth, bobbinMaximumDimensions[2]);
+
+    return std::vector<double>{width, height, depth};
+}
+
+
 } // namespace OpenMagnetics
  
