@@ -228,6 +228,11 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
         sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
             return b1.second > b2.second;
         });
+        if (masMagneticsWithScoring.size() > maximumNumberResults) {
+            masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        }
+
+        return masMagneticsWithScoring;
 
     }
     else {
@@ -238,24 +243,31 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             }
         }
 
+        std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoringNoSimulation;
         for (auto magnetic : catalogMagneticsWithSameTurnsRatio) {
             std::string reference = magnetic.get_manufacturer_info().value().get_reference().value();
             MasWrapper mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);
-            masMagneticsWithScoring.push_back({mas, -scoringPerReference[reference]});
+            masMagneticsWithScoringNoSimulation.push_back({mas, -scoringPerReference[reference]});
         }
-        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
+        sort(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
             return b1.second < b2.second;
         });
+
+        if (masMagneticsWithScoringNoSimulation.size() > maximumNumberResults) {
+            masMagneticsWithScoringNoSimulation = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end() - (masMagneticsWithScoringNoSimulation.size() - maximumNumberResults));
+        }
+
+        for (auto [mas, scoring] : masMagneticsWithScoringNoSimulation) {
+            mas = magneticSimulator.simulate(mas, true);
+            masMagneticsWithScoring.push_back({mas, scoring});
+        }
+
+        return masMagneticsWithScoring;
     }
 
 
-    if (masMagneticsWithScoring.size() > maximumNumberResults) {
-        masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
-    }
-
-    return masMagneticsWithScoring;
 }
 
 std::map<std::string, double> MagneticAdviser::normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
