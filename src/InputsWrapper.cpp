@@ -2178,6 +2178,9 @@ double InputsWrapper::get_maximum_voltage_peak() {
                 process_voltage(excitation);
                 // throw std::invalid_argument("Voltage has not been processed");
             }
+            else if (!excitation.get_voltage()->get_processed()->get_peak()) {
+                process_voltage(excitation);
+            }
             maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_peak().value());
         }
     }
@@ -2272,6 +2275,9 @@ double InputsWrapper::get_maximum_voltage_peak(size_t windingIndex) {
             process_voltage(excitation);
             // throw std::invalid_argument("Voltage has not been processed");
         }
+        else if (!excitation.get_voltage()->get_processed()->get_peak()) {
+            process_voltage(excitation);
+        }
         maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_peak().value());
     }
 
@@ -2293,6 +2299,9 @@ double InputsWrapper::get_maximum_voltage_rms(size_t windingIndex) {
         if (!excitation.get_voltage()->get_processed()) {
             process_voltage(excitation);
             // throw std::invalid_argument("Voltage has not been processed");
+        }
+        else if (!excitation.get_voltage()->get_processed()->get_rms()) {
+            process_voltage(excitation);
         }
         maximumVoltage = std::max(maximumVoltage, excitation.get_voltage()->get_processed()->get_rms().value());
     }

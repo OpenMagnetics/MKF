@@ -85,6 +85,19 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
     DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
     double magnetizingCurrentPeak = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        if (!InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()) {
+            throw std::runtime_error("Missing magnetizing current");
+        }
+        if (!InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()->get_processed()) {
+            auto excitation = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
+            auto magnetizingCurrent = excitation.get_magnetizing_current().value();
+            auto magnetizingCurrentExcitationWaveform = magnetizingCurrent.get_waveform().value();
+            auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrentExcitationWaveform, excitation.get_frequency());
+            magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+            magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true, magnetizingCurrent.get_processed()));
+            excitation.set_magnetizing_current(magnetizingCurrent);
+            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0] = excitation;
+        }
         magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current().value().get_processed().value().get_peak().value());
     }
     DimensionWithTolerance magneticEnergyRequirement;
