@@ -122,4 +122,6 @@ bool check_turns_description(OpenMagnetics::CoilWrapper coil);
 bool check_wire_standards(OpenMagnetics::CoilWrapper coil);
 void check_winding_losses(OpenMagnetics::MasWrapper mas);
 
+OpenMagnetics::MasWrapper mas_loader(std::string path);
+
 } // namespace OpenMagneticsTesting

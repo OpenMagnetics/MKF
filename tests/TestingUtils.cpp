@@ -789,5 +789,22 @@ void check_winding_losses(OpenMagnetics::MasWrapper mas) {
     }
 }
 
+OpenMagnetics::MasWrapper mas_loader(std::string path) {
+    std::ifstream f(path);
+    auto masJson = json::parse(f);
+    auto inputsJson = masJson["inputs"];
+    auto magneticJson = masJson["magnetic"];
+    auto outputsJson = masJson["outputs"];
+    auto inputs = OpenMagnetics::InputsWrapper(inputsJson);
+    auto magnetic = OpenMagnetics::MagneticWrapper(magneticJson);
+    auto outputs = std::vector<OpenMagnetics::OutputsWrapper>(outputsJson);
+    OpenMagnetics::MasWrapper mas;
+    mas.set_inputs(inputs);
+    mas.set_magnetic(magnetic);
+    mas.set_outputs(outputs);
+    return mas;
+}
+
+
 
 } // namespace OpenMagneticsTesting
