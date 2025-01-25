@@ -208,7 +208,8 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     }
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+    double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
+                                       magneticFluxDensity.get_processed().value().get_offset();
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
@@ -227,7 +228,7 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     double beta = steinmetzDatum.get_beta();
     double volumetricLosses;
     if (beta > 2) {
-        volumetricLosses = k * pow(frequency, alpha) * pow(mainHarmonicMagneticFluxDensityPeak, beta - 2) * pow(magneticFluxDensityAcPeak, 2);
+        volumetricLosses = k * pow(frequency, alpha) * pow(mainHarmonicMagneticFluxDensityAcPeak, beta - 2) * pow(magneticFluxDensityAcPeak, 2);
     }
     else {
         volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);

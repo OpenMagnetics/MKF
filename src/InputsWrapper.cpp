@@ -2481,24 +2481,27 @@ void InputsWrapper::set_current_as_magnetizing_current(OperatingPoint* operating
 }
 
 double InputsWrapper::get_switching_frequency(OperatingPointExcitation excitation) {
-    if (excitation.get_current()) {
-        if (excitation.get_current()->get_waveform()) {
-            auto waveform = excitation.get_current()->get_waveform().value();
-            if (waveform.get_data().size() > Constants().numberPointsSampledWaveforms) {
-                if (excitation.get_current()->get_harmonics()) {
-                    auto harmonics = excitation.get_current()->get_harmonics().value();
-                    double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
-                    double strongestHarmonicAmplitudeAfterMain = 0;
-                    double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
-                    for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-                        if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
-                            if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
-                                strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
-                                strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
+    if (excitation.get_frequency() < 400) {
+        if (excitation.get_current()) {
+            if (excitation.get_current()->get_waveform()) {
+                auto waveform = excitation.get_current()->get_waveform().value();
+                if (waveform.get_data().size() > Constants().numberPointsSampledWaveforms) {
+                    if (excitation.get_current()->get_harmonics()) {
+                        auto harmonics = excitation.get_current()->get_harmonics().value();
+                        double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
+                        double strongestHarmonicAmplitudeAfterMain = 0;
+                        double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
+                        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+                            if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
+                                if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
+                                    strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
+                                    strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
+                                }
                             }
                         }
+
+                        return strongestHarmonicAmplitudeAfterMainFrequency;
                     }
-                    return strongestHarmonicAmplitudeAfterMainFrequency;
                 }
             }
         }
