@@ -38,7 +38,12 @@ bool _addInternalData = true;
 
 namespace OpenMagnetics {
 
-void load_cores(bool includeToroidalCores, bool useOnlyCoresInStock, bool includeConcentricCores) {
+void load_cores() {
+    auto settings = OpenMagnetics::Settings::GetInstance();
+    bool includeToroidalCores = settings->get_use_toroidal_cores();
+    bool includeConcentricCores = settings->get_use_concentric_cores();
+    bool useOnlyCoresInStock = settings->get_use_only_cores_in_stock();
+
     auto fs = cmrc::data::get_filesystem();
     if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
         auto data = fs.open("MAS/data/cores_stock.ndjson");
@@ -108,14 +113,21 @@ void clear_databases() {
     wireMaterialDatabase.clear();
 }
 
-void load_core_materials() {
+void load_core_materials(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
     auto fs = cmrc::data::get_filesystem();
     {
-        auto data = fs.open("MAS/data/core_materials.ndjson");
-        std::string database = std::string(data.begin(), data.end());
+        std::string database;
+        if (fileToLoad) {
+            database = fileToLoad.value();
+        }
+        else {
+            auto data = fs.open("MAS/data/core_materials.ndjson");
+            database = std::string(data.begin(), data.end());
+        }
+
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
@@ -132,7 +144,7 @@ void load_core_materials() {
     }
 }
 
-void load_core_shapes(bool withAliases) {
+void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
@@ -141,8 +153,16 @@ void load_core_shapes(bool withAliases) {
         auto settings = OpenMagnetics::Settings::GetInstance();
         bool includeToroidalCores = settings->get_use_toroidal_cores();
         bool includeConcentricCores = settings->get_use_concentric_cores();
-        auto data = fs.open("MAS/data/core_shapes.ndjson");
-        std::string database = std::string(data.begin(), data.end());
+
+        std::string database;
+        if (fileToLoad) {
+            database = fileToLoad.value();
+        }
+        else {
+            auto data = fs.open("MAS/data/core_shapes.ndjson");
+            database = std::string(data.begin(), data.end());
+        }
+
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
@@ -166,14 +186,21 @@ void load_core_shapes(bool withAliases) {
     }
 }
 
-void load_wires() {
+void load_wires(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
     auto fs = cmrc::data::get_filesystem();
     {
-        auto data = fs.open("MAS/data/wires.ndjson");
-        std::string database = std::string(data.begin(), data.end());
+        std::string database;
+        if (fileToLoad) {
+            database = fileToLoad.value();
+        }
+        else {
+            auto data = fs.open("MAS/data/wires.ndjson");
+            database = std::string(data.begin(), data.end());
+        }
+
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;

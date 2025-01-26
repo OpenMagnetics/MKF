@@ -595,7 +595,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
     _weights = weights;
 
     if (coreDatabase.empty()) {
-        load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
+        load_cores();
     }
 
     std::vector<std::pair<CoreWrapper, double>> cores;
