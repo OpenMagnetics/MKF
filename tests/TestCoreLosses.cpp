@@ -2529,7 +2529,7 @@ SUITE(CoreLossesAssorted) {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/forward.mas.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
-        auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
+        auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
 
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
@@ -2551,6 +2551,7 @@ SUITE(CoreLossesAssorted) {
         auto maximumError = 0.1;
         json mierda;
         to_json(mierda, magneticFluxDensity.get_processed().value());
+        std::cout << "calculatedCoreLosses: " << calculatedCoreLosses << std::endl;
 
         CHECK_CLOSE(0.145, magneticFluxDensity.get_processed().value().get_peak().value(), 0.145 * maximumError);
         CHECK_CLOSE(expectedLosses, calculatedCoreLosses, expectedLosses * maximumError);
