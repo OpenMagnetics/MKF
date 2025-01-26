@@ -1928,7 +1928,7 @@ SUITE(MagneticAdviser) {
 SUITE(CatalogAdviser) {
     bool plot = true;
 
-    TEST(Test_CatalogAdviser_Found) {
+    TEST(Test_CatalogAdviser_Found) { 
         srand (time(NULL));
 
         std::vector<double> turnsRatios;

@@ -675,6 +675,8 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
     double minimumDistance = DBL_MAX;
     OpenMagnetics::WireWrapper chosenWire;
     double minimumDimension = DBL_MAX;
+    std::vector<OpenMagnetics::WireWrapper> possibleWires;
+
     for (auto wire : wires) {
         double distance = 0;
 
@@ -713,17 +715,30 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
+        if (distance == 0 || fabs(distance) <= 0.000000001) {
+            possibleWires.push_back(wire);
+        }
+
         if (distance < minimumDistance) {
             minimumDistance = distance;
             chosenWire = wire;
         }
-        else if (distance == minimumDistance) {
+        else if (distance == minimumDistance || fabs(distance - minimumDistance) <= 0.000000001) {
             if (wire.get_maximum_outer_dimension() < minimumDimension) {
                 minimumDimension = wire.get_maximum_outer_dimension();
                 chosenWire = wire;
             }
         }
     }
+
+    double minimumOuterDimension = DBL_MAX;
+    for (auto wire : possibleWires) {
+        if (minimumOuterDimension > wire.get_maximum_outer_dimension()) {
+            minimumOuterDimension = wire.get_maximum_outer_dimension();
+            chosenWire = wire;
+        }
+    }
+
     if (obfuscate) {
         chosenWire.set_name(std::nullopt);
         chosenWire.set_coating(std::nullopt);

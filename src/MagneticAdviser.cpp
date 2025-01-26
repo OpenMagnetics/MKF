@@ -176,7 +176,8 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             for (auto impedanceAtFrequency : impedanceRequirement) {
                 auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, impedanceAtFrequency.get_frequency());
                 scoringPerReferencePerRequirement["impedance"][reference] += fabs(impedanceAtFrequency.get_impedance().get_magnitude() - abs(impedance));
-                if (impedanceAtFrequency.get_impedance().get_magnitude() < abs(impedance)) {
+
+                if (impedanceAtFrequency.get_impedance().get_magnitude() > abs(impedance)) {
                     validMagnetic = false;
                     // continue;
                 }
