@@ -1040,7 +1040,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsW
 std::vector<std::pair<MasWrapper, double>> CoreAdviser::get_advised_core(InputsWrapper inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     auto settings = OpenMagnetics::Settings::GetInstance();
     if (coreDatabase.empty()) {
-        load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
+        load_cores();
     }
     return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
 }

@@ -31,7 +31,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
     }
 
     if (coreDatabase.empty()) {
-        load_cores(settings->get_use_toroidal_cores(), settings->get_use_only_cores_in_stock(), settings->get_use_concentric_cores());
+        load_cores();
     }
     if (wireDatabase.empty()) {
         load_wires();
