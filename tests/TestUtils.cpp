@@ -241,6 +241,10 @@ SUITE(Utils) {
         CHECK(allCoreMaterialsWithExternal.size() > allCoreMaterials.size());
     }
 
+    TEST(Test_Core_Shapes_Families) {
+        CHECK(OpenMagnetics::get_shape_families().size() > 0);
+    }
+
     TEST(Test_Core_Shapes_External) {
         std::string file_path = __FILE__;
         auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
