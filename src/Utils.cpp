@@ -28,6 +28,7 @@ using json = nlohmann::json;
 std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
 std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
+std::vector<OpenMagnetics::CoreShapeFamily> coreShapeFamiliesInDatabase;
 std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
 std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
@@ -107,6 +108,7 @@ void clear_databases() {
     coreDatabase.clear();
     coreMaterialDatabase.clear();
     coreShapeDatabase.clear();
+    coreShapeFamiliesInDatabase.clear();
     wireDatabase.clear();
     bobbinDatabase.clear();
     insulationMaterialDatabase.clear();
@@ -174,6 +176,9 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
             json jf = json::parse(token);
             CoreShape coreShape(jf);
             if ((includeToroidalCores && coreShape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && coreShape.get_family() != CoreShapeFamily::T)) {
+                if (std::find(coreShapeFamiliesInDatabase.begin(), coreShapeFamiliesInDatabase.end(), coreShape.get_family()) == coreShapeFamiliesInDatabase.end()) {
+                    coreShapeFamiliesInDatabase.push_back(coreShape.get_family());
+                }
                 coreShapeDatabase[jf["name"]] = coreShape;
                 if (withAliases) {
                     for (auto& alias : jf["aliases"]) {
@@ -496,7 +501,7 @@ std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer
 std::vector<std::string> get_shape_names() {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
-}
+    }
     auto settings = OpenMagnetics::Settings::GetInstance();
     bool includeToroidalCores = settings->get_use_toroidal_cores();
     bool includeConcentricCores = settings->get_use_concentric_cores();
@@ -510,6 +515,15 @@ std::vector<std::string> get_shape_names() {
     }
 
     return shapeNames;
+}
+
+
+std::vector<OpenMagnetics::CoreShapeFamily> get_shape_families() {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    return coreShapeFamiliesInDatabase;
 }
 
 std::vector<std::string> get_wire_names() {

@@ -18,6 +18,7 @@
 extern std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
 extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
 extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
+extern std::vector<OpenMagnetics::CoreShapeFamily> coreShapeFamiliesInDatabase;
 extern std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
 extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
 extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
@@ -168,6 +169,7 @@ void load_databases(json data, bool withAliases=true, bool addInternalData=true)
 std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_material_names(std::optional<std::string> manufacturer);
 std::vector<std::string> get_shape_names();
+std::vector<OpenMagnetics::CoreShapeFamily> get_shape_families();
 std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();
 std::vector<std::string> get_insulation_material_names();
