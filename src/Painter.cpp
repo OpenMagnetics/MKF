@@ -433,7 +433,7 @@ void Painter::export_svg() {
         lines.push_back(line);
     }
 
-    std::filesystem::remove(std::filesystem::path(tempFile));
+    // std::filesystem::remove(std::filesystem::path(tempFile));
 
     for (size_t lineIndex = lines.size() - 1; lineIndex > 0 ; --lineIndex) {
         std::string currentLine = lines[lineIndex];
