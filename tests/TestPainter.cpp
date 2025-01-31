@@ -3877,10 +3877,10 @@ SUITE(WirePainter) {
 
             OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
             wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
-            wire.set_nominal_value_conducting_height(1e-6);
+            wire.set_nominal_value_conducting_height(2e-6);
             wire.set_nominal_value_conducting_width(4e-6);
-            wire.set_nominal_value_outer_height(1.18e-6);
-            wire.set_nominal_value_outer_width(4.29e-6);
+            wire.set_nominal_value_outer_height(OpenMagnetics::WireWrapper::get_outer_height_rectangular(2e-6, 2, OpenMagnetics::WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_width(OpenMagnetics::WireWrapper::get_outer_height_rectangular(4e-6, 2, OpenMagnetics::WireStandard::IEC_60317));
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny.svg");
@@ -3896,10 +3896,10 @@ SUITE(WirePainter) {
 
             OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
             wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
-            wire.set_nominal_value_conducting_height(1e-6);
+            wire.set_nominal_value_conducting_height(2e-6);
             wire.set_nominal_value_conducting_width(5e-6);
-            wire.set_nominal_value_outer_height(1.18e-6);
-            wire.set_nominal_value_outer_width(5.29e-6);
+            wire.set_nominal_value_outer_height(OpenMagnetics::WireWrapper::get_outer_height_rectangular(2e-6, 2, OpenMagnetics::WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_width(OpenMagnetics::WireWrapper::get_outer_height_rectangular(5e-6, 2, OpenMagnetics::WireStandard::IEC_60317));
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny2.svg");
