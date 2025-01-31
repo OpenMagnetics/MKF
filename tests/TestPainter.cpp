@@ -3866,6 +3866,51 @@ SUITE(WirePainter) {
     //     }
     //     settings->reset();
     // }
+
+    TEST(Test_Wire_Painter_Rectangular_Wire_Tiny) {
+        OpenMagnetics::clear_databases();
+
+
+        {
+            OpenMagnetics::WireWrapper wire;
+
+
+            OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+            wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+            wire.set_nominal_value_conducting_height(1e-6);
+            wire.set_nominal_value_conducting_width(4e-6);
+            wire.set_nominal_value_outer_height(1.18e-6);
+            wire.set_nominal_value_outer_width(4.29e-6);
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+
+        {
+            OpenMagnetics::WireWrapper wire;
+
+
+            OpenMagnetics::DimensionWithTolerance dimensionWithTolerance;
+            wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+            wire.set_nominal_value_conducting_height(1e-6);
+            wire.set_nominal_value_conducting_width(5e-6);
+            wire.set_nominal_value_outer_height(1.18e-6);
+            wire.set_nominal_value_outer_width(5.29e-6);
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wire_Painter_Rectangular_Wire_Tiny2.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile);
+            painter.paint_wire(wire);
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
 }
 
 SUITE(WirePainterCurrentDensity) {
