@@ -10,10 +10,10 @@
 #include "Utils.h"
 #include "spline.h"
 
-std::map<std::string, tk::spline> wireOuterDimensionInterps;
+std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
 std::map<std::string, tk::spline> wireFillingFactorInterps;
 std::map<std::string, tk::spline> wirePackingFactorInterps;
-std::map<std::string, tk::spline> wireConductingAreaInterps;
+std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
 std::map<std::string, double> minWireConductingDimensions;
 std::map<std::string, double> maxWireConductingDimensions;
 std::map<std::string, int64_t> minLitzWireNumberConductors;
@@ -210,7 +210,7 @@ namespace OpenMagnetics {
                               std::string key) {
         struct InterpolatorDatum
         {
-            double wireConductingDimension, wireOuterDimension, wireFillingFactor, wirePackingFactor;
+            double wireConductingDimension, wireCoatingThicknessProportion, wireFillingFactor, wirePackingFactor;
         };
 
         std::vector<InterpolatorDatum> interpolatorData;
@@ -328,7 +328,9 @@ namespace OpenMagnetics {
                     }
                     double conductingArea = std::numbers::pi * pow(wireConductingDimension / 2, 2) * wireNumberConductors;
                     double wireFillingFactor = conductingArea / outerArea;
-                    InterpolatorDatum interpolatorDatum = { wireConductingDimension, wireOuterDimension, wireFillingFactor, wirePackingFactor };
+                    double wireCoatingThickness = (wireOuterDimension - wireConductingDimension) / 2;
+                    double wireCoatingThicknessProportion = wireCoatingThickness / wireConductingDimension;
+                    InterpolatorDatum interpolatorDatum = { wireConductingDimension, wireCoatingThicknessProportion, wireFillingFactor, wirePackingFactor };
 
                     interpolatorData.push_back(interpolatorDatum);
                 }
@@ -340,7 +342,7 @@ namespace OpenMagnetics {
         }
 
         size_t n = interpolatorData.size();
-        std::vector<double> x, xPackingFactor, yFillingFactor, yOuterDimension, yPackingFactor;
+        std::vector<double> x, xPackingFactor, yFillingFactor, yCoatingThicknessProportion, yPackingFactor;
         std::sort(interpolatorData.begin(), interpolatorData.end(), [](const InterpolatorDatum& b1, const InterpolatorDatum& b2) {
             return b1.wireConductingDimension < b2.wireConductingDimension;
         });
@@ -352,7 +354,7 @@ namespace OpenMagnetics {
             if (x.size() == 0 || interpolatorData[i].wireConductingDimension != x.back()) {
                 x.push_back(interpolatorData[i].wireConductingDimension);
                 yFillingFactor.push_back(interpolatorData[i].wireFillingFactor);
-                yOuterDimension.push_back(interpolatorData[i].wireOuterDimension);
+                yCoatingThicknessProportion.push_back(interpolatorData[i].wireCoatingThicknessProportion);
                 if (wireType == WireType::LITZ && interpolatorData[i].wirePackingFactor > 0) {
                     xPackingFactor.push_back(interpolatorData[i].wireConductingDimension);
                     yPackingFactor.push_back(interpolatorData[i].wirePackingFactor);
@@ -360,13 +362,13 @@ namespace OpenMagnetics {
             }
         }
         tk::spline interpFillingFactor(x, yFillingFactor, tk::spline::cspline_hermite, true);
-        tk::spline interpOuterDimension(x, yOuterDimension, tk::spline::cspline_hermite, true);
+        tk::spline interpCoatingThicknessProportion(x, yCoatingThicknessProportion, tk::spline::cspline_hermite, true);
         tk::spline interpPackingFactor;
         if (wireType == WireType::LITZ && xPackingFactor.size() > 0) {
             interpPackingFactor = tk::spline(xPackingFactor, yPackingFactor, tk::spline::cspline_hermite, true);
         }
         wireFillingFactorInterps[key] = interpFillingFactor;
-        wireOuterDimensionInterps[key] = interpOuterDimension;
+        wireCoatingThicknessProportionInterps[key] = interpCoatingThicknessProportion;
         // if (wireType == WireType::LITZ && xPackingFactor.size() > 0) {
         //     wirePackingFactorInterps[key] = interpPackingFactor;
         // }
@@ -508,13 +510,13 @@ namespace OpenMagnetics {
         for (size_t i = 0; i < n; i++) {
             if (x.size() == 0 || interpolatorData[i].wireTheoreticalConductingArea != x.back()) {
                 x.push_back(interpolatorData[i].wireTheoreticalConductingArea);
-                y.push_back(interpolatorData[i].wireRealConductingArea);
+                y.push_back(interpolatorData[i].wireRealConductingArea / interpolatorData[i].wireTheoreticalConductingArea);
             }
         }
-        tk::spline interpPackingFactor;
+        tk::spline interpConductingAreaProportion;
         if (x.size() > 0) {
-            interpPackingFactor = tk::spline(x, y, tk::spline::cspline_hermite, true);
-            wireConductingAreaInterps[key] = interpPackingFactor;
+            interpConductingAreaProportion = tk::spline(x, y, tk::spline::cspline_hermite, true);
+            wireConductingAreaProportionInterps[key] = interpConductingAreaProportion;
         }
     }
 
@@ -588,7 +590,7 @@ namespace OpenMagnetics {
             standard = std::nullopt;
         } 
 
-        if (!wireOuterDimensionInterps.contains(key)) {
+        if (!wireCoatingThicknessProportionInterps.contains(key)) {
             create_interpolators(conductingDiameter,
                                  conductingWidth,
                                  conductingHeight,
@@ -616,9 +618,11 @@ namespace OpenMagnetics {
         else {
             throw std::runtime_error("Missing wire dimension");
         }
-        wireConductingDimension = std::max(wireConductingDimension, minWireConductingDimensions[key]);
-        wireConductingDimension = std::min(wireConductingDimension, maxWireConductingDimensions[key]);
-        double outerDimension = wireOuterDimensionInterps[key](wireConductingDimension);
+        double wireConductingDimensionForInterpolator = wireConductingDimension;
+        wireConductingDimensionForInterpolator = std::max(wireConductingDimensionForInterpolator, minWireConductingDimensions[key]);
+        wireConductingDimensionForInterpolator = std::min(wireConductingDimensionForInterpolator, maxWireConductingDimensions[key]);
+        double coatingThickness = wireCoatingThicknessProportionInterps[key](wireConductingDimensionForInterpolator) * wireConductingDimension;
+        double outerDimension = coatingThickness * 2 + wireConductingDimension;
         return outerDimension;
     }
 
@@ -662,18 +666,22 @@ namespace OpenMagnetics {
             load_wires();
         }
 
-        if (!wireConductingAreaInterps.contains(key)) {
+        if (!wireConductingAreaProportionInterps.contains(key)) {
             create_conducting_area_interpolator(standard,
                                                 key);
         }
         double wireTheoreticalConductingArea = conductingWidth * conductingHeight;
-        if (!wireConductingAreaInterps.contains(key)) {
+
+        if (!wireConductingAreaProportionInterps.contains(key)) {
             return wireTheoreticalConductingArea;
         }
         else {
 
             double wireTheoreticalConductingArea = conductingWidth * conductingHeight;
-            double conductingArea = wireConductingAreaInterps[key](wireTheoreticalConductingArea);
+            double conductingArea = wireConductingAreaProportionInterps[key](wireTheoreticalConductingArea) * wireTheoreticalConductingArea;
+            if (conductingArea <= 0 || conductingArea < wireTheoreticalConductingArea / 2) {
+                return wireTheoreticalConductingArea;
+            }
             return conductingArea;
         }
     }

@@ -327,6 +327,13 @@ SUITE(Wire) {
 
         CHECK_CLOSE(expectedConductingArea, conductingArea, max_error * expectedConductingArea);
     }
+
+    TEST(Test_Outer_Height_Tiny_Rectangular_Grade_2) {
+        auto outerHeight = OpenMagnetics::WireWrapper::get_outer_height_rectangular(1e-9, 2, OpenMagnetics::WireStandard::IEC_60317);
+        double expectedOuterHeight = 1.2e-9;
+
+        CHECK_CLOSE(expectedOuterHeight, outerHeight, max_error * expectedOuterHeight);
+    }
 }
 
 SUITE(Wire_Effective_Current_Density) {

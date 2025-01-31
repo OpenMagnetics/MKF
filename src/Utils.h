@@ -27,12 +27,12 @@ extern OpenMagnetics::Constants constants;
 
 extern tk::spline bobbinFillingFactorInterpWidth;
 extern tk::spline bobbinFillingFactorInterpHeight;
-extern tk::spline bobbinWindingWindowInterpWidth;
-extern tk::spline bobbinWindingWindowInterpHeight;
+extern tk::spline bobbinWindingWindowProportionInterpWidth;
+extern tk::spline bobbinWindingWindowProportionInterpHeight;
 extern std::map<std::string, tk::spline> wireFillingFactorInterps;
 extern std::map<std::string, tk::spline> wirePackingFactorInterps;
-extern std::map<std::string, tk::spline> wireOuterDimensionInterps;
-extern std::map<std::string, tk::spline> wireConductingAreaInterps;
+extern std::map<std::string, tk::spline> wireCoatingThicknessProportionInterps;
+extern std::map<std::string, tk::spline> wireConductingAreaProportionInterps;
 extern double minBobbinWidth;
 extern double maxBobbinWidth;
 extern double minBobbinHeight;

@@ -14,8 +14,8 @@
 
 tk::spline bobbinFillingFactorInterpWidth;
 tk::spline bobbinFillingFactorInterpHeight;
-tk::spline bobbinWindingWindowInterpWidth;
-tk::spline bobbinWindingWindowInterpHeight;
+tk::spline bobbinWindingWindowProportionInterpWidth;
+tk::spline bobbinWindingWindowProportionInterpHeight;
 double minBobbinWidth;
 double maxBobbinWidth;
 double minBobbinHeight;
@@ -224,8 +224,8 @@ void load_interpolators() {
     if (bobbinDatabase.empty() ||
         bobbinFillingFactorInterpWidth.get_x().size() == 0 || 
         bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
-        bobbinWindingWindowInterpWidth.get_x().size() == 0 || 
-        bobbinWindingWindowInterpHeight.get_x().size() == 0) {
+        bobbinWindingWindowProportionInterpWidth.get_x().size() == 0 || 
+        bobbinWindingWindowProportionInterpHeight.get_x().size() == 0) {
         load_bobbins();
 
         struct AuxFillingFactorWidth
@@ -241,11 +241,11 @@ void load_interpolators() {
 
         struct AuxWindingWindowWidth
         {
-            double windingWindowWidth, windingWindow;
+            double windingWindowWidth, windingWindowProportion;
         };
         struct AuxWindingWindowHeight
         {
-            double windingWindowHeight, windingWindow;
+            double windingWindowHeight, windingWindowProportion;
         };
         std::vector<AuxWindingWindowWidth> auxWindingWindowWidth;
         std::vector<AuxWindingWindowHeight> auxWindingWindowHeight;
@@ -264,12 +264,14 @@ void load_interpolators() {
                 double bobbinWindingWindowHeight = datum.second.get_processed_description()->get_winding_windows()[0].get_height().value();
                 double coreWindingWindowWidth = corePiece->get_winding_window().get_width().value();
                 double coreWindingWindowHeight = corePiece->get_winding_window().get_height().value() * 2; // Because if we are using a bobbin we have a two piece set
+                double bobbinWindingWindowWidthProportion = bobbinWindingWindowWidth / coreWindingWindowWidth;
+                double bobbinWindingWindowHeightProportion = bobbinWindingWindowHeight / coreWindingWindowHeight;
                 AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
                 AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor };
                 auxFillingFactorWidth.push_back(bobbinAuxFillingFactorWidth);
                 auxFillingFactorHeight.push_back(bobbinAuxFillingFactorHeight);
-                AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidth };
-                AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeight };
+                AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidthProportion };
+                AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeightProportion };
                 auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
                 auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
             }
@@ -331,16 +333,12 @@ void load_interpolators() {
 
             for (size_t i = 0; i < n; i++) {
                 if (x.size() == 0 || fabs(auxWindingWindowWidth[i].windingWindowWidth - x.back()) > 1e-9) {
-
-                    if (x.size() > 0) {
-
-                    }
                     x.push_back(auxWindingWindowWidth[i].windingWindowWidth);
-                    y.push_back(auxWindingWindowWidth[i].windingWindow);
+                    y.push_back(auxWindingWindowWidth[i].windingWindowProportion);
                 }
             }
 
-            bobbinWindingWindowInterpWidth = tk::spline(x, y, tk::spline::cspline_hermite, true);
+            bobbinWindingWindowProportionInterpWidth = tk::spline(x, y, tk::spline::linear, false);
         }
         {
             size_t n = auxWindingWindowHeight.size();
@@ -354,13 +352,12 @@ void load_interpolators() {
 
             for (size_t i = 0; i < n; i++) {
                 if (x.size() == 0 || fabs(auxWindingWindowHeight[i].windingWindowHeight - x.back()) > 1e-9) {
-
                     x.push_back(auxWindingWindowHeight[i].windingWindowHeight);
-                    y.push_back(auxWindingWindowHeight[i].windingWindow);
+                    y.push_back(auxWindingWindowHeight[i].windingWindowProportion);
                 }
             }
 
-            bobbinWindingWindowInterpHeight = tk::spline(x, y, tk::spline::cspline_hermite, true);
+            bobbinWindingWindowProportionInterpHeight = tk::spline(x, y, tk::spline::linear, false);
         }
     }
 }
@@ -383,43 +380,30 @@ double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windi
 std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
 
     load_interpolators();
-    double bobbinWindingWindowWidth;
-    if (coreWindingWindowWidth > maxWindingWindowWidth) {
-        double bobbinMaxWindingWindowWidth = bobbinWindingWindowInterpWidth(maxWindingWindowWidth);
-        bobbinWindingWindowWidth = coreWindingWindowWidth - (maxWindingWindowWidth - bobbinMaxWindingWindowWidth);
-    }
-    else if (coreWindingWindowWidth < minWindingWindowWidth) {
-        double bobbinMinWindingWindowWidth = bobbinWindingWindowInterpWidth(minWindingWindowWidth);
-        bobbinWindingWindowWidth = std::max(coreWindingWindowWidth / 2, coreWindingWindowWidth - (minWindingWindowWidth - bobbinMinWindingWindowWidth));
-    }
-    else {
-        bobbinWindingWindowWidth = bobbinWindingWindowInterpWidth(coreWindingWindowWidth);
-    }
 
-    double bobbinWindingWindowHeight;
+    double coreWindingWindowWidthForInterpolator = coreWindingWindowWidth;
+    coreWindingWindowWidthForInterpolator = std::max(coreWindingWindowWidthForInterpolator, minWindingWindowWidth);
+    coreWindingWindowWidthForInterpolator = std::min(coreWindingWindowWidthForInterpolator, maxWindingWindowWidth);
+    double bobbinWindingWindowWidthProportion = bobbinWindingWindowProportionInterpWidth(coreWindingWindowWidthForInterpolator);
+    double bobbinWindingWindowWidth = bobbinWindingWindowWidthProportion * coreWindingWindowWidth;
 
-    if (coreWindingWindowHeight > maxWindingWindowHeight) {
-        double bobbinMaxWindingWindowHeight = bobbinWindingWindowInterpHeight(maxWindingWindowHeight);
-        bobbinWindingWindowHeight = coreWindingWindowHeight - (maxWindingWindowHeight - bobbinMaxWindingWindowHeight);
-    }
-    else if (coreWindingWindowHeight < minWindingWindowHeight) {
-        double bobbinMinWindingWindowHeight = bobbinWindingWindowInterpHeight(minWindingWindowHeight);
-        bobbinWindingWindowHeight = std::max(coreWindingWindowHeight / 2, coreWindingWindowHeight - (minWindingWindowHeight - bobbinMinWindingWindowHeight));
-    }
-    else {
-        bobbinWindingWindowHeight = bobbinWindingWindowInterpHeight(coreWindingWindowHeight);
-    }
+    double coreWindingWindowHeightForInterpolator = coreWindingWindowHeight;
+    coreWindingWindowHeightForInterpolator = std::max(coreWindingWindowHeightForInterpolator, minWindingWindowHeight);
+    coreWindingWindowHeightForInterpolator = std::min(coreWindingWindowHeightForInterpolator, maxWindingWindowHeight);
+    double bobbinWindingWindowHeighProportion = bobbinWindingWindowProportionInterpHeight(coreWindingWindowHeightForInterpolator);
+    double bobbinWindingWindowHeight = bobbinWindingWindowHeighProportion * coreWindingWindowHeight;
+
 
     if (bobbinWindingWindowHeight > coreWindingWindowHeight) {
         // Not proud, but the library is missbehaving...
-        bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
-        // throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
+        // bobbinWindingWindowHeight = coreWindingWindowHeight - 0.001;
+        throw std::runtime_error("bobbinWindingWindowHeight cannot be greater than coreWindingWindowHeight: " + std::to_string(bobbinWindingWindowHeight) + " < " + std::to_string(coreWindingWindowHeight));
     }
 
     if (bobbinWindingWindowWidth > coreWindingWindowWidth) {
         // Not proud, but the library is missbehaving...
-        bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
-        // throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
+        // bobbinWindingWindowWidth = coreWindingWindowWidth - 0.001;
+        throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
