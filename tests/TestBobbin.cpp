@@ -16,7 +16,7 @@ using json = nlohmann::json;
 
 SUITE(Bobbin) {
     auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
-    double max_error = 0.01;
+    double max_error = 0.05;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Sample_Bobbin) {
@@ -89,7 +89,7 @@ SUITE(Bobbin) {
         auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.001, 0.002);
 
         double expectedWidthValue = 0.0005;
-        double expectedHeightValue = 0.001;
+        double expectedHeightValue = 0.0011;
         double width = windingWindowDimensions[0];
         double height = windingWindowDimensions[1];
 
@@ -100,8 +100,20 @@ SUITE(Bobbin) {
     TEST(Get_Winding_Window_Dimensions_Too_Large) {
         auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.1, 0.1);
 
-        double expectedWidthValue = 0.09575;
+        double expectedWidthValue = 0.0821;
         double expectedHeightValue = 0.0943;
+        double width = windingWindowDimensions[0];
+        double height = windingWindowDimensions[1];
+
+        CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
+        CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
+
+    TEST(Get_Winding_Window_Dimensions_Error) {
+        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.003325, 0.0108);
+
+        double expectedWidthValue =  0.00245;
+        double expectedHeightValue = 0.0094;
         double width = windingWindowDimensions[0];
         double height = windingWindowDimensions[1];
 

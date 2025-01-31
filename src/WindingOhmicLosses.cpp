@@ -40,6 +40,9 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, d
     if (std::isnan(dcResistancePerMeter)) {
         throw std::runtime_error("NaN found in dcResistancePerMeter value");
     }
+    if (dcResistancePerMeter <= 0) {
+        throw std::runtime_error("dcResistancePerMeter must be positive");
+    }
     return dcResistancePerMeter;
 };
 

@@ -2660,3 +2660,23 @@ SUITE(WindingLossesResistanceMatrix) {
 
     }
 }
+
+SUITE(WindingLossesWeb) {
+    TEST(Test_Winding_Losses_Web_0) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/negative_losses.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+
+        auto losses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+
+        json mierda;
+        to_json(mierda, losses);
+        // std::cout << mierda << std::endl;
+
+        CHECK(losses.get_dc_resistance_per_winding().value()[0] > 0);
+
+    }
+}
