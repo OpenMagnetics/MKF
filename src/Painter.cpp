@@ -614,7 +614,13 @@ void Painter::set_image_size(WireWrapper wire) {
     }
     _extraDimension = 0.1;
     double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
-    auto showingWireWidth = wire.get_maximum_outer_width() + margin;
+    auto showingWireWidth = wire.get_maximum_outer_width();
+    if (wire.get_maximum_outer_width() > wire.get_maximum_outer_height()) {
+        showingWireWidth += margin * 2;
+    }
+    else {
+        showingWireWidth += margin;
+    }
     if (_addProportionForColorBar) {
         double proportionForColorBar = 0.4;
         showingWireWidth *= (1 + proportionForColorBar);
@@ -623,10 +629,12 @@ void Painter::set_image_size(WireWrapper wire) {
 
     double showingWireHeight = wire.get_maximum_outer_height() + margin;
 
-    _scale = _fixedScale * 0.01 / showingWireHeight;
+    _scale = _fixedScale * 0.01 / showingWireWidth;
 
-    _fontSize = std::max(1.0, 100 * showingWireHeight / 0.01);
+    _fontSize = std::max(1.0, 100 * showingWireWidth / 0.01);
     _fontSize = std::min(100.0, _fontSize);
+
+
 
     matplot::gcf()->size(showingWireWidth * _scale, showingWireHeight * _scale);
     matplot::xlim({-showingWireWidth / 2, showingWireWidth / 2});
