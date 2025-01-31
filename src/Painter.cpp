@@ -627,7 +627,7 @@ void Painter::set_image_size(WireWrapper wire) {
     }
     _offsetForColorBar = 0;
 
-    double showingWireHeight = wire.get_maximum_outer_height() + margin;
+    double showingWireHeight = wire.get_maximum_outer_height() + 2 * margin;
 
     _scale = _fixedScale * 0.01 / showingWireWidth;
 
@@ -635,6 +635,10 @@ void Painter::set_image_size(WireWrapper wire) {
     _fontSize = std::min(100.0, _fontSize);
 
 
+    std::cout << "_scale: " << _scale << std::endl;
+    std::cout << "showingWireWidth: " << showingWireWidth << std::endl;
+    std::cout << "(showingWireWidth / wire.get_maximum_outer_width()): " << (showingWireWidth / wire.get_maximum_outer_width()) << std::endl;
+    std::cout << "margin: " << margin << std::endl;
 
     matplot::gcf()->size(showingWireWidth * _scale, showingWireHeight * _scale);
     matplot::xlim({-showingWireWidth / 2, showingWireWidth / 2});
@@ -1653,6 +1657,12 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
     double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
     double insulationThicknessInWidth = (outerWidth - conductingWidth) / 2;
     double insulationThicknessInHeight = (outerHeight - conductingHeight) / 2;
+    std::cout << "outerWidth: " << outerWidth << std::endl;
+    std::cout << "outerHeight: " << outerHeight << std::endl;
+    std::cout << "conductingWidth: " << conductingWidth << std::endl;
+    std::cout << "conductingHeight: " << conductingHeight << std::endl;
+    std::cout << "insulationThicknessInWidth: " << insulationThicknessInWidth << std::endl;
+    std::cout << "insulationThicknessInHeight: " << insulationThicknessInHeight << std::endl;
     auto coating = wire.resolve_coating();
     size_t numberLines = 0;
     double strokeWidth = 0;
