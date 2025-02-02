@@ -1768,6 +1768,87 @@ class CorePieceT : public CorePiece {
     }
 };
 
+class CorePieceC : public CorePiece {
+  public:
+    void process_winding_window() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        WindingWindowElement windingWindow;
+
+        windingWindow.set_height(dimensions["D"]);
+        windingWindow.set_width(dimensions["E"]);
+        windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
+        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["E"]) / 2 + dimensions["E"] / 2, 0}));
+        set_winding_window(windingWindow);
+    }
+
+    void process_extra_data() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        set_width(dimensions["A"]);
+        set_height(dimensions["B"]);
+        set_depth(dimensions["C"]);
+    }
+
+    void process_columns() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        std::vector<ColumnElement> windingWindows;
+        ColumnElement mainColumn;
+        ColumnElement lateralColumn;
+        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
+        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+
+        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
+        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_coordinates({0, 0, 0});
+        windingWindows.push_back(mainColumn);
+        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
+        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_width(mainColumn.get_width());
+        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_coordinates({roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
+        windingWindows.push_back(lateralColumn);
+        set_columns(windingWindows);
+    }
+
+    std::tuple<double, double, double> get_shape_constants() {
+        auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        std::vector<double> lengths;
+        std::vector<double> areas;
+
+        double h = dimensions["B"] - dimensions["D"];
+        double q = dimensions["C"];
+        double s;
+        double p;
+
+        s = (dimensions["A"] - dimensions["E"]) / 2;
+        p = (dimensions["A"] - dimensions["E"]) / 2;
+
+        lengths.push_back(2 * dimensions["D"]);
+        lengths.push_back(2 * dimensions["E"]);
+        lengths.push_back(2 * dimensions["D"]);
+        lengths.push_back(std::numbers::pi / 4 * (p + h));
+        lengths.push_back(std::numbers::pi / 4 * (s + h));
+
+        areas.push_back(q * p);
+        areas.push_back(q * h);
+        areas.push_back(s * q);
+        areas.push_back((areas[0] + areas[1]) / 2);
+        areas.push_back((areas[1] + areas[2]) / 2);
+
+        double c1 = 0, c2 = 0;
+        for (size_t i = 0; i < lengths.size(); ++i) {
+            c1 += lengths[i] / areas[i] / 2;
+            c2 += lengths[i] / pow(areas[i], 2) / 2;
+        }
+        auto minimumArea = *min_element(areas.begin(), areas.end());
+
+        return {c1, c2, minimumArea};
+    }
+};
+
 std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
     auto family = shape.get_family();
     if (family == CoreShapeFamily::E) {
@@ -1918,9 +1999,16 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
             piece->process();
         return piece;
     }
+    else if (family == CoreShapeFamily::C) {
+        auto piece = std::make_shared<CorePieceC>();
+        piece->set_shape(shape);
+        if (process)
+            piece->process();
+        return piece;
+    }
     else
         throw std::runtime_error("Unknown shape family: " + std::string{magic_enum::enum_name(family)} + ", available options are: {E, EC, EFD, EL, EP, EPX, LP, EQ, ER, "
-                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T}");
+                                 "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C}");
 }
 
 inline void from_json(const json& j, OpenMagnetics::CorePiece& x) {
