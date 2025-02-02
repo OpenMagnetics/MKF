@@ -2163,7 +2163,9 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                 if (std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
                         CoreShapeFamily::UR ||
                     std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
-                        CoreShapeFamily::U) {
+                        CoreShapeFamily::U ||
+                    std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
+                        CoreShapeFamily::C) {
                     bottomPiece.set_rotation(std::vector<double>({0, std::numbers::pi, 0}));
                 }
                 else {
@@ -2215,7 +2217,8 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                             minimum_column_width = dimensions["A"];
                         }
                         else if (shape_data.get_family() == CoreShapeFamily::U ||
-                                 shape_data.get_family() == CoreShapeFamily::UR) {
+                                 shape_data.get_family() == CoreShapeFamily::UR ||
+                                 shape_data.get_family() == CoreShapeFamily::C) {
                             if (dimensions.find("H") == dimensions.end() ||
                                 (roundFloat<6>(dimensions["H"]) == 0)) {
                                 minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
@@ -2268,7 +2271,8 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                         }
                         else if (column.get_coordinates()[0] < 0) {
                             if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR) {
+                                shape_data.get_family() == CoreShapeFamily::UR ||
+                                shape_data.get_family() == CoreShapeFamily::C) {
                                 spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] - column.get_width() / 2 +
                                                                  minimum_column_width / 2 - protuding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
@@ -2281,7 +2285,8 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::creat
                         }
                         else {
                             if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR) {
+                                shape_data.get_family() == CoreShapeFamily::UR ||
+                                shape_data.get_family() == CoreShapeFamily::C) {
                                 spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] + column.get_width() / 2 -
                                                                  minimum_column_width / 2 + protuding_width,
                                                              column.get_coordinates()[1], column.get_coordinates()[2]}));
