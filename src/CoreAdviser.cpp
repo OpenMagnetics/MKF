@@ -1193,7 +1193,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::create_mas_dataset(Input
             continue;
         }
 
-        if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U)) {
+        if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C)) {
             for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
             {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
@@ -1257,7 +1257,7 @@ void CoreAdviser::expand_mas_dataset_with_stacks(InputsWrapper inputs, std::vect
             }
         }
 
-        if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U) {
+        if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C) {
 
             core.process_data();
             if (!core.process_gap()) {

@@ -569,6 +569,7 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     double showingCoreWidth;
     auto family = core.get_shape_family();
     switch (family) {
+        case OpenMagnetics::CoreShapeFamily::C:
         case OpenMagnetics::CoreShapeFamily::U:
         case OpenMagnetics::CoreShapeFamily::UR:
             _extraDimension = 1;
@@ -693,6 +694,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     double showingCoreWidth;
     double showingMainColumnWidth;
     switch (family) {
+        case OpenMagnetics::CoreShapeFamily::C:
         case OpenMagnetics::CoreShapeFamily::U:
         case OpenMagnetics::CoreShapeFamily::UR:
             showingMainColumnWidth = mainColumn.get_width() / 2;
