@@ -1630,6 +1630,26 @@ SUITE(CoilPainterToroid) {
         settings->reset();
     }
 
+    TEST(Test_Coil_Painter_Web_7) {
+        OpenMagnetics::clear_databases();
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/error_C_shape.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Coil_Painter_Web_7.svg");
+        OpenMagnetics::Painter painter(outFile, false);
+        // std::cout << 
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+
+        settings->reset();
+    }
+
 }
 
 SUITE(CoilPainter) {
