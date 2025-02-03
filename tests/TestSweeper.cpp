@@ -302,14 +302,14 @@ SUITE(Sweeper) {
         coil.wind({0, 1, 2}, 1);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "3C95";
+        std::string coreMaterial = "N87";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0000008);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto coreSweep = OpenMagnetics::Sweeper().sweep_core_resistance_over_frequency(magnetic, 10000, 120000, 20);
+        auto coreSweep = OpenMagnetics::Sweeper().sweep_core_resistance_over_frequency(magnetic, 10000, 1200000, 20);
 
         auto outFile = outputFilePath;
 

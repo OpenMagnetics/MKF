@@ -67,6 +67,7 @@ class CircuitSimulatorExporter {
         static void ladder_func(double *p, double *x, int m, int n, void *data);
 
         static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
+        static std::vector<std::vector<double>> calculate_core_resistance_coefficients_ladder(MagneticWrapper magnetic);
         std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
         std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };
