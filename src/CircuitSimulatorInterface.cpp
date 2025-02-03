@@ -67,11 +67,11 @@ double CircuitSimulatorExporter::ladder_model(double x[], double frequency, doub
     auto R5 = std::complex<double>(x[8], 0);
     auto L5 = std::complex<double>(0, w * x[9]);
 
-    // for(int i=0; i<10; ++i) {
-    //     if (x[i] < 0) {
-    //         return 0;
-    //     }
-    // }
+    for(int i=0; i<10; ++i) {
+        if (x[i] < 0) {
+            return 0;
+        }
+    }
 
     return (R0 + parallel(L1, R1 + parallel(L2, R2 + parallel(L3, R3 + parallel(L4, R4 + parallel(L5, R5)))))).real();
 }
@@ -89,6 +89,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 
     const size_t numberElements = 100;
     const size_t numberElementsPlusOne = 101;
+    size_t loopIterations = 5;
     size_t maxIterations = 10000;
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
@@ -99,41 +100,60 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
         Curve2D windingAcResistanceData = Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
         auto frequenciesVector = windingAcResistanceData.get_x_points();
 
-        auto points = windingAcResistanceData.get_y_points();
+        auto valuePoints = windingAcResistanceData.get_y_points();
         double acResistances[numberElements];
-        for (size_t index = 0; index < points.size(); ++index) {
-            acResistances[index] = points[index];
+        for (size_t index = 0; index < valuePoints.size(); ++index) {
+            acResistances[index] = valuePoints[index];
         }
 
-        double coefficients[numberUnknowns];
-        for (size_t index = 0; index < numberUnknowns; ++index) {
-            coefficients[index] = 1;
+        double bestError = DBL_MAX;
+        double initialState = 10;
+        std::vector<double> bestAcResistanceCoefficientsThisWinding;
+        for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
+            double coefficients[numberUnknowns];
+            for (size_t index = 0; index < numberUnknowns; ++index) {
+                coefficients[index] = initialState;
+            }
+            double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+
+            double lmInitMu = 1e-03;
+            double lmStopThresh = 1e-25;
+            double lmDiffDelta = 1e-19;
+
+            opts[0]= lmInitMu;
+            opts[1]= lmStopThresh;
+            opts[2]= lmStopThresh;
+            opts[3]= lmStopThresh;
+            opts[4]= lmDiffDelta;
+
+            double dcResistanceAndfrequencies[numberElementsPlusOne];
+            dcResistanceAndfrequencies[0] = acResistances[0];
+            // coefficients[1] = 1e-7;
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
+            }
+
+            dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+
+            double errorAverage = 0;
+            for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+                double modeledAcResistance = CircuitSimulatorExporter::ladder_model(coefficients, frequenciesVector[index], acResistances[0]);
+                double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
+                errorAverage += error;
+            }
+
+            errorAverage /= frequenciesVector.size();
+            initialState /= 10;
+
+            if (errorAverage < bestError) {
+                bestError = errorAverage;
+                bestAcResistanceCoefficientsThisWinding.clear();
+                for (auto coefficient : coefficients) {
+                    bestAcResistanceCoefficientsThisWinding.push_back(coefficient);
+                }
+            }
         }
-        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
-
-        double lmInitMu = 1e-03;
-        double lmStopThresh = 1e-25;
-        double lmDiffDelta = 1e-19;
-
-        opts[0]= lmInitMu;
-        opts[1]= lmStopThresh;
-        opts[2]= lmStopThresh;
-        opts[3]= lmStopThresh;
-        opts[4]= lmDiffDelta;
-
-        double dcResistanceAndfrequencies[numberElementsPlusOne];
-        dcResistanceAndfrequencies[0] = acResistances[0];
-        // coefficients[1] = 1e-7;
-        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
-        }
-
-        dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
-
-        acResistanceCoefficientsPerWinding.push_back(std::vector<double>());
-        for (auto coefficient : coefficients) {
-            acResistanceCoefficientsPerWinding.back().push_back(coefficient);
-        }
+        acResistanceCoefficientsPerWinding.push_back(bestAcResistanceCoefficientsThisWinding);
 
     }
     return acResistanceCoefficientsPerWinding;
@@ -651,12 +671,13 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     auto coil = magnetic.get_coil();
 
     double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic).get_magnetizing_inductance());
+    auto acResistanceCoefficientsPerWinding = CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(magnetic);
     auto leakageInductances = LeakageInductance().calculate_leakage_inductance(magnetic, Defaults().measurementFrequency).get_leakage_inductance_per_winding();
 
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
-        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, frequency, Defaults().ambientTemperature);
+        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, Defaults().ambientTemperature);
         std::string is = std::to_string(index + 1);
         parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
@@ -667,8 +688,32 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + std::to_string(couplingCoefficient);
         }
 
-        circuitString += "Rac_" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
-        circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+        std::vector<std::string> c;
+        for (auto coeff : acResistanceCoefficientsPerWinding[index]){
+
+            std::ostringstream out;
+            out.precision(20);
+            out << std::fixed << coeff;
+            c.push_back(std::move(out).str());
+        }
+        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+            throw std::invalid_argument("Analytica mode not supported in NgSpice");
+        }
+        else {
+            for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
+                std::string ladderIndexs = std::to_string(ladderIndex);
+                circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
+                if (ladderIndex == 0) {
+                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
+                }
+                else {
+                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                }
+            }
+            circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+
+        }
         if (index > 0) {
             circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
         }
@@ -697,7 +742,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     parametersString += ".param MagnetizingInductance_Value=" + std::to_string(magnetizingInductance) + "\n";
     parametersString += ".param Permeance=MagnetizingInductance_Value/NumberTurns_1**2\n";
     for (size_t index = 0; index < coil.get_functional_description().size(); index++) {
-        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, frequency, Defaults().ambientTemperature);
+        auto effectiveResistanceThisWinding = WindingLosses::calculate_effective_resistance_of_winding(magnetic, index, 0.1, Defaults().ambientTemperature);
         std::string is = std::to_string(index + 1);
         parametersString += ".param Rdc_" + is + "_Value=" + std::to_string(effectiveResistanceThisWinding) + "\n";
         parametersString += ".param NumberTurns_" + is + "=" + std::to_string(coil.get_functional_description()[index].get_number_turns()) + "\n";
@@ -710,11 +755,31 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
 
         std::vector<std::string> c;
         for (auto coeff : acResistanceCoefficientsPerWinding[index]){
-            c.push_back(std::to_string(coeff));
+
+            std::ostringstream out;
+            out.precision(20);
+            out << std::fixed << coeff;
+            c.push_back(std::move(out).str());
         }
-        
-        circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi) + " + c[3] + " * log(abs(s)/(2*pi)) + " + c[4] + " * pow(abs(s)/(2*pi), " + c[5] + "))\n";
-        circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+        if (mode == CircuitSimulatorExporterCurveFittingModes::ANALYTICAL) {
+            circuitString += "E" + is + " P" + is + "+ Node_R_Lmag_" + is + " P" + is + "+ Node_R_Lmag_" + is + " Laplace = 1 /(" + c[0] + " + " + c[1] + " * sqrt(abs(s)/(2*pi)) + " + c[2] + " * abs(s)/(2*pi))\n";
+            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+        }
+        else {
+            for (size_t ladderIndex = 0; ladderIndex < acResistanceCoefficientsPerWinding[index].size(); ladderIndex+=2) {
+                std::string ladderIndexs = std::to_string(ladderIndex);
+                circuitString += "Lladder" + is + "_" + ladderIndexs + " P" + is + "+ Node_Lladder_" + is + "_" + ladderIndexs + " " + c[ladderIndex + 1] + "\n";
+                if (ladderIndex == 0) {
+                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_R_Lmag_" + is + " " + c[ladderIndex] + "\n";
+                }
+                else {
+                    circuitString += "Rladder" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + ladderIndexs + " Node_Lladder_" + is + "_" + std::to_string(ladderIndex - 2) + " " + c[ladderIndex] + "\n";
+                }
+            }
+            circuitString += "Rdc" + is + " P" + is + "+ Node_R_Lmag_" + is + " {Rdc_" + is + "_Value}\n";
+            circuitString += "Lmag_" + is + " P" + is + "- Node_R_Lmag_" + is + " {NumberTurns_" + is + "**2*Permeance}\n";
+
+        }
         if (index > 0) {
             circuitString += "K Lmag_1 Lmag_" + is + " {CouplingCoefficient_1" + is + "_Value}\n";
         }
@@ -1330,7 +1395,6 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
-                std::cout << column.name << std::endl;
                 excitation.set_magnetizing_current(current);
             }
             if (column.windingIndex == int(windingIndex) && column.type == DataType::VOLTAGE) {

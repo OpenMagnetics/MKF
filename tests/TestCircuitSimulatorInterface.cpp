@@ -146,6 +146,7 @@ SUITE(CircuitSimulatorExporterNgspice) {
         OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile);
         CHECK(std::filesystem::exists(cirFile));
     }
+    
 
 }
 
@@ -153,7 +154,38 @@ SUITE(CircuitSimulatorExporterNgspice) {
 SUITE(CircuitSimulatorExporterLtspice) {
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
-    TEST(Test_CircuitSimulatorExporter_Ltspice_Only_Magnetic) {
+    TEST(Test_CircuitSimulatorExporter_Ltspice_Only_Magnetic_Analytical) {
+        std::vector<int64_t> numberTurns = {30, 10};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::string shapeName = "PQ 35/35";
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "95";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto cirFile = outputFilePath;
+        cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
+        std::filesystem::remove(cirFile);
+        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile, std::nullopt, OpenMagnetics::CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+        CHECK(std::filesystem::exists(cirFile));
+
+        auto asyFile = outputFilePath;
+        asyFile.append("./Custom_component_made_with_OpenMagnetic.asy");
+        std::filesystem::remove(asyFile);
+        OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_symbol(magnetic, asyFile);
+        CHECK(std::filesystem::exists(asyFile));
+    }
+
+    TEST(Test_CircuitSimulatorExporter_Ltspice_Only_Magnetic_Ladder) {
         std::vector<int64_t> numberTurns = {30, 10};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "PQ 35/35";
@@ -227,6 +259,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
 
         errorAverage /= acResistanceVector.size();
 
+        std::cout << "errorAverage: " << errorAverage << std::endl;
         CHECK(0.25 > errorAverage);
 
     }
