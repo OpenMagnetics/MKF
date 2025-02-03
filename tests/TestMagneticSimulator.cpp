@@ -1141,4 +1141,16 @@ SUITE(MagneticSimulator) {
 
         OpenMagnetics::MagneticAdviser::preview_magnetic(mas);
     }
+
+    TEST(Test_Simulator_Web_2) {
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_contiguous.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto simulator = OpenMagnetics::MagneticSimulator();
+        mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+
+        OpenMagnetics::MagneticAdviser::preview_magnetic(mas);
+    }
 }
