@@ -98,6 +98,9 @@ void WindingProximityEffectLossesModel::set_proximity_factor(WireWrapper wire,  
 
 std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(WireWrapper wire, double temperature, std::vector<ComplexField> fields) {
     auto model = get_model(wire.get_type());
+    if (!wire.get_number_conductors()) {
+        wire.set_number_conductors(1);
+    }
 
     double totalProximityEffectLossesPerMeter = 0;
     std::vector<std::pair<double, double>> lossesPerHarmonic;
