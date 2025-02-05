@@ -287,7 +287,7 @@ bool InputsWrapper::is_standardized(SignalDescriptor signal) {
 
 // In case the waveform comes defined with processed data only, we create a MAS format waveform from it, as the rest of
 // the code depends on it.
-SignalDescriptor InputsWrapper::standarize_waveform(SignalDescriptor signal, double frequency) {
+SignalDescriptor InputsWrapper::standardize_waveform(SignalDescriptor signal, double frequency) {
     // SignalDescriptor standardized_signal = signal;
     SignalDescriptor standardized_signal(signal);
     if (!signal.get_waveform()) {
@@ -917,13 +917,13 @@ std::pair<bool, std::string> InputsWrapper::check_integrity() {
             // Here we processed this excitation voltage
             if (excitation.get_voltage()) {
                 auto voltageExcitation = excitation.get_voltage().value();
-                voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+                voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
                 excitation.set_voltage(voltageExcitation);
             }
             // Here we processed this excitation current
             if (excitation.get_current()) {
                 auto currentExcitation = excitation.get_current().value();
-                currentExcitation = standarize_waveform(currentExcitation, excitation.get_frequency());
+                currentExcitation = standardize_waveform(currentExcitation, excitation.get_frequency());
                 excitation.set_current(currentExcitation);
             }
             else {
@@ -1312,7 +1312,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         throw std::invalid_argument("Missing voltage signal");
     }
     auto voltageExcitation = excitation.get_voltage().value();
-    voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+    voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
     auto waveform = voltageExcitation.get_waveform().value();
 
     auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
@@ -1380,7 +1380,7 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         throw std::invalid_argument("Missing voltage signal");
     }
     auto voltageExcitation = excitation.get_voltage().value();
-    voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+    voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
     auto waveform = voltageExcitation.get_waveform().value();
 
     auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
@@ -1400,7 +1400,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
             auto currentExcitation = excitation.get_current().value();
 
             if (!is_standardized(currentExcitation)) {
-                currentExcitation = standarize_waveform(currentExcitation, excitation.get_frequency());
+                currentExcitation = standardize_waveform(currentExcitation, excitation.get_frequency());
             }
             auto waveform = currentExcitation.get_waveform().value();
             Waveform sampledWaveform;
@@ -1436,7 +1436,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
         if (excitation.get_voltage()) {
             auto voltageExcitation = excitation.get_voltage().value();
             if (!is_standardized(voltageExcitation)) {
-                voltageExcitation = standarize_waveform(voltageExcitation, excitation.get_frequency());
+                voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
             }
             auto waveform = voltageExcitation.get_waveform().value();
             Waveform sampledWaveform;
@@ -1536,7 +1536,7 @@ OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mas
         processed.set_duty_cycle(0.5);
         processed.set_offset(0);
         current.set_processed(processed);
-        current = standarize_waveform(current, frequency);
+        current = standardize_waveform(current, frequency);
         calculate_basic_processed_data(current.get_waveform().value());
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
@@ -1561,7 +1561,7 @@ OperatingPoint InputsWrapper::create_operating_point_with_sinusoidal_current_mas
         processed.set_offset(0);
         current.set_processed(processed);
         current.set_processed(processed);
-        current = standarize_waveform(current, frequency);
+        current = standardize_waveform(current, frequency);
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
@@ -1640,7 +1640,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(0);
         voltage.set_processed(processed);
-        voltage = standarize_waveform(voltage, frequency);
+        voltage = standardize_waveform(voltage, frequency);
 
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
@@ -1660,7 +1660,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(0);
         voltage.set_processed(processed);
-        voltage = standarize_waveform(voltage, frequency);
+        voltage = standardize_waveform(voltage, frequency);
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
             auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
@@ -1737,7 +1737,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
         current.set_processed(processed);
-        current = standarize_waveform(current, frequency);
+        current = standardize_waveform(current, frequency);
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
@@ -1755,7 +1755,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
         current.set_processed(processed);
-        current = standarize_waveform(current, frequency);
+        current = standardize_waveform(current, frequency);
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
@@ -1833,7 +1833,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
         processed.set_duty_cycle(dutyCycle);
         processed.set_offset(dcCurrent);
         current.set_processed(processed);
-        current = standarize_waveform(current, frequency);
+        current = standardize_waveform(current, frequency);
         excitation.set_current(current);
         if (magnetizingInductance > 0) {
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));

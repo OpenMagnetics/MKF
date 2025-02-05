@@ -188,7 +188,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
         throw std::runtime_error("Magnetizing current is missing waveform");
     }
     if (!magnetizingCurrent.get_waveform()->get_time()) {
-        magnetizingCurrent = InputsWrapper::standarize_waveform(magnetizingCurrent, frequency);
+        magnetizingCurrent = InputsWrapper::standardize_waveform(magnetizingCurrent, frequency);
     }
     auto magneticFlux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
