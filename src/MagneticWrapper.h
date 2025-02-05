@@ -52,6 +52,9 @@ class MagneticWrapper : public Magnetic {
         std::string get_reference();
         std::vector<double> get_maximum_dimensions();
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
+
+        double get_saturation_current(double temperature = Defaults().ambientTemperature);
+
 };
 
 void from_json(const json & j, MagneticWrapper & x);
