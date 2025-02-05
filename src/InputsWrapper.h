@@ -47,7 +47,7 @@ class InputsWrapper : public Inputs {
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
 
     static bool is_standardized(SignalDescriptor signal);
-    static SignalDescriptor standarize_waveform(SignalDescriptor parameter, double frequency);
+    static SignalDescriptor standardize_waveform(SignalDescriptor parameter, double frequency);
     static Waveform reconstruct_signal(Harmonics harmonics, double frequency);
     OperatingPoint get_operating_point(size_t index);
     OperatingPointExcitation get_winding_excitation(size_t operatingPointIndex=0, size_t windingIndex=0);
