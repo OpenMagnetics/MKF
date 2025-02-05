@@ -213,7 +213,7 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
 
 
     OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
@@ -294,7 +294,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeakToPeak = magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
 
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -343,7 +343,7 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -398,7 +398,7 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
     auto settings = OpenMagnetics::Settings::GetInstance();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
@@ -478,7 +478,7 @@ double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -533,7 +533,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
@@ -647,7 +647,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
     if (roshenData.get_coefficients()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
         double frequency = excitation.get_frequency();
-        magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+        magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
         double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                            magneticFluxDensity.get_processed().value().get_offset();
 
@@ -837,7 +837,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -876,7 +876,7 @@ double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPo
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
-    magneticFluxDensity = InputsWrapper::standarize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
