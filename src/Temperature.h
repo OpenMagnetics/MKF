@@ -1,5 +1,6 @@
 #pragma once
 #include "Constants.h"
+#include "CoreWrapper.h"
 #include <MAS.hpp>
 
 
@@ -58,6 +59,9 @@ protected:
 public:
     Temperature() = default;
     ~Temperature() = default;
+
+    static double calculate_temperature_from_core_thermal_resistance(CoreWrapper core, double totalLosses);
+    static double calculate_temperature_from_core_thermal_resistance(double thermalResistance, double totalLosses);
 };
 
 

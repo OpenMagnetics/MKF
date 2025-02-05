@@ -1,5 +1,6 @@
 #include <MAS.hpp>
 #include "MagneticWrapper.h"
+#include "Reluctance.h"
 
 namespace OpenMagnetics {
 
@@ -144,5 +145,16 @@ bool MagneticWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotati
     }
 }
 
+double MagneticWrapper::get_saturation_current(double temperature) {
+    auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation();
+    auto numberTurns = get_mutable_coil().get_number_turns(0);
+    auto effectiveArea = get_mutable_core().get_effective_area();
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto initialPermeability = get_mutable_core().get_initial_permeability(temperature);
+    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+
+    double saturationCurrent = magneticFluxDensitySaturation * effectiveArea * reluctance / numberTurns;
+    return saturationCurrent;
+}
         
 } // namespace OpenMagnetics

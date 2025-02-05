@@ -3209,5 +3209,4 @@ std::vector<double> CoreWrapper::get_maximum_dimensions() {
     return {coreProcessedDescription.get_width(), coreProcessedDescription.get_height(), coreProcessedDescription.get_depth()};
 }
 
-
 } // namespace OpenMagnetics
