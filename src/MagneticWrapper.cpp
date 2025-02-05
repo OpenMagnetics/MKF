@@ -145,7 +145,7 @@ bool MagneticWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotati
     }
 }
 
-double MagneticWrapper::get_saturation_current(double temperature) {
+double MagneticWrapper::calculate_saturation_current(double temperature) {
     auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation();
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();

@@ -53,7 +53,7 @@ class MagneticWrapper : public Magnetic {
         std::vector<double> get_maximum_dimensions();
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
 
-        double get_saturation_current(double temperature = Defaults().ambientTemperature);
+        double calculate_saturation_current(double temperature = Defaults().ambientTemperature);
 
 };
 

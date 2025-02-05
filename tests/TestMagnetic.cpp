@@ -38,9 +38,9 @@ SUITE(Magnetic) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto saturationCurrentAt20 = magnetic.get_saturation_current(20);
+        auto saturationCurrentAt20 = magnetic.calculate_saturation_current(20);
         std::cout << "saturationCurrentAt20: " << saturationCurrentAt20 << std::endl;
-        auto saturationCurrentAt100 = magnetic.get_saturation_current(100);
+        auto saturationCurrentAt100 = magnetic.calculate_saturation_current(100);
         std::cout << "saturationCurrentAt100: " << saturationCurrentAt100 << std::endl;
         CHECK(saturationCurrentAt100 < saturationCurrentAt20);
     }
