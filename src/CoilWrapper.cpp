@@ -2541,7 +2541,7 @@ bool CoilWrapper::wind_by_round_layers() {
             if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
                 double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireDiameter;
+                    maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireDiameter, 9);
                     double averageLayerPerimeter = 2 * std::numbers::pi * (sections[sectionIndex].get_dimensions()[1] / 360) * (windingWindowRadialHeight - sections[sectionIndex].get_coordinates()[0]);
                     maximumNumberPhysicalTurnsPerLayer = floor(averageLayerPerimeter / wireDiameter);
                     layerRadialHeight = wireDiameter;
@@ -2554,7 +2554,7 @@ bool CoilWrapper::wind_by_round_layers() {
                 double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
+                    maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireWidth, 9);
                     double averageLayerPerimeter = 2 * std::numbers::pi * (sections[sectionIndex].get_dimensions()[1] / 360) * (windingWindowRadialHeight - sections[sectionIndex].get_coordinates()[0]);
                     if (wirePerWinding[windingIndex].get_type() == WireType::FOIL) {
                         throw std::invalid_argument("Cannot have foil in toroids");

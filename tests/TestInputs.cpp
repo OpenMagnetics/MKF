@@ -2361,4 +2361,19 @@ SUITE(Inputs) {
         }
         settings->reset();
     }
+
+    TEST(Test_Standardize_Waveform) {
+        OpenMagnetics::SignalDescriptor signalDescriptor = json::parse(R"({"harmonics":{"amplitudes":[7,3.321,10],"frequencies":[0,50,50000]},"processed":null,"waveform":null})");
+
+        auto standardSignalDescriptor = OpenMagnetics::InputsWrapper::standardize_waveform(signalDescriptor, 50);
+        std::cout << "standardSignalDescriptor.get_waveform()->get_data().size(): " << standardSignalDescriptor.get_waveform()->get_data().size() << std::endl;
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Standardize_Waveform.svg");
+        std::filesystem::remove(outFile);   
+        OpenMagnetics::Painter painter(outFile, false, true);
+        painter.paint_waveform(standardSignalDescriptor.get_waveform().value());
+        painter.export_svg();
+
+    }
 }
