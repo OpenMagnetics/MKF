@@ -333,4 +333,11 @@ SUITE(Utils) {
         CHECK(allCoreWiresWithExternal.size() > allCoreWires.size());
     }
 
+    TEST(Test_Low_And_High_Harmonics) {
+        OpenMagnetics::Harmonics harmonics = json::parse(R"({"amplitudes":[2.8679315866586563e-15,2.3315003998761155,1.1284261163900786],"frequencies":[0,50,400000000]})");
+        auto mainHarmonicIndexes = OpenMagnetics::get_main_harmonic_indexes(harmonics, 0.05, 1);
+
+        CHECK(mainHarmonicIndexes.size() == 2);
+    }
+
 }
