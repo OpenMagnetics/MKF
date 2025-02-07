@@ -316,17 +316,25 @@ SignalDescriptor InputsWrapper::standardize_waveform(SignalDescriptor signal, do
 
 Waveform InputsWrapper::reconstruct_signal(Harmonics harmonics, double frequency) {
     auto settings = OpenMagnetics::Settings::GetInstance();
-    std::vector<double> data = std::vector<double>(settings->get_inputs_number_points_sampled_waveforms(), 0);
+    size_t numberPoints = std::max(settings->get_inputs_number_points_sampled_waveforms(), 16 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
+    std::vector<double> data = std::vector<double>(numberPoints, 0);
+            
+
     for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_frequencies().size(); ++harmonicIndex) {
         auto amplitude = harmonics.get_amplitudes()[harmonicIndex];
         auto frequencyMultiplier = harmonics.get_frequencies()[harmonicIndex] / frequency;
-        auto totalAngle = 2 * std::numbers::pi / (settings->get_inputs_number_points_sampled_waveforms() - 1) * frequencyMultiplier;
-        for (size_t i = 0; i < settings->get_inputs_number_points_sampled_waveforms(); ++i) {
-            double angle = i * totalAngle;
-            data[i] += sin(angle) * amplitude;
+        auto totalAngle = 2 * std::numbers::pi / (numberPoints - 1) * frequencyMultiplier;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            if (harmonics.get_frequencies()[harmonicIndex] > 0) {
+                double angle = i * totalAngle;
+                data[i] += sin(angle) * amplitude;
+            }
+            else {
+                data[i] += amplitude;
+            }
         }
     }
-    std::vector<double> time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), settings->get_inputs_number_points_sampled_waveforms());
+    std::vector<double> time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPoints);
     Waveform waveform;
     waveform.set_data(data);
     waveform.set_time(time);

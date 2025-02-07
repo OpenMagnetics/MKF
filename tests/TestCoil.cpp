@@ -422,6 +422,139 @@ SUITE(CoilWeb) {
         to_json(result, coil);
 
     }
+
+    TEST(Test_Coil_Json_7) {
+        // json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
+        json coilJson = json::parse(R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00356,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0022725,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.0000637587014444212,"coordinates":[0.004505,0,0],"height":null,"radialHeight":0.004505,"sectionsAlignment":"inner or top","sectionsOrientation":"overlapping","shape":"round","width":null}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"Primary","numberParallels":3,"numberTurns":55,"wire":{"coating":{"breakdownVoltage":1220,"grade":1,"material":null,"numberLayers":null,"temperatureRating":null,"thickness":null,"thicknessLayers":null,"type":"enamelled"},"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":8.042477193189871e-8},"conductingDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000323,"minimum":0.00031800000000000003,"nominal":0.00032},"conductingHeight":null,"conductingWidth":null,"edgeRadius":null,"manufacturerInfo":{"cost":null,"datasheetUrl":null,"family":null,"name":"Elektrisola","orderCode":null,"reference":null,"status":null},"material":"copper","name":"Round 28.0 - Single Build","numberConductors":1,"outerDiameter":{"excludeMaximum":null,"excludeMinimum":null,"maximum":0.000356,"minimum":0.00033800000000000003,"nominal":0.000347},"outerHeight":null,"outerWidth":null,"standard":"NEMA MW 1000 C","standardName":"28 AWG","strand":null,"type":"round"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread"],"_layersOrientation":["overlapping"]})");
+        size_t repetitions = 1;
+        json proportionPerWindingJson = json::parse(R"([1])");
+        json patternJson = json::parse(R"([0])");
+        json marginPairsJson = json::parse(R"([])");
+
+        std::vector<std::vector<double>> marginPairs;
+
+        for (auto elem : marginPairsJson) {
+            std::vector<double> vectorElem;
+            for (auto value : elem) {
+                vectorElem.push_back(value);
+            }
+            marginPairs.push_back(vectorElem);
+        }
+
+        std::vector<double> proportionPerWinding = proportionPerWindingJson;
+        std::vector<size_t> pattern = patternJson;
+        std::vector<OpenMagnetics::CoilFunctionalDescription> coilFunctionalDescription;
+        for (auto elem : coilJson["functionalDescription"]) {
+            coilFunctionalDescription.push_back(OpenMagnetics::CoilFunctionalDescription(elem));
+        }
+        OpenMagnetics::CoilWrapper coil;
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.preload_margins(marginPairs);
+        if (coilJson.contains("_layersOrientation")) {
+
+            if (coilJson["_layersOrientation"].is_object()) {
+                std::map<std::string, OpenMagnetics::WindingOrientation> layersOrientationPerSection;
+                for (auto [key, value] : coilJson["_layersOrientation"].items()) {
+                    layersOrientationPerSection[key] = value;
+                }
+
+                for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
+                    coil.set_layers_orientation(layerOrientation, sectionName);
+                }
+            }
+            else if (coilJson["_layersOrientation"].is_array()) {
+                coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+                if (coil.get_sections_description()) {
+                    auto sections = coil.get_sections_description_conduction();
+
+                    std::vector<OpenMagnetics::WindingOrientation> layersOrientationPerSection;
+                    for (auto elem : coilJson["_layersOrientation"]) {
+                        layersOrientationPerSection.push_back(OpenMagnetics::WindingOrientation(elem));
+                    }
+
+                    for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                        if (sectionIndex < layersOrientationPerSection.size()) {
+                            coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
+                        }
+                    }
+                }
+            }
+            else {
+                OpenMagnetics::WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
+                coil.set_layers_orientation(layerOrientation);
+
+            }
+        }
+
+        if (coilJson.contains("_turnsAlignment")) {
+            if (coilJson["_turnsAlignment"].is_object()) {
+                std::map<std::string, OpenMagnetics::CoilAlignment> turnsAlignmentPerSection;
+                for (auto [key, value] : coilJson["_turnsAlignment"].items()) {
+                    turnsAlignmentPerSection[key] = value;
+                }
+
+
+                for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
+                    coil.set_turns_alignment(turnsAlignment, sectionName);
+                }
+            }
+            else if (coilJson["_turnsAlignment"].is_array()) {
+                coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+                if (coil.get_sections_description()) {
+                    auto sections = coil.get_sections_description_conduction();
+
+                    std::vector<OpenMagnetics::CoilAlignment> turnsAlignmentPerSection;
+                    for (auto elem : coilJson["_turnsAlignment"]) {
+                        turnsAlignmentPerSection.push_back(OpenMagnetics::CoilAlignment(elem));
+                    }
+
+                    for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                        if (sectionIndex < turnsAlignmentPerSection.size()) {
+                            coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
+                        }
+                    }
+                }
+            }
+            else {
+                OpenMagnetics::CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
+                coil.set_turns_alignment(turnsAlignment);
+            }
+        }
+
+        bool windResult = false;
+
+        if (proportionPerWinding.size() == coilFunctionalDescription.size()) {
+            if (pattern.size() > 0 && repetitions > 0) {
+                windResult = coil.wind(proportionPerWinding, pattern, repetitions);
+            }
+            else if (repetitions > 0) {
+                windResult = coil.wind(repetitions);
+            }
+            else {
+                windResult = coil.wind();
+            }
+        }
+        else {
+            if (pattern.size() > 0 && repetitions > 0) {
+                windResult = coil.wind(pattern, repetitions);
+            }
+            else if (repetitions > 0) {
+                windResult = coil.wind(repetitions);
+            }
+            else {
+                windResult = coil.wind();
+            }
+        }
+
+        if (!coil.get_turns_description()) {
+            throw std::runtime_error("Turns not created");
+        }
+
+        json result;
+        to_json(result, coil);
+
+    }
 }
 
 SUITE(CoilSectionsDescriptionMargins) {
