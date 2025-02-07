@@ -1200,15 +1200,35 @@ size_t round_up_size_to_power_of_2(size_t size) {
 }
 
 
-std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::string signal) {
     size_t maximumCommonIndex = SIZE_MAX;
+    std::vector<size_t> mainHarmonicIndexes;
     std::vector<double> maximumHarmonicAmplitudeTimesRootFrequencyPerWinding(operatingPoint.get_excitations_per_winding().size(), 0);
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
-        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {
-            throw std::runtime_error("Missing current");
+        SignalDescriptor signalDescriptor;
+        if (signal == "current") {
+            if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {
+                throw std::runtime_error("Missing current");
+            }
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
         }
-        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
-            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+        else if (signal == "voltage") {
+            if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_voltage()) {
+                throw std::runtime_error("Missing voltage");
+            }
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_voltage().value();
+        }
+        else if (signal == "magnetizingCurrent") {
+            if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_magnetizing_current()) {
+                return mainHarmonicIndexes;
+            }
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_magnetizing_current().value();
+        }
+        else {
+             throw std::runtime_error("Not supported harmonic common index extraction for " + signal);
+        }
+        if (!signalDescriptor.get_harmonics()) {
+            auto current = signalDescriptor;
             auto frequency = operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency();
             if (!current.get_waveform()) {
                 throw std::runtime_error("Current missing harmonics and waveform");
@@ -1217,20 +1237,30 @@ std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPo
             current.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, frequency));
             operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
         }
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        auto harmonics = signalDescriptor.get_harmonics().value();
         maximumCommonIndex = std::min(maximumCommonIndex, harmonics.get_amplitudes().size());
         for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex]);
         }
     }
 
-    std::vector<size_t> mainHarmonicIndexes;
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
         if (maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] == 0) {
             continue;
         }
 
-        auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+        SignalDescriptor signalDescriptor;
+        if (signal == "current") {
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+        }
+        else if (signal == "voltage") {
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_voltage().value();
+        }
+        else if (signal == "magnetizingCurrent") {
+            signalDescriptor = operatingPoint.get_excitations_per_winding()[windingIndex].get_magnetizing_current().value();
+        }
+
+        auto harmonics = signalDescriptor.get_harmonics().value();
         for (size_t harmonicIndex = 1; harmonicIndex < maximumCommonIndex; ++harmonicIndex) {
 
             if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding[windingIndex] * windingLossesHarmonicAmplitudeThreshold) {
@@ -1244,6 +1274,31 @@ std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPo
     }
 
     return mainHarmonicIndexes;
+}
+
+
+std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+    std::vector<size_t> commonHarmonicIndexes;
+    auto currentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "current");
+    auto voltageCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "voltage");
+    auto magnetizingCurrentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "magnetizingCurrent");
+
+    for (auto index : currentCommonHarmonicIndexes) {
+        if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), index) == commonHarmonicIndexes.end()) {
+            commonHarmonicIndexes.push_back(index);
+        }
+    }
+    for (auto index : voltageCommonHarmonicIndexes) {
+        if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), index) == commonHarmonicIndexes.end()) {
+            commonHarmonicIndexes.push_back(index);
+        }
+    }
+    for (auto index : magnetizingCurrentCommonHarmonicIndexes) {
+        if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), index) == commonHarmonicIndexes.end()) {
+            commonHarmonicIndexes.push_back(index);
+        }
+    }
+    return commonHarmonicIndexes;
 }
 
 std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windingLossesHarmonicAmplitudeThreshold) {
