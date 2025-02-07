@@ -933,7 +933,7 @@ SUITE(CircuitSimulationReader) {
 
         operatingPoint = OpenMagnetics::InputsWrapper::process_operating_point(operatingPoint, 0.0001);
 
-        auto commonHarmonicIndexes = OpenMagnetics::get_main_current_harmonic_indexes(operatingPoint, 0.05);
+        auto commonHarmonicIndexes = OpenMagnetics::get_main_harmonic_indexes(operatingPoint, 0.05);
         CHECK_EQUAL(49, commonHarmonicIndexes.back());
     }
 

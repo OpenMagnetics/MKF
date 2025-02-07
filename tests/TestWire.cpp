@@ -606,6 +606,13 @@ SUITE(Wire_Coating) {
         CHECK_CLOSE(3.7, relativePermittivity, max_error * 3.7);
     }
 
+    TEST(Test_Coating_Material) {
+        auto material = OpenMagnetics::find_insulation_material_by_name("ETFE");
+        json mierda;
+        to_json(mierda, material);
+        std::cout << mierda << std::endl;
+    }
+
 }
 
 SUITE(Wire_Equivalents) {

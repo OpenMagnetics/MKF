@@ -188,8 +188,9 @@ bool is_size_power_of_2(std::vector<double> data);
 size_t round_up_size_to_power_of_2(std::vector<double> data);
 size_t round_up_size_to_power_of_2(size_t size);
 
-std::vector<size_t> get_main_current_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
+std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::string signal="current");
 std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windingLossesHarmonicAmplitudeThreshold);
+std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold);
 
 double roundFloat(double value, int64_t decimals);
 double ceilFloat(double value, size_t decimals);

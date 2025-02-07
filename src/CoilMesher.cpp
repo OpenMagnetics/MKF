@@ -32,7 +32,7 @@ std::shared_ptr<CoilMesherModel> CoilMesherModel::factory(CoilMesherModels model
 
 
 std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
-    auto commonHarmonicIndexes = get_main_current_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
+    auto commonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     if (commonHarmonicIndexes.size() > operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value().get_amplitudes().size() * _quickModeForManyHarmonicsThreshold) {
         return get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold * 3);
