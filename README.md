@@ -7,7 +7,7 @@ This is the simulation engine of OpenMagnetics, and the core of other modules, l
 ## List of default models used
 
 ### Air gap reluctance
-ZHANG - https://sci-hub.wf/https://ieeexplore.ieee.org/document/9332553
+ZHANG - https://sci-hub.st/https://ieeexplore.ieee.org/document/9332553
 
 ### Core Losses
 Depending on which models are supported by the material, in the following order:
@@ -15,7 +15,7 @@ Depending on which models are supported by the material, in the following order:
 2) Proprietary (Magnetics or Micrometals)
 3) LOSS_FACTOR
 4) STEINMETZ
-5) ROSHEN - https://sci-hub.wf/10.1109/20.278656 and https://sci-hub.wf/10.1109/TPEL.2006.886608
+5) ROSHEN - https://sci-hub.st/10.1109/20.278656 and https://sci-hub.st/10.1109/TPEL.2006.886608
 
 ### Core temperature
 Not really used, but for completeness: MANIKTALA - Switching Power Supplies A - Z, 2nd edition by Sanjaya Maniktala, page 154
@@ -24,14 +24,14 @@ Not really used, but for completeness: MANIKTALA - Switching Power Supplies A - 
 BINNS_LAWRENSON - https://library.lol/main/78A1F466FA9F3EFBCB6165283FC346B6 Equation 3.34 and 5.4
 
 ### Fringing Field Magnetic Field
-ROSHEN - https://sci-hub.wf/10.1109/tmag.2007.898908 and https://sci-hub.st/10.1109/tmag.2008.2002302
+ROSHEN - https://sci-hub.st/10.1109/tmag.2007.898908 and https://sci-hub.st/10.1109/tmag.2008.2002302
 
 ### Skin effect losses
 Divided per wire type:
-* Round: ALBACH - Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften and https://sci-hub.wf/10.1109/tpel.2011.2143729
-* Litz: ALBACH - Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften and https://sci-hub.wf/10.1109/tpel.2011.2143729
-* Rectangular/Planar: KUTKUT - https://sci-hub.wf/10.1109/63.712319
-* Foil: KUTKUT - https://sci-hub.wf/10.1109/63.712319
+* Round: ALBACH - Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften and https://sci-hub.st/10.1109/tpel.2011.2143729
+* Litz: ALBACH - Induktivitäten in der Leistungselektronik: Spulen, Trafos und ihre parasitären Eigenschaften and https://sci-hub.st/10.1109/tpel.2011.2143729
+* Rectangular/Planar: KUTKUT - https://sci-hub.st/10.1109/63.712319
+* Foil: KUTKUT - https://sci-hub.st/10.1109/63.712319
 
 ### Proximity effect losses
 Divided per wire type:
