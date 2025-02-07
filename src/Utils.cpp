@@ -1200,10 +1200,9 @@ size_t round_up_size_to_power_of_2(size_t size) {
 }
 
 
-std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::string signal) {
-    size_t maximumCommonIndex = SIZE_MAX;
+std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::string signal, std::optional<size_t> mainHarmonicIndex) {
     std::vector<size_t> mainHarmonicIndexes;
-    double maximumHarmonicAmplitudeTimesRootFrequency = 0;
+    double mainOrMaximumHarmonicAmplitudeTimesRootFrequency = 0;
     SignalDescriptor signalDescriptor;
     if (signal == "current") {
         if (!excitation.get_current()) {
@@ -1232,18 +1231,23 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
         }
     }
     auto harmonics = signalDescriptor.get_harmonics().value();
-    maximumCommonIndex = std::min(maximumCommonIndex, harmonics.get_amplitudes().size());
-    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-        maximumHarmonicAmplitudeTimesRootFrequency = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequency);
+    size_t maximumCommonIndex = harmonics.get_amplitudes().size();
+    if (!mainHarmonicIndex) {
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            mainOrMaximumHarmonicAmplitudeTimesRootFrequency = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), mainOrMaximumHarmonicAmplitudeTimesRootFrequency);
+        }
+    }
+    else {
+        mainOrMaximumHarmonicAmplitudeTimesRootFrequency = harmonics.get_amplitudes()[mainHarmonicIndex.value()] * sqrt(harmonics.get_frequencies()[mainHarmonicIndex.value()]);
     }
 
-    if (maximumHarmonicAmplitudeTimesRootFrequency == 0) {
+    if (mainOrMaximumHarmonicAmplitudeTimesRootFrequency == 0) {
         return mainHarmonicIndexes;
     }
 
     for (size_t harmonicIndex = 1; harmonicIndex < maximumCommonIndex; ++harmonicIndex) {
 
-        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequency * windingLossesHarmonicAmplitudeThreshold) {
+        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < mainOrMaximumHarmonicAmplitudeTimesRootFrequency * windingLossesHarmonicAmplitudeThreshold) {
             continue;
         }
         if (std::find(mainHarmonicIndexes.begin(), mainHarmonicIndexes.end(), harmonicIndex) == mainHarmonicIndexes.end()) {
@@ -1255,11 +1259,11 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
     return mainHarmonicIndexes;
 }
 
-std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::string signal) {
+std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::string signal, std::optional<size_t> mainHarmonicIndex) {
     size_t maximumCommonIndex = SIZE_MAX;
     std::vector<size_t> mainHarmonicIndexesInOperatingPoint;
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
-        auto mainHarmonicIndexes = get_main_harmonic_indexes(operatingPoint.get_excitations_per_winding()[windingIndex], windingLossesHarmonicAmplitudeThreshold, signal);
+        auto mainHarmonicIndexes = get_main_harmonic_indexes(operatingPoint.get_excitations_per_winding()[windingIndex], windingLossesHarmonicAmplitudeThreshold, signal, mainHarmonicIndex);
 
         for (auto index : mainHarmonicIndexes) {
             if (std::find(mainHarmonicIndexesInOperatingPoint.begin(), mainHarmonicIndexesInOperatingPoint.end(), index) == mainHarmonicIndexesInOperatingPoint.end()) {
@@ -1272,11 +1276,11 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, dou
 }
 
 
-std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
     std::vector<size_t> commonHarmonicIndexes;
-    auto currentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "current");
-    auto voltageCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "voltage");
-    auto magnetizingCurrentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "magnetizingCurrent");
+    auto currentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "current", mainHarmonicIndex);
+    auto voltageCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "voltage", mainHarmonicIndex);
+    auto magnetizingCurrentCommonHarmonicIndexes = get_main_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold, "magnetizingCurrent", mainHarmonicIndex);
 
     for (auto index : currentCommonHarmonicIndexes) {
         if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), index) == commonHarmonicIndexes.end()) {
@@ -1295,11 +1299,11 @@ std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatin
     }
     return commonHarmonicIndexes;
 }
-std::vector<size_t> get_excitation_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold) {
+std::vector<size_t> get_excitation_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
     std::vector<size_t> commonHarmonicIndexes;
-    auto currentCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "current");
-    auto voltageCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "voltage");
-    auto magnetizingCurrentCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "magnetizingCurrent");
+    auto currentCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "current", mainHarmonicIndex);
+    auto voltageCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "voltage", mainHarmonicIndex);
+    auto magnetizingCurrentCommonHarmonicIndexes = get_main_harmonic_indexes(excitation, windingLossesHarmonicAmplitudeThreshold, "magnetizingCurrent", mainHarmonicIndex);
 
     for (auto index : currentCommonHarmonicIndexes) {
         if (std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), index) == commonHarmonicIndexes.end()) {
@@ -1319,15 +1323,20 @@ std::vector<size_t> get_excitation_harmonic_indexes(OperatingPointExcitation exc
     return commonHarmonicIndexes;
 }
 
-std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windingLossesHarmonicAmplitudeThreshold) {
-    double maximumHarmonicAmplitudeTimesRootFrequencyPerWinding = 0;
-    for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-        maximumHarmonicAmplitudeTimesRootFrequencyPerWinding = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), maximumHarmonicAmplitudeTimesRootFrequencyPerWinding);
+std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
+    double mainOrMaximumHarmonicAmplitudeTimesRootFrequency = 0;
+    if (!mainHarmonicIndex) {
+        for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+            mainOrMaximumHarmonicAmplitudeTimesRootFrequency = std::max(harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex]), mainOrMaximumHarmonicAmplitudeTimesRootFrequency);
+        }
+    }
+    else {
+        mainOrMaximumHarmonicAmplitudeTimesRootFrequency = harmonics.get_amplitudes()[mainHarmonicIndex.value()] * sqrt(harmonics.get_frequencies()[mainHarmonicIndex.value()]);
     }
 
     std::vector<size_t> mainHarmonicIndexes;
     for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < maximumHarmonicAmplitudeTimesRootFrequencyPerWinding * windingLossesHarmonicAmplitudeThreshold) {
+        if ((harmonics.get_amplitudes()[harmonicIndex] * sqrt(harmonics.get_frequencies()[harmonicIndex])) < mainOrMaximumHarmonicAmplitudeTimesRootFrequency * windingLossesHarmonicAmplitudeThreshold) {
             continue;
         }
 
