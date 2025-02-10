@@ -159,6 +159,79 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
+std::vector<std::vector<double>> calculate_core_resistance_coefficients(MagneticWrapper magnetic) {
+    const size_t numberUnknowns = 10;
+
+    const size_t numberElements = 100;
+    const size_t numberElementsPlusOne = 101;
+    size_t loopIterations = 5;
+    size_t maxIterations = 10000;
+    double startingFrequency = 0.1;
+    double endingFrequency = 1000000;
+    auto coil = magnetic.get_coil();
+
+    std::vector<double> coreResistanceCoefficients;
+
+
+    Curve2D coreResistanceData = Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
+    auto frequenciesVector = coreResistanceData.get_x_points();
+
+    auto valuePoints = coreResistanceData.get_y_points();
+    double acResistances[numberElements];
+    for (size_t index = 0; index < valuePoints.size(); ++index) {
+        acResistances[index] = valuePoints[index];
+    }
+
+    double bestError = DBL_MAX;
+    double initialState = 10;
+    std::vector<double> bestCoreResistanceCoefficients;
+    for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
+        double coefficients[numberUnknowns];
+        for (size_t index = 0; index < numberUnknowns; ++index) {
+            coefficients[index] = initialState;
+        }
+        double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+
+        double lmInitMu = 1e-03;
+        double lmStopThresh = 1e-25;
+        double lmDiffDelta = 1e-19;
+
+        opts[0]= lmInitMu;
+        opts[1]= lmStopThresh;
+        opts[2]= lmStopThresh;
+        opts[3]= lmStopThresh;
+        opts[4]= lmDiffDelta;
+
+        double dcResistanceAndfrequencies[numberElementsPlusOne];
+        dcResistanceAndfrequencies[0] = acResistances[0];
+        // coefficients[1] = 1e-7;
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
+        }
+
+        dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+
+        double errorAverage = 0;
+        for (size_t index = 0; index < frequenciesVector.size(); ++index) {
+            double modeledAcResistance = CircuitSimulatorExporter::ladder_model(coefficients, frequenciesVector[index], acResistances[0]);
+            double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
+            errorAverage += error;
+        }
+
+        errorAverage /= frequenciesVector.size();
+        initialState /= 10;
+
+        if (errorAverage < bestError) {
+            bestError = errorAverage;
+            bestCoreResistanceCoefficients.clear();
+            for (auto coefficient : coefficients) {
+                bestCoreResistanceCoefficients.push_back(coefficient);
+            }
+        }
+    }
+    return bestCoreResistanceCoefficients;
+}
+
 
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(MagneticWrapper magnetic) {
     const size_t numberUnknowns = 4;

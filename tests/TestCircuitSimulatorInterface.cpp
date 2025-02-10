@@ -316,6 +316,58 @@ SUITE(CircuitSimulatorExporterLtspice) {
         CHECK(0.01 > errorAverage);
     }
 
+    TEST(Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder) {
+        std::vector<int64_t> numberTurns = {10};
+        std::vector<int64_t> numberParallels = {1};
+        std::string shapeName = "PQ 35/35";
+        std::vector<OpenMagnetics::WireWrapper> wires;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "95";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto coefficientsPerWinding = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_core_resistance_coefficients(magnetic, OpenMagnetics::CircuitSimulatorExporterCurveFittingModes::LADDER);
+
+        size_t numberElements = 100;
+        size_t windingIndex = 0;
+        double startingFrequency = 0.1;
+        double endingFrequency = 1000000;
+
+        OpenMagnetics::Curve2D windingCoreResistanceData = OpenMagnetics::Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
+        auto frequenciesVector = windingCoreResistanceData.get_x_points();
+        auto coreResistanceVector = windingcoreResistanceData.get_y_points();
+
+        for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+            std::cout << coefficientIndex << std::endl;
+            std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+        }
+
+        double errorAverage = 0;
+        for (size_t index = 0; index < coreResistanceVector.size(); ++index) {
+            double c[coefficientsPerWinding[0].size()];
+            for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+                c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
+            }
+            auto frequency = frequenciesVector[index];
+            double modeledCoreResistance = OpenMagnetics::CircuitSimulatorExporter::ladder_model(c, frequency, coreResistanceVector[0]);
+            double error = fabs(coreResistanceVector[index] - modeledCoreResistance) / coreResistanceVector[index];
+            errorAverage += error;
+        }
+
+        errorAverage /= coreResistanceVector.size();
+        std::cout << "errorAverage: " << errorAverage << std::endl;
+
+        CHECK(0.01 > errorAverage);
+    }
+
 }
 
 SUITE(CircuitSimulationReader) {
