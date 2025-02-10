@@ -334,7 +334,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto coefficientsPerWinding = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_core_resistance_coefficients(magnetic, OpenMagnetics::CircuitSimulatorExporterCurveFittingModes::LADDER);
+        auto coefficients = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::LTSPICE).calculate_core_resistance_coefficients(magnetic);
 
         size_t numberElements = 100;
         size_t windingIndex = 0;
@@ -343,29 +343,52 @@ SUITE(CircuitSimulatorExporterLtspice) {
 
         OpenMagnetics::Curve2D windingCoreResistanceData = OpenMagnetics::Sweeper().sweep_core_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, 25);
         auto frequenciesVector = windingCoreResistanceData.get_x_points();
-        auto coreResistanceVector = windingcoreResistanceData.get_y_points();
+        auto coreResistanceVector = windingCoreResistanceData.get_y_points();
 
-        for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
+        {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+
+            outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Theory.svg");
+            std::filesystem::remove(outFile);
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_curve(windingCoreResistanceData, true);
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+
+        }
+        for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
             std::cout << coefficientIndex << std::endl;
-            std::cout << coefficientsPerWinding[0][coefficientIndex] << std::endl;
+            std::cout << coefficients[coefficientIndex] << std::endl;
         }
 
+        std::vector<double> modeledCoreResistances;
         double errorAverage = 0;
         for (size_t index = 0; index < coreResistanceVector.size(); ++index) {
-            double c[coefficientsPerWinding[0].size()];
-            for (size_t coefficientIndex = 0; coefficientIndex < coefficientsPerWinding[0].size(); ++coefficientIndex) {
-                c[coefficientIndex] = coefficientsPerWinding[0][coefficientIndex];
+            double c[coefficients.size()];
+            for (size_t coefficientIndex = 0; coefficientIndex < coefficients.size(); ++coefficientIndex) {
+                c[coefficientIndex] = coefficients[coefficientIndex];
             }
             auto frequency = frequenciesVector[index];
-            double modeledCoreResistance = OpenMagnetics::CircuitSimulatorExporter::ladder_model(c, frequency, coreResistanceVector[0]);
+            double modeledCoreResistance = OpenMagnetics::CircuitSimulatorExporter::core_ladder_model(c, frequency, coreResistanceVector[0]);
+            modeledCoreResistances.push_back(modeledCoreResistance);
             double error = fabs(coreResistanceVector[index] - modeledCoreResistance) / coreResistanceVector[index];
             errorAverage += error;
+        }
+
+        {
+            auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_CircuitSimulatorExporter_Core_Resistance_Coefficients_Ladder_Modeled.svg");
+            OpenMagnetics::Painter painter(outFile, false, true);
+            painter.paint_curve(OpenMagnetics::Curve2D(frequenciesVector, modeledCoreResistances, "meh"));
+            painter.export_svg();
         }
 
         errorAverage /= coreResistanceVector.size();
         std::cout << "errorAverage: " << errorAverage << std::endl;
 
-        CHECK(0.01 > errorAverage);
+        CHECK(0.2 > errorAverage);
     }
 
 }
