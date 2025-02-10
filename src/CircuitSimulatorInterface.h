@@ -65,9 +65,11 @@ class CircuitSimulatorExporter {
         static void analytical_func(double *p, double *x, int m, int n, void *data);
         static double ladder_model(double x[], double frequency, double dcResistance);
         static void ladder_func(double *p, double *x, int m, int n, void *data);
+        static double core_ladder_model(double x[], double frequency, double dcResistance);
+        static void core_ladder_func(double *p, double *x, int m, int n, void *data);
 
         static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
-        static std::vector<std::vector<double>> calculate_core_resistance_coefficients(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
+        static std::vector<double> calculate_core_resistance_coefficients(MagneticWrapper magnetic);
         std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
         std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };

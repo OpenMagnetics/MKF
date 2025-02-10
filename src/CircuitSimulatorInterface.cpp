@@ -84,6 +84,34 @@ void CircuitSimulatorExporter::ladder_func(double *p, double *x, int m, int n, v
         x[i]=ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
 }
 
+
+double CircuitSimulatorExporter::core_ladder_model(double x[], double frequency, double dcResistance) {
+    double w = 2 * std::numbers::pi * frequency;
+    auto R0 = std::complex<double>(dcResistance);
+    auto R1 = std::complex<double>(x[0], 0);
+    auto L1 = std::complex<double>(0, w * x[1]);
+    auto R2 = std::complex<double>(x[2], 0);
+    auto L2 = std::complex<double>(0, w * x[3]);
+    auto R3 = std::complex<double>(x[4], 0);
+    auto L3 = std::complex<double>(0, w * x[5]);
+
+    for(int i=0; i<6; ++i) {
+        if (x[i] < 0) {
+            return 0;
+        }
+    }
+
+    return (R0 + parallel(L1, R1 + parallel(L2, R2 + parallel(L3, R3)))).real();
+}
+
+void CircuitSimulatorExporter::core_ladder_func(double *p, double *x, int m, int n, void *data) {
+    double* dcResistanceAndFrequencies = static_cast <double*> (data);
+    double dcResistance = dcResistanceAndFrequencies[0];
+
+    for(int i=0; i<n; ++i)
+        x[i]=core_ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
+}
+
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(MagneticWrapper magnetic) {
     const size_t numberUnknowns = 10;
 
@@ -159,8 +187,8 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
-std::vector<std::vector<double>> calculate_core_resistance_coefficients(MagneticWrapper magnetic) {
-    const size_t numberUnknowns = 10;
+std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(MagneticWrapper magnetic) {
+    const size_t numberUnknowns = 6;
 
     const size_t numberElements = 100;
     const size_t numberElementsPlusOne = 101;
@@ -177,9 +205,9 @@ std::vector<std::vector<double>> calculate_core_resistance_coefficients(Magnetic
     auto frequenciesVector = coreResistanceData.get_x_points();
 
     auto valuePoints = coreResistanceData.get_y_points();
-    double acResistances[numberElements];
+    double coreResistances[numberElements];
     for (size_t index = 0; index < valuePoints.size(); ++index) {
-        acResistances[index] = valuePoints[index];
+        coreResistances[index] = valuePoints[index];
     }
 
     double bestError = DBL_MAX;
@@ -203,17 +231,17 @@ std::vector<std::vector<double>> calculate_core_resistance_coefficients(Magnetic
         opts[4]= lmDiffDelta;
 
         double dcResistanceAndfrequencies[numberElementsPlusOne];
-        dcResistanceAndfrequencies[0] = acResistances[0];
+        dcResistanceAndfrequencies[0] = coreResistances[0];
         // coefficients[1] = 1e-7;
         for (size_t index = 0; index < frequenciesVector.size(); ++index) {
             dcResistanceAndfrequencies[index + 1] = frequenciesVector[index];
         }
 
-        dlevmar_dif(CircuitSimulatorExporter::ladder_func, coefficients, acResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
+        dlevmar_dif(CircuitSimulatorExporter::core_ladder_func, coefficients, coreResistances, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&dcResistanceAndfrequencies));
 
         double errorAverage = 0;
         for (size_t index = 0; index < frequenciesVector.size(); ++index) {
-            double modeledAcResistance = CircuitSimulatorExporter::ladder_model(coefficients, frequenciesVector[index], acResistances[0]);
+            double modeledAcResistance = CircuitSimulatorExporter::ladder_model(coefficients, frequenciesVector[index], coreResistances[0]);
             double error = fabs(valuePoints[index] - modeledAcResistance) / valuePoints[index];
             errorAverage += error;
         }
