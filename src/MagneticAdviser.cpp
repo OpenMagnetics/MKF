@@ -167,6 +167,21 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
                 // continue;
             }
         }
+
+        // Saturation
+        {
+            auto operatingPoint = inputs.get_operating_points()[0];
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
+            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+
+            auto magneticFluxDensitySaturation = magnetic.get_mutable_core().get_magnetic_flux_density_saturation();
+            scoringPerReferencePerRequirement["saturation"][reference] += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
+            if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
+                validMagnetic = false;
+                // continue;
+            }
+        }
         // if (inputs.get_design_requirements().get_maximum_weight()) {
             // Nice to have in the future
         // }
@@ -198,6 +213,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             }
         }
 
+
         // if (inputs.get_design_requirements().get_operating_temperature()) {
             // Nice to have in the future
         // }
@@ -208,6 +224,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             // Nice to have in the future
         // }
         if (validMagnetic){
+            std::cout << "magnetic.get_manufacturer_info().value().get_reference().value(): " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
             MasWrapper mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);

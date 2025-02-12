@@ -973,7 +973,6 @@ SUITE(MagnetizingInductance) {
         settings->reset();
     }
 
-
     TEST(Test_Inductance_Powder_E_34) {
         settings->reset();
         OpenMagnetics::clear_databases();
@@ -1005,6 +1004,5 @@ SUITE(MagnetizingInductance) {
         CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
         settings->reset();
     }
-
 
 }
