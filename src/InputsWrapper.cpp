@@ -2474,6 +2474,9 @@ void InputsWrapper::set_current_as_magnetizing_current(OperatingPoint* operating
     auto currentExcitation = excitation.get_current().value();
     auto currentExcitationWaveform = currentExcitation.get_waveform().value();
     if (!currentExcitation.get_processed() || !currentExcitation.get_harmonics()) {
+        if (excitation.get_frequency() <= 0) {
+            throw std::invalid_argument("Frequency has to be positive");
+        }
         auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
 
         if (sampledCurrentWaveform.get_data().size() > 0 && ((sampledCurrentWaveform.get_data().size() & (sampledCurrentWaveform.get_data().size() - 1)) != 0)) {

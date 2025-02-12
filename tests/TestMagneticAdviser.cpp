@@ -1944,7 +1944,7 @@ SUITE(CatalogAdviser) {
         double magnetizingInductance = 100e-6;
         double temperature = 25;
         OpenMagnetics::WaveformLabel waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
-        double peakToPeak = 1;
+        double peakToPeak = 20;
         double dutyCycle = 0.5;
         double dcCurrent = 0;
 
@@ -2033,8 +2033,18 @@ SUITE(CatalogAdviser) {
 
         for (auto masMagneticWithScoring : masMagnetics) {
             auto masMagnetic = masMagneticWithScoring.first;
-            // std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
-            // std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
+
+
+            auto operatingPoint = inputs.get_operating_points()[0];
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(masMagnetic.get_mutable_magnetic().get_core(), masMagnetic.get_mutable_magnetic().get_coil(), &operatingPoint).second;
+            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+
+            auto magneticFluxDensitySaturation = masMagnetic.get_mutable_magnetic().get_mutable_core().get_magnetic_flux_density_saturation();
+            std::cout << "magneticFluxDensityPeak: " << magneticFluxDensityPeak << std::endl;
+            std::cout << "magneticFluxDensitySaturation: " << magneticFluxDensitySaturation << std::endl;
+
+
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             if (plot) {
                 auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
