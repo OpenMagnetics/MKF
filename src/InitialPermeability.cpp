@@ -150,7 +150,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
 
         if (hasTemperatureDependency) {
             int n = permeabilityPoints.size();
-            std::vector<double> x, y;
+            std::vector<double> x, y, distinctTemperatureValues;
 
             double temperaturePoint;
             if (!hasTemperatureRequirement)
@@ -165,8 +165,13 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                 }
             }
 
-            tk::spline interp(x, y, tk::spline::cspline_hermite);
-            initialPermeabilityValue = std::max(1., interp(temperaturePoint));
+            if (x.size() > 1) {
+                tk::spline interp(x, y, tk::spline::cspline_hermite);
+                initialPermeabilityValue = std::max(1., interp(temperaturePoint));
+            }
+            else {
+                initialPermeabilityValue = permeabilityPoints[0].get_value();
+            }
         }
         else {
             throw std::invalid_argument("Invalid material permeability");
