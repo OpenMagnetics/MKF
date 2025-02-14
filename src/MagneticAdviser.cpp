@@ -164,7 +164,6 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             scoringPerReferencePerRequirement["maximumDimensions"][reference] = sqrt(pow(maximumDimensions.get_width().value() - magneticDimensions[0], 2) + pow(maximumDimensions.get_height().value() - magneticDimensions[1], 2)+ pow(maximumDimensions.get_depth().value() - magneticDimensions[2], 2));
             if (!magnetic.fits(maximumDimensions, true)) {
                 validMagnetic = false;
-                // continue;
             }
         }
 
@@ -175,12 +174,37 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
             auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
-            auto magneticFluxDensitySaturation = magnetic.get_mutable_core().get_magnetic_flux_density_saturation();
+            auto magneticFluxDensitySaturation = magnetic.get_mutable_core().get_magnetic_flux_density_saturation(operatingPoint.get_conditions().get_ambient_temperature());
             scoringPerReferencePerRequirement["saturation"][reference] += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
             if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
                 validMagnetic = false;
-                // continue;
             }
+        }
+
+        // Effective and DC Current Density
+        {
+            auto operatingPoint = inputs.get_operating_points()[0];
+            for (size_t windingIndex = 0; windingIndex < magnetic.get_mutable_coil().get_functional_description().size(); ++windingIndex) {
+                auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+                if (!excitation.get_current()) {
+                    throw std::runtime_error("Current is missing in excitation");
+                }
+                auto current = excitation.get_current().value();
+                auto wire = magnetic.get_mutable_coil().resolve_wire(windingIndex);
+                auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
+                auto dcCurrentDensity = wire.calculate_dc_current_density(current);
+
+                scoringPerReferencePerRequirement["effectiveCurrentDensity"][reference] += fabs(Defaults().maximumEffectiveCurrentDensity - effectiveCurrentDensity);
+                if (effectiveCurrentDensity > Defaults().maximumEffectiveCurrentDensity) {
+                    validMagnetic = false;
+                }
+
+                scoringPerReferencePerRequirement["dcCurrentDensity"][reference] += fabs(Defaults().maximumCurrentDensity - dcCurrentDensity);
+                if (dcCurrentDensity > Defaults().maximumCurrentDensity) {
+                    validMagnetic = false;
+                }
+            }
+
         }
         // if (inputs.get_design_requirements().get_maximum_weight()) {
             // Nice to have in the future
@@ -194,7 +218,6 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
 
                 if (impedanceAtFrequency.get_impedance().get_magnitude() > abs(impedance)) {
                     validMagnetic = false;
-                    // continue;
                 }
             }
         }
@@ -224,7 +247,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             // Nice to have in the future
         // }
         if (validMagnetic){
-            std::cout << "magnetic.get_manufacturer_info().value().get_reference().value(): " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
+            // std::cout << "magnetic.get_manufacturer_info().value().get_reference().value(): " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
             MasWrapper mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);

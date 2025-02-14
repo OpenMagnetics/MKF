@@ -194,6 +194,8 @@ class WireWrapper : public Wire {
         int get_equivalent_insulation_layers(double voltageToInsulate);
 
         std::vector<std::vector<double>> calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints=10);
+        double calculate_dc_current_density(OperatingPointExcitation excitation);
+        double calculate_dc_current_density(SignalDescriptor current);
         double calculate_effective_current_density(OperatingPointExcitation excitation, double temperature);
         double calculate_effective_current_density(SignalDescriptor current, double temperature);
         double calculate_effective_current_density(double rms, double frequency, double temperature);
