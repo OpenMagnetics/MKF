@@ -114,7 +114,6 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
 
     auto masMagneticsWithScoring = score_magnetics(masData, weights);
 
-
     sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
         return b1.second > b2.second;
     });
