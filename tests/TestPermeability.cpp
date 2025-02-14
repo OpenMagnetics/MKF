@@ -172,6 +172,15 @@ SUITE(InitialPermeability) {
         manufacturerTolerance = 0.25;
         CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
     }
+
+    TEST(Test_Initial_Permeability_X_Indmix_A) {
+        OpenMagnetics::InitialPermeability initialPermeability;
+        std::string materialName = "X-Indmix A";
+        auto materialData = materialName;
+        double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData, 85);
+        double expected = 60;
+        CHECK_CLOSE(expected, initialPermeabilityValue, 0.01 * expected);
+    }
 }
 
 
