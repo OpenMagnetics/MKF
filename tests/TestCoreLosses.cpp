@@ -2556,6 +2556,34 @@ SUITE(CoreLossesAssorted) {
         CHECK_CLOSE(0.145, magneticFluxDensity.get_processed().value().get_peak().value(), 0.145 * maximumError);
         CHECK_CLOSE(expectedLosses, calculatedCoreLosses, expectedLosses * maximumError);
     }
+
+    TEST(Test_Core_Losses_Hoganas) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas.json");
+        // auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas_no_50_Hz.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto models = json::parse("{\"coreLosses\": \"IGSE\", \"gapReluctance\": \"BALAKRISHNAN\"}");
+
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
+
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        double temperature = 25;
+
+        auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(models);
+        auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+        auto calculatedCoreLosses = coreLosses.get_core_losses();
+        double expectedLosses = 9;
+        auto maximumError = 0.15;
+        CHECK_CLOSE(expectedLosses, calculatedCoreLosses, expectedLosses * maximumError);
+    }
 }
 
 SUITE(FrequencyFromCoreLosses) {

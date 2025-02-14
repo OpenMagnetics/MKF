@@ -208,10 +208,8 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     }
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
-                                       magneticFluxDensity.get_processed().value().get_offset();
-    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
-                                       magneticFluxDensity.get_processed().value().get_offset();
+    double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
+    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
 
     magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
 
@@ -227,12 +225,19 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double volumetricLosses;
+
     if (beta > 2) {
         volumetricLosses = k * pow(frequency, alpha) * pow(mainHarmonicMagneticFluxDensityAcPeak, beta - 2) * pow(magneticFluxDensityAcPeak, 2);
     }
     else {
         volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
     }
+    std::cout << "beta: " << beta << std::endl;
+    std::cout << "excitation.get_frequency(): " << excitation.get_frequency() << std::endl;
+    std::cout << "frequency: " << frequency << std::endl;
+    std::cout << "mainHarmonicMagneticFluxDensityAcPeak: " << mainHarmonicMagneticFluxDensityAcPeak << std::endl;
+    std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
+    std::cout << "volumetricLosses: " << volumetricLosses << std::endl;
 
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 };
@@ -293,6 +298,7 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = InputsWrapper::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeakToPeak = magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
+    double magneticFluxDensityAcPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 
     magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -315,8 +321,13 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
 
     double volumetricLossesSum = 0;
     double timeDifference;
+    size_t numberPoints = magneticFluxDensityWaveform.size();
 
-    for (size_t i = 0; i < magneticFluxDensityWaveform.size() - 1; ++i) {
+    if (frequency / excitation.get_frequency() > 1) {
+        numberPoints = round(numberPoints / (frequency / excitation.get_frequency()));
+    }
+
+    for (size_t i = 0; i < numberPoints - 1; ++i) {
         if (magneticFluxDensity.get_waveform().value().get_time()) {
             timeDifference = magneticFluxDensityTime[i + 1] - magneticFluxDensityTime[i];
         }
@@ -328,7 +339,8 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
             timeDifference;
     }
  
-    double volumetricLosses = ki * pow(mainHarmonicMagneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
+    // double volumetricLosses = ki * pow(mainHarmonicMagneticFluxDensityPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
+    double volumetricLosses = ki * pow(magneticFluxDensityAcPeakToPeak, beta - alpha) * frequency * volumetricLossesSum;
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 }
 
