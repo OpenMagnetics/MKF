@@ -241,7 +241,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         double startingFrequency = 0.1;
         double endingFrequency = 1000000;
 
-        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_winding_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
         auto frequenciesVector = windingAcResistanceData.get_x_points();
         auto acResistanceVector = windingAcResistanceData.get_y_points();
 
@@ -289,7 +289,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         double startingFrequency = 0.1;
         double endingFrequency = 1000000;
 
-        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
+        OpenMagnetics::Curve2D windingAcResistanceData = OpenMagnetics::Sweeper().sweep_winding_resistance_over_frequency(magnetic, startingFrequency, endingFrequency, numberElements, windingIndex);
         auto frequenciesVector = windingAcResistanceData.get_x_points();
         auto acResistanceVector = windingAcResistanceData.get_y_points();
 
