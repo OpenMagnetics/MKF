@@ -34,7 +34,6 @@ def fit(material, frequency):
     data_path = pathlib.Path(__file__).parent.resolve().joinpath('../../../MAS/data/advanced_core_materials.ndjson')
     all_data = pandas.read_json(data_path, lines=True)
     data = all_data[all_data['name'] == material]['volumetricLosses'].iloc[0]
-    print(material)
     for method in data['default']:
         if isinstance(method, list):
             if len(method) == 0:
@@ -73,8 +72,8 @@ def fit(material, frequency):
                     data = data.drop('magneticFluxDensity', axis=1)
                     data = data.drop('origin', axis=1)
 
-                    coefficients = calculate_steinmetz_coefficients(data)
-                    # coefficients = calculate_steinmetz_coefficients_no_temp(data)
+                    # coefficients = calculate_steinmetz_coefficients(data)
+                    coefficients = calculate_steinmetz_coefficients_no_temp(data)
                     coefficients["minimumFrequency"] = minimumFrequency
                     coefficients["maximumFrequency"] = maximumFrequency
 
@@ -121,12 +120,13 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("SMP51", [300000, 1000000]), fit("SMP51", [1000000, 5000000])]})
     # print({"method": "steinmetz", "ranges": [fit("SMP53", [300000, 1000000]), fit("SMP53", [1000000, 5000000])]})
 
+    print({"method": "steinmetz", "ranges": [fit("X-Indmix A", [1, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR25", [1, 200000]), fit("DMR25", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR24", [1, 200000]), fit("DMR24", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR44", [1, 200000]), fit("DMR44", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR40B", [1, 200000]), fit("DMR40B", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR95", [1, 200000]), fit("DMR95", [200000, 600000000])]})
-    print({"method": "steinmetz", "ranges": [fit("DMR40", [1, 200000]), fit("DMR40", [200000, 600000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("DMR40", [1, 200000]), fit("DMR40", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR55", [1, 200000]), fit("DMR55", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR28", [1, 200000]), fit("DMR28", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR96", [1, 200000]), fit("DMR96", [200000, 600000000])]})
