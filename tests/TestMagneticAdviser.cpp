@@ -2186,4 +2186,114 @@ SUITE(CatalogAdviser) {
         }
     }
 
+    TEST(Test_CatalogAdviser_Web_0) {
+
+        {
+            std::string file_path = __FILE__;
+            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+
+            std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
+            if(!file.is_open())
+                throw std::runtime_error("Failed to open " + external_core_materials_path);
+            using Iterator = std::istreambuf_iterator<char>;
+            std::string external_core_materials(Iterator{file}, Iterator{});
+
+            OpenMagnetics::clear_databases();
+            OpenMagnetics::load_core_materials();
+
+            auto allCoreMaterials = coreMaterialDatabase;
+
+            OpenMagnetics::load_core_materials(external_core_materials);
+        }
+
+        OpenMagnetics::InputsWrapper inputs;
+        {
+            std::string file_path = __FILE__;
+            auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_catalog.json");
+            auto mas = OpenMagneticsTesting::mas_loader(path);
+            inputs = mas.get_inputs();
+        }
+
+        std::vector <OpenMagnetics::MagneticWrapper> catalog;
+        {
+            std::string file_path = __FILE__;
+            auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
+
+            std::ifstream ndjsonFile(inventory_path);
+            std::string jsonLine;
+            json coresJson = json::array();
+            while (std::getline(ndjsonFile, jsonLine)) {
+                json jf = json::parse(jsonLine);
+                OpenMagnetics::MagneticWrapper magnetic(jf);
+                catalog.push_back(magnetic);
+            }
+        }
+
+
+        OpenMagnetics::MagneticAdviser magneticAdviser;
+        auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, catalog, 1);
+        CHECK(masMagnetics.size() > 0);
+
+        auto scorings = magneticAdviser.get_scorings();
+        // std::cout << "scorings.size(): " << scorings.size() << std::endl;
+        for (auto [name, values] : scorings) {
+            double scoringTotal = 0;
+            // std::cout << name << std::endl;
+            for (auto [key, value] : values) {
+                // std::cout << magic_enum::enum_name(key) << std::endl;
+                // std::cout << value << std::endl;
+                scoringTotal += value;
+            }
+            // std::cout << "scoringTotal: " << scoringTotal << std::endl;
+        }
+
+        for (auto masMagneticWithScoring : masMagnetics) {
+            auto masMagnetic = masMagneticWithScoring.first;
+            auto magnetic = masMagnetic.get_mutable_magnetic();
+            auto core = magnetic.get_mutable_core();
+            auto coil = magnetic.get_mutable_coil();
+            auto operatingPoint = masMagnetic.get_inputs().get_operating_points()[0];
+
+            auto magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(100, false);
+
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+
+            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+
+            std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
+            std::cout << "magneticFluxDensitySaturation: " << magneticFluxDensitySaturation << std::endl;
+            std::cout << "magneticFluxDensityPeak: " << magneticFluxDensityPeak << std::endl;
+            std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
+
+
+            for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+                auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+                if (!excitation.get_current()) {
+                    throw std::runtime_error("Current is missing in excitation");
+                }
+                auto current = excitation.get_current().value();
+                auto wire = magnetic.get_mutable_coil().resolve_wire(windingIndex);
+                auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
+                std::cout << "effectiveCurrentDensity: " << effectiveCurrentDensity << std::endl;
+                auto dcCurrentDensity = wire.calculate_dc_current_density(current);
+                std::cout << "dcCurrentDensity: " << dcCurrentDensity << std::endl;
+            }
+            OpenMagneticsTesting::check_turns_description(magnetic.get_coil());
+            if (plot) {
+                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                std::string filename = "MagneticAdviser" + masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() + ".svg";
+                outFile.append(filename);
+                OpenMagnetics::Painter painter(outFile, true);
+
+                painter.paint_magnetic_field(masMagnetic.get_mutable_inputs().get_operating_point(0), masMagnetic.get_mutable_magnetic());
+                painter.paint_core(masMagnetic.get_mutable_magnetic());
+                painter.paint_bobbin(masMagnetic.get_mutable_magnetic());
+                painter.paint_coil_turns(masMagnetic.get_mutable_magnetic());
+                painter.export_svg();
+            }
+        }
+    }
+
 }

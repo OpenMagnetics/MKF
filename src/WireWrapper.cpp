@@ -1134,9 +1134,26 @@ namespace OpenMagnetics {
         return calculate_effective_current_density(rms, effectiveFrequency, temperature);
     }
 
+    double WireWrapper::calculate_dc_current_density(OperatingPointExcitation excitation) {
+        if (!excitation.get_current()) {
+            throw std::runtime_error("Current is missing");
+        }
+        return calculate_dc_current_density(excitation.get_current().value());
+    }
+
+    double WireWrapper::calculate_dc_current_density(SignalDescriptor current) {
+        if (!current.get_processed()) {
+            throw std::runtime_error("Current is not processed");
+        }
+        if (!current.get_processed()->get_rms()) {
+            throw std::runtime_error("Current is missing RMS");
+        }
+        double rms = current.get_processed()->get_rms().value();
+        return calculate_effective_current_density(rms, 0, Defaults().ambientTemperature);
+    }
+
     double WireWrapper::calculate_effective_conducting_area(double frequency, double temperature) {
         auto material = resolve_material();
-        auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material,  frequency, temperature);
         double conductingSmallestDimension;
         double effectiveConductingArea;
         switch (get_type()) {
@@ -1172,6 +1189,12 @@ namespace OpenMagnetics {
         }
 
         auto conductingArea = calculate_conducting_area();
+        if (frequency == 0) {
+            return conductingArea;
+        }
+
+
+        auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth(material,  frequency, temperature);
         if (!get_conducting_area()) {
             DimensionWithTolerance dimensionWithTolerance;
             dimensionWithTolerance.set_nominal(conductingArea);
