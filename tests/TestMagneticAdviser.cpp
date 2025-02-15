@@ -54,7 +54,7 @@ SUITE(MagneticAdviser) {
         inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<OpenMagnetics::ImpedanceAtFrequency>{impedanceAtFrequency});
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
@@ -126,7 +126,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 5);
@@ -193,7 +193,7 @@ SUITE(MagneticAdviser) {
         inputs.set_design_requirements(requirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 4);
@@ -273,7 +273,7 @@ SUITE(MagneticAdviser) {
         inputs.set_design_requirements(requirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser magneticAdviser;
         auto masMagnetics = magneticAdviser.get_advised_magnetic(inputs, 1);
@@ -358,7 +358,7 @@ SUITE(MagneticAdviser) {
 
         OpenMagnetics::InputsWrapper inputs(masJson["inputs"]);
         OpenMagnetics::MasWrapper masMagnetic;
-        // inputs.process_waveforms();
+        // inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -449,7 +449,7 @@ SUITE(MagneticAdviser) {
                                                                                                   turnsRatios);
 
             inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-            inputs.process_waveforms();
+            inputs.process();
 
             try {
                 OpenMagnetics::MagneticAdviser MagneticAdviser;
@@ -507,7 +507,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -559,7 +559,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -611,7 +611,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -668,7 +668,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -918,7 +918,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -971,7 +971,7 @@ SUITE(MagneticAdviser) {
                                                                                               turnsRatios);
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -1056,7 +1056,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1136,7 +1136,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1211,7 +1211,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1290,7 +1290,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1372,7 +1372,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1468,7 +1468,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1564,7 +1564,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1644,7 +1644,7 @@ SUITE(MagneticAdviser) {
 
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        inputs.process_waveforms();
+        inputs.process();
         OpenMagnetics::MagneticAdviser MagneticAdviser;
 
         auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 3);
@@ -1884,7 +1884,7 @@ SUITE(MagneticAdviser) {
 
 
     //     inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
-    //     inputs.process_waveforms();
+    //     inputs.process();
     //     OpenMagnetics::MagneticAdviser MagneticAdviser;
 
     //     auto masMagnetics = MagneticAdviser.get_advised_magnetic(inputs, 1);
@@ -1979,7 +1979,7 @@ SUITE(CatalogAdviser) {
         inputs.set_design_requirements(requirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
 
         std::vector<std::pair<double, double>> impedancePoints = {
@@ -2113,7 +2113,7 @@ SUITE(CatalogAdviser) {
         inputs.set_design_requirements(requirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
 
         std::vector<std::pair<double, double>> impedancePoints = {

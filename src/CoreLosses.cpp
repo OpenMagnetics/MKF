@@ -232,12 +232,6 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     else {
         volumetricLosses = k * pow(frequency, alpha) * pow(magneticFluxDensityAcPeak, beta);
     }
-    std::cout << "beta: " << beta << std::endl;
-    std::cout << "excitation.get_frequency(): " << excitation.get_frequency() << std::endl;
-    std::cout << "frequency: " << frequency << std::endl;
-    std::cout << "mainHarmonicMagneticFluxDensityAcPeak: " << mainHarmonicMagneticFluxDensityAcPeak << std::endl;
-    std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
-    std::cout << "volumetricLosses: " << volumetricLosses << std::endl;
 
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 };

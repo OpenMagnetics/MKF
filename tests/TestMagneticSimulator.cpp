@@ -43,7 +43,7 @@ SUITE(MagneticSimulator) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
@@ -64,7 +64,7 @@ SUITE(MagneticSimulator) {
 
         OpenMagnetics::InputsWrapper inputs(masJson["inputs"]);
         OpenMagnetics::MasWrapper masMagnetic;
-        // inputs.process_waveforms();
+        // inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
@@ -111,7 +111,7 @@ SUITE(MagneticSimulator) {
 
         OpenMagnetics::InputsWrapper inputs(masJson["inputs"]);
         OpenMagnetics::MasWrapper masMagnetic;
-        // inputs.process_waveforms();
+        // inputs.process();
 
         OpenMagnetics::MagneticAdviser MagneticAdviser;
         // MagneticAdviser.set_interleaving_level(interleavingLevel);
@@ -1013,7 +1013,7 @@ SUITE(MagneticSimulator) {
 
         OpenMagnetics::InputsWrapper inputs(inputsJson);
 
-        inputs.process_waveforms();
+        inputs.process();
 
         {
             auto ea = inputs.get_operating_point(0).get_excitations_per_winding()[0];
