@@ -529,7 +529,7 @@ SUITE(CoilAdviser) {
         inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -644,7 +644,7 @@ SUITE(CoilAdviser) {
         inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -823,7 +823,7 @@ SUITE(CoilAdviser) {
 
             inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
             OpenMagnetics::MasWrapper masMagnetic;
-            inputs.process_waveforms();
+            inputs.process();
             masMagnetic.set_inputs(inputs);
             masMagnetic.set_magnetic(magnetic);
 
@@ -906,7 +906,7 @@ SUITE(CoilAdviser) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -962,7 +962,7 @@ SUITE(CoilAdviser) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1025,7 +1025,7 @@ SUITE(CoilAdviser) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1094,7 +1094,7 @@ SUITE(CoilAdviser) {
                                                                                               turnsRatios);
 
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1163,7 +1163,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1234,7 +1234,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1302,7 +1302,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1371,7 +1371,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1440,7 +1440,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1509,7 +1509,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1579,7 +1579,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1646,7 +1646,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1717,7 +1717,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1785,7 +1785,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1855,7 +1855,7 @@ SUITE(CoilAdviser) {
 
         inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
         OpenMagnetics::MasWrapper masMagnetic;
-        inputs.process_waveforms();
+        inputs.process();
         masMagnetic.set_inputs(inputs);
         masMagnetic.set_magnetic(magnetic);
 
@@ -1937,7 +1937,7 @@ SUITE(CoilAdviser) {
                 mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core()));
             }
         }
-        mas.get_mutable_inputs().process_waveforms();
+        mas.get_mutable_inputs().process();
 
         auto sections = OpenMagnetics::CoilAdviser().get_advised_sections(mas, pattern, repetitions);
     }
@@ -1959,7 +1959,7 @@ SUITE(CoilAdviser) {
                 mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(OpenMagnetics::BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core()));
             }
         }
-        mas.get_mutable_inputs().process_waveforms();
+        mas.get_mutable_inputs().process();
 
         auto sections = OpenMagnetics::CoilAdviser().get_advised_sections(mas, pattern, repetitions);
     }

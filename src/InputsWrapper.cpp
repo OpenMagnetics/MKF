@@ -1509,7 +1509,7 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
     return operatingPoint;
 }
 
-void InputsWrapper::process_waveforms() {
+void InputsWrapper::process() {
     auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
 
@@ -1679,7 +1679,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point(double frequency,
     }
 
     inputs.get_mutable_operating_points().push_back(operatingPoint);
-    inputs.process_waveforms();
+    inputs.process();
     return inputs;
 
 }
@@ -1773,7 +1773,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
     }
 
     inputs.get_mutable_operating_points().push_back(operatingPoint);
-    inputs.process_waveforms();
+    inputs.process();
 
     return inputs;
 }
@@ -1851,7 +1851,7 @@ InputsWrapper InputsWrapper::create_quick_operating_point_only_current(double fr
     }
 
     inputs.get_mutable_operating_points().push_back(operatingPoint);
-    inputs.process_waveforms();
+    inputs.process();
 
     return inputs;
 }

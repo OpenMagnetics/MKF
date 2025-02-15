@@ -24,14 +24,14 @@ class InputsWrapper : public Inputs {
             throw std::runtime_error("Missing inputs");
         }
         if (processWaveform) {
-            process_waveforms();
+            process();
         }
     }
     InputsWrapper() = default;
     virtual ~InputsWrapper() = default;
 
     std::pair<bool, std::string> check_integrity();
-    void process_waveforms();
+    void process();
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt);
 
     static bool is_waveform_sampled(Waveform waveform);
