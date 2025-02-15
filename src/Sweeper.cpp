@@ -12,9 +12,17 @@
 namespace OpenMagnetics {
 
 
-Curve2D Sweeper::sweep_impedance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, std::string title) {
-    // auto frequencies = linear_spaced_array(start, stop, numberElements);
-    auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_impedance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
 
     std::vector<double> impedances;
     for (auto frequency : frequencies) {
@@ -27,9 +35,17 @@ Curve2D Sweeper::sweep_impedance_over_frequency(MagneticWrapper magnetic, double
     return Curve2D(frequencies, impedances, title);
 }
 
-Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature, std::string title) {
-    // auto frequencies = linear_spaced_array(start, stop, numberElements);
-    auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
@@ -60,9 +76,17 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magneti
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
-Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string title) {
-    // auto frequencies = linear_spaced_array(start, stop, numberElements);
-    auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
@@ -87,9 +111,17 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
-Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string title) {
-    auto frequencies = linear_spaced_array(start, stop, numberElements);
-    // auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
 
@@ -106,9 +138,17 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, 
     return Curve2D(frequencies, coreResistances, title);
 }
 
-Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string title) {
-    auto frequencies = linear_spaced_array(start, stop, numberElements);
-    // auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
 
@@ -170,9 +210,17 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, Oper
     return Curve2D(frequencies, coreLossesPerFrequency, title);
 }
 
-Curve2D Sweeper::sweep_winding_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string title) {
-    // auto frequencies = linear_spaced_array(start, stop, numberElements);
-    auto frequencies = logarithmic_spaced_array(start, stop, numberElements);
+Curve2D Sweeper::sweep_winding_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
 
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
