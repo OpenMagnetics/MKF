@@ -161,11 +161,12 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, Oper
     auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, initialPermeability);
     auto totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
 
-
     std::vector<double> coreLossesPerFrequency;
-    auto coreLossesModel = OpenMagnetics::CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    CoreLosses coreLossesModel;
+    coreLossesModel.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
+
     for (auto frequency : frequencies) {
-        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency);
+        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency, true);
         // operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
         OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
 
@@ -199,7 +200,7 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, Oper
     
         excitation.set_magnetic_flux_density(magneticFluxDensity);
 
-        auto coreLosses =  coreLossesModel->get_core_losses(core, excitation, temperature).get_core_losses();
+        auto coreLosses =  coreLossesModel.calculate_core_losses(core, excitation, temperature).get_core_losses();
         coreLossesPerFrequency.push_back(coreLosses);
     }
 
