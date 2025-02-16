@@ -86,20 +86,6 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     double temperatureAfterLosses = temperature;
     SignalDescriptor magneticFluxDensity;
     CoreLossesOutput coreLossesOutput;
-    // std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
-
-    // auto availableMethodsForMaterial = CoreLossesModel::get_methods(magnetic.get_mutable_core().get_material_name());
-    // for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
-    //     for (auto& availableMethod : availableMethodsForMaterial) {
-    //     }
-    //     if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
-    //         coreLossesModelForMaterial = coreLossesModel;
-    //         break;
-    //     }
-    // }
-    // if (coreLossesModelForMaterial == nullptr) {
-    //     throw std::runtime_error("No model found for material: " + magnetic.get_mutable_core().get_material_name());
-    // }
 
     do {
         temperature = temperatureAfterLosses;

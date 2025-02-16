@@ -464,7 +464,7 @@ SUITE(Sweeper) {
     }
 
     TEST(Test_Sweeper_Core_Losses_Over_Frequency_Non_Steinmetz) {
-        double temperature = 20;
+        double temperature = 100;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};

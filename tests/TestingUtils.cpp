@@ -1,6 +1,7 @@
 #include "Settings.h"
 #include "Utils.h"
 #include "TestingUtils.h"
+#include "MagnetizingInductance.h"
 #include <UnitTest++.h>
 
 #include <filesystem>
@@ -795,9 +796,27 @@ OpenMagnetics::MasWrapper mas_loader(std::string path) {
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
-    auto inputs = OpenMagnetics::InputsWrapper(inputsJson);
     auto magnetic = OpenMagnetics::MagneticWrapper(magneticJson);
     auto outputs = std::vector<OpenMagnetics::OutputsWrapper>(outputsJson);
+    OpenMagnetics::InputsWrapper inputs;
+    std::vector<double> magnetizingInductancePerPoint;
+    for (auto output : outputs) {
+        if (output.get_magnetizing_inductance()) {
+            auto magnetizingInductance = OpenMagnetics::resolve_dimensional_values(output.get_magnetizing_inductance()->get_magnetizing_inductance());
+            magnetizingInductancePerPoint.push_back(magnetizingInductance);
+        }
+    }
+
+    if (magnetizingInductancePerPoint.size() > 0) {
+        inputs = OpenMagnetics::InputsWrapper(inputsJson, true, magnetizingInductancePerPoint);
+
+    }
+    else {
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel;
+        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
+        inputs = OpenMagnetics::InputsWrapper(inputsJson, true, magnetizingInductance);
+    }
+
     OpenMagnetics::MasWrapper mas;
     mas.set_inputs(inputs);
     mas.set_magnetic(magnetic);

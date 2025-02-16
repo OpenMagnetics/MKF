@@ -468,6 +468,9 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
+
+    static double calculate_magnetizing_inductance_from_excitation(CoreWrapper core, OperatingPointExcitation excitation, double temperature);
+
 };
 
 class CoreLosses {

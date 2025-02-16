@@ -1265,7 +1265,7 @@ double get_ac_ripple(Waveform waveform) {
     double minimumAcRipple = DBL_MAX;
     double maximumAcRipple = 0;
     for (size_t i = 0; i < data.size(); ++i) {
-        if (data[i] > threshold) {
+        if (fabs(data[i]) > threshold) {
             minimumAcRipple = std::min(minimumAcRipple, data[i]);
             maximumAcRipple = std::max(maximumAcRipple, data[i]);
         }
@@ -1307,7 +1307,9 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
 
             dcCurrent = excitation.get_current()->get_processed()->get_peak().value() - acRipple / 2;
         }
-        dcCurrent = excitation.get_current()->get_processed()->get_rms().value();
+        else {
+            dcCurrent = excitation.get_current()->get_processed()->get_offset();
+        }
     }
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
@@ -1509,13 +1511,34 @@ OperatingPoint InputsWrapper::process_operating_point(OperatingPoint operatingPo
     return operatingPoint;
 }
 
-void InputsWrapper::process() {
+void InputsWrapper::process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance) {
     auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
 
-    for (auto& operatingPoint : operatingPoints) {
-        processed_operating_points.push_back(process_operating_point(
-            operatingPoint, resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance())));
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        auto operatingPoint = operatingPoints[operatingPointIndex];
+        double magnetizingInductanceToProcess;
+        if (magnetizingInductance) {
+            if (std::holds_alternative<std::vector<double>>(magnetizingInductance.value())) {
+                auto magnetizingInductancePerPoint = std::get<std::vector<double>>(magnetizingInductance.value());
+                if (magnetizingInductancePerPoint.size() == 0) {
+                    magnetizingInductanceToProcess = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
+                }
+                else if (operatingPointIndex < magnetizingInductancePerPoint.size()) {
+                    magnetizingInductanceToProcess = magnetizingInductancePerPoint[operatingPointIndex];
+                }
+                else {
+                    magnetizingInductanceToProcess = magnetizingInductancePerPoint.back();
+                }
+            }
+            else {
+                magnetizingInductanceToProcess = std::get<double>(magnetizingInductance.value());
+            }
+        }
+        else {
+            magnetizingInductanceToProcess = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
+        }
+        processed_operating_points.push_back(process_operating_point(operatingPoint, magnetizingInductanceToProcess));
     }
     set_operating_points(processed_operating_points);
 }
