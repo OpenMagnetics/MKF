@@ -69,8 +69,6 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magneti
 
         double effectiveResistance = lossesThisWinding / pow(currentMask[windingIndex], 2);
         effectiveResistances.push_back(effectiveResistance);
-        // std::cout << "frequency: " << frequency << std::endl;
-        // std::cout << "effectiveResistance: " << effectiveResistance << std::endl;
     }
 
     return Curve2D(frequencies, effectiveResistances, title);
@@ -104,8 +102,6 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
 
         double effectiveResistance = windingLosses / pow(currentMask[0], 2);
         effectiveResistances.push_back(effectiveResistance);
-        // std::cout << "frequency: " << frequency << std::endl;
-        // std::cout << "effectiveResistance: " << effectiveResistance << std::endl;
     }
 
     return Curve2D(frequencies, effectiveResistances, title);
@@ -233,14 +229,19 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(MagneticWrapper magnetic, O
 
     std::vector<double> windingLossesPerFrequency;
     for (auto frequency : frequencies) {
-        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency);
+        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency, true);
         operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
 
         auto windingLosses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+        auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
+
+        auto proximityLossesPerharmonic = windingLossesPerWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic();
+        double proximityLosses = std::accumulate(proximityLossesPerharmonic.begin(), proximityLossesPerharmonic.end(), 0.0);
+        auto skinLossesPerharmonic = windingLossesPerWinding[0].get_skin_effect_losses()->get_losses_per_harmonic();
+        double skinLosses = std::accumulate(skinLossesPerharmonic.begin(), skinLossesPerharmonic.end(), 0.0);
+        double lossesThisWinding = windingLossesPerWinding[0].get_ohmic_losses()->get_losses() + proximityLosses + skinLosses;
 
         windingLossesPerFrequency.push_back(windingLosses);
-        // std::cout << "frequency: " << frequency << std::endl;
-        // std::cout << "effectiveResistance: " << effectiveResistance << std::endl;
     }
 
     return Curve2D(frequencies, windingLossesPerFrequency, title);
