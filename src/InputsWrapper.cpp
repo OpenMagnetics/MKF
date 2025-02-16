@@ -2110,17 +2110,17 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-void InputsWrapper::scale_time_to_frequency(InputsWrapper& inputs, double newFrequency){
+void InputsWrapper::scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields){
     for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
-        OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, newFrequency);
+        OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields);
     }}
 
-void InputsWrapper::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency){
+void InputsWrapper::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields){
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-        scale_time_to_frequency(excitation, newFrequency);
+        scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields);
     }}
 
-void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency){
+void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields){
     excitation.set_frequency(newFrequency);
     if (excitation.get_current() && excitation.get_current()->get_waveform()) {
         auto current = excitation.get_current().value();
@@ -2132,20 +2132,27 @@ void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation
         voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
         excitation.set_voltage(voltage);
     }
-    if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
-        auto magnetizingCurrent = excitation.get_magnetizing_current().value();
-        magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
-        excitation.set_magnetizing_current(magnetizingCurrent);
+    if (cleanFrequencyDependentFields) {
+        excitation.set_magnetizing_current(std::nullopt);
+        excitation.set_magnetic_flux_density(std::nullopt);
+        excitation.set_magnetic_field_strength(std::nullopt);
     }
-    if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
-        auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-        magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
-        excitation.set_magnetic_flux_density(magneticFluxDensity);
-    }
-    if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
-        auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
-        magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
-        excitation.set_magnetic_field_strength(magneticFieldStrength);
+    else {
+        if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
+            auto magnetizingCurrent = excitation.get_magnetizing_current().value();
+            magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
+            excitation.set_magnetizing_current(magnetizingCurrent);
+        }
+        if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
+            auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+            magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
+            excitation.set_magnetic_flux_density(magneticFluxDensity);
+        }
+        if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
+            auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
+            magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
+            excitation.set_magnetic_field_strength(magneticFieldStrength);
+        }
     }
 }
 Waveform InputsWrapper::scale_time_to_frequency(Waveform waveform, double newFrequency){
