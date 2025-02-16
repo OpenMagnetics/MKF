@@ -1003,6 +1003,22 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
     return magneticFluxDensity;
 }
 
+double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitation(CoreWrapper core, OperatingPointExcitation excitation, double temperature) {
+    auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
+    auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
+    auto coreMaterial = core.resolve_material();
+    double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description().value().get_effective_parameters().get_effective_length();
+
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+    int64_t numberTurns = round(ceilFloat(magneticFluxDensityPeak / currentPeak * reluctance * effectiveArea, 0));
+
+    double magnetizingInductance = numberTurns * numberTurns / reluctance;
+    return magnetizingInductance;
+}
+
 CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
@@ -1019,19 +1035,10 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
 
         // throw std::runtime_error("Missing RMS value in magnetizing current");
     }
-    auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
-    auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
     auto coreMaterial = core.resolve_material();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
-
-    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-    auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
-    int64_t numberTurns = magneticFluxDensityPeak / currentPeak * reluctance * effectiveArea;
-
-    double magnetizingInductance = numberTurns * numberTurns / reluctance;
+    double magnetizingInductance = calculate_magnetizing_inductance_from_excitation(core, excitation, temperature);
 
     auto volumetricLosses = get_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
 

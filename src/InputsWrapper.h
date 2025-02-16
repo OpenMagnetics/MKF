@@ -17,21 +17,21 @@ namespace OpenMagnetics {
 
 class InputsWrapper : public Inputs {
   public:
-    InputsWrapper(const json& j, bool processWaveform = true) {
+    InputsWrapper(const json& j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
         from_json(j, *this);
         auto check_passed = check_integrity();
         if (!check_passed.first) {
             throw std::runtime_error("Missing inputs");
         }
         if (processWaveform) {
-            process();
+            process(magnetizingInductance);
         }
     }
     InputsWrapper() = default;
     virtual ~InputsWrapper() = default;
 
     std::pair<bool, std::string> check_integrity();
-    void process();
+    void process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt);
     static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt);
 
     static bool is_waveform_sampled(Waveform waveform);
