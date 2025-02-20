@@ -37,7 +37,7 @@ class InputsWrapper : public Inputs {
     static bool is_waveform_sampled(Waveform waveform);
     static bool is_waveform_imported(Waveform waveform);
     static bool is_multiport_inductor(OperatingPoint operatingPoint);
-    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0);
+    static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt);
     static Processed calculate_processed_data(Waveform waveform, std::optional<double> frequency=std::nullopt, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
     static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
@@ -123,9 +123,9 @@ class InputsWrapper : public Inputs {
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    static void scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields=false);
-    static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields=false);
-    static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields=false);
+    static void scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
+    static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
+    static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
     static Waveform scale_time_to_frequency(Waveform waveform, double newFrequency);
     
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {

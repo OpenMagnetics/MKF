@@ -156,8 +156,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         auto currentWaveform = excitation.get_current().value().get_waveform().value();
         double frequency = excitation.get_frequency();
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
-            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
-            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
+            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
         }
 
         std::vector<double> voltageWaveformData = voltageWaveform.get_data();
@@ -172,6 +172,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
 
         double switchingFrequency = InputsWrapper::get_switching_frequency(excitation);
 
+
+        if ((powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity)) > 1) {
+            throw std::runtime_error("maximumAreaProductRequired cannot be larger than 1 (probably)");
+        }
         areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity));
     }
 
@@ -284,7 +288,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             else {
                 magneticFluxDensityPeakAtFrequencyOfReferenceLosses = materialScaledMagneticFluxDensities[core.get_material_name()];
             }
-
             double areaProductRequired = areaProductRequiredPreCalculations[operatingPointIndex] / (windingWindowUtilizationFactor * magneticFluxDensityPeakAtFrequencyOfReferenceLosses);
             if (std::isnan(magneticFluxDensityPeakAtFrequencyOfReferenceLosses) || magneticFluxDensityPeakAtFrequencyOfReferenceLosses == 0) {
                 throw std::runtime_error("magneticFluxDensityPeakAtFrequencyOfReferenceLosses cannot be 0 or NaN");
@@ -298,6 +301,9 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             }
 
             maximumAreaProductRequired = std::max(maximumAreaProductRequired, areaProductRequired);
+        }
+        if (maximumAreaProductRequired > 1) {
+            throw std::runtime_error("maximumAreaProductRequired cannot be larger than 1 (probably)");
         }
 
         if (areaProductCore >= maximumAreaProductRequired * defaults.coreAdviserThresholdValidity) {
@@ -339,7 +345,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
     std::vector<std::pair<MasWrapper, double>> filteredMagneticsWithScoring;
     std::vector<double> newScoring;
 
-    double requiredMagneticEnergy = magneticEnergy.calculate_required_magnetic_energy(inputs).get_nominal().value();
+    double requiredMagneticEnergy = resolve_dimensional_values(magneticEnergy.calculate_required_magnetic_energy(inputs));
     MagnetizingInductanceOutput magnetizingInductanceOutput;
 
     std::list<size_t> listOfIndexesToErase;
@@ -378,8 +384,6 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
                 break;
             }
         }
-
-
 
         if (validMagnetic) {
             double scoring = totalStorableMagneticEnergy;
@@ -562,8 +566,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
         double frequency = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
 
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
-            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency);
-            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency);
+            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
         }
         std::vector<double> voltageWaveformData = voltageWaveform.get_data();
         std::vector<double> currentWaveformData = currentWaveform.get_data();
@@ -1423,6 +1427,10 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::apply_filters(std::vecto
 
     std::string firstFilterString = std::string{magic_enum::enum_name(firstFilter)};
     logEntry("There are " + std::to_string(masMagneticsWithScoring.size()) + " magnetics after the first filter, which was " + firstFilterString + ".");
+
+    if (masMagneticsWithScoring.size() == 0) {
+        return masMagneticsWithScoring;
+    }
 
     if (masMagneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
         masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumMagneticsAfterFiltering));
