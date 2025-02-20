@@ -529,7 +529,7 @@ SignalDescriptor InputsWrapper::get_multiport_inductor_magnetizing_current(Opera
     return magnetizingCurrent;
 }
 
-Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double frequency) {
+Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     std::vector<double> time;
     auto data = waveform.get_data();
@@ -550,22 +550,25 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
         }
     }
 
-    size_t numberPoints = settings->get_inputs_number_points_sampled_waveforms();
+    size_t numberPointsForSampling = settings->get_inputs_number_points_sampled_waveforms();
+    if (numberPoints) {
+        numberPointsForSampling = numberPoints.value();
+    }
 
-    if (data.size() > numberPoints) {
+    if (data.size() > numberPointsForSampling) {
         if (is_size_power_of_2(data)) {
-            numberPoints = data.size();
+            numberPointsForSampling = data.size();
         }
         else {
-            numberPoints = round_up_size_to_power_of_2(data);
+            numberPointsForSampling = round_up_size_to_power_of_2(data);
         }
     }
 
-    auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPoints + 1);
+    auto sampledTime = linear_spaced_array(0, 1. / roundFloat(frequency, 9), numberPointsForSampling + 1);
 
     std::vector<double> sampledData;
 
-    for (size_t i = 0; i < numberPoints; i++) {
+    for (size_t i = 0; i < numberPointsForSampling; i++) {
         bool found = false;
         for (size_t interpIndex = 0; interpIndex < data.size() - 1; interpIndex++) {
             if ((sampledTime[i] > time[interpIndex + 1]) && (interpIndex + 1) != time.size() - 1) {
@@ -590,7 +593,7 @@ Waveform InputsWrapper::calculate_sampled_waveform(Waveform waveform, double fre
         }
     }
 
-    if (sampledData.size() != numberPoints) {
+    if (sampledData.size() != numberPointsForSampling) {
         throw std::invalid_argument("Wrong number of sampled points");
     }
 
@@ -1359,8 +1362,6 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     else {
         sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform);
         SignalDescriptor magnetizingCurrentExcitation;
-
-
 
 
         sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
@@ -2133,26 +2134,36 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-void InputsWrapper::scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields){
+void InputsWrapper::scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
     for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
-        OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields);
+        OpenMagnetics::InputsWrapper::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields, processSignals);
     }}
 
-void InputsWrapper::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields){
+void InputsWrapper::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-        scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields);
+        scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields, processSignals);
     }}
 
-void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields){
+void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
     excitation.set_frequency(newFrequency);
     if (excitation.get_current() && excitation.get_current()->get_waveform()) {
         auto current = excitation.get_current().value();
         current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));
+        if (processSignals) {
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), newFrequency);
+            current.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, newFrequency));
+            current.set_processed(InputsWrapper::calculate_processed_data(current, sampledWaveform, true));
+        }
         excitation.set_current(current);
     }
     if (excitation.get_voltage() && excitation.get_voltage()->get_waveform()) {
         auto voltage = excitation.get_voltage().value();
         voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
+        if (processSignals) {
+            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), newFrequency);
+            voltage.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, newFrequency));
+            voltage.set_processed(InputsWrapper::calculate_processed_data(voltage, sampledWaveform, true));
+        }
         excitation.set_voltage(voltage);
     }
     if (cleanFrequencyDependentFields) {
@@ -2164,16 +2175,31 @@ void InputsWrapper::scale_time_to_frequency(OperatingPointExcitation& excitation
         if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
             auto magnetizingCurrent = excitation.get_magnetizing_current().value();
             magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
+            if (processSignals) {
+                auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), newFrequency);
+                magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, newFrequency));
+                magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
+            }
             excitation.set_magnetizing_current(magnetizingCurrent);
         }
         if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
             auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
             magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
+            if (processSignals) {
+                auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(magneticFluxDensity.get_waveform().value(), newFrequency);
+                magneticFluxDensity.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, newFrequency));
+                magneticFluxDensity.set_processed(InputsWrapper::calculate_processed_data(magneticFluxDensity, sampledWaveform, true));
+            }
             excitation.set_magnetic_flux_density(magneticFluxDensity);
         }
         if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
             auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
             magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
+            if (processSignals) {
+                auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(magneticFieldStrength.get_waveform().value(), newFrequency);
+                magneticFieldStrength.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledWaveform, newFrequency));
+                magneticFieldStrength.set_processed(InputsWrapper::calculate_processed_data(magneticFieldStrength, sampledWaveform, true));
+            }
             excitation.set_magnetic_field_strength(magneticFieldStrength);
         }
     }

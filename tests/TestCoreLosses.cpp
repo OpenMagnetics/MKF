@@ -2380,8 +2380,7 @@ SUITE(CoreLossesAssorted) {
 
         OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
 
-        auto magneticFluxDensity =
-            magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+        auto magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
 
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         double temperature = operatingPoint.get_conditions().get_ambient_temperature();
@@ -2390,6 +2389,19 @@ SUITE(CoreLossesAssorted) {
         auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_offset(), 0, 0.002);
+
+        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+
+        auto outFile = outputFilePath;
+
+        outFile.append("Test_Manufacturer_Magnetics.svg");
+        std::filesystem::remove(outFile);
+        OpenMagnetics::Painter painter(outFile, false, true);
+        painter.paint_waveform(magneticFluxDensity.get_waveform().value());
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+
+
         CHECK_CLOSE(coreLosses.get_core_losses(), 31.2, 31.2 * maxError);
     }
 
