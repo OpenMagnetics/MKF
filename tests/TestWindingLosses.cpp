@@ -2652,10 +2652,10 @@ SUITE(WindingLossesResistanceMatrix) {
 
         auto resistanceMatrixAtFrequency = OpenMagnetics::WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
 
-        CHECK(resistanceMatrixAtFrequency.get_matrix().size() == magnetic.get_coil().get_functional_description().size());
+        CHECK(resistanceMatrixAtFrequency.get_magnitude().size() == magnetic.get_coil().get_functional_description().size());
         for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            CHECK(resistanceMatrixAtFrequency.get_matrix()[windingIndex].size() == magnetic.get_coil().get_functional_description().size());
-            CHECK(OpenMagnetics::resolve_dimensional_values(resistanceMatrixAtFrequency.get_matrix()[windingIndex][windingIndex]) > 0);
+            CHECK(resistanceMatrixAtFrequency.get_magnitude()[windingIndex].size() == magnetic.get_coil().get_functional_description().size());
+            CHECK(OpenMagnetics::resolve_dimensional_values(resistanceMatrixAtFrequency.get_magnitude()[windingIndex][windingIndex]) > 0);
         }
 
     }

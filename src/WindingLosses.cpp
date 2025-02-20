@@ -226,7 +226,7 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(MagneticW
     }
 
     resistanceMatrixAtFrequency.set_frequency(frequency);
-    resistanceMatrixAtFrequency.set_matrix(resistanceMatrix);
+    resistanceMatrixAtFrequency.set_magnitude(resistanceMatrix);
 
     settings->set_magnetic_field_include_fringing(previousSetting);
     return resistanceMatrixAtFrequency;
