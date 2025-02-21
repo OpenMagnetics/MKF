@@ -131,6 +131,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                     }
+                    else if (InputsWrapper::is_common_mode_choke(*operatingPoint)) {
+                        auto magnetizingCurrent = InputsWrapper::get_common_mode_choke_magnetizing_current(*operatingPoint);
+                        excitation.set_magnetizing_current(magnetizingCurrent);
+                        operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                    }
                     else if (excitation.get_voltage()) {
                         auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
                         auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);

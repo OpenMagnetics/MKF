@@ -505,6 +505,40 @@ bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint) {
     return false;
 }
 
+
+bool InputsWrapper::is_common_mode_choke(OperatingPoint operatingPoint) {
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.size() < 2 || excitations.size() > 3) {
+        return false;
+    }
+    else {
+        if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+            throw std::invalid_argument("Current is missing");
+        }
+        auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+        if (primaryCurrent.get_harmonics()) {
+            for (size_t windingIndexIndex = 1; windingIndexIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndexIndex) {
+                auto secondaryCurrent = operatingPoint.get_excitations_per_winding()[windingIndexIndex].get_current().value();
+
+                if (primaryCurrent.get_harmonics() && secondaryCurrent.get_harmonics()) {
+                    auto primaryHarmonics = primaryCurrent.get_harmonics().value();
+                    auto secondaryHarmonics = secondaryCurrent.get_harmonics().value();
+                    for (size_t harmonicIndex = 0; harmonicIndex < primaryHarmonics.get_frequencies().size(); ++harmonicIndex) {
+                        if (!is_close_enough(primaryHarmonics.get_frequencies()[harmonicIndex], secondaryHarmonics.get_frequencies()[harmonicIndex], 0.0001)) {
+                            return false;
+                        }
+                        if (!is_close_enough(primaryHarmonics.get_amplitudes()[harmonicIndex], secondaryHarmonics.get_amplitudes()[harmonicIndex], 0.0001)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 SignalDescriptor InputsWrapper::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint) {
     OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
 
@@ -524,6 +558,42 @@ SignalDescriptor InputsWrapper::get_multiport_inductor_magnetizing_current(Opera
     auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform, excitation.get_frequency());
     magnetizingCurrent.set_waveform(sampledWaveform);
     magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform, excitation.get_frequency()));
+    magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
+
+    return magnetizingCurrent;
+}
+
+SignalDescriptor InputsWrapper::get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint) {
+    OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
+
+    auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
+    auto secondaryCurrent = operatingPoint.get_excitations_per_winding()[1].get_current().value();
+    if (!primaryCurrent.get_processed()) {
+        throw std::invalid_argument("Current is not processed");
+    }
+    if (!secondaryCurrent.get_processed()) {
+        throw std::invalid_argument("Current is not processed");
+    }
+    if (!primaryCurrent.get_processed()->get_rms()) {
+        throw std::invalid_argument("Current is missing RMS");
+    }
+    if (!secondaryCurrent.get_processed()->get_rms()) {
+        throw std::invalid_argument("Current is missing RMS");
+    }
+    double frequency = OpenMagnetics::InputsWrapper::get_switching_frequency(excitation);
+
+    double rms = fabs(secondaryCurrent.get_processed()->get_rms().value() - primaryCurrent.get_processed()->get_rms().value());
+    double triangularPeak = rms * sqrt(3);
+
+    Processed triangularProcessed;
+    triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
+    triangularProcessed.set_offset(triangularPeak / 2);
+    triangularProcessed.set_peak_to_peak(triangularPeak);
+    auto waveform = create_waveform(triangularProcessed,frequency);
+    SignalDescriptor magnetizingCurrent;
+    auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(waveform,frequency);
+    magnetizingCurrent.set_waveform(sampledWaveform);
+    magnetizingCurrent.set_harmonics(calculate_harmonics_data(sampledWaveform,frequency));
     magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
 
     return magnetizingCurrent;
