@@ -716,14 +716,16 @@ namespace OpenMagnetics {
             return 0;
         }
         else if (numberLayers <= 2) {
-            if (outerDiameter < 0.00045)
-                return 0.000035 * numberLayers;
-            else if (outerDiameter < 0.0006)
-                return 0.00004 * numberLayers;
-            else if (outerDiameter < 0.001)
-                return 0.00007 * numberLayers;
-            else
-                return 0.00008 * numberLayers;
+            // According to https://rubadue.com/litz-wire-101-when-is-a-textile-serve-appropriate-for-your-application/
+            return 0.0000255 * numberLayers;
+            // if (outerDiameter < 0.00045)
+            //     return 0.000035 * numberLayers;
+            // else if (outerDiameter < 0.0006)
+            //     return 0.00004 * numberLayers;
+            // else if (outerDiameter < 0.001)
+            //     return 0.00007 * numberLayers;
+            // else
+            //     return 0.00008 * numberLayers;
         }
         else {
             throw std::runtime_error("Unsupported number of layers in litz serving");
@@ -854,6 +856,8 @@ namespace OpenMagnetics {
         double outerDiameter = get_outer_diameter_bare_litz(conductingDiameter, numberConductors, grade, standard);
 
         double servingThickness = get_serving_thickness_from_standard(numberLayers, outerDiameter);
+
+        // TODO: Use an interpolator for the serving
 
         outerDiameter += servingThickness * 2;
 
