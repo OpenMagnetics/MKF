@@ -406,6 +406,17 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWind
         throw std::runtime_error("bobbinWindingWindowWidth cannot be greater than coreWindingWindowWidth: " + std::to_string(bobbinWindingWindowWidth) + " < " + std::to_string(coreWindingWindowWidth));
     }
 
+    auto minimumThickness = std::min(coreWindingWindowWidth - bobbinWindingWindowWidth, (coreWindingWindowHeight - bobbinWindingWindowHeight) / 2);
+    double maximumDisproportion = 1.2;  // hardcoded
+
+    if ((coreWindingWindowWidth - bobbinWindingWindowWidth) > minimumThickness * maximumDisproportion) {
+        bobbinWindingWindowWidth = coreWindingWindowWidth - minimumThickness * maximumDisproportion;
+    }
+
+    if ((coreWindingWindowHeight - bobbinWindingWindowHeight) / 2 > minimumThickness * maximumDisproportion) {
+        bobbinWindingWindowHeight = coreWindingWindowHeight - minimumThickness * maximumDisproportion * 2;
+    }
+
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
 }
 
