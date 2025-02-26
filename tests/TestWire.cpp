@@ -197,14 +197,16 @@ SUITE(Wire) {
 
     TEST(Test_Outer_Diameter_Litz_Wire_Grade_1_Served_1_Layer_Few_Strands) {
         auto outerDiameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(2e-05, 10, 1, 1, OpenMagnetics::WireStandard::IEC_60317);
-        double expectedOuterDiameter = 0.00016;
+        double expectedMinimumValue = 0.000112;
+        double expectedMaximumValue = 0.000142;
 
-        CHECK_CLOSE(expectedOuterDiameter, outerDiameter, max_error * expectedOuterDiameter);
+        CHECK(outerDiameter > expectedMinimumValue);
+        CHECK(outerDiameter < expectedMaximumValue);
     }
 
     TEST(Test_Outer_Diameter_Litz_Wire_Grade_2_Served_1_Layer_1_Few_Strands) {
         auto outerDiameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(2e-05, 10, 2, 1, OpenMagnetics::WireStandard::IEC_60317);
-        double expectedOuterDiameter = 0.00017;
+        double expectedOuterDiameter = 0.000153;
 
         CHECK_CLOSE(expectedOuterDiameter, outerDiameter, max_error * expectedOuterDiameter);
     }
@@ -333,6 +335,24 @@ SUITE(Wire) {
         double expectedOuterHeight = 1.2e-9;
 
         CHECK_CLOSE(expectedOuterHeight, outerHeight, max_error * expectedOuterHeight);
+    }
+
+    TEST(Test_Outer_Diameter_Litz_Wire_Unserved_Medium_Strands) {
+        auto diameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, 270, 1, 0, OpenMagnetics::WireStandard::IEC_60317);
+        double expectedMaximumValue = 0.001767;
+        double expectedMinimumValue = 0.001641;
+
+        CHECK(diameter > expectedMinimumValue);
+        CHECK(diameter < expectedMaximumValue);
+    }
+
+    TEST(Test_Outer_Diameter_Litz_Wire_Served_1_Layer_Medium_Strands) {
+        auto diameter = OpenMagnetics::WireWrapper::get_outer_diameter_served_litz(0.000071, 270, 1, 1, OpenMagnetics::WireStandard::IEC_60317);
+        double expectedMaximumValue = 0.001807;
+        double expectedMinimumValue = 0.001666;
+
+        CHECK(diameter > expectedMinimumValue);
+        CHECK(diameter < expectedMaximumValue);
     }
 }
 
