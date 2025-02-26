@@ -100,7 +100,7 @@ SUITE(Bobbin) {
     TEST(Get_Winding_Window_Dimensions_Too_Large) {
         auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.1, 0.1);
 
-        double expectedWidthValue = 0.0821;
+        double expectedWidthValue = 0.0951;
         double expectedHeightValue = 0.0943;
         double width = windingWindowDimensions[0];
         double height = windingWindowDimensions[1];
@@ -119,6 +119,17 @@ SUITE(Bobbin) {
 
         CHECK_CLOSE(expectedWidthValue, width, max_error * expectedWidthValue);
         CHECK_CLOSE(expectedHeightValue, height, max_error * expectedHeightValue);
+    }
+
+    TEST(Get_Winding_Window_Dimensions_E_51) {
+        auto core = OpenMagneticsTesting::get_quick_core("ER 51/10/38", json::parse("[]"), 1, "Dummy");
+        auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
+        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+
+        auto widthThickness = coreWindingWindow.get_width().value() - windingWindowDimensions[0];
+        auto heightThickness = (coreWindingWindow.get_height().value() - windingWindowDimensions[1]) / 2;
+
+        CHECK(heightThickness <= widthThickness * 1.2);
     }
 
     TEST(Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin) {
