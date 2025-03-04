@@ -816,7 +816,7 @@ Waveform InputsWrapper::calculate_derivative_waveform(Waveform waveform) {
     return derivativeWaveform;
 }
 
-Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform) {
+Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform, bool subtractAverage) {
     std::vector<double> data = waveform.get_data();
     std::vector<double> time = waveform.get_time().value();
     std::vector<double> integration;
@@ -831,8 +831,10 @@ Waveform InputsWrapper::calculate_integral_waveform(Waveform waveform) {
     }
     resultWaveform.set_data(integration);
 
-    // double integrationAverage = calculate_waveform_average(resultWaveform);
-    // resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
+    if (subtractAverage) {
+        double integrationAverage = calculate_waveform_average(resultWaveform);
+        resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
+    }
 
     std::vector<double> distinctData;
     std::vector<double> distinctTime;
@@ -1402,6 +1404,55 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, addOffset);
 }
 
+bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
+    if (!excitation.get_current()) {
+        // If only voltage is defined, we are in transformer mode
+        return true;
+    }
+    if (!excitation.get_voltage()) {
+        // If only current is defined, we are in inductor mode
+        return false;
+    }
+    if (!excitation.get_current()->get_waveform()) {
+        throw std::invalid_argument("Missing current waveform");
+    }
+    if (!excitation.get_voltage()->get_waveform()) {
+        throw std::invalid_argument("Missing voltage waveform");
+    }
+    std::vector<double> currentWaveform;
+    std::vector<double> voltageWaveform;
+
+    if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
+        auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
+        auto voltageSampledWaveform = InputsWrapper::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
+        currentWaveform = currentSampledWaveform.get_data();
+        voltageWaveform = currentSampledWaveform.get_data();
+    }
+    else{
+        currentWaveform = excitation.get_current()->get_waveform()->get_data();
+        voltageWaveform = excitation.get_voltage()->get_waveform()->get_data();
+    }
+    std::vector<double> powerWaveform;
+    for (size_t i = 0; i < currentWaveform.size(); ++i) {
+        powerWaveform.push_back(currentWaveform[i] * voltageWaveform[i]);
+    }
+
+    double peakPower = *max_element(powerWaveform.begin(), powerWaveform.end());
+    size_t numberPowerPointsUnderThreshold = 0;
+    for (size_t i = 0; i < powerWaveform.size(); ++i) {
+        if (powerWaveform[i] < peakPower * 0.05) { // hardcoded
+            numberPowerPointsUnderThreshold++;
+        }
+    }
+
+    if (numberPowerPointsUnderThreshold > powerWaveform.size() * 0.2) { // hardcoded
+        return false;
+    }
+    else {
+        return true;
+    }
+}
+
 SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,
@@ -1430,7 +1481,9 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
         sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());            
     }
     else {
-        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform);
+        bool subtractAverage = is_continuously_conducting_power(excitation);
+        std::cout << "subtractAverage: " << subtractAverage << std::endl;
+        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, subtractAverage);
         SignalDescriptor magnetizingCurrentExcitation;
 
 
