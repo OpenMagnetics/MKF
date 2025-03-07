@@ -783,6 +783,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterLosses
     // (*unfilteredMasMagnetics).clear();
 
     if (filteredMagneticsWithScoring.size() == 0) {
+        settings->set_coil_delimit_and_compact(coilDelimitAndCompactOld);
         return *unfilteredMasMagnetics;
     }
 

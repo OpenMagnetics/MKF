@@ -2842,7 +2842,7 @@ bool CoilWrapper::wind_by_rectangular_turns() {
 
                     case CoilAlignment::SPREAD:
                         currentTurnHeightIncrement = roundFloat(layer.get_dimensions()[1] / physicalTurnsInLayer, 9);
-                        currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 - wireHeight / 2 - currentTurnHeightIncrement / 2, 9);
+                        currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 - currentTurnHeightIncrement / 2, 9);
                         break;
                 }
 
