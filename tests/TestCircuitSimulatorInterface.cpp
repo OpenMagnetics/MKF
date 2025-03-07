@@ -261,7 +261,6 @@ SUITE(CircuitSimulatorExporterLtspice) {
 
         std::cout << "errorAverage: " << errorAverage << std::endl;
         CHECK(0.25 > errorAverage);
-
     }
 
     TEST(Test_CircuitSimulatorExporter_Ac_Resistance_Coefficients_Ladder) {
@@ -327,7 +326,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
                                                          shapeName);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "95";
+        std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0003, 3);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;

@@ -131,7 +131,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                     }
-                    else if (InputsWrapper::is_common_mode_choke(*operatingPoint)) {
+                    else if (InputsWrapper::can_be_common_mode_choke(*operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
                         auto magnetizingCurrent = InputsWrapper::get_common_mode_choke_magnetizing_current(*operatingPoint);
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;

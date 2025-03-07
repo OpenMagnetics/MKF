@@ -506,7 +506,7 @@ bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint) {
 }
 
 
-bool InputsWrapper::is_common_mode_choke(OperatingPoint operatingPoint) {
+bool InputsWrapper::can_be_common_mode_choke(OperatingPoint operatingPoint) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < 2 || excitations.size() > 3) {
         return false;
@@ -1426,7 +1426,7 @@ bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
         auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency());
         auto voltageSampledWaveform = InputsWrapper::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency());
         currentWaveform = currentSampledWaveform.get_data();
-        voltageWaveform = currentSampledWaveform.get_data();
+        voltageWaveform = voltageSampledWaveform.get_data();
     }
     else{
         currentWaveform = excitation.get_current()->get_waveform()->get_data();
@@ -1440,12 +1440,12 @@ bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
     double peakPower = *max_element(powerWaveform.begin(), powerWaveform.end());
     size_t numberPowerPointsUnderThreshold = 0;
     for (size_t i = 0; i < powerWaveform.size(); ++i) {
-        if (powerWaveform[i] < peakPower * 0.05) { // hardcoded
+        if (fabs(powerWaveform[i]) < peakPower * 0.01) { // hardcoded
             numberPowerPointsUnderThreshold++;
         }
     }
 
-    if (numberPowerPointsUnderThreshold > powerWaveform.size() * 0.2) { // hardcoded
+    if (numberPowerPointsUnderThreshold > powerWaveform.size() * 0.1) { // hardcoded
         return false;
     }
     else {
@@ -1482,7 +1482,6 @@ SignalDescriptor InputsWrapper::calculate_magnetizing_current(OperatingPointExci
     }
     else {
         bool subtractAverage = is_continuously_conducting_power(excitation);
-        std::cout << "subtractAverage: " << subtractAverage << std::endl;
         sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, subtractAverage);
         SignalDescriptor magnetizingCurrentExcitation;
 
