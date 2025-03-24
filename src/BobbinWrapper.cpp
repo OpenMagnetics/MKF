@@ -586,9 +586,29 @@ WindingOrientation BobbinWrapper::get_winding_window_sections_orientation(size_t
         throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation()) {
-        return Defaults().defaultSectionsOrientation;
+        if (get_winding_window_shape() == WindingWindowShape::ROUND) {
+            return Defaults().defaultRoundWindowSectionsOrientation;
+        }
+        else {
+            return Defaults().defaultRectangularWindowSectionsOrientation;
+        }
     }
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation().value();
+}
+
+CoilAlignment BobbinWrapper::get_winding_window_sections_alignment(size_t windingWindowIndex) {
+    if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
+        throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
+    }
+    if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_alignment()) {
+        if (get_winding_window_shape() == WindingWindowShape::ROUND) {
+            return Defaults().defaultRoundWindowSectionsAlignment;
+        }
+        else {
+            return Defaults().defaultRectangularWindowSectionsAlignment;
+        }
+    }
+    return get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_alignment().value();
 }
 
 WindingWindowShape BobbinWrapper::get_winding_window_shape(size_t windingWindowIndex) {

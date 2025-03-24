@@ -1,0 +1,913 @@
+{
+    "inputs": {
+        "designRequirements": {
+            "magnetizingInductance": {
+                "nominal": 0.0001
+            },
+            "name": "My Design Requirements",
+            "turnsRatios": [
+                {
+                    "nominal": 1
+                }
+            ]
+        },
+        "operatingPoints": [
+            {
+                "name": "Op. Point No. 1",
+                "conditions": {
+                    "ambientTemperature": 100
+                },
+                "excitationsPerWinding": [
+                    {
+                        "current": {
+                            "harmonics": {
+                                "amplitudes": [
+                                    12.267010722956444,
+                                    17.213941946234666,
+                                    4.8853091609900785,
+                                    5.33442798622529,
+                                    2.5859170790711428,
+                                    3.0956626630766637,
+                                    1.865064224624133,
+                                    2.116351111056205,
+                                    1.5246559112041826,
+                                    1.55521741230653,
+                                    1.3260130346130983,
+                                    1.187450852460987,
+                                    1.1911541173845517,
+                                    0.9284153311412854,
+                                    1.0879933519284368,
+                                    0.7402181977814658,
+                                    1.0014661085756293,
+                                    0.6043369451790875,
+                                    0.9239140747751845,
+                                    0.5110755358827528,
+                                    0.8512846116198248,
+                                    0.45402607052683275,
+                                    0.781443208301625,
+                                    0.4265394939945329,
+                                    0.7133599517568383,
+                                    0.42051814863803183,
+                                    0.6466960261571887,
+                                    0.42760202609530484,
+                                    0.5815914809300751,
+                                    0.4408485390692953,
+                                    0.5185664048172274,
+                                    0.45536182980563167,
+                                    0.4584964469132984,
+                                    0.46802408257794803,
+                                    0.40264411727793814,
+                                    0.4769782845025749,
+                                    0.3527244014308805,
+                                    0.4811937164414915,
+                                    0.3109394137622751,
+                                    0.48017453264979876,
+                                    0.27980553262762314,
+                                    0.473781284218514,
+                                    0.2614925319021956,
+                                    0.4621267080457432,
+                                    0.25667921114286785,
+                                    0.4455183458538863,
+                                    0.2637830801069488,
+                                    0.4244320183534446,
+                                    0.279502022487669,
+                                    0.39950858031699005,
+                                    0.30014238896373385,
+                                    0.3715724500466926,
+                                    0.3225556830351895,
+                                    0.3416750081046873,
+                                    0.34438997000801,
+                                    0.3111682930030557,
+                                    0.36398635774651017,
+                                    0.2818086242588647,
+                                    0.38020272953442985,
+                                    0.25585750807900604,
+                                    0.3922694984397953,
+                                    0.23605497904890554,
+                                    0.39969296144862815,
+                                    0.22520466366625255
+                                ],
+                                "frequencies": [
+                                    0,
+                                    100000,
+                                    200000,
+                                    300000,
+                                    400000,
+                                    500000,
+                                    600000,
+                                    700000,
+                                    800000,
+                                    900000,
+                                    1000000,
+                                    1100000,
+                                    1200000,
+                                    1300000,
+                                    1400000,
+                                    1500000,
+                                    1600000,
+                                    1700000,
+                                    1800000,
+                                    1900000,
+                                    2000000,
+                                    2100000,
+                                    2200000,
+                                    2300000,
+                                    2400000,
+                                    2500000,
+                                    2600000,
+                                    2700000,
+                                    2800000,
+                                    2900000,
+                                    3000000,
+                                    3100000,
+                                    3200000,
+                                    3300000,
+                                    3400000,
+                                    3500000,
+                                    3600000,
+                                    3700000,
+                                    3800000,
+                                    3900000,
+                                    4000000,
+                                    4100000,
+                                    4200000,
+                                    4300000,
+                                    4400000,
+                                    4500000,
+                                    4600000,
+                                    4700000,
+                                    4800000,
+                                    4900000,
+                                    5000000,
+                                    5100000,
+                                    5200000,
+                                    5300000,
+                                    5400000,
+                                    5500000,
+                                    5600000,
+                                    5700000,
+                                    5800000,
+                                    5900000,
+                                    6000000,
+                                    6100000,
+                                    6200000,
+                                    6300000
+                                ]
+                            },
+                            "processed": {
+                                "acEffectiveFrequency": 621293.4995232141,
+                                "average": 12.267010722956446,
+                                "dutyCycle": 0.4765624999999997,
+                                "effectiveFrequency": 528814.2609523429,
+                                "label": "Custom",
+                                "offset": 11.652395949975206,
+                                "peak": 39.8288293791535,
+                                "peakToPeak": 28.17643342917829,
+                                "phase": null,
+                                "rms": 18.66387882648497,
+                                "thd": 0.5789487583321778
+                            },
+                            "waveform": {
+                                "ancillaryLabel": null,
+                                "data": [
+                                    0,
+                                    11.182788726155568,
+                                    40.03545655763409,
+                                    0,
+                                    0
+                                ],
+                                "numberPeriods": null,
+                                "time": [
+                                    0,
+                                    0,
+                                    0.0000048,
+                                    0.0000048,
+                                    0.000009999999999999999
+                                ]
+                            }
+                        },
+                        "frequency": 100000,
+                        "magneticFieldStrength": null,
+                        "magneticFluxDensity": null,
+                        "magnetizingCurrent": null,
+                        "name": "Primary winding excitation",
+                        "voltage": {
+                            "harmonics": {
+                                "amplitudes": [
+                                    42.40625,
+                                    83.81453132957124,
+                                    27.35536710522354,
+                                    15.720014977982677,
+                                    10.496809740314648,
+                                    7.421064827454815,
+                                    5.700425215436974,
+                                    5.33224352289954,
+                                    5.492312150748011,
+                                    5.251168120121305,
+                                    4.9793154723945126,
+                                    4.679372297175045,
+                                    4.354227211205867,
+                                    4.007011539407252,
+                                    3.641069158506003
+                                ],
+                                "frequencies": [
+                                    0,
+                                    100000,
+                                    300000,
+                                    500000,
+                                    700000,
+                                    900000,
+                                    1000000,
+                                    1100000,
+                                    1200000,
+                                    1400000,
+                                    1600000,
+                                    1800000,
+                                    2000000,
+                                    2200000,
+                                    2400000
+                                ]
+                            },
+                            "processed": {
+                                "acEffectiveFrequency": 592064.6087479366,
+                                "average": 42.40625,
+                                "dutyCycle": 0.4765624999999997,
+                                "effectiveFrequency": 538926.7923258641,
+                                "label": "Unipolar Rectangular",
+                                "offset": -20.5,
+                                "peak": 111.5,
+                                "peakToPeak": 152.5,
+                                "phase": null,
+                                "rms": 78.38825645465015,
+                                "thd": 0.48696668674418164
+                            },
+                            "waveform": {
+                                "ancillaryLabel": null,
+                                "data": [
+                                    -20.5,
+                                    111.5,
+                                    111.5,
+                                    -20.5,
+                                    -20.5
+                                ],
+                                "numberPeriods": null,
+                                "time": [
+                                    0,
+                                    0,
+                                    0.0000048,
+                                    0.0000048,
+                                    0.000009999999999999999
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "current": {
+                            "harmonics": {
+                                "amplitudes": [
+                                    5.7559814453125,
+                                    7.858148589317134,
+                                    1.6041336936442923,
+                                    2.5030429450901472,
+                                    0.9177153775732664,
+                                    1.4448835154386144,
+                                    0.7170077164215024,
+                                    0.9754829839752737,
+                                    0.6250459034262787,
+                                    0.7026528186824215,
+                                    0.5697563111808922,
+                                    0.5206939466057883,
+                                    0.5290447533760414,
+                                    0.3897160471041845,
+                                    0.49442858046788374,
+                                    0.2920614850256083,
+                                    0.4621991007972991,
+                                    0.21982447812141007,
+                                    0.4306218241060332,
+                                    0.17048783145599697,
+                                    0.39888565200044146,
+                                    0.14415100936365202,
+                                    0.3666576447718488,
+                                    0.13896125279002267,
+                                    0.3338768941913514,
+                                    0.14810586890543487,
+                                    0.3006538802971059,
+                                    0.1636537165314861,
+                                    0.26722243628062126,
+                                    0.18034739938394564,
+                                    0.23392375619078368,
+                                    0.19548330914433729,
+                                    0.20121827620477806,
+                                    0.20779241956401398,
+                                    0.16973461243542065,
+                                    0.2167152487181031,
+                                    0.14038221945166365,
+                                    0.2220464556201044,
+                                    0.11457330727183554,
+                                    0.2237691887658164,
+                                    0.09454562807393276,
+                                    0.22197706834072436,
+                                    0.0833075809499327,
+                                    0.21683690642145087,
+                                    0.08285518011766722,
+                                    0.20857143120490546,
+                                    0.09162744134186251,
+                                    0.1974530888732838,
+                                    0.10571715651313299,
+                                    0.18380579445263426,
+                                    0.12177035122076578,
+                                    0.16801526411942033,
+                                    0.1377183326789148,
+                                    0.15055265084023378,
+                                    0.15236863532506156,
+                                    0.13202309584849048,
+                                    0.1650114164204144,
+                                    0.11326407371867617,
+                                    0.1752028540593145,
+                                    0.09553886806387146,
+                                    0.18265781351829025,
+                                    0.0808566151908832,
+                                    0.18719697248808817,
+                                    0.07214851239381978
+                                ],
+                                "frequencies": [
+                                    0,
+                                    100000,
+                                    200000,
+                                    300000,
+                                    400000,
+                                    500000,
+                                    600000,
+                                    700000,
+                                    800000,
+                                    900000,
+                                    1000000,
+                                    1100000,
+                                    1200000,
+                                    1300000,
+                                    1400000,
+                                    1500000,
+                                    1600000,
+                                    1700000,
+                                    1800000,
+                                    1900000,
+                                    2000000,
+                                    2100000,
+                                    2200000,
+                                    2300000,
+                                    2400000,
+                                    2500000,
+                                    2600000,
+                                    2700000,
+                                    2800000,
+                                    2900000,
+                                    3000000,
+                                    3100000,
+                                    3200000,
+                                    3300000,
+                                    3400000,
+                                    3500000,
+                                    3600000,
+                                    3700000,
+                                    3800000,
+                                    3900000,
+                                    4000000,
+                                    4100000,
+                                    4200000,
+                                    4300000,
+                                    4400000,
+                                    4500000,
+                                    4600000,
+                                    4700000,
+                                    4800000,
+                                    4900000,
+                                    5000000,
+                                    5100000,
+                                    5200000,
+                                    5300000,
+                                    5400000,
+                                    5500000,
+                                    5600000,
+                                    5700000,
+                                    5800000,
+                                    5900000,
+                                    6000000,
+                                    6100000,
+                                    6200000,
+                                    6300000
+                                ]
+                            },
+                            "processed": {
+                                "acEffectiveFrequency": 606903.6574143432,
+                                "average": 5.850341796874994,
+                                "dutyCycle": 0.4843749999999997,
+                                "effectiveFrequency": 509712.5294334003,
+                                "label": "Custom",
+                                "offset": 7.461425781249962,
+                                "peak": 16.54589843750004,
+                                "peakToPeak": 9.23339843750006,
+                                "phase": null,
+                                "rms": 8.53217718981805,
+                                "thd": 0.5333417887923305
+                            },
+                            "waveform": {
+                                "ancillaryLabel": null,
+                                "data": [
+                                    0,
+                                    7.461425781249962,
+                                    16.69482421875002,
+                                    0,
+                                    0
+                                ],
+                                "numberPeriods": null,
+                                "time": [
+                                    0,
+                                    0,
+                                    0.0000048437499999999975,
+                                    0.0000048437499999999975,
+                                    0.00001
+                                ]
+                            }
+                        },
+                        "frequency": 100000,
+                        "magneticFieldStrength": null,
+                        "magneticFluxDensity": null,
+                        "magnetizingCurrent": null,
+                        "name": "Primary winding excitation",
+                        "voltage": {
+                            "harmonics": {
+                                "amplitudes": [
+                                    0.7812499999999748,
+                                    63.495857067856996,
+                                    20.723762958502682,
+                                    11.90910225604748,
+                                    7.952128591147462,
+                                    5.622018808677893,
+                                    4.318503951088617,
+                                    4.039578426439045,
+                                    4.160842538445461,
+                                    3.9781576667585643,
+                                    3.7722086912079633,
+                                    3.544979013011398,
+                                    3.2986569781862625,
+                                    3.035614802581251,
+                                    2.7583857261409106
+                                ],
+                                "frequencies": [
+                                    0,
+                                    100000,
+                                    300000,
+                                    500000,
+                                    700000,
+                                    900000,
+                                    1000000,
+                                    1100000,
+                                    1200000,
+                                    1400000,
+                                    1600000,
+                                    1800000,
+                                    2000000,
+                                    2200000,
+                                    2400000
+                                ]
+                            },
+                            "processed": {
+                                "acEffectiveFrequency": 313726.69960191206,
+                                "average": -0.7812499999999947,
+                                "dutyCycle": 0.4843749999999997,
+                                "effectiveFrequency": 313706.8400056124,
+                                "label": "Rectangular",
+                                "offset": 0,
+                                "peak": 51.56250000000002,
+                                "peakToPeak": 100,
+                                "phase": null,
+                                "rms": 49.95114800983057,
+                                "thd": 0.44230798430468315
+                            },
+                            "waveform": {
+                                "ancillaryLabel": null,
+                                "data": [
+                                    -48.43749999999997,
+                                    51.56250000000002,
+                                    51.56250000000002,
+                                    -48.43749999999997,
+                                    -48.43749999999997
+                                ],
+                                "numberPeriods": null,
+                                "time": [
+                                    0,
+                                    0,
+                                    0.0000048437499999999975,
+                                    0.0000048437499999999975,
+                                    0.00001
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "magnetic": {
+        "coil": {
+            "bobbin": {
+                "distributorsInfo": null,
+                "functionalDescription": null,
+                "manufacturerInfo": null,
+                "name": null,
+                "processedDescription": {
+                    "columnDepth": 0.015360000000000004,
+                    "columnShape": "rectangular",
+                    "columnThickness": 0.001860000000000004,
+                    "columnWidth": 0.011685000000000004,
+                    "coordinates": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "pins": null,
+                    "wallThickness": 0.0015500000000000028,
+                    "windingWindows": [
+                        {
+                            "angle": null,
+                            "area": 0.0004542589999999999,
+                            "coordinates": [
+                                0.017080000000000005,
+                                0,
+                                0
+                            ],
+                            "height": 0.0421,
+                            "radialHeight": null,
+                            "sectionsAlignment": null,
+                            "sectionsOrientation": null,
+                            "shape": "rectangular",
+                            "width": 0.010789999999999998
+                        }
+                    ]
+                }
+            },
+            "functionalDescription": [
+                {
+                    "isolationSide": "primary",
+                    "name": "Primary",
+                    "numberParallels": 1,
+                    "numberTurns": 11,
+                    "wire": "Dummy"
+                },
+                {
+                    "name": "Secondary",
+                    "numberTurns": 11,
+                    "numberParallels": 1,
+                    "isolationSide": "secondary",
+                    "wire": "Dummy"
+                }
+            ],
+            "layersDescription": null,
+            "sectionsDescription": null,
+            "turnsDescription": null
+        },
+        "core": {
+            "distributorsInfo": [],
+            "functionalDescription": {
+                "coating": null,
+                "gapping": [
+                    {
+                        "area": 0.000531,
+                        "coordinates": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "distanceClosestNormalSurface": 0.0225985,
+                        "distanceClosestParallelSurface": 0.012650000000000002,
+                        "length": 0.000005,
+                        "sectionDimensions": [
+                            0.01965,
+                            0.027
+                        ],
+                        "shape": "rectangular",
+                        "type": "residual"
+                    },
+                    {
+                        "area": 0.000273,
+                        "coordinates": [
+                            0.027525,
+                            0,
+                            0
+                        ],
+                        "distanceClosestNormalSurface": 0.0225985,
+                        "distanceClosestParallelSurface": 0.012650000000000002,
+                        "length": 0.000005,
+                        "sectionDimensions": [
+                            0.0101,
+                            0.027
+                        ],
+                        "shape": "rectangular",
+                        "type": "residual"
+                    },
+                    {
+                        "area": 0.000273,
+                        "coordinates": [
+                            -0.027525,
+                            0,
+                            0
+                        ],
+                        "distanceClosestNormalSurface": 0.0225985,
+                        "distanceClosestParallelSurface": 0.012650000000000002,
+                        "length": 0.000005,
+                        "sectionDimensions": [
+                            0.0101,
+                            0.027
+                        ],
+                        "shape": "rectangular",
+                        "type": "residual"
+                    }
+                ],
+                "material": "3C95",
+                "numberStacks": 1,
+                "shape": {
+                    "aliases": [
+                        "E 65/27"
+                    ],
+                    "dimensions": {
+                        "A": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.0665,
+                            "minimum": 0.0638,
+                            "nominal": null
+                        },
+                        "B": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.0328,
+                            "minimum": 0.0322,
+                            "nominal": null
+                        },
+                        "C": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.0274,
+                            "minimum": 0.0266,
+                            "nominal": null
+                        },
+                        "D": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.023,
+                            "minimum": 0.0222,
+                            "nominal": null
+                        },
+                        "E": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.0457,
+                            "minimum": 0.0442,
+                            "nominal": null
+                        },
+                        "F": {
+                            "excludeMaximum": null,
+                            "excludeMinimum": null,
+                            "maximum": 0.02,
+                            "minimum": 0.0193,
+                            "nominal": null
+                        }
+                    },
+                    "family": "e",
+                    "familySubtype": null,
+                    "magneticCircuit": "open",
+                    "name": "E 65/32/27",
+                    "type": "standard"
+                },
+                "type": "two-piece set",
+                "magneticCircuit": "open"
+            },
+            "geometricalDescription": [
+                {
+                    "coordinates": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "dimensions": null,
+                    "insulationMaterial": null,
+                    "machining": null,
+                    "material": "3C95",
+                    "rotation": [
+                        3.141592653589793,
+                        3.141592653589793,
+                        0
+                    ],
+                    "shape": {
+                        "aliases": [
+                            "E 65/27"
+                        ],
+                        "dimensions": {
+                            "A": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0665,
+                                "minimum": 0.0638,
+                                "nominal": null
+                            },
+                            "B": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0328,
+                                "minimum": 0.0322,
+                                "nominal": null
+                            },
+                            "C": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0274,
+                                "minimum": 0.0266,
+                                "nominal": null
+                            },
+                            "D": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.023,
+                                "minimum": 0.0222,
+                                "nominal": null
+                            },
+                            "E": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0457,
+                                "minimum": 0.0442,
+                                "nominal": null
+                            },
+                            "F": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.02,
+                                "minimum": 0.0193,
+                                "nominal": null
+                            }
+                        },
+                        "family": "e",
+                        "familySubtype": null,
+                        "magneticCircuit": "open",
+                        "name": "E 65/32/27",
+                        "type": "standard"
+                    },
+                    "type": "half set"
+                },
+                {
+                    "coordinates": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "dimensions": null,
+                    "insulationMaterial": null,
+                    "machining": null,
+                    "material": "3C95",
+                    "rotation": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "shape": {
+                        "aliases": [
+                            "E 65/27"
+                        ],
+                        "dimensions": {
+                            "A": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0665,
+                                "minimum": 0.0638,
+                                "nominal": null
+                            },
+                            "B": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0328,
+                                "minimum": 0.0322,
+                                "nominal": null
+                            },
+                            "C": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0274,
+                                "minimum": 0.0266,
+                                "nominal": null
+                            },
+                            "D": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.023,
+                                "minimum": 0.0222,
+                                "nominal": null
+                            },
+                            "E": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.0457,
+                                "minimum": 0.0442,
+                                "nominal": null
+                            },
+                            "F": {
+                                "excludeMaximum": null,
+                                "excludeMinimum": null,
+                                "maximum": 0.02,
+                                "minimum": 0.0193,
+                                "nominal": null
+                            }
+                        },
+                        "family": "e",
+                        "familySubtype": null,
+                        "magneticCircuit": "open",
+                        "name": "E 65/32/27",
+                        "type": "standard"
+                    },
+                    "type": "half set"
+                }
+            ],
+            "manufacturerInfo": null,
+            "name": "Custom",
+            "processedDescription": {
+                "columns": [
+                    {
+                        "area": 0.000531,
+                        "coordinates": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "depth": 0.027,
+                        "height": 0.045202,
+                        "minimumDepth": null,
+                        "minimumWidth": null,
+                        "shape": "rectangular",
+                        "type": "central",
+                        "width": 0.01965
+                    },
+                    {
+                        "area": 0.000273,
+                        "coordinates": [
+                            0.027525,
+                            0,
+                            0
+                        ],
+                        "depth": 0.027,
+                        "height": 0.045202,
+                        "minimumDepth": null,
+                        "minimumWidth": null,
+                        "shape": "rectangular",
+                        "type": "lateral",
+                        "width": 0.0101
+                    },
+                    {
+                        "area": 0.000273,
+                        "coordinates": [
+                            -0.027525,
+                            0,
+                            0
+                        ],
+                        "depth": 0.027,
+                        "height": 0.045202,
+                        "minimumDepth": null,
+                        "minimumWidth": null,
+                        "shape": "rectangular",
+                        "type": "lateral",
+                        "width": 0.0101
+                    }
+                ],
+                "depth": 0.027,
+                "effectiveParameters": {
+                    "effectiveArea": 0.0005368982040150157,
+                    "effectiveLength": 0.14688048091049996,
+                    "effectiveVolume": 0.0000788598664057092,
+                    "minimumArea": 0.00053055
+                },
+                "height": 0.065,
+                "thermalResistance": null,
+                "width": 0.06515,
+                "windingWindows": [
+                    {
+                        "angle": null,
+                        "area": 0.0005717800000000001,
+                        "coordinates": [
+                            0.009825,
+                            0
+                        ],
+                        "height": 0.045200000000000004,
+                        "radialHeight": null,
+                        "sectionsAlignment": null,
+                        "sectionsOrientation": null,
+                        "shape": null,
+                        "width": 0.012650000000000002
+                    }
+                ]
+            }
+        },
+        "manufacturerInfo": {
+            "name": "OpenMagnetics",
+            "reference": "My custom magnetic"
+        }
+    },
+    "outputs": []
+}
