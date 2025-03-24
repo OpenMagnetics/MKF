@@ -30,7 +30,10 @@ struct Defaults {
     const double measurementFrequency = 10000;
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
-    const WindingOrientation defaultSectionsOrientation = WindingOrientation::OVERLAPPING;
+    const WindingOrientation defaultRoundWindowSectionsOrientation = WindingOrientation::CONTIGUOUS;
+    const WindingOrientation defaultRectangularWindowSectionsOrientation = WindingOrientation::OVERLAPPING;
+    const CoilAlignment defaultRoundWindowSectionsAlignment = CoilAlignment::SPREAD;
+    const CoilAlignment defaultRectangularWindowSectionsAlignment = CoilAlignment::INNER_OR_TOP;
     const std::string defaultEnamelledInsulationMaterial = "Polyurethane 155";
     const std::string defaultInsulationMaterial = "ETFE";
     const std::string defaultLayerInsulationMaterial = "Kapton HN";

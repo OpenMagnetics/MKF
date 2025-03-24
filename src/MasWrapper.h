@@ -39,6 +39,8 @@ class MasWrapper : public Mas {
         std::vector<OutputsWrapper> & get_mutable_outputs() { return outputs; }
         void set_outputs(const std::vector<OutputsWrapper> & value) { this->outputs = value; }
 
+        static MagneticWrapper expand_magnetic(MagneticWrapper magnetic);
+        static InputsWrapper expand_inputs(MagneticWrapper magnetic, InputsWrapper inputs);
 
 };
 

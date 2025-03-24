@@ -797,7 +797,10 @@ OpenMagnetics::MasWrapper mas_loader(std::string path) {
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
     auto magnetic = OpenMagnetics::MagneticWrapper(magneticJson);
-    auto outputs = std::vector<OpenMagnetics::OutputsWrapper>(outputsJson);
+    std::vector<OpenMagnetics::OutputsWrapper> outputs;
+    if (outputsJson != nullptr) {
+        outputs = std::vector<OpenMagnetics::OutputsWrapper>(outputsJson);
+    }
     OpenMagnetics::InputsWrapper inputs;
     std::vector<double> magnetizingInductancePerPoint;
     for (auto output : outputs) {
@@ -812,9 +815,15 @@ OpenMagnetics::MasWrapper mas_loader(std::string path) {
 
     }
     else {
-        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel;
-        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
-        inputs = OpenMagnetics::InputsWrapper(inputsJson, true, magnetizingInductance);
+        try {
+            OpenMagnetics::MagnetizingInductance magnetizingInductanceModel;
+            double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance().get_nominal().value();
+            inputs = OpenMagnetics::InputsWrapper(inputsJson, true, magnetizingInductance);
+        }
+        catch (const std::exception &e)
+        {
+            inputs = OpenMagnetics::InputsWrapper(inputsJson, true);
+        }
     }
 
     OpenMagnetics::MasWrapper mas;
