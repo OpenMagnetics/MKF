@@ -382,22 +382,33 @@ Waveform InputsWrapper::reconstruct_signal(Harmonics harmonics, double frequency
 }
 
 Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
-    Waveform waveform;
-    double period = 1 / frequency;
     if (!processed.get_peak_to_peak()) {
         throw std::runtime_error("Signal is missing peak to peak");
     }
 
+    auto label = processed.get_label();
     auto peakToPeak = processed.get_peak_to_peak().value();
     auto offset = processed.get_offset();
     double dutyCycle = 0.5;
     if (processed.get_duty_cycle()) {
         dutyCycle = processed.get_duty_cycle().value();
     }
+    double deadTime = 0;
+    if (processed.get_dead_time()) {
+        deadTime = processed.get_dead_time().value();
+    }
+
+    return create_waveform(label, peakToPeak, frequency, dutyCycle, offset, deadTime);
+}
+
+
+Waveform InputsWrapper::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime) {
+    Waveform waveform;
     std::vector<double> data;
     std::vector<double> time;
+    double period = 1 / frequency;
 
-    switch (processed.get_label()) {
+    switch (label) {
         case WaveformLabel::TRIANGULAR: {
             double max = peakToPeak / 2 + offset;
             double min = -peakToPeak / 2 + offset;
@@ -420,6 +431,14 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
             double dc = dutyCycle * period;
             data = {min, max, max, min, min};
             time = {0, 0, dc, dc, period};
+            break;
+        }
+        case WaveformLabel::RECTANGULAR_DCM: {
+            double max = peakToPeak * (1 - dutyCycle);
+            double min = -peakToPeak * dutyCycle;
+            double dc = dutyCycle * period;
+            data = {0, max, max, min, min, 0, 0};
+            time = {0, 0, dc, dc, deadTime, deadTime, period};
             break;
         }
         case WaveformLabel::UNIPOLAR_RECTANGULAR: {
@@ -474,6 +493,14 @@ Waveform InputsWrapper::create_waveform(Processed processed, double frequency) {
             double dc = dutyCycle * period;
             data = {0, 0, max, min, 0};
             time = {0, dc, dc, period, period};
+            break;
+        }
+        case WaveformLabel::FLYBACK_SECONDARY_DCM:{
+            double max = peakToPeak + offset;
+            double min = offset;
+            double dc = dutyCycle * period;
+            data = {0, 0, max, min, 0, 0};
+            time = {0, dc, dc, period - deadTime, period - deadTime, period};
             break;
         }
         case WaveformLabel::SINUSOIDAL: {
