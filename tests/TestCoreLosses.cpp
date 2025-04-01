@@ -2629,6 +2629,32 @@ SUITE(CoreLossesAssorted) {
         CHECK_CLOSE(expectedLosses, calculatedCoreLosses, expectedLosses * maximumError);
     }
 
+    TEST(Test_Core_Losses_Simple_Inductor) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/simple_inductor.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto models = json::parse("{\"coreLosses\": \"STEINMETZ\", \"gapReluctance\": \"BALAKRISHNAN\"}");
+
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+
+        OpenMagnetics::MagnetizingInductance magnetizing_inductance(std::string{models["gapReluctance"]});
+
+        OpenMagnetics::OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity = magnetizing_inductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+
+        double magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+
+        double frequency = OpenMagnetics::InputsWrapper::get_switching_frequency(excitation);
+        double magneticFluxDensityAcPeakToPeak = OpenMagnetics::InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+        std::cout << "magneticFluxDensityPeak: " << magneticFluxDensityPeak << std::endl;
+        std::cout << "frequency: " << frequency << std::endl;
+        std::cout << "magneticFluxDensityAcPeakToPeak: " << magneticFluxDensityAcPeakToPeak << std::endl;
+    }
+
     TEST(Test_Core_Losses_Hoganas) {
         std::string file_path = __FILE__;
         auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/hoganas.json");
