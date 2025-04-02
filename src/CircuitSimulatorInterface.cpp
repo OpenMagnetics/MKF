@@ -1509,7 +1509,8 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
     }
 
     operatingPoint.set_excitations_per_winding(excitationsPerWinding);
-    [[maybe_unused]] OperatingConditions conditions;
+    OperatingConditions conditions;
+    conditions.set_cooling(std::nullopt);    
     conditions.set_ambient_temperature(ambientTemperature);
     operatingPoint.set_conditions(conditions);
 

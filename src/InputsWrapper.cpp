@@ -547,12 +547,24 @@ bool InputsWrapper::is_waveform_imported(Waveform waveform) {
 
 }
 
-bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint) {
+bool InputsWrapper::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < 2) {
         return false;
     }
     else {
+        if (isolationSides) {
+            bool allSameIsolationSide = true;
+            auto isolationSidesValue = isolationSides.value();
+            for (size_t windingIndex = 1; windingIndex < isolationSidesValue.size(); ++windingIndex) {
+                if (isolationSidesValue[0] != isolationSidesValue[windingIndex]) {
+                    allSameIsolationSide = false;
+                }
+            }
+            if (allSameIsolationSide) {
+                return true;
+            }
+        }
         OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
         if (excitation.get_current()->get_waveform()) {
             if (excitation.get_current()->get_waveform()->get_ancillary_label()) {
