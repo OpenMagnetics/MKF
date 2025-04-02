@@ -166,6 +166,10 @@ class CoilWrapper : public Coil {
 
         std::vector<uint64_t> get_number_turns();
         void set_number_turns(std::vector<uint64_t> numberTurns);
+        std::vector<IsolationSide> get_isolation_sides();
+        void set_isolation_sides(std::vector<IsolationSide> isolationSides);
+        std::vector<uint64_t> get_number_parallels();
+        void set_number_parallels(std::vector<uint64_t> numberParallels);
 
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
         const Section get_section_by_name(std::string name) const;
@@ -190,9 +194,6 @@ class CoilWrapper : public Coil {
         std::vector<size_t> get_turns_indexes_by_layer(std::string layerName);
         std::vector<size_t> get_turns_indexes_by_section(std::string sectionName);
         std::vector<size_t> get_turns_indexes_by_winding(std::string windingName);
-
-        std::vector<uint64_t> get_number_parallels();
-        void set_number_parallels(std::vector<uint64_t> numberParallels);
 
         CoilFunctionalDescription get_winding_by_name(std::string name);
 

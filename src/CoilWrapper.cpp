@@ -503,6 +503,20 @@ void CoilWrapper::set_number_turns(std::vector<uint64_t> numberTurns) {
     }
 }
 
+std::vector<IsolationSide> CoilWrapper::get_isolation_sides() {
+    std::vector<IsolationSide> isolationSides;
+    for (auto & winding : get_functional_description()) {
+        isolationSides.push_back(winding.get_isolation_side());
+    }
+    return isolationSides;
+}
+
+void CoilWrapper::set_isolation_sides(std::vector<IsolationSide> isolationSides) {
+    for (size_t i=0; i< get_functional_description().size(); ++i) {
+        get_mutable_functional_description()[i].set_isolation_side(isolationSides[i]);
+    }
+}
+
 std::vector<Layer> CoilWrapper::get_layers_by_section(std::string sectionName) {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
