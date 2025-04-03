@@ -180,4 +180,23 @@ SUITE(CoreMaterialCrossReferencer) {
 
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
     }
+
+    TEST(Test_All_Core_Materials_Only_Fair_Rite) {
+        settings->reset();
+        OpenMagnetics::clear_databases();
+        OpenMagnetics::OperatingPoint operatingPoint;
+        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        coreMaterialCrossReferencer.use_only_manufacturer("Fair-Rite");
+
+        std::string coreMaterialName = "3C97";
+        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+
+        auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
+
+
+        CHECK(crossReferencedCoreMaterials.size() > 0);
+
+        CHECK(crossReferencedCoreMaterials[0].first.get_name() == "95");
+    }
+
 }
