@@ -177,6 +177,14 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
             throw std::runtime_error("maximumAreaProductRequired cannot be larger than 1 (probably)");
         }
         areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity));
+        if (std::isinf(areaProductRequiredPreCalculations.back()) || areaProductRequiredPreCalculations.back() == 0) {
+            std::cout << "powerMean: " << powerMean << std::endl;
+            std::cout << "primaryAreaFactor: " << primaryAreaFactor << std::endl;
+            std::cout << "switchingFrequency: " << switchingFrequency << std::endl;
+            std::cout << "areaProductRequiredPreCalculations.back(): " << areaProductRequiredPreCalculations.back() << std::endl;
+            throw std::runtime_error("areaProductRequiredPreCalculations cannot be 0 or NaN");
+        }
+
     }
 
     std::map<std::string, double> scaledMagneticFluxDensitiesPerMaterial;
