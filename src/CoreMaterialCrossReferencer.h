@@ -27,6 +27,7 @@ class CoreMaterialCrossReferencer {
         std::map<CoreMaterialCrossReferencerFilters, double> _weights;
 
         void logEntry(std::string entry) {
+            // std::cout << entry + "\n" << std::endl;
             _log += entry + "\n";
         }
 
