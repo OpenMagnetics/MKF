@@ -13,6 +13,7 @@
 #include "Impedance.h"
 #include "BobbinWrapper.h"
 #include "Defaults.h"
+#include "Constants.h"
 #include "Settings.h"
 #include <algorithm>
 #include <cctype>
@@ -156,8 +157,8 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         auto currentWaveform = excitation.get_current().value().get_waveform().value();
         double frequency = excitation.get_frequency();
         if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
-            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
-            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+            voltageWaveform = InputsWrapper::calculate_sampled_waveform(voltageWaveform, frequency, Constants().numberPointsSampledWaveforms);
+            currentWaveform = InputsWrapper::calculate_sampled_waveform(currentWaveform, frequency, Constants().numberPointsSampledWaveforms);
         }
 
         std::vector<double> voltageWaveformData = voltageWaveform.get_data();
@@ -178,7 +179,11 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterAreaPr
         }
         areaProductRequiredPreCalculations.push_back(powerMean / (primaryAreaFactor * 2 * switchingFrequency * defaults.maximumCurrentDensity));
         if (std::isinf(areaProductRequiredPreCalculations.back()) || areaProductRequiredPreCalculations.back() == 0) {
+
+
+
             std::cout << "powerMean: " << powerMean << std::endl;
+            std::cout << "operatingPointIndex: " << operatingPointIndex << std::endl;
             std::cout << "primaryAreaFactor: " << primaryAreaFactor << std::endl;
             std::cout << "switchingFrequency: " << switchingFrequency << std::endl;
             std::cout << "areaProductRequiredPreCalculations.back(): " << areaProductRequiredPreCalculations.back() << std::endl;
