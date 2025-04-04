@@ -86,6 +86,8 @@ namespace OpenMagnetics {
             json isolationSideJson;
             to_json(isolationSideJson, get_isolation_side_from_index(0));
             excitation.set_name(isolationSideJson);
+            excitation = InputsWrapper::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
+
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
@@ -154,6 +156,7 @@ namespace OpenMagnetics {
             json isolationSideJson;
             to_json(isolationSideJson, get_isolation_side_from_index(secondaryIndex + 1));
             excitation.set_name(isolationSideJson);
+            excitation = InputsWrapper::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
@@ -266,15 +269,15 @@ namespace OpenMagnetics {
 
         if (get_input_voltage().get_nominal()) {
             inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nominal");
+            inputVoltagesNames.push_back("Nom.");
         }
         if (get_input_voltage().get_maximum()) {
             inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Maximum");
+            inputVoltagesNames.push_back("Max.");
         }
         if (get_input_voltage().get_minimum()) {
             inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Minimum");
+            inputVoltagesNames.push_back("Min.");
         }
 
         DesignRequirements designRequirements;
@@ -303,7 +306,7 @@ namespace OpenMagnetics {
                 json mierda;
                 to_json(mierda, operatingPoint);
 
-                std::string name = inputVoltagesNames[inputVoltageIndex] + " input voltage";
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
                     name += " with op. point " + std::to_string(flybackOperatingPointIndex);
                 }
