@@ -532,6 +532,7 @@ Waveform InputsWrapper::create_waveform(WaveformLabel label, double peakToPeak, 
             break;
     }
 
+    waveform.set_ancillary_label(label);
     waveform.set_data(data);
     waveform.set_time(time);
 
@@ -1395,6 +1396,41 @@ Harmonics InputsWrapper::calculate_harmonics_data(Waveform waveform, double freq
     return harmonics;
 }
 
+OperatingPointExcitation InputsWrapper::prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
+    if (excitation.get_current()) {
+        excitation.set_current(prune_harmonics(excitation.get_current().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
+    }
+    if (excitation.get_voltage()) {
+        excitation.set_voltage(prune_harmonics(excitation.get_voltage().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
+    }
+    if (excitation.get_magnetizing_current()) {
+        excitation.set_magnetizing_current(prune_harmonics(excitation.get_magnetizing_current().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
+    }
+
+    return excitation;
+}
+
+SignalDescriptor InputsWrapper::prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
+    if (!signalDescriptor.get_harmonics()) {
+        throw std::runtime_error("Signal has no harmonics to prune");
+    }
+    auto unprunedHarmonics = signalDescriptor.get_harmonics().value();
+    Harmonics prunedHarmonics;
+    auto harmonicsIndexesToMaintain = get_main_harmonic_indexes(unprunedHarmonics, windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex);
+    prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[0]);
+    prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[0]);
+
+    for (auto harmonicIndex : harmonicsIndexesToMaintain) {
+        prunedHarmonics.get_mutable_amplitudes().push_back(unprunedHarmonics.get_amplitudes()[harmonicIndex]);
+        prunedHarmonics.get_mutable_frequencies().push_back(unprunedHarmonics.get_frequencies()[harmonicIndex]);
+    }
+
+    signalDescriptor.set_harmonics(prunedHarmonics);
+
+    return signalDescriptor;    
+}
+
+
 Waveform InputsWrapper::compress_waveform(Waveform waveform) {
     Waveform compressedWaveform;
     auto data = waveform.get_data();
@@ -2234,6 +2270,15 @@ WaveformLabel InputsWrapper::try_guess_waveform_label(Waveform waveform) {
             compressedWaveform.get_data()[2] == compressedWaveform.get_data()[3] &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[3]) {
                 return WaveformLabel::UNIPOLAR_TRIANGULAR;
+        }
+        else if (compressedWaveform.get_data().size() == 5 &&
+            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
+            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / settings->get_inputs_number_points_sampled_waveforms()) &&
+            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
+            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
+                return WaveformLabel::UNIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
             !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&

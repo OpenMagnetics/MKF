@@ -44,6 +44,9 @@ class InputsWrapper : public Inputs {
     static Processed calculate_processed_data(SignalDescriptor excitation, Waveform sampledWaveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
     static Processed calculate_processed_data(Harmonics harmonics, Waveform waveform, bool includeAdvancedData=true, std::optional<Processed> processed=std::nullopt);
     static Harmonics calculate_harmonics_data(Waveform waveform, double frequency);
+    static OperatingPointExcitation prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
+    static SignalDescriptor prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
+
     // static OperatingPointExcitation reflect_waveforms(OperatingPointExcitation excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
