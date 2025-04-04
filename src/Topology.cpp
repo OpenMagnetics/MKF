@@ -70,12 +70,18 @@ namespace OpenMagnetics {
             SignalDescriptor current;
             current.set_waveform(currentWaveform);
             currentProcessed = InputsWrapper::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
+            auto sampledCurrentWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+            auto currentHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
             current.set_processed(currentProcessed);
+            current.set_harmonics(currentHarmonics);
             excitation.set_current(current);
             SignalDescriptor voltage;
             voltage.set_waveform(voltageWaveform);
             voltageProcessed = InputsWrapper::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
+            auto sampledVoltageWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            auto voltageHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
             voltage.set_processed(voltageProcessed);
+            voltage.set_harmonics(voltageHarmonics);
             excitation.set_voltage(voltage);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -129,12 +135,18 @@ namespace OpenMagnetics {
             SignalDescriptor current;
             current.set_waveform(currentWaveform);
             currentProcessed = InputsWrapper::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
+            auto sampledCurrentWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+            auto currentHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
             current.set_processed(currentProcessed);
+            current.set_harmonics(currentHarmonics);
             excitation.set_current(current);
             SignalDescriptor voltage;
             voltage.set_waveform(voltageWaveform);
             voltageProcessed = InputsWrapper::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
+            auto sampledVoltageWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            auto voltageHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
             voltage.set_processed(voltageProcessed);
+            voltage.set_harmonics(voltageHarmonics);
             excitation.set_voltage(voltage);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -263,11 +275,11 @@ namespace OpenMagnetics {
         designRequirements.get_mutable_turns_ratios().clear();
         for (auto turnsRatio : turnsRatios) {
             DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(turnsRatio);
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(maximumNeededInductance);
+        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
         for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {

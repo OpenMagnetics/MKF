@@ -1058,8 +1058,6 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
                                                              double temperature,
                                                              double magnetizingInductance) {
     
-
-    auto current = excitation.get_magnetizing_current().value();
     if (!excitation.get_magnetizing_current()) {
         throw std::runtime_error("Missing magnetizing current in excitation");
     }

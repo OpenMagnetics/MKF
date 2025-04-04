@@ -187,12 +187,40 @@ SUITE(CoreMaterialCrossReferencer) {
         OpenMagnetics::OperatingPoint operatingPoint;
         OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Fair-Rite");
+        settings->set_use_only_cores_in_stock(false);
 
         std::string coreMaterialName = "3C97";
         OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
 
-        auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
+        auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 50, 20);
 
+        auto scorings = coreMaterialCrossReferencer.get_scorings();
+        auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
+        json results;
+        results["coreMaterials"] = json::array();
+        results["scorings"] = json::array();
+        results["data"] = json::array();
+
+        for (auto& [coreMaterial, scoring] : crossReferencedCoreMaterials) {
+            std::string name = coreMaterial.get_name();
+
+            json coreMaterialJson;
+            OpenMagnetics::to_json(coreMaterialJson, coreMaterial);
+            results["coreMaterials"].push_back(coreMaterialJson);
+            results["scorings"].push_back(scoring);
+
+            json result;
+            result["scoringPerFilter"] = json();
+            result["scoredValuePerFilter"] = json();
+            for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
+                std::string filterString(filter);
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                std::cout << "name: " << name << std::endl;
+                std::cout << "scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]: " << scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()] << std::endl;
+            };
+            results["data"].push_back(result);
+        }
 
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
