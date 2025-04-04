@@ -433,12 +433,28 @@ Waveform InputsWrapper::create_waveform(WaveformLabel label, double peakToPeak, 
             time = {0, 0, dc, dc, period};
             break;
         }
-        case WaveformLabel::RECTANGULAR_DCM: {
+        case WaveformLabel::RECTANGULAR_WITH_DEADTIME: {
             double max = peakToPeak * (1 - dutyCycle);
             double min = -peakToPeak * dutyCycle;
             double dc = dutyCycle * period;
             data = {0, max, max, min, min, 0, 0};
-            time = {0, 0, dc, dc, deadTime, deadTime, period};
+            time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
+            break;
+        }
+        case WaveformLabel::SECONDARY_RECTANGULAR: {
+            double max = -peakToPeak * (1 - dutyCycle);
+            double min = peakToPeak * dutyCycle;
+            double dc = dutyCycle * period;
+            data = {min, max, max, min, min};
+            time = {0, 0, dc, dc, period};
+            break;
+        }
+        case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME: {
+            double max = -peakToPeak * (1 - dutyCycle);
+            double min = peakToPeak * dutyCycle;
+            double dc = dutyCycle * period;
+            data = {0, max, max, min, min, 0, 0};
+            time = {0, 0, dc, dc, period - deadTime, period - deadTime, period};
             break;
         }
         case WaveformLabel::UNIPOLAR_RECTANGULAR: {
@@ -495,7 +511,7 @@ Waveform InputsWrapper::create_waveform(WaveformLabel label, double peakToPeak, 
             time = {0, dc, dc, period, period};
             break;
         }
-        case WaveformLabel::FLYBACK_SECONDARY_DCM:{
+        case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:{
             double max = peakToPeak + offset;
             double min = offset;
             double dc = dutyCycle * period;

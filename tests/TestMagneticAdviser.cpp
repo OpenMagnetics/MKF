@@ -420,7 +420,6 @@ SUITE(MagneticAdviser) {
             if (waveShape == OpenMagnetics::WaveformLabel::BIPOLAR_RECTANGULAR ||
                 waveShape == OpenMagnetics::WaveformLabel::CUSTOM ||
                 waveShape == OpenMagnetics::WaveformLabel::RECTANGULAR ||
-                waveShape == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_DCM ||
                 waveShape == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME ||
                 waveShape == OpenMagnetics::WaveformLabel::UNIPOLAR_RECTANGULAR) {
                 waveShape = OpenMagnetics::WaveformLabel::TRIANGULAR;
