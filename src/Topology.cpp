@@ -8,12 +8,15 @@ namespace OpenMagnetics {
         from_json(j, *this);
     }
 
-    OperatingPoint Flyback::processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, Flyback::Modes mode) {
+    AdvancedFlyback::AdvancedFlyback(const json& j) {
+        from_json(j, *this);
+    }
+
+    OperatingPoint Flyback::processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode, std::optional<double> customDutyCycle, std::optional<double> customDeadTime) {
         double totalInputPower = get_total_input_power(outputOperatingPoint.get_output_currents(), outputOperatingPoint.get_output_voltages(), get_efficiency());
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
-        double inputCurrent = totalInputPower / inputVoltage;
 
         double deadTime = 0;
         double maximumReflectedOutputVoltage = 0;
@@ -23,7 +26,18 @@ namespace OpenMagnetics {
         }
 
         double primaryVoltavePeaktoPeak = inputVoltage + maximumReflectedOutputVoltage;
-        double dutyCycle = sqrt(get_current_ripple_ratio() * 2 * totalInputPower / pow(inputVoltage, 2) * inductance * switchingFrequency);
+        
+        double dutyCycle;
+        if (customDutyCycle) {
+            dutyCycle = customDutyCycle.value();
+        }
+        else {
+            dutyCycle = sqrt(get_current_ripple_ratio() * 2 * totalInputPower / pow(inputVoltage, 2) * inductance * switchingFrequency);
+        }
+  
+        if (customDeadTime) {
+            deadTime = customDeadTime.value();
+        }
 
         if (dutyCycle > 1 ) {
             throw std::runtime_error("dutyCycle cannot be larger than one: " + std::to_string(dutyCycle));
@@ -32,6 +46,21 @@ namespace OpenMagnetics {
         double primaryCurrentAverage = totalInputPower / (inputVoltage * dutyCycle);
         double primaryCurrentPeakToPeak = inputVoltage * dutyCycle / (inductance * switchingFrequency);
         double primaryCurrentOffset = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
+        primaryCurrentOffset = std::max(0.0, primaryCurrentOffset);
+        
+        Flyback::Modes mode;
+        if (customMode) {
+            mode = customMode.value();
+        }
+        else {
+            if (primaryCurrentOffset > 0) {
+                mode = Flyback::Modes::ContinuousCurrentMode;
+            }
+            else {
+                mode = Flyback::Modes::DiscontinuousCurrentMode;
+            }
+        }
+
         // Primary
         {
             OperatingPointExcitation excitation;
@@ -60,7 +89,7 @@ namespace OpenMagnetics {
                     break;
                 }
                 case Flyback::Modes::DiscontinuousCurrentMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle);
+                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     voltageProcessed.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
                     break;
                 }
@@ -128,7 +157,7 @@ namespace OpenMagnetics {
                     break;
                 }
                 case Flyback::Modes::DiscontinuousCurrentMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle);
+                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     currentWaveform = InputsWrapper::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     voltageProcessed.set_label(WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
                     currentProcessed.set_label(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
@@ -237,7 +266,7 @@ namespace OpenMagnetics {
     }
 
     InputsWrapper Flyback::process() {
-        auto checksPassed = Flyback::run_checks(_assertErrors);
+        Flyback::run_checks(_assertErrors);
 
         InputsWrapper inputs;
 
@@ -305,6 +334,86 @@ namespace OpenMagnetics {
                 auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, maximumNeededInductance, mode);
                 json mierda;
                 to_json(mierda, operatingPoint);
+
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
+                if (get_operating_points().size() > 1) {
+                    name += " with op. point " + std::to_string(flybackOperatingPointIndex);
+                }
+                operatingPoint.set_name(name);
+                inputs.get_mutable_operating_points().push_back(operatingPoint);
+            }
+        }
+
+        for (auto operatingPoint : inputs.get_mutable_operating_points()) {
+            auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
+            auto primarycurrentProcessed = primaryExcitation.get_current()->get_processed().value();
+        }
+
+        return inputs;
+    }
+
+    InputsWrapper AdvancedFlyback::process() {
+        Flyback::run_checks(_assertErrors);
+
+        InputsWrapper inputs;
+
+        double maximumNeededInductance = get_desired_inductance();
+        std::vector<double> turnsRatios = get_desired_turns_ratios();
+
+        inputs.get_mutable_operating_points().clear();
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+
+
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+
+        DesignRequirements designRequirements;
+        designRequirements.get_mutable_turns_ratios().clear();
+        for (auto turnsRatio : turnsRatios) {
+            DimensionWithTolerance turnsRatioWithTolerance;
+            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
+            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
+        }
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
+            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+
+        inputs.set_design_requirements(designRequirements);
+
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            auto inputVoltage = inputVoltages[inputVoltageIndex];
+            for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
+                std::optional<double> customDeadTime = std::nullopt;
+                if (get_desired_duty_cycle().size() <= flybackOperatingPointIndex) {
+                    throw std::runtime_error("Missing duty cycle for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
+                }
+                double customDutyCycle = get_desired_duty_cycle()[flybackOperatingPointIndex];
+
+                if (get_desired_dead_time()) {
+                    if (get_desired_dead_time()->size() <= flybackOperatingPointIndex) {
+                        throw std::runtime_error("Missing dead time for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
+                    }
+                    customDeadTime = get_desired_dead_time().value()[flybackOperatingPointIndex];
+                }
+
+                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, maximumNeededInductance, std::nullopt, customDutyCycle, customDeadTime);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
