@@ -54,7 +54,8 @@ private:
 
     DimensionWithTolerance inputVoltage;
     double diodeVoltageDrop;
-    double maximumDrainSourceVoltage = 600;
+    std::optional<double> maximumDrainSourceVoltage = 600;
+    std::optional<double> maximumDutyCycle = 0.5;
     double currentRippleRatio;
     std::vector<FlybackOperatingPoint> operatingPoints;
     double efficiency = 1;
@@ -75,10 +76,12 @@ public:
     const double & get_diode_voltage_drop() const { return diodeVoltageDrop; }
     double & get_mutable_diode_voltage_drop() { return diodeVoltageDrop; }
     void set_diode_voltage_drop(const double & value) { this->diodeVoltageDrop = value; }
-    
-    const double & get_maximum_drain_source_voltage() const { return maximumDrainSourceVoltage; }
-    double & get_mutable_maximum_drain_source_voltage() { return maximumDrainSourceVoltage; }
-    void set_maximum_drain_source_voltage(const double & value) { this->maximumDrainSourceVoltage = value; }
+
+    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
+    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
+
+    std::optional<double> get_maximum_drain_source_voltage() const { return maximumDrainSourceVoltage; }
+    void set_maximum_drain_source_voltage(std::optional<double> value) { this->maximumDrainSourceVoltage = value; }
 
     const double & get_current_ripple_ratio() const { return currentRippleRatio; }
     double & get_mutable_current_ripple_ratio() { return currentRippleRatio; }
@@ -98,7 +101,7 @@ public:
     InputsWrapper process();
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     double get_needed_inductance(double inputVoltage, double inputPower, double dutyCycle, double frequency, double currentRippleRatio);
-    double get_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode);
+    double calculate_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode);
     double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency);
     double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency);
     double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.7);
@@ -165,7 +168,8 @@ void to_json(json & j, const Flyback & x);
 inline void from_json(const json & j, Flyback& x) {
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
     x.set_diode_voltage_drop(j.at("diodeVoltageDrop").get<double>());
-    x.set_maximum_drain_source_voltage(j.at("maximumDrainSourceVoltage").get<double>());
+    x.set_maximum_drain_source_voltage(get_stack_optional<double>(j, "maximumDrainSourceVoltage"));
+    x.set_maximum_duty_cycle(get_stack_optional<double>(j, "maximumDutyCycle"));
     x.set_current_ripple_ratio(j.at("currentRippleRatio").get<double>());
     x.set_operating_points(j.at("operatingPoints").get<std::vector<Flyback::FlybackOperatingPoint>>());
     x.set_efficiency(j.at("efficiency").get<double>());
@@ -176,6 +180,7 @@ inline void to_json(json & j, const Flyback & x) {
     j["inputVoltage"] = x.get_input_voltage();
     j["diodeVoltageDrop"] = x.get_diode_voltage_drop();
     j["maximumDrainSourceVoltage"] = x.get_maximum_drain_source_voltage();
+    j["maximumDutyCycle"] = x.get_maximum_duty_cycle();
     j["currentRippleRatio"] = x.get_current_ripple_ratio();
     j["operatingPoints"] = x.get_operating_points();
     j["efficiency"] = x.get_efficiency();
