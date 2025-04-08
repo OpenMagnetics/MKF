@@ -43,30 +43,36 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
     TEST(Test_Flyback_Drain_Source_Voltage_CCM) {
@@ -99,30 +105,36 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
     TEST(Test_Flyback_Drain_Source_Voltage_DCM) {
@@ -155,30 +167,36 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
 
     TEST(Test_Flyback_Duty_Cycle_CCM) {
@@ -211,30 +229,36 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
     TEST(Test_Flyback_Duty_Cycle_DCM) {
@@ -266,31 +290,31 @@ SUITE(Topology) {
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
 
     TEST(Test_Flyback_Maximum_Duty_Cycle_DCM) {
@@ -323,20 +347,24 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
     }
 
     TEST(Test_Flyback_DCM) {
@@ -369,30 +397,36 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
 
     TEST(Test_Advanced_Flyback_CCM) {
@@ -425,21 +459,27 @@ SUITE(Topology) {
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() > 0);
     }
 
     TEST(Test_Advanced_Flyback_DCM) {
@@ -473,21 +513,27 @@ SUITE(Topology) {
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1] .get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1] .get_current()->get_processed()->get_offset() == 0);
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
 
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
 
     TEST(Test_Flyback_Bug_Web0) {
@@ -521,19 +567,86 @@ SUITE(Topology) {
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
 
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
         CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
+    }
+
+
+    TEST(Test_Flyback_Bug_Web1) {
+        json flybackInputsJson;
+        json inputVoltage;
+
+
+        inputVoltage["minimum"] = 120;
+        inputVoltage["maximum"] = 375;
+        flybackInputsJson["inputVoltage"] = inputVoltage;
+        flybackInputsJson["diodeVoltageDrop"] = 0.7;
+        flybackInputsJson["maximumDutyCycle"] = 0.5;
+        flybackInputsJson["currentRippleRatio"] = 1;
+        flybackInputsJson["efficiency"] = 0.85;
+        flybackInputsJson["operatingPoints"] = json::array();
+
+        {
+            json flybackOperatingPointJson;
+            flybackOperatingPointJson["outputVoltages"] = {12, 5};
+            flybackOperatingPointJson["outputCurrents"] = {3, 5};
+            flybackOperatingPointJson["switchingFrequency"] = 100000;
+            flybackOperatingPointJson["ambientTemperature"] = 42;
+            flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
+        }
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
+        flybackInputs._assertErrors = true;
+
+        auto inputs = flybackInputs.process();
+
+        CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
+
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
+
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
+
+        CHECK_CLOSE(double(flybackInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(flybackInputsJson["inputVoltage"]["maximum"]) * maximumError);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_PRIMARY);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() == 0);
+
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][0]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() == 0);
+
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_average().value(), double(flybackInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
+        CHECK_CLOSE(double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"]), inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_peak().value(), (double(flybackInputsJson["operatingPoints"][0]["outputVoltages"][1]) + double(flybackInputsJson["diodeVoltageDrop"])) * maximumError);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_voltage()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == OpenMagnetics::WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
+        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
 }

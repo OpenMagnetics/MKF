@@ -61,10 +61,10 @@ namespace OpenMagnetics {
         else {
             currentRippleRatio = get_current_ripple_ratio();
         }
-        double primaryCurrentPeakToPeak = centerPrimaryCurrentRamp * currentRippleRatio;
+        double primaryCurrentPeakToPeak = centerPrimaryCurrentRamp * currentRippleRatio * 2;
         double primaryCurrentOffset = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
         primaryCurrentOffset = std::max(0.0, primaryCurrentOffset);
-        
+
         Flyback::Modes mode;
         if (customMode) {
             mode = customMode.value();
@@ -151,7 +151,7 @@ namespace OpenMagnetics {
 
             double secondaryVoltagePeaktoPeak = inputVoltage / turnsRatios[secondaryIndex] + get_diode_voltage_drop() + outputOperatingPoint.get_output_voltages()[secondaryIndex];
             double secondaryCurrentAverage = centerPrimaryCurrentRamp * turnsRatios[secondaryIndex] * powerDivider;
-            double secondaryCurrentPeaktoPeak = secondaryCurrentAverage * currentRippleRatio;
+            double secondaryCurrentPeaktoPeak = secondaryCurrentAverage * currentRippleRatio * 2;
             double secondaryCurrentOffset = std::max(0.0, secondaryCurrentAverage - secondaryCurrentPeaktoPeak / 2);
 
 
