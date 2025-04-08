@@ -97,14 +97,14 @@ public:
 
     bool run_checks(bool assert = false);
 
-    // According to https://www.onsemi.jp/download/application-notes/pdf/an-4150.pdf
+    // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     InputsWrapper process();
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     double get_needed_inductance(double inputVoltage, double inputPower, double dutyCycle, double frequency, double currentRippleRatio);
     double calculate_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode);
-    double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency);
-    double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency);
-    double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.7);
+    double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
+    double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);
+    double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.85);
 
 };
 
@@ -112,7 +112,7 @@ class AdvancedFlyback : public Flyback {
 private:
     std::vector<double> desiredTurnsRatios;
     double desiredInductance;
-    std::vector<double> desiredDutyCycle;
+    std::vector<std::vector<double>> desiredDutyCycle;
     std::optional<std::vector<double>> desiredDeadTime;
 
 protected:
@@ -130,9 +130,9 @@ public:
     double & get_mutable_desired_inductance() { return desiredInductance; }
     void set_desired_inductance(const double & value) { this->desiredInductance = value; }
 
-    const std::vector<double> & get_desired_duty_cycle() const { return desiredDutyCycle; }
-    std::vector<double> & get_mutable_desired_duty_cycle() { return desiredDutyCycle; }
-    void set_desired_duty_cycle(const std::vector<double> & value) { this->desiredDutyCycle = value; }
+    const std::vector<std::vector<double>> & get_desired_duty_cycle() const { return desiredDutyCycle; }
+    std::vector<std::vector<double>> & get_mutable_desired_duty_cycle() { return desiredDutyCycle; }
+    void set_desired_duty_cycle(const std::vector<std::vector<double>> & value) { this->desiredDutyCycle = value; }
 
     std::optional<std::vector<double>> get_desired_dead_time() const { return desiredDeadTime; }
     void set_desired_dead_time(std::optional<std::vector<double>> value) { this->desiredDeadTime = value; }
@@ -194,10 +194,11 @@ inline void from_json(const json & j, AdvancedFlyback& x) {
     x.set_diode_voltage_drop(j.at("diodeVoltageDrop").get<double>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
     x.set_desired_dead_time(get_stack_optional<std::vector<double>>(j, "desiredDeadTime"));
-    x.set_desired_duty_cycle(j.at("desiredDutyCycle").get<std::vector<double>>());
+    x.set_desired_duty_cycle(j.at("desiredDutyCycle").get<std::vector<std::vector<double>>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_operating_points(j.at("operatingPoints").get<std::vector<AdvancedFlyback::FlybackOperatingPoint>>());
     x.set_efficiency(j.at("efficiency").get<double>());
+    x.set_current_ripple_ratio(std::numeric_limits<double>::quiet_NaN());
 }
 
 inline void to_json(json & j, const AdvancedFlyback & x) {
@@ -210,5 +211,6 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
     j["desiredTurnsRatios"] = x.get_desired_turns_ratios();
     j["operatingPoints"] = x.get_operating_points();
     j["efficiency"] = x.get_efficiency();
+    j["currentRippleRatio"] = x.get_current_ripple_ratio();
 }
 } // namespace OpenMagnetics
