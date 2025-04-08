@@ -367,13 +367,13 @@ namespace OpenMagnetics {
             inputVoltages.push_back(get_input_voltage().get_nominal().value());
             inputVoltagesNames.push_back("Nom.");
         }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
         if (get_input_voltage().get_minimum()) {
             inputVoltages.push_back(get_input_voltage().get_minimum().value());
             inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
         }
 
         DesignRequirements designRequirements;
