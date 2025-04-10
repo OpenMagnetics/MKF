@@ -245,6 +245,46 @@ SUITE(Utils) {
         CHECK(OpenMagnetics::get_shape_families().size() > 0);
     }
 
+    TEST(Test_Core_Shapes_Dimensions_PQ) {
+        auto dimensions = OpenMagnetics::get_shape_family_dimensions(OpenMagnetics::CoreShapeFamily::PQ);
+        CHECK(dimensions.size() == 9);
+        CHECK(dimensions[0] == "A");
+        CHECK(dimensions[1] == "B");
+        CHECK(dimensions[2] == "C");
+        CHECK(dimensions[3] == "D");
+        CHECK(dimensions[4] == "E");
+        CHECK(dimensions[5] == "F");
+        CHECK(dimensions[6] == "G");
+        CHECK(dimensions[7] == "J");
+        CHECK(dimensions[8] == "L");
+    }
+
+    TEST(Test_Core_Shapes_Dimensions_UR) {
+        auto dimensions = OpenMagnetics::get_shape_family_dimensions(OpenMagnetics::CoreShapeFamily::UR, "2");
+        CHECK(dimensions.size() == 7);
+        CHECK(dimensions[0] == "A");
+        CHECK(dimensions[1] == "B");
+        CHECK(dimensions[2] == "C");
+        CHECK(dimensions[3] == "D");
+        CHECK(dimensions[4] == "E");
+        CHECK(dimensions[5] == "H");
+        CHECK(dimensions[6] == "S");
+    }
+
+    TEST(Test_Core_Shapes_Dimensions_UR_No_Subtype) {
+        auto dimensions = OpenMagnetics::get_shape_family_dimensions(OpenMagnetics::CoreShapeFamily::UR);
+        CHECK(dimensions.size() == 9);
+        CHECK(dimensions[0] == "A");
+        CHECK(dimensions[1] == "B");
+        CHECK(dimensions[2] == "C");
+        CHECK(dimensions[3] == "D");
+        CHECK(dimensions[4] == "E");
+        CHECK(dimensions[5] == "F");
+        CHECK(dimensions[6] == "G");
+        CHECK(dimensions[7] == "H");
+        CHECK(dimensions[8] == "S");
+    }
+
     TEST(Test_Core_Shapes_External) {
         std::string file_path = __FILE__;
         auto external_core_shapes_path = file_path.substr(0, file_path.rfind("/")).append("/testData/external_core_shapes.ndjson");
