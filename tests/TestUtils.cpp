@@ -122,8 +122,8 @@ SUITE(Utils) {
         auto settings = OpenMagnetics::Settings::GetInstance();
         settings->reset();
         auto allShapeNames = OpenMagnetics::get_shape_names();
-        auto magneticsShapeNames = OpenMagnetics::get_shape_names("Magnetics");
-        auto ferroxcubeShapeNames = OpenMagnetics::get_shape_names("Ferroxcube");
+        auto magneticsShapeNames = OpenMagnetics::get_core_shapes_names("Magnetics");
+        auto ferroxcubeShapeNames = OpenMagnetics::get_core_shapes_names("Ferroxcube");
 
         CHECK(allShapeNames.size() > magneticsShapeNames.size());
         CHECK(allShapeNames.size() > ferroxcubeShapeNames.size());
