@@ -467,7 +467,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
     return materialNames;
 }
 
-std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer) {
+std::vector<std::string> get_core_shapes_names(std::optional<std::string> manufacturer) {
     if (coreDatabase.empty()) {
         load_cores();
     }
@@ -496,6 +496,22 @@ std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer
     }
 
     return coreNames;
+}
+
+std::vector<std::string> get_shape_names(CoreShapeFamily family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<std::string> shapeNames;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() == family) {
+            shapeNames.push_back(name);
+        }
+    }
+
+    return shapeNames;
 }
 
 std::vector<std::string> get_shape_names() {
