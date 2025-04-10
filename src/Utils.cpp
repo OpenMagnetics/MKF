@@ -514,6 +514,34 @@ std::vector<std::string> get_shape_names(CoreShapeFamily family) {
     return shapeNames;
 }
 
+std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<std::string> distinctDimensions;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() == family) {
+            if (familySubtype && shape.get_family_subtype()) {
+                if (shape.get_family_subtype().value() != familySubtype.value()) {
+                    continue;
+                }
+            }
+            auto dimensions = shape.get_dimensions().value();
+            for (auto& [dimensionKey, dimensionValue] : dimensions) {
+                if (std::find(distinctDimensions.begin(), distinctDimensions.end(), dimensionKey) == distinctDimensions.end()) {
+                    distinctDimensions.push_back(dimensionKey);
+                }
+            }
+        }
+    }
+
+    std::sort(distinctDimensions.begin(), distinctDimensions.end(), [](std::string a, std::string b) {return a<b;});
+
+    return distinctDimensions;
+}
+
 std::vector<std::string> get_shape_names() {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
