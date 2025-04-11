@@ -171,6 +171,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
 std::vector<std::string> get_shape_names(CoreShapeFamily family);
 std::vector<std::string> get_shape_names();
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype=std::nullopt);
+std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family);
 std::vector<OpenMagnetics::CoreShapeFamily> get_shape_families();
 std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();

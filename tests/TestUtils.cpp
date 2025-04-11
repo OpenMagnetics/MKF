@@ -271,6 +271,23 @@ SUITE(Utils) {
         CHECK(dimensions[6] == "S");
     }
 
+    TEST(Test_Core_Shapes_Dimensions_PM) {
+        auto dimensions = OpenMagnetics::get_shape_family_dimensions(OpenMagnetics::CoreShapeFamily::PM, "1");
+        CHECK(dimensions.size() == 12);
+        CHECK(dimensions[0] == "A");
+        CHECK(dimensions[1] == "B");
+        CHECK(dimensions[2] == "C");
+        CHECK(dimensions[3] == "D");
+        CHECK(dimensions[4] == "E");
+        CHECK(dimensions[5] == "F");
+        CHECK(dimensions[6] == "G");
+        CHECK(dimensions[7] == "H");
+        CHECK(dimensions[8] == "alpha");
+        CHECK(dimensions[9] == "b");
+        CHECK(dimensions[10] == "e");
+        CHECK(dimensions[11] == "t");
+    }
+
     TEST(Test_Core_Shapes_Dimensions_UR_No_Subtype) {
         auto dimensions = OpenMagnetics::get_shape_family_dimensions(OpenMagnetics::CoreShapeFamily::UR);
         CHECK(dimensions.size() == 9);
@@ -283,6 +300,20 @@ SUITE(Utils) {
         CHECK(dimensions[6] == "G");
         CHECK(dimensions[7] == "H");
         CHECK(dimensions[8] == "S");
+    }
+
+    TEST(Test_Core_Shapes_Family_Subtypes_UR) {
+        auto subtypes = OpenMagnetics::get_shape_family_subtypes(OpenMagnetics::CoreShapeFamily::UR);
+        CHECK(subtypes.size() == 4);
+        CHECK(subtypes[0] == "1");
+        CHECK(subtypes[1] == "2");
+        CHECK(subtypes[2] == "3");
+        CHECK(subtypes[3] == "4");
+    }
+
+    TEST(Test_Core_Shapes_Family_Subtypes_E) {
+        auto subtypes = OpenMagnetics::get_shape_family_subtypes(OpenMagnetics::CoreShapeFamily::E);
+        CHECK(subtypes.size() == 0);
     }
 
     TEST(Test_Core_Shapes_External) {
