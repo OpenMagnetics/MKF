@@ -15,7 +15,7 @@ struct Constants {
     const double vacuumPermeability = 1.25663706212e-6;
     const double vacuumPermittivity =  8.8541878128e-12;
 
-    const double magneticFluxDensitySaturation = 0.352; // HARDCODED TODO: replace when materials are implemented
+    const double quasiStaticFrequencyLimit = 100;
 
     const double spacerProtudingPercentage = 0.2;
     const double coilPainterScale = 1e6;

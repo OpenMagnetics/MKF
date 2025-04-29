@@ -187,15 +187,25 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
                                                   double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    auto volumetricLosses = get_core_volumetric_losses(core.resolve_material(), excitation, temperature);
+    auto material = core.resolve_material();
 
     CoreLossesOutput result;
-    result.set_core_losses(volumetricLosses * effectiveVolume);
     result.set_magnetic_flux_density(magneticFluxDensity);
     result.set_method_used(_modelName);
     result.set_origin(ResultOrigin::SIMULATION);
     result.set_temperature(temperature);
-    result.set_volumetric_losses(volumetricLosses);
+
+    if (usesVolumetricLosses(material)) {
+        auto volumetricLosses = get_core_volumetric_losses(material, excitation, temperature);
+        result.set_core_losses(volumetricLosses * effectiveVolume);
+        result.set_volumetric_losses(volumetricLosses);
+    }
+    else {
+        auto massLosses = get_core_mass_losses(material, excitation, temperature);
+        result.set_core_losses(massLosses * effectiveVolume);
+        result.set_mass_losses(massLosses);
+    }
+
 
     return result;
 };
@@ -930,11 +940,11 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
         volumetricLosses = frequency / (a / pow(magneticFluxDensityAcPeak, 3) + b / pow(magneticFluxDensityAcPeak, 2.3) + c / pow(magneticFluxDensityAcPeak, 1.65)) + d * pow(magneticFluxDensityAcPeak, 2) * pow(frequency, 2);
     }
 
-    if (coreMaterial.get_manufacturer_info().get_name() == "Magnetics") {
-        auto micrometalsData = get_method_data(coreMaterial, "magnetics");
-        double a = micrometalsData.get_a().value();
-        double b = micrometalsData.get_b().value();
-        double c = micrometalsData.get_c().value();
+    else if (coreMaterial.get_manufacturer_info().get_name() == "Magnetics") {
+        auto magneticsData = get_method_data(coreMaterial, "magnetics");
+        double a = magneticsData.get_a().value();
+        double b = magneticsData.get_b().value();
+        double c = magneticsData.get_c().value();
         if (b > 2) {
             volumetricLosses = a * pow(mainHarmonicMagneticFluxDensityPeak, b - 2) * pow(frequency, c) * pow(magneticFluxDensityAcPeak, 2);
         }
@@ -942,7 +952,28 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
             volumetricLosses = a * pow(magneticFluxDensityAcPeak, b) * pow(frequency, c);
         }
     }
+    else {
+        // throw std::invalid_argument("No volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
+    }
+
     return volumetricLosses;
+}
+
+double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMaterial,
+                                                             OperatingPointExcitation excitation,
+                                                             double temperature) {
+
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
+
+    CoreLossesOutput result;
+    double massLosses = -1;
+
+    if (coreMaterial.get_manufacturer_info().get_name() == "Magnetec") {
+        massLosses = 80 * pow(frequency / 100000, 1.8) * pow(magneticFluxDensityAcPeak * 2 / 0.3, 2);
+    }
+    return massLosses;
 }
  
 double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
@@ -1138,11 +1169,17 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper co
     }
 
     if (materialData.get_manufacturer_info().get_name() == "Magnetics") {
-        auto micrometalsData = get_method_data(materialData, "magnetics");
-        double a = micrometalsData.get_a().value();
-        double b = micrometalsData.get_b().value();
-        double c = micrometalsData.get_c().value();
-        frequency = pow(volumetricLosses / (a * pow(magneticFluxDensityAcPeak, b)), 1 / c);
+        auto magneticsData = get_method_data(materialData, "magnetics");
+        double a = magneticsData.get_a().value();
+        double b = magneticsData.get_b().value();
+        double c = magneticsData.get_c().value();
+        frequency = pow(volumetricLosses / (a * pow(magneticFluxDensityAcPeak, b)), 1. / c);
+    }
+
+    if (materialData.get_manufacturer_info().get_name() == "Magnetec") {
+        double mass = core.get_mass();
+        double massLosses = coreLosses / mass;
+        frequency = pow(massLosses / 80 / pow(magneticFluxDensityAcPeak * 2 / 0.3, 2), 1.0 / 1.8) * 100000;
     }
 
     return frequency;

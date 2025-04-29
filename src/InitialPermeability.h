@@ -29,6 +29,19 @@ class InitialPermeability {
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
                                         std::optional<double> magneticFluxDensity = std::nullopt);
+        static double has_temperature_dependency(CoreMaterial coreMaterial);
+        static double has_frequency_dependency(CoreMaterial coreMaterial);
+        static double has_magnetic_field_dc_bias_dependency(CoreMaterial coreMaterial);
+        static double get_initial_permeability_temperature_dependent(CoreMaterial coreMaterial, double temperature);
+        static double get_initial_permeability_frequency_dependent(CoreMaterial coreMaterial, double frequency);
+        static double get_initial_permeability_magnetic_field_dc_bias_dependent(CoreMaterial coreMaterial, double magneticFieldDcBias);
+        static double calculate_frequency_for_initial_permeability_drop(CoreMaterial coreMaterial, double percentageDrop, double maximumError = 0.01);
+
+        static double get_initial_permeability_formula(CoreMaterial coreMaterial,
+                                                       std::optional<double> temperature,
+                                                       std::optional<double> magneticFieldDcBias,
+                                                       std::optional<double> frequency,
+                                                       std::optional<double> magneticFluxDensity);
 };
 
 } // namespace OpenMagnetics

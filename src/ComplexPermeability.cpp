@@ -1,6 +1,8 @@
 #include "ComplexPermeability.h"
+#include "InitialPermeability.h"
 
 #include "Utils.h"
+#include <math.h>
 
 std::map<std::string, tk::spline> complexPermeabilityRealInterps;
 std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
@@ -12,11 +14,50 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(std::str
     return get_complex_permeability(coreMaterial, frequency);
 }
 
-std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
-    if (!coreMaterial.get_permeability().get_complex()) {
-        throw missing_material_data_exception("Missing complex data in material " + coreMaterial.get_name());
+ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from_frequency_dependent_initial_permeability(CoreMaterial coreMaterial) {
+    double frequencyFor67Point78Drop = InitialPermeability::calculate_frequency_for_initial_permeability_drop(coreMaterial, 0.6778);
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial);
+    auto normalizedFrequencies = logarithmic_spaced_array(0.01, 100, 40);
+    std::vector<PermeabilityPoint> real;
+    std::vector<PermeabilityPoint> imaginary;
+
+    for (auto normalizedFrequency : normalizedFrequencies) {
+        double complexPermeabilityRealNormalizedValue = (sin(2 * sqrt(normalizedFrequency)) + sinh(2 * sqrt(normalizedFrequency))) / (2 * sqrt(normalizedFrequency) * (cos(2 * sqrt(normalizedFrequency)) + cosh(2 * sqrt(normalizedFrequency))));
+        double complexPermeabilityImaginaryNormalizedValue =-(sin(2 * sqrt(normalizedFrequency)) - sinh(2 * sqrt(normalizedFrequency))) / (2 * sqrt(normalizedFrequency) * (cos(2 * sqrt(normalizedFrequency)) + cosh(2 * sqrt(normalizedFrequency))));
+        double permeabilityPointFrequency = normalizedFrequency * frequencyFor67Point78Drop;
+        double complexPermeabilityRealValue = initialPermeability * complexPermeabilityRealNormalizedValue;
+        double complexPermeabilityImaginaryValue = initialPermeability * complexPermeabilityImaginaryNormalizedValue;
+        PermeabilityPoint realPermeabilityPoint;
+        realPermeabilityPoint.set_frequency(permeabilityPointFrequency);
+        realPermeabilityPoint.set_value(complexPermeabilityRealValue);
+        PermeabilityPoint imaginaryPermeabilityPoint;
+        imaginaryPermeabilityPoint.set_frequency(permeabilityPointFrequency);
+        imaginaryPermeabilityPoint.set_value(complexPermeabilityImaginaryValue);
+        real.push_back(realPermeabilityPoint);
+        imaginary.push_back(imaginaryPermeabilityPoint);
+
     }
-    auto complexPermeabilityData = coreMaterial.get_permeability().get_complex().value();
+
+    ComplexPermeabilityData complexPermeabilityData;
+    complexPermeabilityData.set_real(real);
+    complexPermeabilityData.set_imaginary(imaginary);
+    return complexPermeabilityData;
+}
+
+
+std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
+    ComplexPermeabilityData complexPermeabilityData;
+    if (!coreMaterial.get_permeability().get_complex()) {
+        if (InitialPermeability::has_frequency_dependency(coreMaterial)) {
+            complexPermeabilityData = calculate_complex_permeability_from_frequency_dependent_initial_permeability(coreMaterial);
+        }
+        else {
+            throw missing_material_data_exception("Missing complex data in material " + coreMaterial.get_name());
+        }
+    }
+    else {
+        complexPermeabilityData = coreMaterial.get_permeability().get_complex().value();
+    }
 
     double complexPermeabilityValue = 1;
 
