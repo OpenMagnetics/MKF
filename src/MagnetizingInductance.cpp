@@ -112,7 +112,6 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     do {
         currentMagnetizingInductance = modifiedMagnetizingInductance;
 
-
         do {
             currentInitialPermeability = modifiedInitialPermeability;
             magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);

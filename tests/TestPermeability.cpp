@@ -181,6 +181,148 @@ SUITE(InitialPermeability) {
         double expected = 60;
         CHECK_CLOSE(expected, initialPermeabilityValue, 0.01 * expected);
     }
+
+    TEST(Test_Initial_Permeability_Nanoperm_1000) {
+        OpenMagnetics::InitialPermeability initialPermeability;
+        std::string materialName = "Nanoperm 1000";
+        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
+        double manufacturerTolerance = 0.05;
+
+        {
+            double expected = 1000;
+            CHECK_CLOSE(initialPermeabilityValue, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double temperature = 80;
+            double initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
+            double expected = 1000;
+            CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double temperature = 2000;
+            double initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
+            double expected = 1;
+            CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 100000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequency);
+            double expected = 1000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 3000000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequency);
+            double expected = 570;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double magneticFieldDcBias = 100;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
+            double expected = 950;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double magneticFieldDcBias = 1000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
+            double expected = 580;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 3000000;
+            double magneticFieldDcBias = 1000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, frequency);
+            double expected = 336;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+    }
+
+    TEST(Test_Initial_Permeability_Nanoperm_80000) {
+        OpenMagnetics::InitialPermeability initialPermeability;
+        std::string materialName = "Nanoperm 80000";
+        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
+        double manufacturerTolerance = 0.05;
+
+        {
+            double expected = 80000;
+            CHECK_CLOSE(initialPermeabilityValue, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double temperature = 80;
+            double initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
+            double expected = 80000;
+            CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double temperature = 2000;
+            double initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(materialData, temperature, std::nullopt, std::nullopt);
+            double expected = 1;
+            CHECK_CLOSE(initialPermeabilityValueWithTemperature, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 1000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequency);
+            double expected = 80000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 30000;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequency);
+            double expected = 40000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double magneticFieldDcBias = 1;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
+            double expected = 80000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double magneticFieldDcBias = 10;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
+            double expected = 43000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+
+        {
+            double frequency = 30000;
+            double magneticFieldDcBias = 10;
+            double initialPermeabilityValueWithFrequency = initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, frequency);
+            double expected = 21000;
+            CHECK_CLOSE(initialPermeabilityValueWithFrequency, expected, manufacturerTolerance * expected);
+        }
+    }
+
+    TEST(Test_Frequency_For_Initial_Permeability_Drop_Nanoperm_80000) {
+        srand (time(NULL));
+        OpenMagnetics::InitialPermeability initialPermeability;
+        std::string materialName = "Nanoperm 80000";
+        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        double manufacturerTolerance = 0.05;
+        for (size_t i = 0; i < 1000; ++i)
+        {
+            double percentageDrop = std::rand() % 1;
+            double frequencyForDrop = initialPermeability.calculate_frequency_for_initial_permeability_drop(materialData, percentageDrop);
+            double expectedInitialPermeability = 80000 * (1 - percentageDrop);
+            double initialPermeabilityValueWithFrequencyDrop = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequencyForDrop);
+            CHECK_CLOSE(initialPermeabilityValueWithFrequencyDrop, expectedInitialPermeability, manufacturerTolerance * expectedInitialPermeability);
+        }
+    }
 }
 
 
@@ -221,6 +363,16 @@ SUITE(ComplexPermeability) {
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
         auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 10000000);
+        CHECK(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
+        CHECK(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+    }
+
+    TEST(Test_Complex_Permeability_Nanoperm_8000) {
+        OpenMagnetics::ComplexPermeability complexPermeability;
+        std::string materialName = "Nanoperm 8000";
+        auto materialData = materialName;
+        auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
+        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 1000000);
         CHECK(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
         CHECK(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }

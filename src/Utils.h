@@ -42,6 +42,9 @@ extern double maxWindingWindowWidth;
 extern double minWindingWindowHeight;
 extern double maxWindingWindowHeight;
 
+extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityMagneticFieldDcBiasInterps;
+extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityFrequencyInterps;
+extern std::map<std::string, std::variant<double, tk::spline>> initialPermeabilityTemperatureInterps;
 extern std::map<std::string, tk::spline> complexPermeabilityRealInterps;
 extern std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 

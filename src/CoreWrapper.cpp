@@ -79,6 +79,16 @@ double CoreWrapper::get_width() {
     }
     return get_processed_description()->get_width();
 }
+double CoreWrapper::get_mass() {
+    if (get_shape_family() == CoreShapeFamily::T) {
+        auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+        double volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
+        return volume * get_density();
+    }
+    else{
+        throw std::runtime_error("get_mass only implemented for toroidal cores for now");
+    }
+}
 double CoreWrapper::get_effective_length() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
@@ -3037,8 +3047,8 @@ std::string CoreWrapper::get_material_name() {
     return resolve_material().get_name();
 }
 
-std::vector<CoreLossesMethodType> CoreWrapper::get_available_core_losses_methods(){
-    std::vector<CoreLossesMethodType> methods;
+std::vector<VolumetricCoreLossesMethodType> CoreWrapper::get_available_core_losses_methods(){
+    std::vector<VolumetricCoreLossesMethodType> methods;
     auto volumetricLossesMethodsVariants = resolve_material().get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;

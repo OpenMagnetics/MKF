@@ -73,6 +73,7 @@ double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrappe
 
     OperatingPoint operatingPoint;
     OperatingConditions conditions;
+    conditions.set_cooling(std::nullopt);
     conditions.set_ambient_temperature(temperature);
     operatingPoint.set_conditions(conditions);
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
