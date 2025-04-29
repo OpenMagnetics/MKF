@@ -13,7 +13,6 @@ namespace OpenMagnetics {
     }
 
     OperatingPoint Flyback::processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode, std::optional<double> customDutyCycle, std::optional<double> customDeadTime) {
-        double totalInputPower = get_total_input_power(outputOperatingPoint.get_output_currents(), outputOperatingPoint.get_output_voltages(), get_efficiency());
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.get_switching_frequency();
@@ -26,15 +25,25 @@ namespace OpenMagnetics {
         }
 
         double primaryVoltavePeaktoPeak = inputVoltage + maximumReflectedOutputVoltage;
-        
+
+        double totalOutputPower = get_total_input_power(outputOperatingPoint.get_output_currents(), outputOperatingPoint.get_output_voltages(), 1, 0);
+        double maximumEffectiveLoadCurrent = totalOutputPower / outputOperatingPoint.get_output_voltages()[0];
+        double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
+        double totalInputPower = get_total_input_power(outputOperatingPoint.get_output_currents(), outputOperatingPoint.get_output_voltages(), get_efficiency(), 0);
+        double averageInputCurrent = totalInputPower / inputVoltage;
+
         double dutyCycle;
         if (customDutyCycle) {
             dutyCycle = customDutyCycle.value();
         }
         else {
-            dutyCycle = sqrt(get_current_ripple_ratio() * 2 * totalInputPower / pow(inputVoltage, 2) * inductance * switchingFrequency);
+            dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
         }
-  
+
+        double centerSecondaryCurrentRampLumped = maximumEffectiveLoadCurrent / (1 - dutyCycle);
+        double centerPrimaryCurrentRamp = centerSecondaryCurrentRampLumped / turnsRatios[0];
+
+
         if (customDeadTime) {
             deadTime = customDeadTime.value();
         }
@@ -43,11 +52,19 @@ namespace OpenMagnetics {
             throw std::runtime_error("dutyCycle cannot be larger than one: " + std::to_string(dutyCycle));
         }
 
-        double primaryCurrentAverage = totalInputPower / (inputVoltage * dutyCycle);
-        double primaryCurrentPeakToPeak = inputVoltage * dutyCycle / (inductance * switchingFrequency);
+        double primaryCurrentAverage = centerPrimaryCurrentRamp;
+        double currentRippleRatio;
+        if (std::isnan(get_current_ripple_ratio())) {
+            double primaryCurrentPeakToPeak = inputVoltage * dutyCycle / switchingFrequency / inductance;
+            currentRippleRatio = primaryCurrentPeakToPeak / centerPrimaryCurrentRamp;
+        }
+        else {
+            currentRippleRatio = get_current_ripple_ratio();
+        }
+        double primaryCurrentPeakToPeak = centerPrimaryCurrentRamp * currentRippleRatio * 2;
         double primaryCurrentOffset = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
         primaryCurrentOffset = std::max(0.0, primaryCurrentOffset);
-        
+
         Flyback::Modes mode;
         if (customMode) {
             mode = customMode.value();
@@ -129,12 +146,14 @@ namespace OpenMagnetics {
             Processed currentProcessed;
             Processed voltageProcessed;
 
-            double secondaryPower = get_total_input_power(outputOperatingPoint.get_output_currents()[secondaryIndex], outputOperatingPoint.get_output_voltages()[secondaryIndex], get_efficiency());
-            double powerDivider = secondaryPower / totalInputPower;
+            double secondaryPower = get_total_input_power(outputOperatingPoint.get_output_currents()[secondaryIndex], outputOperatingPoint.get_output_voltages()[secondaryIndex], 1, 0);
+            double powerDivider = secondaryPower / totalOutputPower;
 
             double secondaryVoltagePeaktoPeak = inputVoltage / turnsRatios[secondaryIndex] + get_diode_voltage_drop() + outputOperatingPoint.get_output_voltages()[secondaryIndex];
-            double secondaryCurrentPeaktoPeak = primaryCurrentPeakToPeak * turnsRatios[secondaryIndex] * powerDivider;
-            double secondaryCurrentOffset = primaryCurrentOffset * turnsRatios[secondaryIndex] * powerDivider;
+            double secondaryCurrentAverage = centerPrimaryCurrentRamp * turnsRatios[secondaryIndex] * powerDivider;
+            double secondaryCurrentPeaktoPeak = secondaryCurrentAverage * currentRippleRatio * 2;
+            double secondaryCurrentOffset = std::max(0.0, secondaryCurrentAverage - secondaryCurrentPeaktoPeak / 2);
+
 
             currentProcessed.set_peak_to_peak(secondaryCurrentPeaktoPeak);
             currentProcessed.set_peak(secondaryCurrentOffset + secondaryCurrentPeaktoPeak / 2);
@@ -197,7 +216,7 @@ namespace OpenMagnetics {
         return operatingPoint;
     }
 
-    double Flyback::get_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode) {
+    double Flyback::calculate_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode) {
         switch (mode) {
             case Flyback::Modes::ContinuousCurrentMode:
                 return outputReflectedVoltage / (outputReflectedVoltage + minimumInputVoltage);
@@ -208,18 +227,18 @@ namespace OpenMagnetics {
         throw std::runtime_error("Unknown flyback mode");
     }
 
-    double Flyback::get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency) {
+    double Flyback::get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop) {
         double totalPower = 0;
         for (size_t secondaryIndex = 0; secondaryIndex < outputCurrents.size(); ++secondaryIndex) {
-            totalPower += outputCurrents[secondaryIndex] * (outputVoltages[secondaryIndex] + get_diode_voltage_drop());
+            totalPower += outputCurrents[secondaryIndex] * (outputVoltages[secondaryIndex] + diodeVoltageDrop);
         }
 
         return totalPower / efficiency;
     }
 
 
-    double Flyback::get_total_input_power(double outputCurrent, double outputVoltage, double efficiency) {
-        double totalPower = outputCurrent * (outputVoltage + get_diode_voltage_drop());
+    double Flyback::get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop) {
+        double totalPower = outputCurrent * (outputVoltage + diodeVoltageDrop);
 
         return totalPower / efficiency;
     }
@@ -270,26 +289,74 @@ namespace OpenMagnetics {
 
         InputsWrapper inputs;
 
-        auto maximumDrainSourceVoltage = get_maximum_drain_source_voltage();
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
         auto mode = get_current_ripple_ratio() < 1? Flyback::Modes::ContinuousCurrentMode : Flyback::Modes::DiscontinuousCurrentMode;
 
-        auto minimumOutputReflectedVoltage = get_minimum_output_reflected_voltage(maximumDrainSourceVoltage, maximumInputVoltage);
-        double maximumDutyCycle = get_maximum_duty_cycle(minimumInputVoltage, minimumOutputReflectedVoltage, mode);
+        if (!get_maximum_drain_source_voltage() && !get_maximum_duty_cycle()) {
+            throw std::invalid_argument("Missing both maximum duty cycle and maximum drain source voltage");
+        }
+        double maximumDutyCycle;
         double maximumNeededInductance = 0;
         std::vector<double> turnsRatios(get_operating_points()[0].get_output_voltages().size(), 0);
+
+        if (get_maximum_duty_cycle()) {
+            maximumDutyCycle = get_maximum_duty_cycle().value();
+            for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
+                auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
+
+                double totalOutputPower = get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), 1, 0);
+                double totalInputPower = get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), get_efficiency(), 0);
+                double maximumEffectiveLoadCurrent = totalOutputPower / flybackOperatingPoint.get_output_voltages()[0];
+                double averageInputCurrent = totalInputPower / minimumInputVoltage;
+                double maximumEffectiveLoadCurrentReflected = averageInputCurrent * (1 - maximumDutyCycle) / maximumDutyCycle;
+
+                auto turnsRatioFirstOutput = maximumEffectiveLoadCurrent / maximumEffectiveLoadCurrentReflected;
+                turnsRatios[0] = std::max(turnsRatios[0], turnsRatioFirstOutput);
+
+                for (size_t secondaryIndex = 1; secondaryIndex < flybackOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
+                    auto turnsRatio = turnsRatioFirstOutput * (flybackOperatingPoint.get_output_voltages()[0] + get_diode_voltage_drop()) / (flybackOperatingPoint.get_output_voltages()[secondaryIndex] + get_diode_voltage_drop());
+                    turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatio);
+                }
+            }
+        }
+        else {
+            double maximumDrainSourceVoltage = get_maximum_drain_source_voltage().value();
+            auto minimumOutputReflectedVoltage = get_minimum_output_reflected_voltage(maximumDrainSourceVoltage, maximumInputVoltage);
+            maximumDutyCycle = calculate_maximum_duty_cycle(minimumInputVoltage, minimumOutputReflectedVoltage, mode);
+            for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
+                auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
+                for (size_t secondaryIndex = 0; secondaryIndex < flybackOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
+                    auto turnsRatio = minimumOutputReflectedVoltage / (flybackOperatingPoint.get_output_voltages()[secondaryIndex] + get_diode_voltage_drop());
+                    turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatio);
+                }
+            }
+        }
+
         for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
             auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
             double switchingFrequency = flybackOperatingPoint.get_switching_frequency();
-            double totalInputPower = get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), get_efficiency());
-            double neededInductance = get_needed_inductance(minimumInputVoltage, totalInputPower, maximumDutyCycle, switchingFrequency, get_current_ripple_ratio());
-            maximumNeededInductance = std::max(maximumNeededInductance, neededInductance);
-            for (size_t secondaryIndex = 0; secondaryIndex < flybackOperatingPoint.get_output_voltages().size(); ++secondaryIndex) {
-                auto turnsRatio = minimumOutputReflectedVoltage / (flybackOperatingPoint.get_output_voltages()[secondaryIndex] + get_diode_voltage_drop());
-                turnsRatios[secondaryIndex] = std::max(turnsRatios[secondaryIndex], turnsRatio);
+            double totalOutputPower = get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), 1, 0);
+            double maximumEffectiveLoadCurrent = totalOutputPower / flybackOperatingPoint.get_output_voltages()[0];
+            double dutyCycle = 0;
+            if (get_maximum_duty_cycle()) {
+                dutyCycle = get_maximum_duty_cycle().value();
             }
+            else {
+                double maximumEffectiveLoadCurrentReflected = maximumEffectiveLoadCurrent / turnsRatios[0];
+                double totalInputPower = get_total_input_power(flybackOperatingPoint.get_output_currents(), flybackOperatingPoint.get_output_voltages(), get_efficiency(), 0);
+                double averageInputCurrent = totalInputPower / minimumInputVoltage;
+                dutyCycle = averageInputCurrent / (averageInputCurrent + maximumEffectiveLoadCurrentReflected);
+            }
+
+            double centerSecondaryCurrentRampLumped = maximumEffectiveLoadCurrent / (1 - dutyCycle);
+            double centerPrimaryCurrentRamp = centerSecondaryCurrentRampLumped / turnsRatios[0];
+            double tOn = dutyCycle / switchingFrequency;
+            double voltsSeconds = minimumInputVoltage * tOn;
+            double neededInductance = voltsSeconds / get_current_ripple_ratio() / centerPrimaryCurrentRamp;
+            maximumNeededInductance = std::max(maximumNeededInductance, neededInductance);
         }
+
 
         inputs.get_mutable_operating_points().clear();
         std::vector<double> inputVoltages;
@@ -300,13 +367,13 @@ namespace OpenMagnetics {
             inputVoltages.push_back(get_input_voltage().get_nominal().value());
             inputVoltagesNames.push_back("Nom.");
         }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
         if (get_input_voltage().get_minimum()) {
             inputVoltages.push_back(get_input_voltage().get_minimum().value());
             inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
         }
 
         DesignRequirements designRequirements;
@@ -404,7 +471,7 @@ namespace OpenMagnetics {
                 if (get_desired_duty_cycle().size() <= flybackOperatingPointIndex) {
                     throw std::runtime_error("Missing duty cycle for flybackOperatingPointIndex: " + std::to_string(flybackOperatingPointIndex));
                 }
-                double customDutyCycle = get_desired_duty_cycle()[flybackOperatingPointIndex];
+                double customDutyCycle = get_desired_duty_cycle()[flybackOperatingPointIndex][inputVoltageIndex];
 
                 if (get_desired_dead_time()) {
                     if (get_desired_dead_time()->size() <= flybackOperatingPointIndex) {
