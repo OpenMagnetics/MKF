@@ -48,10 +48,21 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double temperature = Defaults().ambientTemperature;
 
     if (operatingPoint) {
+
         temperature = operatingPoint->get_conditions().get_ambient_temperature();
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
-            InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
             frequency = operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency();
+            OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(*operatingPoint);
+
+            if (excitation.get_current()) {
+                excitation.set_current(OpenMagnetics::InputsWrapper::standardize_waveform(excitation.get_current().value(), frequency));
+            }
+            if (excitation.get_voltage()) {
+                excitation.set_voltage(OpenMagnetics::InputsWrapper::standardize_waveform(excitation.get_voltage().value(), frequency));
+            }
+            operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+
+            InputsWrapper::make_waveform_size_power_of_two(operatingPoint);
         }
     }
 
@@ -68,6 +79,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double totalReluctance;
     double modifiedMagnetizingInductance = 5e-3;
     double currentMagnetizingInductance;
+
 
     if (operatingPoint) {
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {

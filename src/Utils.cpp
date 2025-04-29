@@ -467,7 +467,7 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
     return materialNames;
 }
 
-std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer) {
+std::vector<std::string> get_core_shapes_names(std::optional<std::string> manufacturer) {
     if (coreDatabase.empty()) {
         load_cores();
     }
@@ -496,6 +496,74 @@ std::vector<std::string> get_shape_names(std::optional<std::string> manufacturer
     }
 
     return coreNames;
+}
+
+std::vector<std::string> get_shape_names(CoreShapeFamily family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<std::string> shapeNames;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() == family) {
+            shapeNames.push_back(name);
+        }
+    }
+
+    return shapeNames;
+}
+
+std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<std::string> distinctDimensions;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() == family) {
+            if (familySubtype && shape.get_family_subtype()) {
+                if (shape.get_family_subtype().value() != familySubtype.value()) {
+                    continue;
+                }
+            }
+            auto dimensions = shape.get_dimensions().value();
+            for (auto& [dimensionKey, dimensionValue] : dimensions) {
+                if (std::find(distinctDimensions.begin(), distinctDimensions.end(), dimensionKey) == distinctDimensions.end()) {
+                    distinctDimensions.push_back(dimensionKey);
+                }
+            }
+        }
+    }
+
+    std::sort(distinctDimensions.begin(), distinctDimensions.end(), [](std::string a, std::string b) {return a<b;});
+
+    return distinctDimensions;
+}
+
+
+std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    std::vector<std::string> distinctSubtypes;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() == family) {
+            if (shape.get_family_subtype()) {
+                std::string familySubtype = shape.get_family_subtype().value();
+                if (std::find(distinctSubtypes.begin(), distinctSubtypes.end(), familySubtype) == distinctSubtypes.end()) {
+                    distinctSubtypes.push_back(familySubtype);
+                }
+            }
+        }
+    }
+
+    std::sort(distinctSubtypes.begin(), distinctSubtypes.end(), [](std::string a, std::string b) {return a<b;});
+
+    return distinctSubtypes;
 }
 
 std::vector<std::string> get_shape_names() {
