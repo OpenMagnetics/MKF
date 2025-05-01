@@ -281,10 +281,8 @@ double get_minimum_magnetic_field_dc_bias_in_permeability_points(std::vector<Per
     }
 }
 
-std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(CoreMaterial coreMaterial) {
+std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
     std::vector<size_t> temperatureIndexes;
-    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
     double minimumFrequency = get_minimum_frequency_in_permeability_points(permeabilityPoints);
     double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
@@ -302,6 +300,12 @@ std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(
         temperatureIndexes.push_back(index);
     }
     return temperatureIndexes;
+}
+
+std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(CoreMaterial coreMaterial) {
+    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+    return get_only_temperature_dependent_indexes(permeabilityPoints);
 }
 
 std::vector<PermeabilityPoint> InitialPermeability::get_only_temperature_dependent_points(CoreMaterial coreMaterial) {
@@ -326,10 +330,8 @@ std::vector<PermeabilityPoint> InitialPermeability::get_only_temperature_depende
     return temperaturePoints;
 }
 
-std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(CoreMaterial coreMaterial) {
+std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
     std::vector<size_t> frequencyIndexes;
-    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
     double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
     double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
@@ -347,6 +349,12 @@ std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(Co
         frequencyIndexes.push_back(index);
     }
     return frequencyIndexes;
+}
+
+std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(CoreMaterial coreMaterial) {
+    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+    return get_only_frequency_dependent_indexes(permeabilityPoints);
 }
 
 std::vector<PermeabilityPoint> InitialPermeability::get_only_frequency_dependent_points(CoreMaterial coreMaterial) {
@@ -371,10 +379,8 @@ std::vector<PermeabilityPoint> InitialPermeability::get_only_frequency_dependent
     return frequencyPoints;
 }
 
-std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_indexes(CoreMaterial coreMaterial) {
+std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
     std::vector<size_t>  magneticFieldDcBiasIndexes;
-    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
     double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
     double minimumFrequency = get_minimum_frequency_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
@@ -392,6 +398,13 @@ std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_depende
          magneticFieldDcBiasIndexes.push_back(index);
     }
     return  magneticFieldDcBiasIndexes;
+}
+
+
+std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_indexes(CoreMaterial coreMaterial) {
+    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+    return get_only_magnetic_field_dc_bias_dependent_indexes(permeabilityPoints);
 }
 
 std::vector<PermeabilityPoint> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_points(CoreMaterial coreMaterial) {
@@ -625,7 +638,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
             auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
             auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
             double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
-            initialPermeabilityValueReference = get_initial_permeability_frequency_dependent(coreMaterial, minimumMagneticFieldDcBias);
+            initialPermeabilityValueReference = get_initial_permeability_magnetic_field_dc_bias_dependent(coreMaterial, minimumMagneticFieldDcBias);
         }
 
         if (hasTemperatureDependency && hasTemperatureRequirement) {
