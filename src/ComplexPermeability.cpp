@@ -35,7 +35,6 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
         imaginaryPermeabilityPoint.set_value(complexPermeabilityImaginaryValue);
         real.push_back(realPermeabilityPoint);
         imaginary.push_back(imaginaryPermeabilityPoint);
-
     }
 
     ComplexPermeabilityData complexPermeabilityData;

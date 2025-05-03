@@ -27,6 +27,70 @@ std::map<std::string, tk::spline> lossFactorInterps;
 
 namespace OpenMagnetics {
 
+std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNameUnion material) {
+    OpenMagnetics::CoreMaterial materialData;
+    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
+    // avoid long loading operatings)
+    if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
+        materialData =
+            OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
+    }
+    else {
+        materialData = std::get<OpenMagnetics::CoreMaterial>(material);
+    }
+
+    std::vector<CoreLossesModels> models;
+    {
+        std::vector<VolumetricCoreLossesMethodType> methods;
+        auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+        for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
+            auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+            for (auto& volumetricLossesMethod : volumetricLossesMethods) {
+                if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
+                    auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
+                    methods.push_back(methodData.get_method());
+                }
+            }
+        }
+
+        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ)) {
+            models.push_back(CoreLossesModels::STEINMETZ);
+            models.push_back(CoreLossesModels::IGSE);
+            models.push_back(CoreLossesModels::BARG);
+            models.push_back(CoreLossesModels::ALBACH);
+            models.push_back(CoreLossesModels::MSE);
+        }
+        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::ROSHEN)) {
+            models.push_back(CoreLossesModels::ROSHEN);
+        }
+        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MAGNETICS) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MICROMETALS)) {
+            models.push_back(CoreLossesModels::PROPRIETARY);
+        }
+        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
+            models.push_back(CoreLossesModels::LOSS_FACTOR);
+        }
+    }
+
+    if (materialData.get_mass_losses()) {
+        std::vector<MassCoreLossesMethodType> methods;
+        auto massLossesMethodsVariants = materialData.get_mass_losses().value();
+        for (auto& massLossesMethodVariant : massLossesMethodsVariants) {
+            auto massLossesMethods = massLossesMethodVariant.second;
+            for (auto& massLossesMethod : massLossesMethods) {
+                if (std::holds_alternative<OpenMagnetics::MagneticsCoreLossesMethodData>(massLossesMethod)) {
+                    auto methodData = std::get<OpenMagnetics::MagneticsCoreLossesMethodData>(massLossesMethod);
+                    methods.push_back(methodData.get_method());
+                }
+            }
+        }
+
+        if (std::count(methods.begin(), methods.end(), MassCoreLossesMethodType::MAGNETEC)) {
+            models.push_back(CoreLossesModels::PROPRIETARY);
+        }
+    }
+
+    return models;
+}
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string materialName) {
     std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
