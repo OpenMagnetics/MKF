@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include <MAS.hpp>
 #include "InputsWrapper.h"
+#include "MagneticWrapper.h"
 
 
 namespace OpenMagnetics {
@@ -18,15 +19,18 @@ class Flyback : public Topology {
 public:
 
     enum class Modes : int {
-        ContinuousCurrentMode,
-        DiscontinuousCurrentMode
+        ContinuousConductionMode,
+        DiscontinuousConductionMode,
+        QuasiResonantMode,
+        BoundaryModeOperation,
     };
 
     class FlybackOperatingPoint {
     private:
         std::vector<double> outputVoltages;
         std::vector<double> outputCurrents;
-        double switchingFrequency;
+        std::optional<double> switchingFrequency;
+        std::optional<Flyback::Modes> mode;
         double ambientTemperature;
 
     public:
@@ -41,13 +45,18 @@ public:
         std::vector<double> & get_mutable_output_currents() { return outputCurrents; }
         void set_output_currents(const std::vector<double> & value) { this->outputCurrents = value; }
     
-        const double & get_switching_frequency() const { return switchingFrequency; }
-        double & get_mutable_switching_frequency() { return switchingFrequency; }
-        void set_switching_frequency(const double & value) { this->switchingFrequency = value; }
+        std::optional<double> get_switching_frequency() const { return switchingFrequency; }
+        void set_switching_frequency(std::optional<double> value) { this->switchingFrequency = value; }
+
+        std::optional<Flyback::Modes> get_mode() const { return mode; }
+        void set_mode(std::optional<Flyback::Modes> value) { this->mode = value; }
     
         const double & get_ambient_temperature() const { return ambientTemperature; }
         double & get_mutable_ambient_temperature() { return ambientTemperature; }
         void set_ambient_temperature(const double & value) { this->ambientTemperature = value; }
+
+        double resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance = std::nullopt, std::optional<std::vector<double>> turnsRatios = std::nullopt, double efficiency = 0.85);
+        Flyback::Modes resolve_mode(std::optional<double> currentRippleRatio = std::nullopt);
     };
 
 private:
@@ -99,12 +108,12 @@ public:
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     InputsWrapper process();
+    InputsWrapper process(MagneticWrapper magnetic);
+
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
-    double get_needed_inductance(double inputVoltage, double inputPower, double dutyCycle, double frequency, double currentRippleRatio);
-    double calculate_maximum_duty_cycle(double minimumInputVoltage, double outputReflectedVoltage, Flyback::Modes mode);
-    double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
-    double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);
-    double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.85);
+    static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
+    static double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);
+    static double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.85);
 
 };
 
@@ -125,6 +134,7 @@ public:
     AdvancedFlyback(const json& j);
 
     InputsWrapper process();
+    InputsWrapper process(MagneticWrapper magnetic);
 
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }
@@ -150,7 +160,8 @@ void to_json(json & j, const Flyback::FlybackOperatingPoint & x);
 inline void from_json(const json & j, Flyback::FlybackOperatingPoint& x) {
     x.set_output_voltages(j.at("outputVoltages").get<std::vector<double>>());
     x.set_output_currents(j.at("outputCurrents").get<std::vector<double>>());
-    x.set_switching_frequency(j.at("switchingFrequency").get<double>());
+    x.set_switching_frequency(get_stack_optional<double>(j, "switchingFrequency"));
+    x.set_mode(get_stack_optional<Flyback::Modes>(j, "mode"));
     x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
 }
 
@@ -159,6 +170,7 @@ inline void to_json(json & j, const Flyback::FlybackOperatingPoint & x) {
     j["outputVoltages"] = x.get_output_voltages();
     j["outputCurrents"] = x.get_output_currents();
     j["switchingFrequency"] = x.get_switching_frequency();
+    j["mode"] = x.get_mode();
     j["ambientTemperature"] = x.get_ambient_temperature();
 }
 
