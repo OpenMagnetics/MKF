@@ -975,7 +975,6 @@ double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, Dimen
 }
 
 bool check_requirement(DimensionWithTolerance requirement, double value){
-    auto settings = OpenMagnetics::Settings::GetInstance();
     if (requirement.get_minimum() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_minimum().value()) {
             throw std::runtime_error("Minimum requirement cannot be larger than maximum");
@@ -1120,6 +1119,12 @@ IsolationSide get_isolation_side_from_index(size_t index) {
     auto orderedIsolationSide = magic_enum::enum_cast<OrderedIsolationSide>(index).value();
     auto orderedIsolationSideString = std::string{magic_enum::enum_name(orderedIsolationSide)};
     return magic_enum::enum_cast<IsolationSide>(orderedIsolationSideString).value();
+}
+
+std::string get_isolation_side_name_from_index(size_t index) {
+    auto isolationSide = get_isolation_side_from_index(index);
+    std::string isolationSideString = std::string{magic_enum::enum_name(isolationSide)};
+    return isolationSideString;
 }
 
 double comp_ellint_1(double x) {
@@ -1328,7 +1333,6 @@ std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitatio
 }
 
 std::vector<size_t> get_main_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::string signal, std::optional<size_t> mainHarmonicIndex) {
-    size_t maximumCommonIndex = SIZE_MAX;
     std::vector<size_t> mainHarmonicIndexesInOperatingPoint;
     for (size_t windingIndex = 0; windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
         auto mainHarmonicIndexes = get_main_harmonic_indexes(operatingPoint.get_excitations_per_winding()[windingIndex], windingLossesHarmonicAmplitudeThreshold, signal, mainHarmonicIndex);
@@ -1470,6 +1474,144 @@ std::string fix_filename(std::string filename) {
     filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\:"), "_")).string();
     filename = std::filesystem::path(std::regex_replace(std::string(filename), std::regex("\\/"), "_")).string();
     return filename;
+}
+
+MasWrapper mas_autocomplete(MasWrapper mas) {
+
+    size_t numberWindings = mas.get_inputs().get_design_requirements().get_turns_ratios().size() + 1;
+    if (!mas.get_inputs().get_design_requirements().get_isolation_sides()) {
+        for (size_t i = 0; i < numberWindings; i++) {
+            std::vector<IsolationSide> isolationSides;
+            isolationSides.push_back(get_isolation_side_from_index(i));
+            mas.get_mutable_inputs().get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        }
+    }
+    else {
+        std::vector<IsolationSide> isolationSides;
+        std::vector<IsolationSide> currentIsolationSides = mas.get_inputs().get_design_requirements().get_isolation_sides().value();
+        for (size_t i = 0; i < numberWindings; i++) {
+            if (currentIsolationSides.size() <= i) {
+                isolationSides.push_back(get_isolation_side_from_index(i));
+            }
+            else {
+                isolationSides.push_back(currentIsolationSides[i]);
+            }
+        }
+        mas.get_mutable_inputs().get_mutable_design_requirements().set_isolation_sides(isolationSides);
+    }
+
+    auto shape = mas.get_mutable_magnetic().get_mutable_core().resolve_shape();
+
+
+    if (mas.get_mutable_magnetic().get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
+        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+        shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
+        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
+    }
+    else {
+        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
+        shape.set_magnetic_circuit(MagneticCircuit::OPEN);
+    }
+    mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_shape(shape);
+
+    for (size_t i = 0; i < numberWindings; i++) {
+        if (mas.get_magnetic().get_coil().get_functional_description().size() <= i) {
+            CoilFunctionalDescription dummyWinding;
+            dummyWinding.set_name(get_isolation_side_name_from_index(i));
+            dummyWinding.set_number_turns(1);
+            dummyWinding.set_number_parallels(1);
+            dummyWinding.set_isolation_side(get_isolation_side_from_index(i));
+            dummyWinding.set_wire("Dummy");
+            mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description().push_back(dummyWinding);
+        }
+        else {
+            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_name() == "") {
+                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_name(get_isolation_side_name_from_index(i));
+            }
+            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_number_turns() == 0) {
+                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_number_turns(1);
+            }
+            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_number_parallels() == 0) {
+                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_number_parallels(1);
+            }
+        }
+    }
+
+    if (!mas.get_magnetic().get_core().get_processed_description()) {
+        mas.get_mutable_magnetic().get_mutable_core().process_data();
+        mas.get_mutable_magnetic().get_mutable_core().process_gap();
+    }
+
+    if (!mas.get_magnetic().get_core().get_geometrical_description()) {
+        auto geometricalDescription = mas.get_mutable_magnetic().get_mutable_core().create_geometrical_description();
+        mas.get_mutable_magnetic().get_mutable_core().set_geometrical_description(geometricalDescription);
+    }
+
+    auto bobbin = mas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin();
+    mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(bobbin);
+
+    for (size_t i = 0; i < numberWindings; i++) {
+        auto wire = mas.get_mutable_magnetic().get_mutable_coil().resolve_wire(i);
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
+
+    }
+
+    auto [result, resultDescription] = mas.get_mutable_inputs().check_integrity();
+
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
+        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+
+            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_waveform() ||
+                !mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_processed()) {
+                const result = mkf.standardize_signal_descriptor(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+
+                if (result.startsWith("Exception")) {
+                    console.error(result);
+                    return mas;
+                }
+                else {
+                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current() = JSON.parse(result);
+                }
+            }
+            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_harmonics()) {
+                const result = mkf.calculate_harmonics(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_waveform()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+
+                if (result.startsWith("Exception")) {
+                    console.error(result);
+                    return mas;
+                }
+                else {
+                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_harmonics() = JSON.parse(result);
+                }
+            }
+            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_waveform() || 
+                !mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_processed()) {
+                const result = mkf.standardize_signal_descriptor(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+
+                if (result.startsWith("Exception")) {
+                    console.error(result);
+                    return mas;
+                }
+                else {
+                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage() = JSON.parse(result);
+                }
+            }
+            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_harmonics()) {
+                const result = mkf.calculate_harmonics(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_waveform()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+
+                if (result.startsWith("Exception")) {
+                    console.error(result);
+                    return mas;
+                }
+                else {
+                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_harmonics() = JSON.parse(result);
+                }
+            }
+        }
+    }
+
+
+    return mas;
 }
 
 } // namespace OpenMagnetics
