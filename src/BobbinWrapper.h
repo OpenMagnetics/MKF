@@ -35,11 +35,11 @@ class BobbinWrapper : public Bobbin {
                 process_data();
             }
         }
-        else {
-            if (!get_processed_description()) {
-                throw std::runtime_error("Missing data in bobbin");
-            }
-        }
+        // else {
+        //     if (!get_processed_description()) {
+        //         throw std::runtime_error("Missing data in bobbin");
+        //     }
+        // }
     }
 
     BobbinWrapper(const Bobbin bobbin) {

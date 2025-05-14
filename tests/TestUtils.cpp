@@ -34,7 +34,6 @@ SUITE(Utils) {
         CHECK_CLOSE(expectedValue, calculatedValue, expectedValue * 0.001);
     }
 
-
     TEST(Bessel) {
         double calculatedValue = OpenMagnetics::bessel_first_kind(0.0, std::complex<double>{1.0, 0.0}).real();
         double expectedValue = 0.7651976865579666;
@@ -55,7 +54,6 @@ SUITE(Utils) {
         double calculatedBeipValue = OpenMagnetics::derivative_kelvin_function_imaginary(0.0, 1.0);
         double expectedBeipValue = 0.49739651146809727;
         CHECK_CLOSE(expectedBeipValue, calculatedBeipValue, expectedBeipValue * 0.001);
-
     }
 
     TEST(Test_Complete_Ellipitical_1_0) {
@@ -409,6 +407,93 @@ SUITE(Utils) {
         auto mainHarmonicIndexes = OpenMagnetics::get_main_harmonic_indexes(harmonics, 0.05, 1);
 
         CHECK(mainHarmonicIndexes.size() == 2);
+    }
+
+    TEST(Test_Mas_Autocomplete) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(false);
+        auto core = OpenMagnetics::find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
+        OpenMagnetics::CoilWrapper coil;
+        OpenMagnetics::CoilFunctionalDescription dummyWinding;
+        dummyWinding.set_name("");
+        dummyWinding.set_number_turns(0);
+        dummyWinding.set_number_parallels(0);
+        dummyWinding.set_wire("");
+        coil.get_mutable_functional_description().push_back(dummyWinding);
+        OpenMagnetics::MagneticWrapper magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        OpenMagnetics::InputsWrapper inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(100000, 42e-6, 42, OpenMagnetics::WaveformLabel::SINUSOIDAL, 10, 0.5, 2);
+
+        OpenMagnetics::MasWrapper mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+
+        auto autocompletedMas = OpenMagnetics::mas_autocomplete(mas);
+
+        CHECK(autocompletedMas.get_magnetic().get_core().get_geometrical_description());
+        CHECK(autocompletedMas.get_magnetic().get_core().get_processed_description());
+        CHECK(std::holds_alternative<OpenMagnetics::CoreShape>(autocompletedMas.get_magnetic().get_core().get_functional_description().get_shape()));
+        CHECK(std::holds_alternative<OpenMagnetics::CoreMaterial>(autocompletedMas.get_magnetic().get_core().get_functional_description().get_material()));
+        CHECK(std::holds_alternative<OpenMagnetics::Bobbin>(autocompletedMas.get_magnetic().get_coil().get_bobbin()));
+        CHECK(autocompletedMas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin().get_processed_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_sections_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_layers_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_turns_description());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_harmonics());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_harmonics());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_harmonics());
+        CHECK_EQUAL(autocompletedMas.get_inputs().get_operating_points().size(), autocompletedMas.get_outputs().size());
+        CHECK(autocompletedMas.get_outputs()[0].get_core_losses());
+        CHECK(autocompletedMas.get_outputs()[0].get_winding_losses());
+        CHECK(autocompletedMas.get_outputs()[0].get_magnetizing_inductance());
+
+    }
+
+
+    TEST(Test_Mas_Autocomplete_Json) {
+        std::string masString = R"({"outputs": [], "inputs": {"designRequirements": {"isolationSides": ["primary" ], "magnetizingInductance": {"nominal": 0.00039999999999999996 }, "name": "My Design Requirements", "turnsRatios": [{"nominal": 1} ] }, "operatingPoints": [{"conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"frequency": 100000, "current": {"processed": {"label": "Triangular", "peakToPeak": 0.5, "offset": 0, "dutyCycle": 0.5 } }, "voltage": {"processed": {"label": "Rectangular", "peakToPeak": 20, "offset": 0, "dutyCycle": 0.5 } } } ], "name": "Operating Point No. 1" } ] }, "magnetic": {"coil": {"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 4, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] }, "core": {"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "two-piece set", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } }, "manufacturerInfo": {"name": "", "reference": "Example" } } })";
+        json masJson = json::parse(masString);
+        OpenMagnetics::MasWrapper mas(masJson);
+
+        auto autocompletedMas = OpenMagnetics::mas_autocomplete(mas);
+
+        CHECK(autocompletedMas.get_magnetic().get_core().get_geometrical_description());
+        CHECK(autocompletedMas.get_magnetic().get_core().get_processed_description());
+        CHECK(std::holds_alternative<OpenMagnetics::CoreShape>(autocompletedMas.get_magnetic().get_core().get_functional_description().get_shape()));
+        CHECK(std::holds_alternative<OpenMagnetics::CoreMaterial>(autocompletedMas.get_magnetic().get_core().get_functional_description().get_material()));
+        CHECK(std::holds_alternative<OpenMagnetics::Bobbin>(autocompletedMas.get_magnetic().get_coil().get_bobbin()));
+        CHECK(autocompletedMas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin().get_processed_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_sections_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_layers_description());
+        CHECK(autocompletedMas.get_magnetic().get_coil().get_turns_description());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_harmonics());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_magnetizing_current()->get_harmonics());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform());
+        CHECK(autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_harmonics());
+        CHECK_EQUAL(autocompletedMas.get_inputs().get_operating_points().size(), autocompletedMas.get_outputs().size());
+        CHECK(autocompletedMas.get_outputs()[0].get_core_losses());
+        CHECK(autocompletedMas.get_outputs()[0].get_winding_losses());
+        CHECK(autocompletedMas.get_outputs()[0].get_magnetizing_inductance());
+
     }
 
 }
