@@ -1158,7 +1158,7 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
         double previousData = data[periodStartIndex];
         for (int i = periodStartIndex - 1; i >= 0; --i)
         {
-            if ((data[i] >= 0 && previousData < 0) || (data[i] <= 0 && previousData > 0)) {
+            if ((data[i] >= 0 && previousData <= 0) || (data[i] <= 0 && previousData >= 0)) {
                 periodStartIndex = i;
                 periodStart = time[i];
                 break;
@@ -1173,6 +1173,9 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
                 periodStopIndex = i + 1;
                 break;
             }
+            else {
+
+            }
         }
         _periodStartIndex = periodStartIndex;
         _periodStopIndex = periodStopIndex;
@@ -1186,6 +1189,7 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     for (size_t index = 0; index < periodTime.size(); index++) {
         periodTime[index] -= offset;
     }
+
 
 
     Waveform newWaveform;

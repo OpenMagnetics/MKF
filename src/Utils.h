@@ -236,6 +236,6 @@ double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
-MasWrapper mas_autocomplete(MasWrapper mas);
+MasWrapper mas_autocomplete(MasWrapper mas, bool simulate = true);
 
 } // namespace OpenMagnetics

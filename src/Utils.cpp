@@ -1,6 +1,8 @@
 #include "Settings.h"
 #include "Defaults.h"
 #include "Constants.h"
+#include "MagnetizingInductance.h"
+#include "MagneticSimulator.h"
 #include "Utils.h"
 #include "json.hpp"
 
@@ -391,7 +393,7 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
 }
 
 OpenMagnetics::CoreWrapper find_core_by_name(std::string name) {
-    if (coreMaterialDatabase.empty()) {
+    if (coreDatabase.empty()) {
         load_cores();
     }
     for (auto core : coreDatabase) {
@@ -1476,8 +1478,46 @@ std::string fix_filename(std::string filename) {
     return filename;
 }
 
-MasWrapper mas_autocomplete(MasWrapper mas) {
+SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor, double frequency) {
 
+    auto standardSignalDescriptor = InputsWrapper::standardize_waveform(signalDescriptor, frequency);
+    if (standardSignalDescriptor.get_harmonics()) {
+        auto processed = InputsWrapper::calculate_processed_data(standardSignalDescriptor.get_harmonics().value(), standardSignalDescriptor.get_waveform().value(), true);
+        standardSignalDescriptor.set_processed(processed);
+    }
+    else {
+        auto processed = InputsWrapper::calculate_processed_data(standardSignalDescriptor.get_waveform().value(), frequency, true);
+        standardSignalDescriptor.set_processed(processed);
+    }
+
+    return standardSignalDescriptor;
+}
+
+OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio){
+    OpenMagnetics::OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
+    auto currentSignalDescriptorProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
+    auto voltageSignalDescriptorProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
+
+    auto voltageSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
+    auto currentSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
+
+    auto voltageSampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    voltageSignalDescriptor.set_harmonics(OpenMagnetics::InputsWrapper::calculate_harmonics_data(voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
+    voltageSignalDescriptor.set_processed(OpenMagnetics::InputsWrapper::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
+
+    auto currentSampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    currentSignalDescriptor.set_harmonics(OpenMagnetics::InputsWrapper::calculate_harmonics_data(currentSampledWaveform, excitationOfThisWinding.get_frequency()));
+    currentSignalDescriptor.set_processed(OpenMagnetics::InputsWrapper::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
+
+    excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
+    excitationOfThisWinding.set_current(currentSignalDescriptor);
+
+    return excitationOfThisWinding;
+}
+
+MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
+
+    //Inputs
     size_t numberWindings = mas.get_inputs().get_design_requirements().get_turns_ratios().size() + 1;
     if (!mas.get_inputs().get_design_requirements().get_isolation_sides()) {
         for (size_t i = 0; i < numberWindings; i++) {
@@ -1500,8 +1540,42 @@ MasWrapper mas_autocomplete(MasWrapper mas) {
         mas.get_mutable_inputs().get_mutable_design_requirements().set_isolation_sides(isolationSides);
     }
 
-    auto shape = mas.get_mutable_magnetic().get_mutable_core().resolve_shape();
+    auto [result, resultDescription] = mas.get_mutable_inputs().check_integrity();
 
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
+        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+            if (mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current()) {
+                auto current = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value();
+                if (!current.get_waveform() ||
+                    !current.get_processed()) {
+                    current = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                }
+                if (!current.get_harmonics()) {
+                    auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    current.set_harmonics(harmonics);
+                }
+                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+            }
+            if (mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage()) {
+                auto voltage = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value();
+                if (!voltage.get_waveform() ||
+                    !voltage.get_processed()) {
+                    voltage = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                }
+                if (!voltage.get_harmonics()) {
+                    auto sampledvoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledvoltageWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    voltage.set_harmonics(harmonics);
+                }
+                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(voltage);
+            }
+        }
+    }
+
+
+    // Core
+    auto shape = mas.get_mutable_magnetic().get_mutable_core().resolve_shape();
 
     if (mas.get_mutable_magnetic().get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
         mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
@@ -1513,6 +1587,21 @@ MasWrapper mas_autocomplete(MasWrapper mas) {
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
     }
     mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_shape(shape);
+
+    auto material = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
+    mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_material(material);
+
+    if (!mas.get_magnetic().get_core().get_processed_description()) {
+        mas.get_mutable_magnetic().get_mutable_core().process_data();
+        mas.get_mutable_magnetic().get_mutable_core().process_gap();
+    }
+
+    if (!mas.get_magnetic().get_core().get_geometrical_description()) {
+        auto geometricalDescription = mas.get_mutable_magnetic().get_mutable_core().create_geometrical_description();
+        mas.get_mutable_magnetic().get_mutable_core().set_geometrical_description(geometricalDescription);
+    }
+
+    // Coil
 
     for (size_t i = 0; i < numberWindings; i++) {
         if (mas.get_magnetic().get_coil().get_functional_description().size() <= i) {
@@ -1534,82 +1623,125 @@ MasWrapper mas_autocomplete(MasWrapper mas) {
             if (mas.get_magnetic().get_coil().get_functional_description()[i].get_number_parallels() == 0) {
                 mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_number_parallels(1);
             }
+            if (std::holds_alternative<std::string>(mas.get_magnetic().get_coil().get_functional_description()[i].get_wire())) {
+                auto wireName = std::get<std::string>(mas.get_magnetic().get_coil().get_functional_description()[i].get_wire());
+                if (wireName == "") {
+                    mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_wire("Dummy");
+                }
+            }
         }
     }
-
-    if (!mas.get_magnetic().get_core().get_processed_description()) {
-        mas.get_mutable_magnetic().get_mutable_core().process_data();
-        mas.get_mutable_magnetic().get_mutable_core().process_gap();
-    }
-
-    if (!mas.get_magnetic().get_core().get_geometrical_description()) {
-        auto geometricalDescription = mas.get_mutable_magnetic().get_mutable_core().create_geometrical_description();
-        mas.get_mutable_magnetic().get_mutable_core().set_geometrical_description(geometricalDescription);
-    }
-
-    auto bobbin = mas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin();
-    mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(bobbin);
 
     for (size_t i = 0; i < numberWindings; i++) {
         auto wire = mas.get_mutable_magnetic().get_mutable_coil().resolve_wire(i);
+        auto coating = wire.resolve_coating();
+        InsulationWireCoating insulationWireCoating;
+        if (coating) {
+            insulationWireCoating = wire.resolve_coating().value();
+        }
+        else {
+            insulationWireCoating.set_type(OpenMagnetics::InsulationWireCoatingType::BARE);
+        }
+
+        if (!insulationWireCoating.get_material()) {
+            auto coatingType = insulationWireCoating.get_type().value();
+            if (coatingType == InsulationWireCoatingType::ENAMELLED) {
+                insulationWireCoating.set_material(Defaults().defaultEnamelledInsulationMaterial);
+            }
+            else {
+                insulationWireCoating.set_material(Defaults().defaultInsulationMaterial);
+            }
+        }
+
+        auto insulationWireCoatingMaterial = wire.resolve_coating_insulation_material();
+        insulationWireCoating.set_material(insulationWireCoatingMaterial);
+        wire.set_coating(insulationWireCoating);
+
+        if (wire.get_strand()) {
+            auto strand = wire.resolve_strand();
+            wire.set_strand(strand);
+        }
+
         mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
+    }
+
+    BobbinWrapper bobbin = mas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin();
+
+    if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
+        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && mas.get_mutable_magnetic().get_wire(0).get_type() != WireType::RECTANGULAR && mas.get_mutable_magnetic().get_wire(0).get_type() != WireType::PLANAR) {
+            bobbin = BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core(), false);
+        }
+        else {
+            bobbin = BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core(), true);
+        }
 
     }
 
-    auto [result, resultDescription] = mas.get_mutable_inputs().check_integrity();
+    if (!bobbin.get_processed_description()->get_mutable_winding_windows()[0].get_sections_orientation()) {
+        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::CENTERED);
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
+        }
+        else {
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+        }
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(bobbin);
 
+    if (!mas.get_mutable_magnetic().get_mutable_coil().get_turns_description()) {
+        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+            mas.get_mutable_magnetic().get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
+        }
+        else {
+            mas.get_mutable_magnetic().get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
+        }
+
+        mas.get_mutable_magnetic().get_mutable_coil().wind();
+    }
+
+    if (mas.get_mutable_magnetic().get_mutable_coil().get_layers_description()) {
+        auto layers = mas.get_mutable_magnetic().get_mutable_coil().get_layers_description().value();
+        for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+            auto insulationMaterial = CoilWrapper::resolve_insulation_layer_insulation_material(mas.get_mutable_magnetic().get_mutable_coil(), layers[layerIndex].get_name());
+            layers[layerIndex].set_insulation_material(insulationMaterial);
+        }
+        mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(layers);
+    }
+
+    // Magnetizing current
+
+    OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
     for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_mutable_magnetic().get_mutable_core(), mas.get_mutable_magnetic().get_mutable_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
+            auto excitation = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 
-            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_waveform() ||
-                !mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_processed()) {
-                const result = mkf.standardize_signal_descriptor(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+            auto magnetizingCurrent = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
 
-                if (result.startsWith("Exception")) {
-                    console.error(result);
-                    return mas;
-                }
-                else {
-                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current() = JSON.parse(result);
+            if (excitation.get_voltage()) {
+                if (excitation.get_voltage().value().get_processed()) {
+                    if (excitation.get_voltage().value().get_processed().value().get_duty_cycle()) {
+                        auto processed = magnetizingCurrent.get_processed().value();
+                        processed.set_duty_cycle(excitation.get_voltage().value().get_processed().value().get_duty_cycle().value());
+                        magnetizingCurrent.set_processed(processed);
+                    }
                 }
             }
-            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_harmonics()) {
-                const result = mkf.calculate_harmonics(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_waveform()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+            mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
 
-                if (result.startsWith("Exception")) {
-                    console.error(result);
-                    return mas;
-                }
-                else {
-                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().get_harmonics() = JSON.parse(result);
-                }
-            }
-            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_waveform() || 
-                !mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_processed()) {
-                const result = mkf.standardize_signal_descriptor(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-
-                if (result.startsWith("Exception")) {
-                    console.error(result);
-                    return mas;
-                }
-                else {
-                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage() = JSON.parse(result);
-                }
-            }
-            if (!mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_harmonics()) {
-                const result = mkf.calculate_harmonics(JSON.stringify( mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_waveform()),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-
-                if (result.startsWith("Exception")) {
-                    console.error(result);
-                    return mas;
-                }
-                else {
-                     mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().get_harmonics() = JSON.parse(result);
-                }
+            if (windingIndex == 0 && numberWindings == 2 && mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().size() == 1) {
+                auto turnRatio = mas.get_mutable_magnetic().get_turns_ratios()[0];
+                auto secondaryExcitation = calculate_reflected_secondary(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatio);
+                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().push_back(secondaryExcitation);
             }
         }
     }
 
+    if (simulate) {
+        // Outputs
+        mas = MagneticSimulator().simulate(mas.get_inputs(), mas.get_magnetic());
+    }
 
     return mas;
 }
