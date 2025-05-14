@@ -185,7 +185,7 @@ class CoreLossesModel {
 };
 
 // Based on On the law of hysteresis by Charles Proteus Steinmetz
-// https://sci-hub.wf/10.1109/proc.1984.12842
+// https://sci-hub.st/10.1109/proc.1984.12842
 class CoreLossesSteinmetzModel : public CoreLossesModel {
   private:
     std::string _modelName = "Steinmetz";
@@ -270,8 +270,8 @@ class CoreLossesBargModel : public CoreLossesSteinmetzModel {
 
 // Based on Ferrite Core Loss for Power Magnetic Components Design and
 // A Practical, Accurate and Very General Core Loss Model for Nonsinusoidal Waveforms by Waseem Roshen
-// https://sci-hub.wf/10.1109/20.278656
-// https://sci-hub.wf/10.1109/TPEL.2006.886608
+// https://sci-hub.st/10.1109/20.278656
+// https://sci-hub.st/10.1109/TPEL.2006.886608
 class CoreLossesRoshenModel : public CoreLossesModel {
   private:
     std::string _modelName = "Roshen";
@@ -311,7 +311,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
 };
 
 // Based on Calculating Core Losses in Transformers for Arbitrary Magnetizing Currents A Comparison of Different
-// Approaches by Manfred Albach https://sci-hub.wf/10.1109/PESC.1996.548774
+// Approaches by Manfred Albach https://sci-hub.st/10.1109/PESC.1996.548774
 class CoreLossesAlbachModel : public CoreLossesSteinmetzModel {
   private:
     std::string _modelName = "Albach";
@@ -368,7 +368,7 @@ class CoreLossesNSEModel : public CoreLossesSteinmetzModel {
 };
 
 // Based on Calculation of Losses in Ferro- and Ferrimagnetic Materials Based on the Modified Steinmetz Equation by
-// Jürgen Reinert https://sci-hub.wf/10.1109/28.936396
+// Jürgen Reinert https://sci-hub.st/10.1109/28.936396
 class CoreLossesMSEModel : public CoreLossesSteinmetzModel {
   private:
     std::string _modelName = "MSE";
