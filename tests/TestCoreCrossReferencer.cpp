@@ -1,7 +1,7 @@
-#include "Settings.h"
-#include "CoreCrossReferencer.h"
-#include "Utils.h"
-#include "InputsWrapper.h"
+#include "support/Settings.h"
+#include "advisers/CoreCrossReferencer.h"
+#include "support/Utils.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

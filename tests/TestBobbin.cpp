@@ -1,6 +1,6 @@
-#include "BobbinWrapper.h"
-#include "Utils.h"
-#include "Settings.h"
+#include "constructive_models/BobbinWrapper.h"
+#include "support/Utils.h"
+#include "support/Settings.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 

@@ -1,6 +1,6 @@
-#include "Painter.h"
-#include "Topology.h"
-#include "Utils.h"
+#include "support/Painter.h"
+#include "converter_models/Topology.h"
+#include "support/Utils.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

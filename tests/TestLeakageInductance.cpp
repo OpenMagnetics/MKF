@@ -1,8 +1,8 @@
-#include "LeakageInductance.h"
-#include "Settings.h"
-#include "Utils.h"
-#include "CoreWrapper.h"
-#include "InputsWrapper.h"
+#include "physical_models/LeakageInductance.h"
+#include "support/Settings.h"
+#include "support/Utils.h"
+#include "constructive_models/CoreWrapper.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

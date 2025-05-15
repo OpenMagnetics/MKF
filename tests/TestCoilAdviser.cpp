@@ -1,10 +1,10 @@
-#include "Insulation.h"
-#include "Painter.h"
-#include "CoreAdviser.h"
-#include "CoilAdviser.h"
-#include "InputsWrapper.h"
+#include "constructive_models/Insulation.h"
+#include "support/Painter.h"
+#include "advisers/CoreAdviser.h"
+#include "advisers/CoilAdviser.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
-#include "Settings.h"
+#include "support/Settings.h"
 
 #include <UnitTest++.h>
 #include <vector>

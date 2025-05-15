@@ -1,11 +1,11 @@
-#include "Painter.h"
-#include "MagneticAdviser.h"
-#include "CircuitSimulatorInterface.h"
-#include "InputsWrapper.h"
+#include "support/Painter.h"
+#include "advisers/MagneticAdviser.h"
+#include "processors/CircuitSimulatorInterface.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
-#include "Sweeper.h"
-#include "Impedance.h"
-#include "Settings.h"
+#include "processors/Sweeper.h"
+#include "physical_models/Impedance.h"
+#include "support/Settings.h"
 
 #include <UnitTest++.h>
 #include <vector>

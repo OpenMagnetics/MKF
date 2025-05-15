@@ -1,5 +1,5 @@
 #include "Constants.h"
-#include "Reluctance.h"
+#include "physical_models/Reluctance.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

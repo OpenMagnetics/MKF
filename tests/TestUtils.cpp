@@ -1,5 +1,5 @@
-#include "Utils.h"
-#include "Settings.h"
+#include "support/Utils.h"
+#include "support/Settings.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

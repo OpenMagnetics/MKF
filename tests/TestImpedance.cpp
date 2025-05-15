@@ -1,8 +1,8 @@
-#include "Sweeper.h"
-#include "Impedance.h"
-#include "Settings.h"
+#include "processors/Sweeper.h"
+#include "physical_models/Impedance.h"
+#include "support/Settings.h"
 #include "TestingUtils.h"
-#include "Utils.h"
+#include "support/Utils.h"
 #include <UnitTest++.h>
 
 

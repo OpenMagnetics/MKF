@@ -1,4 +1,4 @@
-#include "CoreTemperature.h"
+#include "physical_models/CoreTemperature.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

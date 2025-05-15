@@ -1,5 +1,5 @@
-#include "WireWrapper.h"
-#include "Utils.h"
+#include "constructive_models/WireWrapper.h"
+#include "support/Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

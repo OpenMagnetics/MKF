@@ -1,9 +1,9 @@
-#include "CoilMesher.h"
-#include "Settings.h"
-#include "Painter.h"
-#include "InitialPermeability.h"
-#include "InputsWrapper.h"
-#include "Utils.h"
+#include "support/CoilMesher.h"
+#include "support/Settings.h"
+#include "support/Painter.h"
+#include "physical_models/InitialPermeability.h"
+#include "processors/InputsWrapper.h"
+#include "support/Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

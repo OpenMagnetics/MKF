@@ -1,7 +1,7 @@
-#include "Insulation.h"
+#include "constructive_models/Insulation.h"
 #include <UnitTest++.h>
 #include "TestingUtils.h"
-#include "Utils.h"
+#include "support/Utils.h"
 
 
 SUITE(Insulation) {

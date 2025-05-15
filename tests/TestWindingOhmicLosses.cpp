@@ -1,7 +1,7 @@
 #include "MAS.hpp"
-#include "WireWrapper.h"
-#include "WindingOhmicLosses.h"
-#include "Utils.h"
+#include "constructive_models/WireWrapper.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "support/Utils.h"
 
 #include "TestingUtils.h"
 #include <UnitTest++.h>

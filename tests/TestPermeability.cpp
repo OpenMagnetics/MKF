@@ -1,6 +1,6 @@
-#include "InitialPermeability.h"
-#include "ComplexPermeability.h"
-#include "Utils.h"
+#include "physical_models/InitialPermeability.h"
+#include "physical_models/ComplexPermeability.h"
+#include "support/Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

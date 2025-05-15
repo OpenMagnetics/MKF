@@ -1,0 +1,32 @@
+#pragma once
+#include "Constants.h"
+#include "Defaults.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "constructive_models/MagneticWrapper.h"
+#include "physical_models/CoreLosses.h"
+#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/CoilWrapper.h"
+#include <MAS.hpp>
+#include <complex>
+
+namespace OpenMagnetics {
+
+class Impedance {
+    private:
+        bool _fastCapacitance;
+    protected:
+    public:
+    Impedance(bool fastCapacitance=true) {
+        _fastCapacitance = fastCapacitance;
+    } 
+
+    virtual ~Impedance() = default;
+
+    std::complex<double> calculate_impedance(MagneticWrapper magnetic, double frequency, double temperature = Defaults().ambientTemperature);
+    std::complex<double> calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency, double temperature = Defaults().ambientTemperature);
+    double calculate_self_resonant_frequency(MagneticWrapper magnetic, double temperature = Defaults().ambientTemperature);
+    double calculate_self_resonant_frequency(CoreWrapper core, CoilWrapper coil, double temperature = Defaults().ambientTemperature);
+
+};
+
+} // namespace OpenMagnetics

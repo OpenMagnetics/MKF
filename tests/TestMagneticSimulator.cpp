@@ -1,9 +1,9 @@
-#include "Painter.h"
-#include "MagneticSimulator.h"
-#include "MagneticAdviser.h"
-#include "InputsWrapper.h"
+#include "support/Painter.h"
+#include "processors/MagneticSimulator.h"
+#include "advisers/MagneticAdviser.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
-#include "Settings.h"
+#include "support/Settings.h"
 
 #include <UnitTest++.h>
 #include <vector>
