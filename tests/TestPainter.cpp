@@ -1,7 +1,7 @@
-#include "Painter.h"
+#include "support/Painter.h"
 #include "json.hpp"
 #include "TestingUtils.h"
-#include "Settings.h"
+#include "support/Settings.h"
 
 #include <UnitTest++.h>
 

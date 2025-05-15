@@ -1,7 +1,7 @@
-#include "CoreAdviser.h"
-#include "Settings.h"
-#include "WireAdviser.h"
-#include "InputsWrapper.h"
+#include "advisers/CoreAdviser.h"
+#include "support/Settings.h"
+#include "advisers/WireAdviser.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

@@ -1,7 +1,7 @@
-#include "Settings.h"
-#include "Utils.h"
+#include "support/Settings.h"
+#include "support/Utils.h"
 #include "TestingUtils.h"
-#include "MagnetizingInductance.h"
+#include "physical_models/MagnetizingInductance.h"
 #include <UnitTest++.h>
 
 #include <filesystem>

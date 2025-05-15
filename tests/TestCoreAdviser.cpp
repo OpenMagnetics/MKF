@@ -1,10 +1,10 @@
-#include "Settings.h"
-#include "CoreAdviser.h"
-#include "Utils.h"
-#include "InputsWrapper.h"
+#include "support/Settings.h"
+#include "advisers/CoreAdviser.h"
+#include "support/Utils.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
-#include "Sweeper.h"
-#include "Impedance.h"
+#include "processors/Sweeper.h"
+#include "physical_models/Impedance.h"
 
 #include <UnitTest++.h>
 #include <filesystem>

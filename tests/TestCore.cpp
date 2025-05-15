@@ -1,7 +1,7 @@
-#include "CoreWrapper.h"
+#include "constructive_models/CoreWrapper.h"
 #include "TestingUtils.h"
-#include "Utils.h"
-#include "Settings.h"
+#include "support/Utils.h"
+#include "support/Settings.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

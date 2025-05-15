@@ -1,6 +1,6 @@
-#include "WindingSkinEffectLosses.h"
-#include "Utils.h"
-#include "CoreWrapper.h"
+#include "physical_models/WindingSkinEffectLosses.h"
+#include "support/Utils.h"
+#include "constructive_models/CoreWrapper.h"
 
 #include <UnitTest++.h>
 #include <filesystem>

@@ -144,7 +144,13 @@ include_directories("${MAS_DIRECTORY}")
 # include_directories("${CMAKE_CURRENT_BINARY_DIR}/_deps/levmar-2.6")
 
 file(GLOB SOURCES
-    "src/*.cpp")
+    "src/*.cpp"
+    "src/advisers/*.cpp"
+    "src/constructive_models/*.cpp"
+    "src/converter_models/*.cpp"
+    "src/physical_models/*.cpp"
+    "src/processors/*.cpp"
+    "src/support/*.cpp")
 
 SET(LIBS levmar data::insulation_standards)
 
@@ -213,10 +219,6 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests MKF)
     target_link_libraries(MKF_tests UnitTest++)
 endif(INCLUDE_MKF_TESTS)
-
-add_executable(magnetic_adviser "src/MagneticAdviser.cpp")
-target_link_libraries(magnetic_adviser MKF)
-
 
 if(INCLUDE_PYMKF)
         FetchContent_Declare(pybind11

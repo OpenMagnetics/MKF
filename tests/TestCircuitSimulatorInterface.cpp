@@ -1,7 +1,7 @@
-#include "CircuitSimulatorInterface.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include "TestingUtils.h"
-#include "Sweeper.h"
-#include "Painter.h"
+#include "processors/Sweeper.h"
+#include "support/Painter.h"
 #include <UnitTest++.h>
 
 

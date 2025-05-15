@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Constants.h"
-#include "CoreWrapper.h"
-#include "CoilWrapper.h"
-#include "MagneticWrapper.h"
-#include "MasWrapper.h"
+#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/CoilWrapper.h"
+#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/MasWrapper.h"
 
 #include <filesystem>
 #include <fstream>

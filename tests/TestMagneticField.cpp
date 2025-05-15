@@ -1,8 +1,8 @@
-#include "Painter.h"
-#include "MagneticField.h"
+#include "support/Painter.h"
+#include "physical_models/MagneticField.h"
 #include "json.hpp"
 #include "TestingUtils.h"
-#include "Settings.h"
+#include "support/Settings.h"
 #include "Models.h"
 
 #include <UnitTest++.h>

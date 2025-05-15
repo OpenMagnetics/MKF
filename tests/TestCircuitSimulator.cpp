@@ -1,4 +1,4 @@
-#include "CircuitSimulator.cpp"
+#include "support/CircuitSimulator.cpp"
 
 #include <UnitTest++.h>
 #include <filesystem>

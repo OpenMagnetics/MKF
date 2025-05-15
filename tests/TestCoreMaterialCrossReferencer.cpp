@@ -1,7 +1,7 @@
-#include "Settings.h"
-#include "CoreMaterialCrossReferencer.h"
-#include "Utils.h"
-#include "InputsWrapper.h"
+#include "support/Settings.h"
+#include "advisers/CoreMaterialCrossReferencer.h"
+#include "support/Utils.h"
+#include "processors/InputsWrapper.h"
 
 #include <UnitTest++.h>
 #include <filesystem>

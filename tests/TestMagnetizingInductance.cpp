@@ -1,8 +1,8 @@
-#include "MagnetizingInductance.h"
-#include "BobbinWrapper.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "constructive_models/BobbinWrapper.h"
 #include "TestingUtils.h"
-#include "Settings.h"
-#include "Utils.h"
+#include "support/Settings.h"
+#include "support/Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

@@ -1,6 +1,6 @@
-#include "Sweeper.h"
-#include "Painter.h"
-#include "Settings.h"
+#include "processors/Sweeper.h"
+#include "support/Painter.h"
+#include "support/Settings.h"
 #include "TestingUtils.h"
 #include <UnitTest++.h>
 
@@ -202,7 +202,6 @@ SUITE(Sweeper) {
     }
 
     TEST(Test_Sweeper_Winding_Resistance_Over_Frequency_Many_Turns) {
-        double temperature = 20;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -263,7 +262,6 @@ SUITE(Sweeper) {
     }
 
     TEST(Test_Sweeper_Resistance_Over_Frequency_Many_Turns) {
-        double temperature = 20;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -324,7 +322,6 @@ SUITE(Sweeper) {
     }
 
     TEST(Test_Sweeper_Core_Resistance_Over_Frequency_Many_Turns) {
-        double temperature = 20;
         std::vector<int64_t> numberTurns = {80, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};

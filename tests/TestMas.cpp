@@ -1,7 +1,7 @@
-#include "MasWrapper.h"
-#include "Settings.h"
+#include "constructive_models/MasWrapper.h"
+#include "support/Settings.h"
 #include "TestingUtils.h"
-#include "Utils.h"
+#include "support/Utils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>

@@ -1,10 +1,10 @@
-#include "Settings.h"
-#include "Painter.h"
-#include "WindingLosses.h"
-#include "Utils.h"
-#include "CoreWrapper.h"
-#include "InputsWrapper.h"
-#include "MagneticSimulator.h"
+#include "support/Settings.h"
+#include "support/Painter.h"
+#include "physical_models/WindingLosses.h"
+#include "support/Utils.h"
+#include "constructive_models/CoreWrapper.h"
+#include "processors/InputsWrapper.h"
+#include "processors/MagneticSimulator.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

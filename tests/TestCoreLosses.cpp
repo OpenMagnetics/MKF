@@ -1,10 +1,10 @@
 #include "Constants.h"
-#include "CoreLosses.h"
-#include "Settings.h"
-#include "InputsWrapper.h"
-#include "MagnetizingInductance.h"
-#include "CircuitSimulatorInterface.h"
-#include "Reluctance.h"
+#include "physical_models/CoreLosses.h"
+#include "support/Settings.h"
+#include "processors/InputsWrapper.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "processors/CircuitSimulatorInterface.h"
+#include "physical_models/Reluctance.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

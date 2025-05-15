@@ -1,8 +1,8 @@
-#include "StrayCapacitance.h"
-#include "Settings.h"
-#include "MasWrapper.h"
-#include "Utils.h"
-#include "InputsWrapper.h"
+#include "physical_models/StrayCapacitance.h"
+#include "support/Settings.h"
+#include "constructive_models/MasWrapper.h"
+#include "support/Utils.h"
+#include "processors/InputsWrapper.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>

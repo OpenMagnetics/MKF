@@ -1,8 +1,8 @@
-#include "Settings.h"
-#include "Painter.h"
-#include "CoilWrapper.h"
+#include "support/Settings.h"
+#include "support/Painter.h"
+#include "constructive_models/CoilWrapper.h"
 #include "json.hpp"
-#include "Utils.h"
+#include "support/Utils.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>
