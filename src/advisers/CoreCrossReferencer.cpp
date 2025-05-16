@@ -153,7 +153,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     if (inputs.get_operating_points()[0].get_excitations_per_winding().size() > 0) {
         for (auto operatingPoint : inputs.get_operating_points()) {
-            referencePermeance += 1.0 / reluctanceModel->get_core_reluctance(referenceCore, &operatingPoint).get_core_reluctance();
+            referencePermeance += 1.0 / reluctanceModel->get_core_reluctance(referenceCore, operatingPoint).get_core_reluctance();
         }
         referencePermeance /= inputs.get_operating_points().size();
     }
@@ -182,7 +182,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
         double reluctance = 0;
         if (inputs.get_operating_points()[0].get_excitations_per_winding().size() > 0) {
             for (auto operatingPoint : inputs.get_operating_points()) {
-                reluctance += 1.0 / reluctanceModel->get_core_reluctance(core, &operatingPoint).get_core_reluctance();
+                reluctance += 1.0 / reluctanceModel->get_core_reluctance(core, operatingPoint).get_core_reluctance();
             }
             reluctance /= inputs.get_operating_points().size();
         }

@@ -26,7 +26,35 @@ double InitialPermeability::get_initial_permeability(std::string coreMaterialNam
                                                      std::optional<double> frequency,
                                                      std::optional<double> magneticFluxDensity) {
     CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
-    return get_initial_permeability(coreMaterial,temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+}
+
+
+double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint) {
+    if (operatingPoint.get_excitations_per_winding().size() == 0) {
+        throw std::runtime_error("Operating point is missing excitations");
+    }
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    auto frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    std::optional<double> magneticFieldDcBias = std::nullopt;
+    if (operatingPoint.get_excitations_per_winding()[0].get_magnetic_field_strength()) {
+        if (operatingPoint.get_excitations_per_winding()[0].get_magnetic_field_strength()->get_processed()) {
+            magneticFieldDcBias = operatingPoint.get_excitations_per_winding()[0].get_magnetic_field_strength()->get_processed()->get_offset();
+        }
+    }
+    std::optional<double> magneticFluxDensity = std::nullopt;
+    if (operatingPoint.get_excitations_per_winding()[0].get_magnetic_flux_density()) {
+        if (operatingPoint.get_excitations_per_winding()[0].get_magnetic_flux_density()->get_processed()) {
+            magneticFluxDensity = operatingPoint.get_excitations_per_winding()[0].get_magnetic_flux_density()->get_processed()->get_peak();
+        }
+    }
+    return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
+}
+
+double InitialPermeability::get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint) {
+    CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
+    return get_initial_permeability(coreMaterial, operatingPoint);
 }
 
 double InitialPermeability::has_frequency_dependency(CoreMaterial coreMaterial) {

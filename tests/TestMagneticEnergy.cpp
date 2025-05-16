@@ -51,7 +51,7 @@ SUITE(MagneticEnergy) {
 
         double expectedValue = 1.34;
 
-        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, &operatingPoint);
+        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 
@@ -75,7 +75,7 @@ SUITE(MagneticEnergy) {
 
         double expectedValue = 0.124;
 
-        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, &operatingPoint);
+        double totalMagneticEnergy = magneticEnergy.calculate_core_maximum_magnetic_energy(core, operatingPoint);
         CHECK_CLOSE(expectedValue, totalMagneticEnergy, max_error * expectedValue);
     }
 

@@ -13,32 +13,32 @@
 namespace OpenMagnetics {
 
 
-double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
+double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint){
     auto constants = Constants();
     double temperature = Defaults().ambientTemperature;
-    if (operatingPoint != nullptr) {
+    if (operatingPoint) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     }
-    double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
-    OpenMagnetics::InitialPermeability initialPermeability;
-    double initialPermeabilityValue;
-    auto coreMaterial = core.resolve_material();
-    if (operatingPoint != nullptr) {
+    if (operatingPoint) {
         auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, frequency);
+        return get_ungapped_core_maximum_magnetic_energy(core, temperature, frequency);
     }
     else {
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
+        return get_ungapped_core_maximum_magnetic_energy(core, temperature);
     }
+}
 
+double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency){
+    auto constants = Constants();
+    double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
+    OpenMagnetics::InitialPermeability initialPermeability;
+    auto coreMaterial = core.resolve_material();
+
+    double initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, frequency);
     double effective_volume = core.get_processed_description()->get_effective_parameters().get_effective_volume();
-
     double energyStoredInCore = 0.5 / (constants.vacuumPermeability * initialPermeabilityValue) * effective_volume * pow(magneticFluxDensitySaturation, 2);
 
     return energyStoredInCore;
-
-
-
 }
 
 double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, std::optional<double> fringing_factor){
@@ -63,22 +63,26 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
 
 }
 
-double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, OperatingPoint* operatingPoint){
+double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint){
     double totalEnergy = 0;
     double temperature = Defaults().ambientTemperature;
-    if (operatingPoint != nullptr) {
+    if (operatingPoint) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
     }
+    return calculate_core_maximum_magnetic_energy(core, temperature);
+}
+
+double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency){
+    double totalEnergy = 0;
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
 
-    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, operatingPoint);
+    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, temperature, frequency);
     for (auto& gap_info : core.get_functional_description().get_gapping()) {
         auto gapEnergy = get_gap_maximum_magnetic_energy(gap_info, magneticFluxDensitySaturation);
         totalEnergy += gapEnergy;
     }
 
     return totalEnergy;
-
 }
 
 DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(InputsWrapper inputs){

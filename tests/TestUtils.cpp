@@ -496,4 +496,33 @@ SUITE(Utils) {
 
     }
 
+    TEST(Test_Mas_Autocomplete_Only_Magnetic) {
+        auto settings = OpenMagnetics::Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(false);
+        auto core = OpenMagnetics::find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
+        OpenMagnetics::CoilWrapper coil;
+        OpenMagnetics::CoilFunctionalDescription dummyWinding;
+        dummyWinding.set_name("");
+        dummyWinding.set_number_turns(0);
+        dummyWinding.set_number_parallels(0);
+        dummyWinding.set_wire("");
+        coil.get_mutable_functional_description().push_back(dummyWinding);
+        OpenMagnetics::MagneticWrapper magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto autocompletedMagnetic = OpenMagnetics::magnetic_autocomplete(magnetic);
+
+        CHECK(autocompletedMagnetic.get_core().get_geometrical_description());
+        CHECK(autocompletedMagnetic.get_core().get_processed_description());
+        CHECK(std::holds_alternative<OpenMagnetics::CoreShape>(autocompletedMagnetic.get_core().get_functional_description().get_shape()));
+        CHECK(std::holds_alternative<OpenMagnetics::CoreMaterial>(autocompletedMagnetic.get_core().get_functional_description().get_material()));
+        CHECK(std::holds_alternative<OpenMagnetics::Bobbin>(autocompletedMagnetic.get_coil().get_bobbin()));
+        CHECK(autocompletedMagnetic.get_mutable_coil().resolve_bobbin().get_processed_description());
+        CHECK(autocompletedMagnetic.get_coil().get_sections_description());
+        CHECK(autocompletedMagnetic.get_coil().get_layers_description());
+        CHECK(autocompletedMagnetic.get_coil().get_turns_description());
+
+    }
+
 }

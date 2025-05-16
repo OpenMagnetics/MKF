@@ -28,7 +28,7 @@ class ReluctanceModel {
 
     double get_ungapped_core_reluctance(const CoreWrapper& core, double initialPermeability);
 
-    double get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
+    double get_ungapped_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> = std::nullopt);
     double get_air_cored_reluctance(BobbinWrapper bobbin);
     double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
         auto constants = Constants();
@@ -101,7 +101,7 @@ class ReluctanceModel {
         internalLinks["Classic"] = "";
         return internalLinks;
     }
-    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint = nullptr);
+    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> = std::nullopt);
     MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, double initialPermeability);
     MagnetizingInductanceOutput get_gapping_reluctance(CoreWrapper core);
     ReluctanceModel() = default;

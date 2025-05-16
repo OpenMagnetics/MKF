@@ -385,7 +385,7 @@ std::vector<std::pair<MasWrapper, double>> CoreAdviser::MagneticCoreFilterEnergy
         double totalStorableMagneticEnergy = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
             auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
-            totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, magneticEnergy.calculate_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), &operatingPoint));
+            totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, magneticEnergy.calculate_core_maximum_magnetic_energy(static_cast<CoreWrapper>(magnetic.get_core()), operatingPoint));
 
             if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
                 magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
