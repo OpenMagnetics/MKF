@@ -53,27 +53,27 @@ double ReluctanceModel::get_air_cored_reluctance(BobbinWrapper bobbin) {
     return reluctanceAirCore;
 }
 
-double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
+double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> operatingPoint) {
     OpenMagnetics::InitialPermeability initialPermeability;
 
     auto coreMaterial = core.resolve_material();
 
     double initialPermeabilityValue;
-    if (operatingPoint != nullptr) {
+    if (operatingPoint) {
         double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
-        auto frequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, frequency);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, operatingPoint.value());
     }
     else {
-        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
         _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
+        initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial);
     }
+
     return get_ungapped_core_reluctance(core, initialPermeabilityValue);
 }
 
 
-MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, OperatingPoint* operatingPoint) {
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> operatingPoint) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
     auto magnetizingInductanceOutput = get_gapping_reluctance(core);
 
@@ -85,7 +85,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper cor
         throw std::runtime_error("Reluctance must be a number, not NaN");
     }
 
-    if (operatingPoint != nullptr) {
+    if (operatingPoint) {
         magnetizingInductanceOutput.set_maximum_magnetic_energy_core(MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(core, operatingPoint));
     }
     magnetizingInductanceOutput.set_core_reluctance(calculatedReluctance);

@@ -1573,141 +1573,8 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
         }
     }
 
-
-    // Core
-    auto shape = mas.get_mutable_magnetic().get_mutable_core().resolve_shape();
-
-    if (mas.get_mutable_magnetic().get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
-        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
-        shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
-        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
-    }
-    else {
-        mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
-        shape.set_magnetic_circuit(MagneticCircuit::OPEN);
-    }
-    mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_shape(shape);
-
-    auto material = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
-    mas.get_mutable_magnetic().get_mutable_core().get_mutable_functional_description().set_material(material);
-
-    if (!mas.get_magnetic().get_core().get_processed_description()) {
-        mas.get_mutable_magnetic().get_mutable_core().process_data();
-        mas.get_mutable_magnetic().get_mutable_core().process_gap();
-    }
-
-    if (!mas.get_magnetic().get_core().get_geometrical_description()) {
-        auto geometricalDescription = mas.get_mutable_magnetic().get_mutable_core().create_geometrical_description();
-        mas.get_mutable_magnetic().get_mutable_core().set_geometrical_description(geometricalDescription);
-    }
-
-    // Coil
-
-    for (size_t i = 0; i < numberWindings; i++) {
-        if (mas.get_magnetic().get_coil().get_functional_description().size() <= i) {
-            CoilFunctionalDescription dummyWinding;
-            dummyWinding.set_name(get_isolation_side_name_from_index(i));
-            dummyWinding.set_number_turns(1);
-            dummyWinding.set_number_parallels(1);
-            dummyWinding.set_isolation_side(get_isolation_side_from_index(i));
-            dummyWinding.set_wire("Dummy");
-            mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description().push_back(dummyWinding);
-        }
-        else {
-            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_name() == "") {
-                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_name(get_isolation_side_name_from_index(i));
-            }
-            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_number_turns() == 0) {
-                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_number_turns(1);
-            }
-            if (mas.get_magnetic().get_coil().get_functional_description()[i].get_number_parallels() == 0) {
-                mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_number_parallels(1);
-            }
-            if (std::holds_alternative<std::string>(mas.get_magnetic().get_coil().get_functional_description()[i].get_wire())) {
-                auto wireName = std::get<std::string>(mas.get_magnetic().get_coil().get_functional_description()[i].get_wire());
-                if (wireName == "") {
-                    mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_wire("Dummy");
-                }
-            }
-        }
-    }
-
-    for (size_t i = 0; i < numberWindings; i++) {
-        auto wire = mas.get_mutable_magnetic().get_mutable_coil().resolve_wire(i);
-        auto coating = wire.resolve_coating();
-        InsulationWireCoating insulationWireCoating;
-        if (coating) {
-            insulationWireCoating = wire.resolve_coating().value();
-        }
-        else {
-            insulationWireCoating.set_type(OpenMagnetics::InsulationWireCoatingType::BARE);
-        }
-
-        if (!insulationWireCoating.get_material()) {
-            auto coatingType = insulationWireCoating.get_type().value();
-            if (coatingType == InsulationWireCoatingType::ENAMELLED) {
-                insulationWireCoating.set_material(Defaults().defaultEnamelledInsulationMaterial);
-            }
-            else {
-                insulationWireCoating.set_material(Defaults().defaultInsulationMaterial);
-            }
-        }
-
-        auto insulationWireCoatingMaterial = wire.resolve_coating_insulation_material();
-        insulationWireCoating.set_material(insulationWireCoatingMaterial);
-        wire.set_coating(insulationWireCoating);
-
-        if (wire.get_strand()) {
-            auto strand = wire.resolve_strand();
-            wire.set_strand(strand);
-        }
-
-        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
-    }
-
-    BobbinWrapper bobbin = mas.get_mutable_magnetic().get_mutable_coil().resolve_bobbin();
-
-    if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
-        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && mas.get_mutable_magnetic().get_wire(0).get_type() != WireType::RECTANGULAR && mas.get_mutable_magnetic().get_wire(0).get_type() != WireType::PLANAR) {
-            bobbin = BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core(), false);
-        }
-        else {
-            bobbin = BobbinWrapper::create_quick_bobbin(mas.get_mutable_magnetic().get_mutable_core(), true);
-        }
-
-    }
-
-    if (!bobbin.get_processed_description()->get_mutable_winding_windows()[0].get_sections_orientation()) {
-        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::CENTERED);
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
-        }
-        else {
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
-        }
-    }
-    mas.get_mutable_magnetic().get_mutable_coil().set_bobbin(bobbin);
-
-    if (!mas.get_mutable_magnetic().get_mutable_coil().get_turns_description()) {
-        if (mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-            mas.get_mutable_magnetic().get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
-        }
-        else {
-            mas.get_mutable_magnetic().get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
-        }
-
-        mas.get_mutable_magnetic().get_mutable_coil().wind();
-    }
-
-    if (mas.get_mutable_magnetic().get_mutable_coil().get_layers_description()) {
-        auto layers = mas.get_mutable_magnetic().get_mutable_coil().get_layers_description().value();
-        for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
-            auto insulationMaterial = CoilWrapper::resolve_insulation_layer_insulation_material(mas.get_mutable_magnetic().get_mutable_coil(), layers[layerIndex].get_name());
-            layers[layerIndex].set_insulation_material(insulationMaterial);
-        }
-        mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(layers);
-    }
+    auto magnetic = magnetic_autocomplete(mas.get_magnetic());
+    mas.set_magnetic(magnetic);
 
     // Magnetizing current
 
@@ -1744,6 +1611,145 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
     }
 
     return mas;
+}
+
+MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic) {
+    // Core
+    auto shape = magnetic.get_mutable_core().resolve_shape();
+
+    if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
+        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+        shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
+        magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
+    }
+    else {
+        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
+        shape.set_magnetic_circuit(MagneticCircuit::OPEN);
+    }
+    magnetic.get_mutable_core().get_mutable_functional_description().set_shape(shape);
+
+    auto material = magnetic.get_mutable_core().resolve_material();
+    magnetic.get_mutable_core().get_mutable_functional_description().set_material(material);
+
+    if (!magnetic.get_core().get_processed_description()) {
+        magnetic.get_mutable_core().process_data();
+        magnetic.get_mutable_core().process_gap();
+    }
+
+    if (!magnetic.get_core().get_geometrical_description()) {
+        auto geometricalDescription = magnetic.get_mutable_core().create_geometrical_description();
+        magnetic.get_mutable_core().set_geometrical_description(geometricalDescription);
+    }
+
+    // Coil
+
+    for (size_t i = 0; i < magnetic.get_coil().get_functional_description().size(); i++) {
+        if (magnetic.get_coil().get_functional_description().size() <= i) {
+            CoilFunctionalDescription dummyWinding;
+            dummyWinding.set_name(get_isolation_side_name_from_index(i));
+            dummyWinding.set_number_turns(1);
+            dummyWinding.set_number_parallels(1);
+            dummyWinding.set_isolation_side(get_isolation_side_from_index(i));
+            dummyWinding.set_wire("Dummy");
+            magnetic.get_mutable_coil().get_mutable_functional_description().push_back(dummyWinding);
+        }
+        else {
+            if (magnetic.get_coil().get_functional_description()[i].get_name() == "") {
+                magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_name(get_isolation_side_name_from_index(i));
+            }
+            if (magnetic.get_coil().get_functional_description()[i].get_number_turns() == 0) {
+                magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_number_turns(1);
+            }
+            if (magnetic.get_coil().get_functional_description()[i].get_number_parallels() == 0) {
+                magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_number_parallels(1);
+            }
+            if (std::holds_alternative<std::string>(magnetic.get_coil().get_functional_description()[i].get_wire())) {
+                auto wireName = std::get<std::string>(magnetic.get_coil().get_functional_description()[i].get_wire());
+                if (wireName == "") {
+                    magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire("Dummy");
+                }
+            }
+        }
+    }
+
+    for (size_t i = 0; i < magnetic.get_coil().get_functional_description().size(); i++) {
+        auto wire = magnetic.get_mutable_coil().resolve_wire(i);
+        auto coating = wire.resolve_coating();
+        InsulationWireCoating insulationWireCoating;
+        if (coating) {
+            insulationWireCoating = wire.resolve_coating().value();
+        }
+        else {
+            insulationWireCoating.set_type(OpenMagnetics::InsulationWireCoatingType::BARE);
+        }
+
+        if (!insulationWireCoating.get_material()) {
+            auto coatingType = insulationWireCoating.get_type().value();
+            if (coatingType == InsulationWireCoatingType::ENAMELLED) {
+                insulationWireCoating.set_material(Defaults().defaultEnamelledInsulationMaterial);
+            }
+            else {
+                insulationWireCoating.set_material(Defaults().defaultInsulationMaterial);
+            }
+        }
+
+        auto insulationWireCoatingMaterial = wire.resolve_coating_insulation_material();
+        insulationWireCoating.set_material(insulationWireCoatingMaterial);
+        wire.set_coating(insulationWireCoating);
+
+        if (wire.get_strand()) {
+            auto strand = wire.resolve_strand();
+            wire.set_strand(strand);
+        }
+
+        magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
+    }
+
+    BobbinWrapper bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+
+    if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
+        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && magnetic.get_wire(0).get_type() != WireType::RECTANGULAR && magnetic.get_wire(0).get_type() != WireType::PLANAR) {
+            bobbin = BobbinWrapper::create_quick_bobbin(magnetic.get_mutable_core(), false);
+        }
+        else {
+            bobbin = BobbinWrapper::create_quick_bobbin(magnetic.get_mutable_core(), true);
+        }
+
+    }
+
+    if (!bobbin.get_processed_description()->get_mutable_winding_windows()[0].get_sections_orientation()) {
+        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::CENTERED);
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
+        }
+        else {
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
+            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+        }
+    }
+    magnetic.get_mutable_coil().set_bobbin(bobbin);
+
+    if (!magnetic.get_mutable_coil().get_turns_description()) {
+        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
+        }
+        else {
+            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
+        }
+
+        magnetic.get_mutable_coil().wind();
+    }
+
+    if (magnetic.get_mutable_coil().get_layers_description()) {
+        auto layers = magnetic.get_mutable_coil().get_layers_description().value();
+        for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
+            auto insulationMaterial = CoilWrapper::resolve_insulation_layer_insulation_material(magnetic.get_mutable_coil(), layers[layerIndex].get_name());
+            layers[layerIndex].set_insulation_material(insulationMaterial);
+        }
+        magnetic.get_mutable_coil().set_layers_description(layers);
+    }
+
+    return magnetic;
 }
 
 } // namespace OpenMagnetics

@@ -672,28 +672,28 @@ SUITE(ReluctanceUngappedCore) {
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(OpenMagnetics::ReluctanceModels::ZHANG);
 
         double calculatedReluctanceAt50 =
-            reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operating_points()[0]);
+            reluctanceModel->get_ungapped_core_reluctance(core, inputs.get_mutable_operating_points()[0]);
 
         ambientTemperature = 100;
         inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
         double calculatedReluctanceAt100 =
-            reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operating_points()[0]);
+            reluctanceModel->get_ungapped_core_reluctance(core, inputs.get_mutable_operating_points()[0]);
 
         ambientTemperature = 150;
         inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
         double calculatedReluctanceAt150 =
-            reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operating_points()[0]);
+            reluctanceModel->get_ungapped_core_reluctance(core, inputs.get_mutable_operating_points()[0]);
 
         ambientTemperature = 200;
         inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(
             frequency, magnetizingInductance, ambientTemperature, OpenMagnetics::WaveformLabel::RECTANGULAR, peakToPeak,
             dutyCycle, dcCurrent);
         double calculatedReluctanceAt200 =
-            reluctanceModel->get_ungapped_core_reluctance(core, &inputs.get_mutable_operating_points()[0]);
+            reluctanceModel->get_ungapped_core_reluctance(core, inputs.get_mutable_operating_points()[0]);
 
         CHECK(calculatedReluctanceAt50 > calculatedReluctanceAt100);
         CHECK(calculatedReluctanceAt150 > calculatedReluctanceAt100);

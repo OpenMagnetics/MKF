@@ -29,6 +29,9 @@ class InitialPermeability {
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
                                         std::optional<double> magneticFluxDensity = std::nullopt);
+        static double get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint);
+        static double get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint);
+
         static double has_temperature_dependency(CoreMaterial coreMaterial);
         static double has_frequency_dependency(CoreMaterial coreMaterial);
         static double has_magnetic_field_dc_bias_dependency(CoreMaterial coreMaterial);
