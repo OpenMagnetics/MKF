@@ -2,7 +2,8 @@
 
 #include "json.hpp"
 
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
+
 #include <MAS.hpp>
 #include <cmath>
 #include <filesystem>
@@ -12,23 +13,14 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-
-class BobbinDataProcessor{
-    public:
-        BobbinDataProcessor() = default;
-        virtual ~BobbinDataProcessor() = default;
-        virtual CoreBobbinProcessedDescription process_data(Bobbin bobbin) = 0;
-
-        static std::shared_ptr<BobbinDataProcessor> factory(Bobbin bobbin);
-};
-
-class BobbinWrapper : public Bobbin {
+class Bobbin : public MAS::Bobbin {
   private:
   public:
-    BobbinWrapper(const json& j, bool includeProcessedDescription = true) {
+    Bobbin(const json& j, bool includeProcessedDescription = true) {
         from_json(j, *this);
         if (get_functional_description()) {
             if (includeProcessedDescription) {
@@ -42,7 +34,7 @@ class BobbinWrapper : public Bobbin {
         // }
     }
 
-    BobbinWrapper(const Bobbin bobbin) {
+    Bobbin(const MAS::Bobbin bobbin) {
         set_functional_description(bobbin.get_functional_description());
 
         if (bobbin.get_processed_description()) {
@@ -58,8 +50,10 @@ class BobbinWrapper : public Bobbin {
             set_name(bobbin.get_name());
         }
     }
-    BobbinWrapper() = default;
-    virtual ~BobbinWrapper() = default;
+
+
+    Bobbin() = default;
+    virtual ~Bobbin() = default;
     void process_data();
     
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
@@ -70,13 +64,23 @@ class BobbinWrapper : public Bobbin {
     std::vector<double> get_winding_window_coordinates(size_t windingWindowIndex = 0);
     WindingOrientation get_winding_window_sections_orientation(size_t windingWindowIndex = 0);
     CoilAlignment get_winding_window_sections_alignment(size_t windingWindowIndex = 0);
-    static BobbinWrapper create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
-    static BobbinWrapper create_quick_bobbin(CoreWrapper core, bool nullDimensions = false);
+    static Bobbin create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
+    static Bobbin create_quick_bobbin(Core core, bool nullDimensions = false);
     bool check_if_fits(double dimension, bool isHorizontalOrRadial = true, size_t windingWindowIndex = 0);
     void set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex = 0);
     std::optional<WindingOrientation> get_winding_orientation(size_t windingWindowIndex = 0);
     std::vector<double> get_maximum_dimensions();
-
-
 };
+
+
+
+class BobbinDataProcessor{
+    public:
+        BobbinDataProcessor() = default;
+        virtual ~BobbinDataProcessor() = default;
+        virtual CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) = 0;
+
+        static std::shared_ptr<BobbinDataProcessor> factory(OpenMagnetics::Bobbin bobbin);
+};
+
 } // namespace OpenMagnetics

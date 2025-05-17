@@ -1,5 +1,5 @@
 #include "support/Utils.h"
-#include "constructive_models/InsulationMaterialWrapper.h"
+#include "constructive_models/InsulationMaterial.h"
 #include <cmath>
 #include <filesystem>
 #include <cfloat>
@@ -14,7 +14,7 @@
 
 namespace OpenMagnetics {
 
-    void InsulationMaterialWrapper::extract_available_thicknesses(){
+    void InsulationMaterial::extract_available_thicknesses(){
 
         for (auto& dielectricStrengthPoint : get_dielectric_strength()) {
             if (!dielectricStrengthPoint.get_thickness()) {
@@ -27,11 +27,11 @@ namespace OpenMagnetics {
         }
     }
 
-    std::vector<std::pair<double, double>> InsulationMaterialWrapper::get_available_thicknesses(){
+    std::vector<std::pair<double, double>> InsulationMaterial::get_available_thicknesses(){
         return _available_thicknesses;
     }
 
-    std::pair<double, double> InsulationMaterialWrapper::get_thicker_tape(){
+    std::pair<double, double> InsulationMaterial::get_thicker_tape(){
         double tapeThickness = 0;
         double tapeDielectricStrength = 0;
 
@@ -47,7 +47,7 @@ namespace OpenMagnetics {
         return {tapeThickness, tapeDielectricStrength};
     }
 
-    std::pair<double, double> InsulationMaterialWrapper::get_thinner_tape(){
+    std::pair<double, double> InsulationMaterial::get_thinner_tape(){
         double tapeThickness = DBL_MAX;
         double tapeDielectricStrength = 0;
 
@@ -63,7 +63,7 @@ namespace OpenMagnetics {
         return {tapeThickness, tapeDielectricStrength};
     }
 
-    double InsulationMaterialWrapper::get_thicker_tape_thickness(){
+    double InsulationMaterial::get_thicker_tape_thickness(){
         double tapeThickness = 0;
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
@@ -77,7 +77,7 @@ namespace OpenMagnetics {
         return tapeThickness;
     }
 
-    double InsulationMaterialWrapper::get_thinner_tape_thickness(){
+    double InsulationMaterial::get_thinner_tape_thickness(){
         double tapeThickness = DBL_MAX;
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
@@ -91,10 +91,10 @@ namespace OpenMagnetics {
         return tapeThickness;
     }
 
-    double InsulationMaterialWrapper::get_dielectric_strength_by_thickness(double thickness) {
+    double InsulationMaterial::get_dielectric_strength_by_thickness(double thickness) {
         return get_dielectric_strength_by_thickness(*this, thickness);
     }
-    double InsulationMaterialWrapper::get_dielectric_strength_by_thickness(InsulationMaterial materialData, double thickness) {
+    double InsulationMaterial::get_dielectric_strength_by_thickness(InsulationMaterial materialData, double thickness) {
         auto relativePermittivityData = materialData.get_dielectric_strength();
         double relativePermittivity = -1;
 

@@ -2,18 +2,18 @@
 #include "physical_models/MagneticField.h"
 #include "json.hpp"
 #include "TestingUtils.h"
-#include "support/Settings.h"
 #include "Models.h"
 
 #include <UnitTest++.h>
 
 #include <fstream>
 #include <string>
-#include <matplot/matplot.h>
+
+using namespace MAS;
+using namespace OpenMagnetics;
 
 
 SUITE(MagneticField) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     double maximumError = 0.05;
     auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
     bool plot = false;
@@ -28,20 +28,20 @@ SUITE(MagneticField) {
     std::string coreShape = "PQ 26/25";
     std::string coreMaterial = "3C97";
     auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-    OpenMagnetics::WindingOrientation sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-    OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-    OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
-    OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+    WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
+    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+    CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+    CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
 
-    OpenMagnetics::CoilWrapper coil;
-    OpenMagnetics::CoreWrapper core;
-    OpenMagnetics::InputsWrapper inputs;
+    OpenMagnetics::Coil coil;
+    Core core;
+    OpenMagnetics::Inputs inputs;
 
 
     void setup() {
         coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point(frequency, 0.001, 25, OpenMagnetics::WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
+        inputs = OpenMagnetics::Inputs::create_quick_operating_point(frequency, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
         coil.delimit_and_compact();
     }
 
@@ -53,14 +53,14 @@ SUITE(MagneticField) {
         interleavingLevel = 2;
         settings->set_harmonic_amplitude_threshold(0.01);
 
-        sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionsAlignment = CoilAlignment::SPREAD;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_include_fringing(false);
 
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic);
@@ -89,8 +89,8 @@ SUITE(MagneticField) {
         setup();
         auto turn = coil.get_turns_description().value()[0];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
         double maximumHeight = coil.resolve_wire(0).get_maximum_outer_height();
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
@@ -101,7 +101,7 @@ SUITE(MagneticField) {
         points.push_back(fieldPoint);
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0], turn.get_coordinates()[1] + (maximumHeight / 2) * 1.0001});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -109,7 +109,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_mirroring_dimension(0);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
@@ -127,7 +127,7 @@ SUITE(MagneticField) {
         CHECK_CLOSE(field.get_data()[0].get_imaginary(), field.get_data()[3].get_real(), expectedValue * maximumError);
         if (plot) {
 
-            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            settings->set_painter_mode(PainterModes::QUIVER);
 
             settings->set_magnetic_field_number_points_x(50);
             settings->set_magnetic_field_number_points_y(50);
@@ -136,7 +136,7 @@ SUITE(MagneticField) {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Round.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile, true);
+            Painter painter(outFile, true);
             painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
             painter.paint_core(magnetic);
             painter.paint_core(magnetic);
@@ -155,18 +155,18 @@ SUITE(MagneticField) {
         turnsRatios = {};
         interleavingLevel = 2;
 
-        sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionsAlignment = CoilAlignment::SPREAD;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
         auto turn_0 = coil.get_turns_description().value()[0];
         auto turn_1 = coil.get_turns_description().value()[1];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -174,8 +174,8 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
-        // OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        // MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -193,18 +193,18 @@ SUITE(MagneticField) {
         turnsRatios = {1};
         interleavingLevel = 1;
 
-        sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionsAlignment = CoilAlignment::SPREAD;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
         auto turn_0 = coil.get_turns_description().value()[0];
         auto turn_1 = coil.get_turns_description().value()[1];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -212,7 +212,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_mirroring_dimension(0);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
@@ -231,18 +231,18 @@ SUITE(MagneticField) {
         turnsRatios = {1};
         interleavingLevel = 1;
 
-        sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionsAlignment = CoilAlignment::SPREAD;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
         auto turn_0 = coil.get_turns_description().value()[0];
         auto turn_1 = coil.get_turns_description().value()[1];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{(turn_0.get_coordinates()[0] + turn_1.get_coordinates()[0]) / 2, turn_0.get_coordinates()[1]});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -251,7 +251,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER);
+        MagneticField magneticField(MagneticFieldStrengthModels::LAMMERANER);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -272,22 +272,22 @@ SUITE(MagneticField) {
         std::vector<double> turnsRatios = {};
         setup();
 
-        OpenMagnetics::WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0];
+        WindingWindowElement windingWindow = core.get_processed_description().value().get_winding_windows()[0];
 
         double coreColumnHeight = core.get_columns()[0].get_height();
 
         auto turn_0 = coil.get_turns_description().value()[0];
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         fieldPoint.set_point(std::vector<double>{turn_0.get_coordinates()[0], coreColumnHeight / 2});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
 
-        OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1");
-        auto wires = std::vector<OpenMagnetics::WireWrapper>({wire});
+        OpenMagnetics::Wire wire = find_wire_by_name("Round 0.475 - Grade 1");
+        auto wires = std::vector<OpenMagnetics::Wire>({wire});
         coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
         coil.delimit_and_compact();
         auto turn = coil.get_turns_description().value()[0];
@@ -296,7 +296,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_mirroring_dimension(1);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
@@ -305,8 +305,8 @@ SUITE(MagneticField) {
         auto outFile = outputFilePath;
         outFile.append("Test_Magnetic_Image_Method.svg");
         std::filesystem::remove(outFile);
-        OpenMagnetics::Painter painter(outFile, true);
-        settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+        Painter painter(outFile, true);
+        settings->set_painter_mode(PainterModes::QUIVER);
         settings->set_painter_logarithmic_scale(false);
         settings->set_painter_mirroring_dimension(1);
         settings->set_painter_include_fringing(false);
@@ -333,22 +333,22 @@ SUITE(MagneticField) {
         coreShape = "PQ 26/25";
         coreMaterial = "3C97";
         gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionOrientation = WindingOrientation::OVERLAPPING;
+        layersOrientation = WindingOrientation::OVERLAPPING;
+        sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0028);
         wire.set_nominal_value_conducting_height(0.00076);
         wire.set_nominal_value_outer_height(0.0007676);
         wire.set_nominal_value_outer_width(0.002838);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
         coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
 
@@ -356,8 +356,8 @@ SUITE(MagneticField) {
 
         auto turn = coil.get_turns_description().value()[0];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
         double maximumHeight = coil.resolve_wire(0).get_maximum_outer_height();
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
@@ -372,7 +372,7 @@ SUITE(MagneticField) {
         points.push_back(fieldPoint);
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] + (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1] - 0.00001});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -380,7 +380,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -394,8 +394,8 @@ SUITE(MagneticField) {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Rectangular.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile, true);
-            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            Painter painter(outFile, true);
+            settings->set_painter_mode(PainterModes::QUIVER);
             settings->set_painter_logarithmic_scale(false);
             settings->set_painter_mirroring_dimension(0);
             settings->set_painter_include_fringing(false);
@@ -422,22 +422,22 @@ SUITE(MagneticField) {
         coreShape = "PQ 26/25";
         coreMaterial = "3C97";
         gapping = OpenMagneticsTesting::get_ground_gap(0.001);
-        sectionOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        sectionsAlignment = OpenMagnetics::CoilAlignment::INNER_OR_TOP;
-        turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        sectionOrientation = WindingOrientation::OVERLAPPING;
+        layersOrientation = WindingOrientation::OVERLAPPING;
+        sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        turnsAlignment = CoilAlignment::CENTERED;
         setup();
 
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.00001);
         wire.set_nominal_value_conducting_height(0.0076);
         wire.set_nominal_value_outer_height(0.007676);
         wire.set_nominal_value_outer_width(0.000011);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::FOIL);
+        wire.set_type(WireType::FOIL);
         wires.push_back(wire);
         coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires);
 
@@ -445,8 +445,8 @@ SUITE(MagneticField) {
 
         auto turn = coil.get_turns_description().value()[0];
 
-        std::vector<OpenMagnetics::FieldPoint> points;
-        OpenMagnetics::FieldPoint fieldPoint;
+        std::vector<FieldPoint> points;
+        FieldPoint fieldPoint;
         double maximumWidth = coil.resolve_wire(0).get_maximum_outer_width();
         double maximumHeight = coil.resolve_wire(0).get_maximum_outer_height();
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] - (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1]});
@@ -461,7 +461,7 @@ SUITE(MagneticField) {
         points.push_back(fieldPoint);
         fieldPoint.set_point(std::vector<double>{turn.get_coordinates()[0] + (maximumWidth / 2) * 1.0001, turn.get_coordinates()[1] - 0.00001});
         points.push_back(fieldPoint);
-        OpenMagnetics::Field inducedField;
+        Field inducedField;
         inducedField.set_data(points);
         inducedField.set_frequency(frequency);
 
@@ -469,7 +469,7 @@ SUITE(MagneticField) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        OpenMagnetics::MagneticField magneticField(OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON);
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON);
         settings->set_magnetic_field_include_fringing(false);
         auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField);
         auto field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
@@ -484,8 +484,8 @@ SUITE(MagneticField) {
             auto outFile = outputFilePath;
             outFile.append("Test_Magnetic_Field_One_Turn_Foil.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile, true);
-            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            Painter painter(outFile, true);
+            settings->set_painter_mode(PainterModes::QUIVER);
             settings->set_painter_logarithmic_scale(false);
             settings->set_painter_mirroring_dimension(0);
             settings->set_painter_include_fringing(false);

@@ -1,7 +1,7 @@
 #include "physical_models/CoreTemperature.h"
 
 #include "Constants.h"
-#include "processors/InputsWrapper.h"
+#include "processors/Inputs.h"
 
 #include <cmath>
 #include <complex>
@@ -39,7 +39,7 @@ std::shared_ptr<CoreTemperatureModel> CoreTemperatureModel::factory(CoreTemperat
             "Unknown Core losses mode, available options are: {KAZIMIERCZUK, MANIKTALA, TDK, DIXON, AMIDON}");
 }
 
-TemperatureOutput CoreTemperatureManiktalaModel::get_core_temperature(CoreWrapper core,
+TemperatureOutput CoreTemperatureManiktalaModel::get_core_temperature(Core core,
                                                                       double coreLosses,
                                                                       double ambientTemperature) {
     double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
@@ -57,7 +57,7 @@ TemperatureOutput CoreTemperatureManiktalaModel::get_core_temperature(CoreWrappe
     return result;
 }
 
-TemperatureOutput CoreTemperatureKazimierczukModel::get_core_temperature(CoreWrapper core,
+TemperatureOutput CoreTemperatureKazimierczukModel::get_core_temperature(Core core,
                                                                          double coreLosses,
                                                                          double ambientTemperature) {
     double width = core.get_processed_description().value().get_width();
@@ -78,7 +78,7 @@ TemperatureOutput CoreTemperatureKazimierczukModel::get_core_temperature(CoreWra
     return result;
 }
 
-TemperatureOutput CoreTemperatureTdkModel::get_core_temperature(CoreWrapper core,
+TemperatureOutput CoreTemperatureTdkModel::get_core_temperature(Core core,
                                                                 double coreLosses,
                                                                 double ambientTemperature) {
     double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
@@ -97,7 +97,7 @@ TemperatureOutput CoreTemperatureTdkModel::get_core_temperature(CoreWrapper core
     return result;
 }
 
-TemperatureOutput CoreTemperatureDixonModel::get_core_temperature(CoreWrapper core,
+TemperatureOutput CoreTemperatureDixonModel::get_core_temperature(Core core,
                                                                   double coreLosses,
                                                                   double ambientTemperature) {
     double cubeVolume = core.get_processed_description().value().get_depth() * core.get_processed_description().value().get_width() * core.get_processed_description().value().get_height();
@@ -118,7 +118,7 @@ TemperatureOutput CoreTemperatureDixonModel::get_core_temperature(CoreWrapper co
     return result;
 }
 
-TemperatureOutput CoreTemperatureAmidonModel::get_core_temperature(CoreWrapper core,
+TemperatureOutput CoreTemperatureAmidonModel::get_core_temperature(Core core,
                                                                    double coreLosses,
                                                                    double ambientTemperature) {
     double width = core.get_processed_description().value().get_width();

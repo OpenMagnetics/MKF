@@ -1,6 +1,6 @@
 #include "advisers/WireAdviser.h"
-#include "constructive_models/WireWrapper.h"
-#include "constructive_models/CoilWrapper.h"
+#include "constructive_models/Wire.h"
+#include "constructive_models/Coil.h"
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "support/Settings.h"
@@ -45,7 +45,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
 
         if (wire.get_type() == WireType::FOIL && (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() > _maximumNumberParallels) {
             listOfIndexesToErase.push_back(coilIndex);
@@ -113,8 +113,8 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
-        if (!CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        if (!Coil::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
             throw std::runtime_error("Conducting area is missing");
         }
         auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
@@ -169,7 +169,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
 
         double effective_resistance_per_meter = WindingLosses::calculate_skin_effect_resistance_per_meter(wire, current, temperature);
 
@@ -210,7 +210,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
 
         double effective_resistance_per_meter = WindingLosses::calculate_effective_resistance_per_meter(wire, currentEffectiveFrequency, temperature);
 
@@ -253,7 +253,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
 
         if (!wire.get_number_conductors()) {
             wire.set_number_conductors(1);
@@ -291,7 +291,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
         bool isValid = true;
 
         if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
@@ -308,7 +308,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
 
         if (wire.get_type() == WireType::LITZ) {
             auto strand = wire.resolve_strand();
-            coating = WireWrapper::resolve_coating(strand).value();
+            coating = Wire::resolve_coating(strand).value();
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -380,13 +380,13 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(CoilFunctionalDescription coilFunctionalDescription,
+std::vector<std::pair<OpenMagnetics::CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(OpenMagnetics ::CoilFunctionalDescription coilFunctionalDescription,
                                                                                         Section section,
                                                                                         SignalDescriptor current,
                                                                                         double temperature,
                                                                                         uint8_t numberSections,
                                                                                         size_t maximumNumberResults){
-    std::vector<WireWrapper> wires;
+    std::vector<Wire> wires;
     auto settings = OpenMagnetics::Settings::GetInstance();
 
     if (wireDatabase.empty()) {
@@ -413,7 +413,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
 
 
 std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_dataset(CoilFunctionalDescription coilFunctionalDescription,
-                                                                                      std::vector<WireWrapper>* wires,
+                                                                                      std::vector<Wire>* wires,
                                                                                       Section section,
                                                                                       SignalDescriptor current,
                                                                                       double temperature){
@@ -447,7 +447,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_da
             numberParallelsNeeded = 1;
         }
         else {
-            numberParallelsNeeded = WireWrapper::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
+            numberParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
             if (numberParallelsNeeded > _maximumNumberParallels) {
                 continue;
             }
@@ -476,8 +476,8 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
     }
 
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first);
-        if (!CoilWrapper::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
+        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        if (!Coil::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
             throw std::runtime_error("Conducting area is missing");
         }
         auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
@@ -493,7 +493,7 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
     }
 
 }
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(std::vector<WireWrapper>* wires,
+std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_wire(std::vector<Wire>* wires,
                                                                                         CoilFunctionalDescription coilFunctionalDescription,
                                                                                         Section section,
                                                                                         SignalDescriptor current,

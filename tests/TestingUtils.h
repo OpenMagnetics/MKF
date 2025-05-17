@@ -1,10 +1,11 @@
 #pragma once
 
 #include "Constants.h"
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/CoilWrapper.h"
-#include "constructive_models/MagneticWrapper.h"
-#include "constructive_models/MasWrapper.h"
+#include "constructive_models/Core.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Magnetic.h"
+#include "constructive_models/Mas.h"
+#include "constructive_models/Wire.h"
 
 #include <filesystem>
 #include <fstream>
@@ -13,82 +14,85 @@
 
 extern bool verboseTests;
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 namespace OpenMagneticsTesting {
-OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
+OpenMagnetics::Coil get_quick_coil(std::vector<int64_t> numberTurns,
                                           std::vector<int64_t> numberParallels,
                                           std::string shapeName,
                                           uint8_t interleavingLevel = 1,
-                                          OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                          OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                          OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                          OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}),
+                                          MAS::WindingOrientation windingOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                          MAS::WindingOrientation layersOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                          MAS::CoilAlignment turnsAlignment = MAS::CoilAlignment::CENTERED,
+                                          MAS::CoilAlignment sectionsAlignment = MAS::CoilAlignment::CENTERED,
+                                          std::vector<OpenMagnetics::Wire> wires = std::vector<OpenMagnetics::Wire>({}),
                                           bool useBobbin = true,
                                           int numberStacks = 1);
 
-OpenMagnetics::CoilWrapper get_quick_coil(std::vector<int64_t> numberTurns,
+OpenMagnetics::Coil get_quick_coil(std::vector<int64_t> numberTurns,
                                           std::vector<int64_t> numberParallels,
                                           double bobbinHeight,
                                           double bobbinWidth,
                                           std::vector<double> bobbinCenterCoodinates,
                                           uint8_t interleavingLevel = 1,
-                                          OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                          OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                          OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                          OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                          std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+                                          MAS::WindingOrientation windingOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                          MAS::WindingOrientation layersOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                          MAS::CoilAlignment turnsAlignment = MAS::CoilAlignment::CENTERED,
+                                          MAS::CoilAlignment sectionsAlignment = MAS::CoilAlignment::CENTERED,
+                                          std::vector<OpenMagnetics::Wire> wires = std::vector<OpenMagnetics::Wire>({}));
 
-OpenMagnetics::CoilWrapper get_quick_coil_no_compact(std::vector<int64_t> numberTurns,
+OpenMagnetics::Coil get_quick_coil_no_compact(std::vector<int64_t> numberTurns,
                                                      std::vector<int64_t> numberParallels,
                                                      double bobbinHeight,
                                                      double bobbinWidth,
                                                      std::vector<double> bobbinCenterCoodinates,
                                                      uint8_t interleavingLevel = 1,
-                                                     OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                                     OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                                     OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                     OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                     std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+                                                     MAS::WindingOrientation windingOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::WindingOrientation layersOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                                     MAS::CoilAlignment turnsAlignment = MAS::CoilAlignment::CENTERED,
+                                                     MAS::CoilAlignment sectionsAlignment = MAS::CoilAlignment::CENTERED,
+                                                     std::vector<OpenMagnetics::Wire> wires = std::vector<OpenMagnetics::Wire>({}));
 
-OpenMagnetics::CoilWrapper get_quick_toroidal_coil_no_compact(std::vector<int64_t> numberTurns,
+OpenMagnetics::Coil get_quick_toroidal_coil_no_compact(std::vector<int64_t> numberTurns,
                                                               std::vector<int64_t> numberParallels,
                                                               double bobbinRadialHeight,
                                                               double bobbinAngle,
                                                               double columnDepth,
                                                               uint8_t interleavingLevel = 1,
-                                                              OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                                              OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING,
-                                                              OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                              OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED,
-                                                              std::vector<OpenMagnetics::WireWrapper> wires = std::vector<OpenMagnetics::WireWrapper>({}));
+                                                              MAS::WindingOrientation windingOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                                              MAS::WindingOrientation layersOrientation = MAS::WindingOrientation::OVERLAPPING,
+                                                              MAS::CoilAlignment turnsAlignment = MAS::CoilAlignment::CENTERED,
+                                                              MAS::CoilAlignment sectionsAlignment = MAS::CoilAlignment::CENTERED,
+                                                              std::vector<OpenMagnetics::Wire> wires = std::vector<OpenMagnetics::Wire>({}));
 
 
-OpenMagnetics::InputsWrapper get_quick_insulation_inputs(OpenMagnetics::DimensionWithTolerance altitude,
-                                                         OpenMagnetics::Cti cti,
-                                                         OpenMagnetics::InsulationType insulation_type,
-                                                         OpenMagnetics::DimensionWithTolerance main_supply_voltage,
-                                                         OpenMagnetics::OvervoltageCategory overvoltage_category,
-                                                         OpenMagnetics::PollutionDegree pollution_degree,
-                                                         std::vector<OpenMagnetics::InsulationStandards> standards,
+OpenMagnetics::Inputs get_quick_insulation_inputs(MAS::DimensionWithTolerance altitude,
+                                                         MAS::Cti cti,
+                                                         MAS::InsulationType insulation_type,
+                                                         MAS::DimensionWithTolerance main_supply_voltage,
+                                                         MAS::OvervoltageCategory overvoltage_category,
+                                                         MAS::PollutionDegree pollution_degree,
+                                                         std::vector<MAS::InsulationStandards> standards,
                                                          double maximumVoltageRms,
                                                          double maximumVoltagePeak,
                                                          double frequency,
-                                                         OpenMagnetics::WiringTechnology wiringTechnology = OpenMagnetics::WiringTechnology::WOUND);
+                                                         MAS::WiringTechnology wiringTechnology = MAS::WiringTechnology::WOUND);
 
-OpenMagnetics::InsulationRequirements get_quick_insulation_requirements(OpenMagnetics::DimensionWithTolerance altitude,
-                                                                        OpenMagnetics::Cti cti,
-                                                                        OpenMagnetics::InsulationType insulation_type,
-                                                                        OpenMagnetics::DimensionWithTolerance main_supply_voltage,
-                                                                        OpenMagnetics::OvervoltageCategory overvoltage_category,
-                                                                        OpenMagnetics::PollutionDegree pollution_degree,
-                                                                        std::vector<OpenMagnetics::InsulationStandards> standards);
+MAS::InsulationRequirements get_quick_insulation_requirements(MAS::DimensionWithTolerance altitude,
+                                                                        MAS::Cti cti,
+                                                                        MAS::InsulationType insulation_type,
+                                                                        MAS::DimensionWithTolerance main_supply_voltage,
+                                                                        MAS::OvervoltageCategory overvoltage_category,
+                                                                        MAS::PollutionDegree pollution_degree,
+                                                                        std::vector<MAS::InsulationStandards> standards);
 
-OpenMagnetics::CoreWrapper get_quick_core(std::string shapeName,
+Core get_quick_core(std::string shapeName,
                                           json basicGapping,
                                           int numberStacks = 1,
                                           std::string materialName = "N87");
 
-OpenMagnetics::MagneticWrapper get_quick_magnetic(std::string shapeName,
+OpenMagnetics::Magnetic get_quick_magnetic(std::string shapeName,
                                                   json basicGapping,
                                                   std::vector<int64_t> numberTurns,
                                                   int numberStacks = 1,
@@ -108,20 +112,20 @@ void print(std::string data);
 void print_json(json data);
 
 
-void check_sections_description(OpenMagnetics::CoilWrapper coil,
+void check_sections_description(OpenMagnetics::Coil coil,
                                 std::vector<int64_t> numberTurns,
                                 std::vector<int64_t> numberParallels,
                                 uint8_t interleavingLevel = 1,
-                                OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING);
+                                MAS::WindingOrientation windingOrientation = MAS::WindingOrientation::OVERLAPPING);
 
-void check_layers_description(OpenMagnetics::CoilWrapper coil,
-                                      OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING);
+void check_layers_description(OpenMagnetics::Coil coil,
+                                      MAS::WindingOrientation layersOrientation = MAS::WindingOrientation::OVERLAPPING);
 
 
-bool check_turns_description(OpenMagnetics::CoilWrapper coil);
-bool check_wire_standards(OpenMagnetics::CoilWrapper coil);
-void check_winding_losses(OpenMagnetics::MasWrapper mas);
+bool check_turns_description(OpenMagnetics::Coil coil);
+bool check_wire_standards(OpenMagnetics::Coil coil);
+void check_winding_losses(OpenMagnetics::Mas mas);
 
-OpenMagnetics::MasWrapper mas_loader(std::string path);
+OpenMagnetics::Mas mas_loader(std::string path);
 
 } // namespace OpenMagneticsTesting

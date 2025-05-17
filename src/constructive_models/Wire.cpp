@@ -1,12 +1,10 @@
-#include "constructive_models/WireWrapper.h"
+#include "constructive_models/Wire.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <vector>
 #include <algorithm>
-#include "Constants.h"
-#include "Defaults.h"
 #include "support/Utils.h"
 #include "spline.h"
 
@@ -21,7 +19,7 @@ std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
 namespace OpenMagnetics {
 
-    WireRound WireWrapper::convert_from_wire_to_strand(WireWrapper wire) {
+    WireRound Wire::convert_from_wire_to_strand(Wire wire) {
         WireRound strand;
         strand.set_type(wire.get_type());
         if (wire.get_conducting_diameter()) 
@@ -47,7 +45,7 @@ namespace OpenMagnetics {
         return strand;
     }
 
-    std::optional<InsulationWireCoating> WireWrapper::resolve_coating(const WireWrapper& wire) {
+    std::optional<InsulationWireCoating> Wire::resolve_coating(const Wire& wire) {
         // If the coating is a string, we have to load its data from the database
         if (!wire.get_coating()) {
             return std::nullopt;
@@ -60,7 +58,7 @@ namespace OpenMagnetics {
         }
 
     }
-    std::optional<InsulationWireCoating> WireWrapper::resolve_coating() {
+    std::optional<InsulationWireCoating> Wire::resolve_coating() {
         // If the coating is a string, we have to load its data from the database
         if (!get_coating()) {
             return std::nullopt;
@@ -74,7 +72,7 @@ namespace OpenMagnetics {
 
     }
 
-    WireRound wire_to_wire_round(const WireWrapper& wire) {
+    WireRound wire_to_wire_round(const Wire& wire) {
         WireRound wireRound;
         wireRound.set_type(wire.get_type());
         if (wire.get_coating())
@@ -100,7 +98,7 @@ namespace OpenMagnetics {
         return wireRound;
     }
 
-    WireRound WireWrapper::resolve_strand(const WireWrapper& wire) {
+    WireRound Wire::resolve_strand(const Wire& wire) {
         if (!wire.get_strand())
             throw std::runtime_error("Litz wire is missing strand information");
 
@@ -116,7 +114,7 @@ namespace OpenMagnetics {
 
     }
 
-    WireRound WireWrapper::resolve_strand() {
+    WireRound Wire::resolve_strand() {
         if (!get_strand())
             throw std::runtime_error("Litz wire is missing strand information");
 
@@ -132,14 +130,14 @@ namespace OpenMagnetics {
 
     }
 
-    WireMaterial WireWrapper::resolve_material() { 
+    WireMaterial Wire::resolve_material() { 
         if (get_type() == WireType::LITZ) {
             auto strand = resolve_strand();
             return resolve_material(strand);
         }
 
         if (!get_material()) {
-            set_material(Defaults().defaultConductorMaterial);
+            set_material(defaults.defaultConductorMaterial);
             // throw std::runtime_error("Wire is missing material information");
         }
 
@@ -155,13 +153,13 @@ namespace OpenMagnetics {
         }
     }
 
-    WireMaterial WireWrapper::resolve_material(WireWrapper wire) { 
+    WireMaterial Wire::resolve_material(Wire wire) { 
         if (wire.get_type() == WireType::LITZ) {
             auto strand = wire.resolve_strand();
             return resolve_material(strand);
         }
         if (!wire.get_material()) {
-            wire.set_material(Defaults().defaultConductorMaterial);
+            wire.set_material(defaults.defaultConductorMaterial);
             // throw std::runtime_error("Wire is missing material information");
         }
 
@@ -178,9 +176,9 @@ namespace OpenMagnetics {
     }
 
 
-    WireMaterial WireWrapper::resolve_material(WireRound wire) { 
+    WireMaterial Wire::resolve_material(WireRound wire) { 
         if (!wire.get_material()) {
-            wire.set_material(Defaults().defaultConductorMaterial);
+            wire.set_material(defaults.defaultConductorMaterial);
             // throw std::runtime_error("Wire is missing material information");
         }
 
@@ -219,7 +217,7 @@ namespace OpenMagnetics {
             if (datum.second.get_type() != wireType) {
                 continue;
             }
-            auto coatingOption = WireWrapper::resolve_coating(datum.second);
+            auto coatingOption = Wire::resolve_coating(datum.second);
             if (coatingOption) {
                 auto coating = coatingOption.value();
                 if (standard && !datum.second.get_standard()) {
@@ -243,8 +241,8 @@ namespace OpenMagnetics {
                 int strandGrade = 0;
                 if (grade) {
                     if (wireType == WireType::LITZ) {
-                        auto strandWire = WireWrapper::resolve_strand(datum.second);
-                        auto strandCoatingOption = WireWrapper::resolve_coating(strandWire);
+                        auto strandWire = Wire::resolve_strand(datum.second);
+                        auto strandCoatingOption = Wire::resolve_coating(strandWire);
                         auto strandCoating = strandCoatingOption.value();
                         if (grade && !strandCoating.get_grade()) {
                             continue;
@@ -282,7 +280,7 @@ namespace OpenMagnetics {
                     double wireConductingDimension;
                     double wirePackingFactor;
                     if (wireType == WireType::LITZ) {
-                        auto strandWire = WireWrapper::resolve_strand(datum.second);
+                        auto strandWire = Wire::resolve_strand(datum.second);
                         wireConductingDimension = resolve_dimensional_values(strandWire.get_conducting_diameter());
 
                         auto outerStrandDiameter = resolve_dimensional_values(strandWire.get_outer_diameter().value());
@@ -391,7 +389,7 @@ namespace OpenMagnetics {
             if (datum.second.get_type() != WireType::LITZ) {
                 continue;
             }
-            auto coatingOption = WireWrapper::resolve_coating(datum.second);
+            auto coatingOption = Wire::resolve_coating(datum.second);
             if (coatingOption) {
                 auto coating = coatingOption.value();
                 if (standard && !datum.second.get_standard()) {
@@ -407,8 +405,8 @@ namespace OpenMagnetics {
                 bool gradePortionOfAnd = !grade;
                 int strandGrade = 0;
                 if (grade) {
-                    auto strandWire = WireWrapper::resolve_strand(datum.second);
-                    auto strandCoatingOption = WireWrapper::resolve_coating(strandWire);
+                    auto strandWire = Wire::resolve_strand(datum.second);
+                    auto strandCoatingOption = Wire::resolve_coating(strandWire);
                     auto strandCoating = strandCoatingOption.value();
                     if (grade && !strandCoating.get_grade()) {
                         continue;
@@ -425,7 +423,7 @@ namespace OpenMagnetics {
                     double wireOuterDimension = resolve_dimensional_values(datum.second.get_outer_diameter().value()); 
                     double wirePackingFactor;
 
-                    auto strandWire = WireWrapper::resolve_strand(datum.second);
+                    auto strandWire = Wire::resolve_strand(datum.second);
                     double wireNumberConductors = datum.second.get_number_conductors().value(); 
 
                     auto outerStrandDiameter = resolve_dimensional_values(strandWire.get_outer_diameter().value());
@@ -479,7 +477,7 @@ namespace OpenMagnetics {
             if (datum.second.get_type() != WireType::RECTANGULAR) {
                 continue;
             }
-            auto coatingOption = WireWrapper::resolve_coating(datum.second);
+            auto coatingOption = Wire::resolve_coating(datum.second);
             if (coatingOption) {
                 auto coating = coatingOption.value();
                 if (standard && !datum.second.get_standard()) {
@@ -711,7 +709,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double WireWrapper::get_serving_thickness_from_standard(int numberLayers, double outerDiameter) {
+    double Wire::get_serving_thickness_from_standard(int numberLayers, double outerDiameter) {
         if (numberLayers == 0) {
             return 0;
         }
@@ -734,7 +732,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled round wires
-    double WireWrapper::get_filling_factor_round(double conductingDiameter, int grade, WireStandard standard, bool includeAirInCell) {
+    double Wire::get_filling_factor_round(double conductingDiameter, int grade, WireStandard standard, bool includeAirInCell) {
 
         auto wireType = WireType::ROUND;
 
@@ -757,7 +755,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled round wires
-    double WireWrapper::get_outer_diameter_round(double conductingDiameter, int grade, WireStandard standard) {
+    double Wire::get_outer_diameter_round(double conductingDiameter, int grade, WireStandard standard) {
         auto wireType = WireType::ROUND;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -777,7 +775,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for insulated round wires
-    double WireWrapper::get_filling_factor_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard, bool includeAirInCell) {
+    double Wire::get_filling_factor_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::ROUND;
         if (numberLayers == 0 || numberLayers > 3) {
             throw std::runtime_error("Unsupported number of layers");
@@ -805,7 +803,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for insulated round wires
-    double WireWrapper::get_outer_diameter_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard) {
+    double Wire::get_outer_diameter_round(double conductingDiameter, int numberLayers, double thicknessLayers, WireStandard standard) {
         auto wireType = WireType::ROUND;
         if (numberLayers == 0 || numberLayers > 3) {
             throw std::runtime_error("Unsupported number of layers");
@@ -832,7 +830,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled litz wires with or without serving
-    double WireWrapper::get_filling_factor_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard, bool includeAirInCell) {
+    double Wire::get_filling_factor_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::LITZ;
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
         std::string wireTypeString = static_cast<std::string>(magic_enum::enum_name(wireType));
@@ -852,7 +850,7 @@ namespace OpenMagnetics {
                                   key);
     }
 
-    double WireWrapper::get_outer_diameter_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard) {
+    double Wire::get_outer_diameter_served_litz(double conductingDiameter, int numberConductors, int grade, int numberLayers, WireStandard standard) {
         double outerDiameter = get_outer_diameter_bare_litz(conductingDiameter, numberConductors, grade, standard);
 
         double servingThickness = get_serving_thickness_from_standard(numberLayers, outerDiameter);
@@ -864,7 +862,7 @@ namespace OpenMagnetics {
         return outerDiameter;
     }
 
-    double WireWrapper::get_outer_diameter_bare_litz(double conductingDiameter, int numberConductors, int grade, WireStandard standard) {
+    double Wire::get_outer_diameter_bare_litz(double conductingDiameter, int numberConductors, int grade, WireStandard standard) {
         double packingFactor = get_packing_factor_from_standard(standard, numberConductors);
         double outerStrandDiameter = get_outer_diameter_round(conductingDiameter, grade, standard);
 
@@ -873,7 +871,7 @@ namespace OpenMagnetics {
         return outerDiameter;
     }
     // Thought for insulated litz wires
-    double WireWrapper::get_filling_factor_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard, bool includeAirInCell) {
+    double Wire::get_filling_factor_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard, bool includeAirInCell) {
         auto wireType = WireType::LITZ;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -895,7 +893,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for insulated litz wires
-    double WireWrapper::get_outer_diameter_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard) {
+    double Wire::get_outer_diameter_insulated_litz(double conductingDiameter, int numberConductors, int numberLayers, double thicknessLayers, int grade, WireStandard standard) {
         auto wireType = WireType::LITZ;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -921,7 +919,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled reactangular wires
-    double WireWrapper::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard) {
+    double Wire::get_filling_factor_rectangular(double conductingWidth, double conductingHeight, int grade, WireStandard standard) {
         double realConductingArea = get_conducting_area_rectangular(conductingWidth, conductingHeight, standard);
         double outerWidth = get_outer_width_rectangular(conductingWidth, grade, standard);
         double outerHeight = get_outer_height_rectangular(conductingHeight, grade, standard);
@@ -931,7 +929,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled reactangular wires
-    double WireWrapper::get_outer_width_rectangular(double conductingWidth, int grade, WireStandard standard) {
+    double Wire::get_outer_width_rectangular(double conductingWidth, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -951,7 +949,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled reactangular wires
-    double WireWrapper::get_outer_height_rectangular(double conductingHeight, int grade, WireStandard standard) {
+    double Wire::get_outer_height_rectangular(double conductingHeight, int grade, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -971,7 +969,7 @@ namespace OpenMagnetics {
     }
 
     // Thought for enamelled reactangular wires
-    double WireWrapper::get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard) {
+    double Wire::get_conducting_area_rectangular(double conductingWidth, double conductingHeight, WireStandard standard) {
         auto wireType = WireType::RECTANGULAR;
 
         std::string standardString = " " + static_cast<std::string>(magic_enum::enum_name(standard));
@@ -980,7 +978,7 @@ namespace OpenMagnetics {
         return get_conducting_area_rectangular_from_interpolator(conductingWidth, conductingHeight, standard, key);
     }
 
-    int WireWrapper::get_equivalent_insulation_layers(double voltageToInsulate) {
+    int Wire::get_equivalent_insulation_layers(double voltageToInsulate) {
         if (!resolve_coating()) {
             return 0;
         }
@@ -999,7 +997,7 @@ namespace OpenMagnetics {
         return std::min(numberLayers, timesVoltageisCovered);
     }
 
-    double WireWrapper::calculate_conducting_area() {
+    double Wire::calculate_conducting_area() {
         if (!get_number_conductors()) {
             if (get_type() == WireType::LITZ) {
                 throw std::runtime_error("Missing number of conductors for wire");
@@ -1064,7 +1062,7 @@ namespace OpenMagnetics {
         }
     }
 
-    std::vector<std::vector<double>> WireWrapper::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
+    std::vector<std::vector<double>> Wire::calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints) {
         auto material = resolve_material();
         if (!current.get_processed()) {
             throw std::runtime_error("Current is not processed");
@@ -1116,14 +1114,14 @@ namespace OpenMagnetics {
         }
     }
 
-    double WireWrapper::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
+    double Wire::calculate_effective_current_density(OperatingPointExcitation excitation, double temperature) {
         if (!excitation.get_current()) {
             throw std::runtime_error("Current is missing");
         }
         return calculate_effective_current_density(excitation.get_current().value(), temperature);
     }
 
-    double WireWrapper::calculate_effective_current_density(SignalDescriptor current, double temperature) {
+    double Wire::calculate_effective_current_density(SignalDescriptor current, double temperature) {
         if (!current.get_processed()) {
             throw std::runtime_error("Current is not processed");
         }
@@ -1138,14 +1136,14 @@ namespace OpenMagnetics {
         return calculate_effective_current_density(rms, effectiveFrequency, temperature);
     }
 
-    double WireWrapper::calculate_dc_current_density(OperatingPointExcitation excitation) {
+    double Wire::calculate_dc_current_density(OperatingPointExcitation excitation) {
         if (!excitation.get_current()) {
             throw std::runtime_error("Current is missing");
         }
         return calculate_dc_current_density(excitation.get_current().value());
     }
 
-    double WireWrapper::calculate_dc_current_density(SignalDescriptor current) {
+    double Wire::calculate_dc_current_density(SignalDescriptor current) {
         if (!current.get_processed()) {
             throw std::runtime_error("Current is not processed");
         }
@@ -1153,10 +1151,10 @@ namespace OpenMagnetics {
             throw std::runtime_error("Current is missing RMS");
         }
         double rms = current.get_processed()->get_rms().value();
-        return calculate_effective_current_density(rms, 0, Defaults().ambientTemperature);
+        return calculate_effective_current_density(rms, 0, defaults.ambientTemperature);
     }
 
-    double WireWrapper::calculate_effective_conducting_area(double frequency, double temperature) {
+    double Wire::calculate_effective_conducting_area(double frequency, double temperature) {
         auto material = resolve_material();
         double conductingSmallestDimension;
         double effectiveConductingArea;
@@ -1244,11 +1242,11 @@ namespace OpenMagnetics {
         return effectiveConductingArea;
     }
 
-    double WireWrapper::calculate_effective_current_density(double rms, double frequency, double temperature) {
+    double Wire::calculate_effective_current_density(double rms, double frequency, double temperature) {
         return rms / calculate_effective_conducting_area(frequency, temperature);
     }
 
-    int WireWrapper::calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper& wire, double maximumEffectiveCurrentDensity, size_t windingIndex) {
+    int Wire::calculate_number_parallels_needed(Inputs inputs, Wire& wire, double maximumEffectiveCurrentDensity, size_t windingIndex) {
         int maximumNumberParallels = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
             double temperature = inputs.get_operating_points()[operatingPointIndex].get_conditions().get_ambient_temperature();
@@ -1260,25 +1258,25 @@ namespace OpenMagnetics {
         return maximumNumberParallels;
     }
 
-    int WireWrapper::calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+    int Wire::calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, Wire& wire, double maximumEffectiveCurrentDensity) {
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(rms, effectiveFrequency, temperature);
         int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
         return numberParallels;
     }
 
-    int WireWrapper::calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+    int Wire::calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, Wire& wire, double maximumEffectiveCurrentDensity) {
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(excitation, temperature);
         int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
         return numberParallels;
     }
 
-    int WireWrapper::calculate_number_parallels_needed(SignalDescriptor current, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity) {
+    int Wire::calculate_number_parallels_needed(SignalDescriptor current, double temperature, Wire& wire, double maximumEffectiveCurrentDensity) {
         auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, temperature);
         int numberParallels = int(ceil(effectiveCurrentDensity / maximumEffectiveCurrentDensity));
         return numberParallels;
     }
 
-    double WireWrapper::get_maximum_outer_width() {
+    double Wire::get_maximum_outer_width() {
         switch (get_type()) {
             case WireType::LITZ:
             case WireType::ROUND:
@@ -1298,7 +1296,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double WireWrapper::get_maximum_outer_height() {
+    double Wire::get_maximum_outer_height() {
         switch (get_type()) {
             case WireType::LITZ:
             case WireType::ROUND:
@@ -1321,11 +1319,11 @@ namespace OpenMagnetics {
     }
 
 
-    double WireWrapper::get_maximum_outer_dimension() {
+    double Wire::get_maximum_outer_dimension() {
         return std::max(get_maximum_outer_width(), get_maximum_outer_height());
     }
 
-    double WireWrapper::get_maximum_conducting_width() {
+    double Wire::get_maximum_conducting_width() {
         switch (get_type()) {
             case WireType::LITZ:
                 {
@@ -1343,7 +1341,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double WireWrapper::get_maximum_conducting_height() {
+    double Wire::get_maximum_conducting_height() {
         switch (get_type()) {
             case WireType::LITZ:
                 {
@@ -1361,7 +1359,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double WireWrapper::get_minimum_conducting_dimension() {
+    double Wire::get_minimum_conducting_dimension() {
         switch (get_type()) {
             case WireType::LITZ:
                 {
@@ -1380,8 +1378,7 @@ namespace OpenMagnetics {
         }
     }
 
-    void WireWrapper::cut_foil_wire_to_section(Section section) {
-        auto constants = Constants();
+    void Wire::cut_foil_wire_to_section(Section section) {
         if (get_type() != WireType::FOIL) {
             throw std::runtime_error("Method only valid for Foil wire");
         }
@@ -1392,8 +1389,7 @@ namespace OpenMagnetics {
         set_outer_height(get_conducting_height());
     }
 
-    void WireWrapper::cut_planar_wire_to_section(Section section) {
-        auto constants = Constants();
+    void Wire::cut_planar_wire_to_section(Section section) {
         if (get_type() != WireType::PLANAR) {
             throw std::runtime_error("Method only valid for Planar wire");
         }
@@ -1404,7 +1400,7 @@ namespace OpenMagnetics {
         set_outer_height(get_conducting_height());
     }
 
-    double WireWrapper::get_relative_cost() {
+    double Wire::get_relative_cost() {
         double cost = 0;
         if (get_type() == WireType::LITZ) {
             cost++;
@@ -1440,15 +1436,15 @@ namespace OpenMagnetics {
     }
 
 
-    double WireWrapper::get_coating_thickness() {
+    double Wire::get_coating_thickness() {
         return get_coating_thickness(*this);
     }
 
-    double WireWrapper::get_coating_dielectric_strength() {
+    double Wire::get_coating_dielectric_strength() {
         return get_coating_dielectric_strength(*this);
     }
 
-    double WireWrapper::get_coating_thickness(WireWrapper wire) {
+    double Wire::get_coating_thickness(Wire wire) {
         auto coating = resolve_coating(wire);
 
         if (coating->get_thickness()) {
@@ -1470,34 +1466,34 @@ namespace OpenMagnetics {
         return std::min(coatingThicknessWidth, coatingThicknessHeight);
     }
 
-    double WireWrapper::get_coating_dielectric_strength(WireWrapper wire) {
+    double Wire::get_coating_dielectric_strength(Wire wire) {
         auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
         auto coatingThickness = get_coating_thickness(wire);
         return coatingInsulationMaterial.get_dielectric_strength_by_thickness(coatingThickness);
     }
 
-    double WireWrapper::get_coating_relative_permittivity() {
+    double Wire::get_coating_relative_permittivity() {
         return get_coating_relative_permittivity(*this);
     }
 
-    double WireWrapper::get_coating_relative_permittivity(WireWrapper wire) {
+    double Wire::get_coating_relative_permittivity(Wire wire) {
         auto coatingInsulationMaterial = resolve_coating_insulation_material(wire);
         if (!coatingInsulationMaterial.get_relative_permittivity())
             throw std::runtime_error("Coating insulation material is missing dielectric constant");
         return coatingInsulationMaterial.get_relative_permittivity().value();
     }
 
-    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(){
+    InsulationMaterial Wire::resolve_coating_insulation_material(){
         return resolve_coating_insulation_material(*this);
     }
 
-    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(WireWrapper wire) {
+    InsulationMaterial Wire::resolve_coating_insulation_material(Wire wire) {
         auto coating = resolve_coating(wire);
 
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(Defaults().defaultEnamelledInsulationMaterial);
+                coating->set_material(defaults.defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
@@ -1512,17 +1508,17 @@ namespace OpenMagnetics {
             return insulationMaterialData;
         }
         else {
-            return std::get<InsulationMaterial>(insulationMaterial);
+            return InsulationMaterial(std::get<MAS::InsulationMaterial>(insulationMaterial));
         }
     }
 
-    InsulationMaterialWrapper WireWrapper::resolve_coating_insulation_material(WireRound wire) {
+    InsulationMaterial Wire::resolve_coating_insulation_material(WireRound wire) {
         auto coating = resolve_coating(wire);
 
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {
-                coating->set_material(Defaults().defaultEnamelledInsulationMaterial);
+                coating->set_material(defaults.defaultEnamelledInsulationMaterial);
             }
             else {
                 throw std::runtime_error("Coating is missing material information");
@@ -1537,15 +1533,15 @@ namespace OpenMagnetics {
             return insulationMaterialData;
         }
         else {
-            return std::get<InsulationMaterial>(insulationMaterial);
+            return InsulationMaterial(std::get<MAS::InsulationMaterial>(insulationMaterial));
         }
     }
 
-    std::string WireWrapper::encode_coating_label() {
+    std::string Wire::encode_coating_label() {
         return encode_coating_label(*this);
     }
 
-    std::string WireWrapper::encode_coating_label(WireWrapper wire) {
+    std::string Wire::encode_coating_label(Wire wire) {
         auto coating = resolve_coating(wire);
         if (!coating) {
             return "Bare";
@@ -1651,7 +1647,7 @@ namespace OpenMagnetics {
         return text;
     }
 
-    std::optional<InsulationWireCoating> WireWrapper::decode_coating_label(std::string label) {
+    std::optional<InsulationWireCoating> Wire::decode_coating_label(std::string label) {
         std::optional<InsulationWireCoating> coating;
 
         if ((label.find("Bare") != std::string::npos) || (label.find("Unserved") != std::string::npos)) {
@@ -1719,11 +1715,11 @@ namespace OpenMagnetics {
     }
     
 
-    WireWrapper WireWrapper::get_wire_for_frequency(double effectiveFrequency, double temperature, bool exact) {
+    Wire Wire::get_wire_for_frequency(double effectiveFrequency, double temperature, bool exact) {
         auto skinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency, temperature);
         double wireConductingDiameter = skinDepth * 2;
         if (exact) {
-            WireWrapper wire;
+            Wire wire;
             wire.set_nominal_value_conducting_diameter(wireConductingDiameter);
 
             wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
@@ -1732,16 +1728,16 @@ namespace OpenMagnetics {
             return wire;
         }
         else {
-            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
+            Wire wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
             return wire;
         }
     }
     
 
-    WireWrapper WireWrapper::get_wire_for_conducting_area(double conductingArea, double temperature, bool exact) {
+    Wire Wire::get_wire_for_conducting_area(double conductingArea, double temperature, bool exact) {
         double wireConductingDiameter = sqrt(4 * conductingArea / std::numbers::pi);
         if (exact) {
-            WireWrapper wire;
+            Wire wire;
             wire.set_nominal_value_conducting_diameter(wireConductingDiameter);
             wire.set_nominal_value_outer_diameter(get_outer_diameter_round(wireConductingDiameter, 1, WireStandard::IEC_60317));
             wire.set_material("copper");
@@ -1749,13 +1745,13 @@ namespace OpenMagnetics {
             return wire;
         }
         else {
-            WireWrapper wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
+            Wire wire = find_wire_by_dimension(wireConductingDiameter, WireType::ROUND, WireStandard::IEC_60317, false);
             return wire;
         }
     }
 
 
-    WireWrapper WireWrapper::get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency, double temperature) {
+    Wire Wire::get_equivalent_wire(Wire oldWire, WireType newWireType, double effectiveFrequency, double temperature) {
 
         WireStandard standard;
         if (oldWire.get_standard()) {
@@ -1770,7 +1766,7 @@ namespace OpenMagnetics {
                 {
                     double strandConductingDiameter = WindingSkinEffectLosses::calculate_skin_depth("copper", effectiveFrequency, temperature);
                     double strandConductingArea = std::numbers::pi * pow(strandConductingDiameter / 2, 2);
-                    WireWrapper strand;
+                    Wire strand;
                     size_t numberConductors;
 
                     switch (oldWire.get_type()) {
@@ -1779,11 +1775,10 @@ namespace OpenMagnetics {
                             break;
                         default:
                             double oldConductingArea = oldWire.calculate_conducting_area();
-                            strand = OpenMagnetics::find_wire_by_dimension(strandConductingDiameter, OpenMagnetics::WireType::ROUND, standard);
+                            strand = find_wire_by_dimension(strandConductingDiameter, WireType::ROUND, standard);
                             numberConductors = round(oldConductingArea / strandConductingArea);
                             break;
                     }
-
 
                     InsulationWireCoating newCoating;
                     auto oldCoating = oldWire.resolve_coating();
@@ -1799,7 +1794,7 @@ namespace OpenMagnetics {
                         }
                     }
 
-                    WireWrapper newWire;
+                    Wire newWire;
                     newWire.set_type(WireType::LITZ);
                     newWire.set_strand(convert_from_wire_to_strand(strand));
                     newWire.set_coating(newCoating);
@@ -1843,7 +1838,7 @@ namespace OpenMagnetics {
                         default:
                             throw std::runtime_error("Unknown wire type");
                     }
-                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingDiameter, OpenMagnetics::WireType::ROUND, standard);
+                    auto newWire = find_wire_by_dimension(conductingDiameter, WireType::ROUND, standard);
                     auto oldCoating = oldWire.resolve_coating();
                     newWire.set_type(WireType::ROUND);
                     newWire.set_coating(oldCoating);
@@ -1870,7 +1865,7 @@ namespace OpenMagnetics {
                         default:
                             throw std::runtime_error("Unknown wire type");
                     }
-                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingHeight, OpenMagnetics::WireType::PLANAR);
+                    auto newWire = find_wire_by_dimension(conductingHeight, WireType::PLANAR);
 
                     // No coating by default
 
@@ -1899,7 +1894,7 @@ namespace OpenMagnetics {
                         default:
                             throw std::runtime_error("Unknown wire type");
                     }
-                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingHeight, OpenMagnetics::WireType::RECTANGULAR);
+                    auto newWire = find_wire_by_dimension(conductingHeight, WireType::RECTANGULAR);
 
                     InsulationWireCoating newCoating;
                     auto oldCoating = oldWire.resolve_coating();
@@ -1944,7 +1939,7 @@ namespace OpenMagnetics {
                         default:
                             throw std::runtime_error("Unknown wire type");
                     }
-                    auto newWire = OpenMagnetics::find_wire_by_dimension(conductingWidth, OpenMagnetics::WireType::FOIL);
+                    auto newWire = find_wire_by_dimension(conductingWidth, WireType::FOIL);
 
                     // No coating by default
 

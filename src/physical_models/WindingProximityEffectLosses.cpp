@@ -57,7 +57,7 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
     }
 }
 
-std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_factor(WireWrapper wire, double frequency, double temperature) {
+std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_factor(Wire wire, double frequency, double temperature) {
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -80,7 +80,7 @@ std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_facto
     return std::nullopt;
 }
 
-void WindingProximityEffectLossesModel::set_proximity_factor(WireWrapper wire,  double frequency, double temperature, double proximityFactor) {
+void WindingProximityEffectLossesModel::set_proximity_factor(Wire wire,  double frequency, double temperature, double proximityFactor) {
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -96,7 +96,7 @@ void WindingProximityEffectLossesModel::set_proximity_factor(WireWrapper wire,  
 
 }
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(WireWrapper wire, double temperature, std::vector<ComplexField> fields) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields) {
     auto model = get_model(wire.get_type());
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
@@ -121,7 +121,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput) {
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
     }
@@ -185,7 +185,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     return windingLossesOutput;
 }
 
-double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(WireWrapper wire, double frequency, double temperature) {
+double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double factor;
     std::complex<double> alpha(1, 1);
@@ -216,7 +216,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_proximity_factor(W
     return factor;
 }
 
-double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     double proximityFactor;
     auto optionalproximityFactor = try_get_proximity_factor(wire, frequency, temperature);
 
@@ -243,7 +243,7 @@ double WindingProximityEffectLossesRossmanithModel::calculate_turn_losses(WireWr
     return turnLosses;
 }
 
-double WindingProximityEffectLossesWangModel::calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
@@ -293,7 +293,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(WireWrapper 
 }
 
 
-double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(WireWrapper wire, double frequency, double temperature) {
+double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double factor;
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
@@ -337,7 +337,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(Wir
     return factor;
 }
 
-double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     double proximityFactor;
     auto optionalproximityFactor = try_get_proximity_factor(wire, frequency, temperature);
 
@@ -363,7 +363,7 @@ double WindingProximityEffectLossesFerreiraModel::calculate_turn_losses(WireWrap
     return turnLosses;
 }
 
-double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
     auto resistivity = (*resistivityModel).get_resistivity(wire.resolve_material(), temperature);
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
@@ -403,7 +403,7 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(WireWrappe
     return turnLosses;
 }
 
-double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(WireWrapper wire, double frequency, double temperature) {
+double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(Wire wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double factor;
     double wireConductingDimension;
@@ -430,7 +430,7 @@ double WindingProximityEffectLossesLammeranerModel::calculate_proximity_factor(W
     return factor;
 }
 
-double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
+double WindingProximityEffectLossesLammeranerModel::calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     double proximityFactor;
     auto optionalproximityFactor = try_get_proximity_factor(wire, frequency, temperature);
 

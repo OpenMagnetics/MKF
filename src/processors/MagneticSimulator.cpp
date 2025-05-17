@@ -6,17 +6,17 @@
 
 namespace OpenMagnetics {
 
-MasWrapper MagneticSimulator::simulate(MasWrapper mas, bool fastMode){
+Mas MagneticSimulator::simulate(Mas mas, bool fastMode){
     return simulate(mas.get_mutable_inputs(), mas.get_mutable_magnetic(), fastMode);
 }
-MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic, bool fastMode){
-    MasWrapper mas;
-    std::vector<OutputsWrapper> outputs;
+Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode){
+    Mas mas;
+    std::vector<Outputs> outputs;
     std::vector<OperatingPoint> simulatedOperatingPoints;
     mas.set_inputs(inputs);
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
-        OutputsWrapper output;
+        Outputs output;
         // std::cout << "Simulating magnetizing_inductance" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
         // std::cout << "Simulating core_losses" << std::endl;
@@ -40,11 +40,11 @@ MasWrapper MagneticSimulator::simulate(const InputsWrapper& inputs, const Magnet
     return mas;
 }
 
-MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic){
+MagnetizingInductanceOutput MagneticSimulator::calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic){
     return _magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
 }
 
-LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic){
+LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic){
     double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
     LeakageInductanceOutput leakageInductanceOutput; 
     for (size_t windingIndex = 1; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
@@ -60,7 +60,7 @@ LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(Operatin
     return leakageInductanceOutput;
 }
 
-WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature){
+WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature){
     auto settings = OpenMagnetics::Settings::GetInstance();
     settings->set_magnetic_field_mirroring_dimension(0);
 
@@ -76,7 +76,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     return windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
 }
 
-CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic) {
+CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic) {
     OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
     if (!excitation.get_current()) {
         throw std::runtime_error("Missing current in operating point");

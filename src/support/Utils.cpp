@@ -1,6 +1,3 @@
-#include "support/Settings.h"
-#include "Defaults.h"
-#include "Constants.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
@@ -18,6 +15,8 @@
 #include <streambuf>
 #include <vector>
 #include <cmrc/cmrc.hpp>
+#include "support/Utils.h"
+#include "support/Settings.h"
 
 CMRC_DECLARE(data);
 
@@ -27,22 +26,23 @@ CMRC_DECLARE(data);
 
 using json = nlohmann::json;
 
-std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
-std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
-std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-std::vector<OpenMagnetics::CoreShapeFamily> coreShapeFamiliesInDatabase;
-std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
-std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
-std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
-std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
+std::vector<OpenMagnetics::Core> coreDatabase;
+std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
+std::map<std::string, MAS::CoreShape> coreShapeDatabase;
+std::vector<MAS::CoreShapeFamily> coreShapeFamiliesInDatabase;
+std::map<std::string, OpenMagnetics::Wire> wireDatabase;
+std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
+std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
+std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
+OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
+OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
 
 bool _addInternalData = true;
 
 namespace OpenMagnetics {
 
 void load_cores() {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     bool includeToroidalCores = settings->get_use_toroidal_cores();
     bool includeConcentricCores = settings->get_use_concentric_cores();
     bool useOnlyCoresInStock = settings->get_use_only_cores_in_stock();
@@ -63,7 +63,7 @@ void load_cores() {
             CoreType type;
             from_json(jf["functionalDescription"]["type"], type);
             if ((includeToroidalCores && type == CoreType::TOROIDAL) || (includeConcentricCores && type != CoreType::TOROIDAL)) {
-                CoreWrapper core(jf, false, true, false);
+                Core core(jf, false, true, false);
                 coreDatabase.push_back(core);
             }
             database.erase(0, pos + delimiter.length());
@@ -80,12 +80,12 @@ void load_cores() {
         database = std::regex_replace(database, std::regex("\n"), ", ");
         database = "[" + database + "]";
         json arr = json::parse(database);
-        std::vector<OpenMagnetics::CoreWrapper> tempCoreDatabase;
+        std::vector<Core> tempCoreDatabase;
 
         for (auto elem : arr) {
 
             if ((includeToroidalCores && elem["functionalDescription"]["type"] == "toroidal") || (includeConcentricCores && elem["functionalDescription"]["type"] != "toroidal")) {
-                tempCoreDatabase.push_back(OpenMagnetics::CoreWrapper(elem));
+                tempCoreDatabase.push_back(Core(elem));
             }
         }
 
@@ -154,7 +154,6 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     }
     auto fs = cmrc::data::get_filesystem();
     {
-        auto settings = OpenMagnetics::Settings::GetInstance();
         bool includeToroidalCores = settings->get_use_toroidal_cores();
         bool includeConcentricCores = settings->get_use_concentric_cores();
 
@@ -217,7 +216,7 @@ void load_wires(std::optional<std::string> fileToLoad) {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            WireWrapper wire(jf);
+            Wire wire(jf);
             wireDatabase[jf["name"]] = wire;
             database.erase(0, pos + delimiter.length());
         }
@@ -241,7 +240,7 @@ void load_bobbins() {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            BobbinWrapper bobbin(jf);
+            Bobbin bobbin(jf);
             bobbinDatabase[jf["name"]] = bobbin;
             database.erase(0, pos + delimiter.length());
         }
@@ -265,7 +264,7 @@ void load_insulation_materials() {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            InsulationMaterialWrapper insulationMaterial(jf);
+            InsulationMaterial insulationMaterial(jf);
             insulationMaterialDatabase[jf["name"]] = insulationMaterial;
             database.erase(0, pos + delimiter.length());
         }
@@ -369,19 +368,19 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
             }
             jf["standardName"] = standardName;
         }
-        WireWrapper wire(jf);
+        Wire wire(jf);
         wireDatabase[jf["name"]] = wire;
     }
 
     for (auto& element : data["bobbins"].items()) {
         json jf = element.value();
-        BobbinWrapper bobbin(jf);
+        Bobbin bobbin(jf);
         bobbinDatabase[jf["name"]] = bobbin;
     }
 
     for (auto& element : data["insulationMaterials"].items()) {
         json jf = element.value();
-        InsulationMaterialWrapper insulationMaterial(jf);
+        InsulationMaterial insulationMaterial(jf);
         insulationMaterialDatabase[jf["name"]] = insulationMaterial;
     }
 
@@ -392,7 +391,7 @@ void load_databases(json data, bool withAliases, bool addInternalData) {
     }
 }
 
-OpenMagnetics::CoreWrapper find_core_by_name(std::string name) {
+Core find_core_by_name(std::string name) {
     if (coreDatabase.empty()) {
         load_cores();
     }
@@ -404,7 +403,7 @@ OpenMagnetics::CoreWrapper find_core_by_name(std::string name) {
     throw std::runtime_error("Core not found: " + name);
 }
 
-OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
+CoreMaterial find_core_material_by_name(std::string name) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
@@ -429,7 +428,7 @@ OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name) {
     }
 }
 
-OpenMagnetics::CoreShape find_core_shape_by_name(std::string name) {
+CoreShape find_core_shape_by_name(std::string name) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes();
     }
@@ -572,7 +571,6 @@ std::vector<std::string> get_shape_names() {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
     }
-    auto settings = OpenMagnetics::Settings::GetInstance();
     bool includeToroidalCores = settings->get_use_toroidal_cores();
     bool includeConcentricCores = settings->get_use_concentric_cores();
 
@@ -588,7 +586,7 @@ std::vector<std::string> get_shape_names() {
 }
 
 
-std::vector<OpenMagnetics::CoreShapeFamily> get_shape_families() {
+std::vector<CoreShapeFamily> get_shape_families() {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
     }
@@ -655,12 +653,12 @@ std::vector<std::string> get_wire_material_names() {
     return wireMaterialNames;
 }
 
-std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string> manufacturer) {
+std::vector<CoreMaterial> get_materials(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
 
-    std::vector<OpenMagnetics::CoreMaterial> materials;
+    std::vector<CoreMaterial> materials;
 
     for (auto& datum : coreMaterialDatabase) {
         if (!manufacturer) {
@@ -676,12 +674,12 @@ std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string
     return materials;
 }
 
-std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal) {
+std::vector<CoreShape> get_shapes(bool includeToroidal) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
     }
 
-    std::vector<OpenMagnetics::CoreShape> shapes;
+    std::vector<CoreShape> shapes;
 
     for (auto& datum : coreShapeDatabase) {
         if (includeToroidal || (datum.second.get_family() != CoreShapeFamily::T)) {
@@ -693,12 +691,12 @@ std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal) {
 }
 
 
-std::vector<OpenMagnetics::WireWrapper> get_wires(std::optional<WireType> wireType, std::optional<WireStandard> wireStandard) {
+std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<WireStandard> wireStandard) {
     if (wireDatabase.empty()) {
         load_wires();
     }
 
-    std::vector<OpenMagnetics::WireWrapper> wires;
+    std::vector<Wire> wires;
 
     for (auto& datum : wireDatabase) {
         if (wireStandard && !datum.second.get_standard()) {
@@ -720,12 +718,12 @@ std::vector<OpenMagnetics::WireWrapper> get_wires(std::optional<WireType> wireTy
 }
 
 
-std::vector<OpenMagnetics::BobbinWrapper> get_bobbins() {
+std::vector<Bobbin> get_bobbins() {
     if (wireDatabase.empty()) {
         load_bobbins();
     }
 
-    std::vector<OpenMagnetics::BobbinWrapper> bobbins;
+    std::vector<Bobbin> bobbins;
 
     for (auto& datum : bobbinDatabase) {
         bobbins.push_back(datum.second);
@@ -735,12 +733,12 @@ std::vector<OpenMagnetics::BobbinWrapper> get_bobbins() {
 }
 
 
-std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials() {
+std::vector<InsulationMaterial> get_insulation_materials() {
     if (wireDatabase.empty()) {
         load_insulation_materials();
     }
 
-    std::vector<OpenMagnetics::InsulationMaterialWrapper> insulationMaterials;
+    std::vector<InsulationMaterial> insulationMaterials;
 
     for (auto& datum : insulationMaterialDatabase) {
         insulationMaterials.push_back(datum.second);
@@ -750,12 +748,12 @@ std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials()
 }
 
 
-std::vector<OpenMagnetics::WireMaterial> get_wire_materials() {
+std::vector<WireMaterial> get_wire_materials() {
     if (wireDatabase.empty()) {
         load_wire_materials();
     }
 
-    std::vector<OpenMagnetics::WireMaterial> wireMaterials;
+    std::vector<WireMaterial> wireMaterials;
 
     for (auto& datum : wireMaterialDatabase) {
         wireMaterials.push_back(datum.second);
@@ -764,7 +762,7 @@ std::vector<OpenMagnetics::WireMaterial> get_wire_materials() {
     return wireMaterials;
 }
 
-OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
+Wire find_wire_by_name(std::string name) {
     if (wireDatabase.empty()) {
         load_wires();
     }
@@ -777,16 +775,16 @@ OpenMagnetics::WireWrapper find_wire_by_name(std::string name) {
 }
 
 
-OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard, bool obfuscate) {
+Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, std::optional<WireStandard> wireStandard, bool obfuscate) {
     if (wireDatabase.empty()) {
         load_wires();
     }
 
     auto wires = get_wires(wireType, wireStandard);
     double minimumDistance = DBL_MAX;
-    OpenMagnetics::WireWrapper chosenWire;
+    Wire chosenWire;
     double minimumDimension = DBL_MAX;
-    std::vector<OpenMagnetics::WireWrapper> possibleWires;
+    std::vector<Wire> possibleWires;
 
     for (auto wire : wires) {
         double distance = 0;
@@ -858,7 +856,7 @@ OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optiona
     return chosenWire;
 }
 
-OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
+Bobbin find_bobbin_by_name(std::string name) {
     if (bobbinDatabase.empty()) {
         load_bobbins();
     }
@@ -870,7 +868,7 @@ OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name) {
     }
 }
 
-OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name) {
+InsulationMaterial find_insulation_material_by_name(std::string name) {
     if (insulationMaterialDatabase.empty()) {
         load_insulation_materials();
     }
@@ -882,7 +880,7 @@ OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::s
     }
 }
 
-OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
+WireMaterial find_wire_material_by_name(std::string name) {
     if (wireMaterialDatabase.empty()) {
         load_wire_materials();
     }
@@ -894,16 +892,16 @@ OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name) {
     }
 }
 
-OpenMagnetics::CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter) {
+CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes();
     }
 
     double minimumPerimeterError = DBL_MAX;
-    OpenMagnetics::CoreShape closestShape;
+    CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
         if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
-            auto corePiece = OpenMagnetics::CorePiece::factory(shape);
+            auto corePiece = CorePiece::factory(shape);
             auto mainColumn = corePiece->get_columns()[0];
             double perimeter;
             if (mainColumn.get_shape() == ColumnShape::RECTANGULAR || mainColumn.get_shape() == ColumnShape::IRREGULAR) {
@@ -929,39 +927,39 @@ OpenMagnetics::CoreShape find_core_shape_by_winding_window_perimeter(double desi
     return closestShape;
 }
 
-double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue) {
+double resolve_dimensional_values(Dimension dimensionValue, DimensionalValues preferredValue) {
     double doubleValue = 0;
-    if (std::holds_alternative<OpenMagnetics::DimensionWithTolerance>(dimensionValue)) {
+    if (std::holds_alternative<DimensionWithTolerance>(dimensionValue)) {
         switch (preferredValue) {
-            case OpenMagnetics::DimensionalValues::MAXIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+            case DimensionalValues::MAXIMUM:
+                if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
                 break;
-            case OpenMagnetics::DimensionalValues::NOMINAL:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+            case DimensionalValues::NOMINAL:
+                if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
+                         std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
                     doubleValue =
-                        (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
-                         std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
+                        (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value() +
+                         std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
                         2;
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
                 break;
-            case OpenMagnetics::DimensionalValues::MINIMUM:
-                if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<OpenMagnetics::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+            case DimensionalValues::MINIMUM:
+                if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
                 break;
             default:
                 throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
@@ -1001,16 +999,13 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
         return requirement.get_minimum().value() <= value && value <= requirement.get_nominal().value();
     }
     else if (!requirement.get_minimum() && requirement.get_nominal() && !requirement.get_maximum()) {
-        auto defaults = Defaults();
         return requirement.get_nominal().value() * (1 - defaults.magnetizingInductanceThresholdValidity) <= value &&
         value <= requirement.get_nominal().value() * (1 + defaults.magnetizingInductanceThresholdValidity);
     }
     else if (requirement.get_minimum() && !requirement.get_nominal() && !requirement.get_maximum()) {
-        auto defaults = Defaults();
         return value > requirement.get_minimum().value();
     }
     else if (!requirement.get_minimum() && !requirement.get_nominal() && requirement.get_maximum()) {
-        auto defaults = Defaults();
         return value > requirement.get_maximum().value();
     }
 
@@ -1480,13 +1475,13 @@ std::string fix_filename(std::string filename) {
 
 SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor, double frequency) {
 
-    auto standardSignalDescriptor = InputsWrapper::standardize_waveform(signalDescriptor, frequency);
+    auto standardSignalDescriptor = Inputs::standardize_waveform(signalDescriptor, frequency);
     if (standardSignalDescriptor.get_harmonics()) {
-        auto processed = InputsWrapper::calculate_processed_data(standardSignalDescriptor.get_harmonics().value(), standardSignalDescriptor.get_waveform().value(), true);
+        auto processed = Inputs::calculate_processed_data(standardSignalDescriptor.get_harmonics().value(), standardSignalDescriptor.get_waveform().value(), true);
         standardSignalDescriptor.set_processed(processed);
     }
     else {
-        auto processed = InputsWrapper::calculate_processed_data(standardSignalDescriptor.get_waveform().value(), frequency, true);
+        auto processed = Inputs::calculate_processed_data(standardSignalDescriptor.get_waveform().value(), frequency, true);
         standardSignalDescriptor.set_processed(processed);
     }
 
@@ -1494,20 +1489,20 @@ SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor
 }
 
 OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio){
-    OpenMagnetics::OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
-    auto currentSignalDescriptorProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
-    auto voltageSignalDescriptorProcessed = OpenMagnetics::InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
+    OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
+    auto currentSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
+    auto voltageSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
 
-    auto voltageSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
-    auto currentSignalDescriptor = OpenMagnetics::InputsWrapper::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
+    auto voltageSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
+    auto currentSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
 
-    auto voltageSampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    voltageSignalDescriptor.set_harmonics(OpenMagnetics::InputsWrapper::calculate_harmonics_data(voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
-    voltageSignalDescriptor.set_processed(OpenMagnetics::InputsWrapper::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
+    auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
+    voltageSignalDescriptor.set_processed(Inputs::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
 
-    auto currentSampledWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    currentSignalDescriptor.set_harmonics(OpenMagnetics::InputsWrapper::calculate_harmonics_data(currentSampledWaveform, excitationOfThisWinding.get_frequency()));
-    currentSignalDescriptor.set_processed(OpenMagnetics::InputsWrapper::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
+    auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSampledWaveform, excitationOfThisWinding.get_frequency()));
+    currentSignalDescriptor.set_processed(Inputs::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
 
     excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
     excitationOfThisWinding.set_current(currentSignalDescriptor);
@@ -1515,7 +1510,7 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
     return excitationOfThisWinding;
 }
 
-MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
+Mas mas_autocomplete(Mas mas, bool simulate) {
 
     //Inputs
     size_t numberWindings = mas.get_inputs().get_design_requirements().get_turns_ratios().size() + 1;
@@ -1551,8 +1546,8 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
                     current = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                 }
                 if (!current.get_harmonics()) {
-                    auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledCurrentWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                     current.set_harmonics(harmonics);
                 }
                 mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
@@ -1564,8 +1559,8 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
                     voltage = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                 }
                 if (!voltage.get_harmonics()) {
-                    auto sampledvoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledvoltageWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto sampledvoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledvoltageWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
                     voltage.set_harmonics(harmonics);
                 }
                 mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(voltage);
@@ -1578,13 +1573,13 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
 
     // Magnetizing current
 
-    OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+    MagnetizingInductance magnetizingInductanceObj;
     for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
             double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_mutable_magnetic().get_mutable_core(), mas.get_mutable_magnetic().get_mutable_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
             auto excitation = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 
-            auto magnetizingCurrent = OpenMagnetics::InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
 
             if (excitation.get_voltage()) {
                 if (excitation.get_voltage().value().get_processed()) {
@@ -1613,7 +1608,7 @@ MasWrapper mas_autocomplete(MasWrapper mas, bool simulate) {
     return mas;
 }
 
-MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic) {
+Magnetic magnetic_autocomplete(Magnetic magnetic) {
     // Core
     auto shape = magnetic.get_mutable_core().resolve_shape();
 
@@ -1680,7 +1675,7 @@ MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic) {
             insulationWireCoating = wire.resolve_coating().value();
         }
         else {
-            insulationWireCoating.set_type(OpenMagnetics::InsulationWireCoatingType::BARE);
+            insulationWireCoating.set_type(InsulationWireCoatingType::BARE);
         }
 
         if (!insulationWireCoating.get_material()) {
@@ -1705,14 +1700,14 @@ MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic) {
         magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
     }
 
-    BobbinWrapper bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    Bobbin bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
         if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && magnetic.get_wire(0).get_type() != WireType::RECTANGULAR && magnetic.get_wire(0).get_type() != WireType::PLANAR) {
-            bobbin = BobbinWrapper::create_quick_bobbin(magnetic.get_mutable_core(), false);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
         }
         else {
-            bobbin = BobbinWrapper::create_quick_bobbin(magnetic.get_mutable_core(), true);
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
         }
 
     }
@@ -1743,7 +1738,7 @@ MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic) {
     if (magnetic.get_mutable_coil().get_layers_description()) {
         auto layers = magnetic.get_mutable_coil().get_layers_description().value();
         for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
-            auto insulationMaterial = CoilWrapper::resolve_insulation_layer_insulation_material(magnetic.get_mutable_coil(), layers[layerIndex].get_name());
+            auto insulationMaterial = Coil::resolve_insulation_layer_insulation_material(magnetic.get_mutable_coil(), layers[layerIndex].get_name());
             layers[layerIndex].set_insulation_material(insulationMaterial);
         }
         magnetic.get_mutable_coil().set_layers_description(layers);

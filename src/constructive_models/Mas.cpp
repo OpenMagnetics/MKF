@@ -1,11 +1,11 @@
 #include <MAS.hpp>
-#include "constructive_models/MasWrapper.h"
+#include "constructive_models/Mas.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Utils.h"
 
 namespace OpenMagnetics {
 
-MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
+Magnetic Mas::expand_magnetic(Magnetic magnetic) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
     auto coreMaterial = core.resolve_material();
@@ -19,16 +19,16 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
         core.process_gap();
     }
 
-    BobbinWrapper bobbin;
+    Bobbin bobbin;
 
     if (std::holds_alternative<std::string>(coil.get_bobbin())) {
         auto bobbinName = std::get<std::string>(coil.get_bobbin());
         if (bobbinName == "Basic") {
-            bobbin = BobbinWrapper::create_quick_bobbin(core, false);
+            bobbin = Bobbin::create_quick_bobbin(core, false);
             coil.set_bobbin(bobbin);
         }
         else if (bobbinName == "Dummy") {
-            bobbin = BobbinWrapper::create_quick_bobbin(core, true);
+            bobbin = Bobbin::create_quick_bobbin(core, true);
             coil.set_bobbin(bobbin);
         }
     }
@@ -65,13 +65,13 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
                 if (!wire.get_outer_height())
                 {
                     DimensionWithTolerance aux;
-                    aux.set_nominal(WireWrapper::get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value())));
+                    aux.set_nominal(Wire::get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_height().value())));
                     wire.set_outer_height(aux);
                 }
                 if (!wire.get_outer_width())
                 {
                     DimensionWithTolerance aux;
-                    aux.set_nominal(WireWrapper::get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_width().value())));
+                    aux.set_nominal(Wire::get_outer_height_rectangular(resolve_dimensional_values(wire.get_conducting_width().value())));
                     wire.set_outer_width(aux);
                 }
             }
@@ -82,7 +82,7 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
                     if (coating->get_type() == InsulationWireCoatingType::ENAMELLED)
                     {
                         DimensionWithTolerance aux;
-                        aux.set_nominal(WireWrapper::get_outer_diameter_round(resolve_dimensional_values(resolve_dimensional_values(wire.get_conducting_diameter().value()))));
+                        aux.set_nominal(Wire::get_outer_diameter_round(resolve_dimensional_values(resolve_dimensional_values(wire.get_conducting_diameter().value()))));
                         wire.set_outer_diameter(aux);
                     }
                     
@@ -91,7 +91,7 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
                         int numberLayers = coating->get_number_layers().value();
                         int thicknessLayers = coating->get_thickness_layers().value();
                         DimensionWithTolerance aux;
-                        aux.set_nominal(WireWrapper::get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), numberLayers, thicknessLayers));
+                        aux.set_nominal(Wire::get_outer_diameter_round(resolve_dimensional_values(wire.get_conducting_diameter().value()), numberLayers, thicknessLayers));
                         wire.set_outer_diameter(aux);
                     }
                 }
@@ -104,7 +104,7 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
                     if (coating->get_type() == InsulationWireCoatingType::SERVED)
                     {
                         DimensionWithTolerance aux;
-                        aux.set_nominal(WireWrapper::get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter()), wire.get_number_conductors().value()));
+                        aux.set_nominal(Wire::get_outer_diameter_served_litz(resolve_dimensional_values(strand.get_conducting_diameter()), wire.get_number_conductors().value()));
                         wire.set_outer_diameter(aux);
                     }
                     
@@ -113,7 +113,7 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
                         int numberLayers = coating->get_number_layers().value();
                         int thicknessLayers = coating->get_thickness_layers().value();
                         DimensionWithTolerance aux;
-                        aux.set_nominal(WireWrapper::get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter()), wire.get_number_conductors().value(), numberLayers, thicknessLayers));
+                        aux.set_nominal(Wire::get_outer_diameter_insulated_litz(resolve_dimensional_values(strand.get_conducting_diameter()), wire.get_number_conductors().value(), numberLayers, thicknessLayers));
                     }
                 }
             }
@@ -151,7 +151,7 @@ MagneticWrapper MasWrapper::expand_magnetic(MagneticWrapper magnetic) {
     return magnetic;
 }
 
-InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper inputs) {
+Inputs Mas::expand_inputs(Magnetic magnetic, Inputs inputs) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
 
@@ -166,13 +166,13 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
                 auto current = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[excitationIndex].get_current().value();
                 if (current.get_waveform()) {
                     if (current.get_processed()) {
-                        auto waveform = InputsWrapper::create_waveform(current.get_processed().value(), frequency);
-                        current.set_waveform(InputsWrapper::create_waveform(current.get_processed().value(), frequency));
+                        auto waveform = Inputs::create_waveform(current.get_processed().value(), frequency);
+                        current.set_waveform(Inputs::create_waveform(current.get_processed().value(), frequency));
                     }
                     else if (current.get_harmonics()) {
                         auto harmonics = current.get_harmonics().value();
-                        auto waveform = InputsWrapper::reconstruct_signal(harmonics, frequency);
-                        auto processed = InputsWrapper::calculate_processed_data(harmonics, waveform, true);
+                        auto waveform = Inputs::reconstruct_signal(harmonics, frequency);
+                        auto processed = Inputs::calculate_processed_data(harmonics, waveform, true);
                         current.set_processed(processed);
                         current.set_waveform(waveform);
                     }
@@ -180,13 +180,13 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
 
                 auto waveform = current.get_waveform().value();
                 if (!current.get_harmonics()) {
-                    auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
-                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, frequency);
+                    auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledCurrentWaveform, frequency);
                     current.set_harmonics(harmonics);
                 }
 
                 auto harmonics = current.get_harmonics().value();
-                auto processed = InputsWrapper::calculate_processed_data(harmonics, waveform, true);
+                auto processed = Inputs::calculate_processed_data(harmonics, waveform, true);
                 current.set_processed(processed);
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[excitationIndex].set_current(current);
             }
@@ -195,13 +195,13 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
                 auto voltage = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[excitationIndex].get_voltage().value();
                 if (voltage.get_waveform()) {
                     if (voltage.get_processed()) {
-                        auto waveform = InputsWrapper::create_waveform(voltage.get_processed().value(), frequency);
-                        voltage.set_waveform(InputsWrapper::create_waveform(voltage.get_processed().value(), frequency));
+                        auto waveform = Inputs::create_waveform(voltage.get_processed().value(), frequency);
+                        voltage.set_waveform(Inputs::create_waveform(voltage.get_processed().value(), frequency));
                     }
                     else if (voltage.get_harmonics()) {
                         auto harmonics = voltage.get_harmonics().value();
-                        auto waveform = InputsWrapper::reconstruct_signal(harmonics, frequency);
-                        auto processed = InputsWrapper::calculate_processed_data(harmonics, waveform, true);
+                        auto waveform = Inputs::reconstruct_signal(harmonics, frequency);
+                        auto processed = Inputs::calculate_processed_data(harmonics, waveform, true);
                         voltage.set_processed(processed);
                         voltage.set_waveform(waveform);
                     }
@@ -209,13 +209,13 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
 
                 auto waveform = voltage.get_waveform().value();
                 if (!voltage.get_harmonics()) {
-                    auto sampledvoltageWaveform = InputsWrapper::calculate_sampled_waveform(waveform, frequency);
-                    auto harmonics = InputsWrapper::calculate_harmonics_data(sampledvoltageWaveform, frequency);
+                    auto sampledvoltageWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledvoltageWaveform, frequency);
                     voltage.set_harmonics(harmonics);
                 }
 
                 auto harmonics = voltage.get_harmonics().value();
-                auto processed = InputsWrapper::calculate_processed_data(harmonics, waveform, true);
+                auto processed = Inputs::calculate_processed_data(harmonics, waveform, true);
                 voltage.set_processed(processed);
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[excitationIndex].set_voltage(voltage);
             }
@@ -223,7 +223,7 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
             MagnetizingInductance magnetizingInductanceObj;
             double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
 
-            auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
 
             // if (excitation.get_voltage()) {
             //     if (excitation.get_voltage().value().get_processed()) {
@@ -241,19 +241,19 @@ InputsWrapper MasWrapper::expand_inputs(MagneticWrapper magnetic, InputsWrapper 
                 auto turnRatio = coil.get_number_turns(0) / coil.get_number_turns(1);
 
                 OperatingPointExcitation secondaryExcitation(primaryExcitation);
-                auto currentSignalDescriptorProcessed = InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
-                auto voltageSignalDescriptorProcessed = InputsWrapper::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
+                auto currentSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
+                auto voltageSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
 
-                auto voltageSignalDescriptor = InputsWrapper::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
-                auto currentSignalDescriptor = InputsWrapper::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
+                auto voltageSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
+                auto currentSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
 
-                auto voltageSampledWaveform = InputsWrapper::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), frequency);
-                voltageSignalDescriptor.set_harmonics(InputsWrapper::calculate_harmonics_data(voltageSampledWaveform, frequency));
-                voltageSignalDescriptor.set_processed(InputsWrapper::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
+                auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), frequency);
+                voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSampledWaveform, frequency));
+                voltageSignalDescriptor.set_processed(Inputs::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
 
-                auto currentSampledWaveform = InputsWrapper::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), frequency);
-                currentSignalDescriptor.set_harmonics(InputsWrapper::calculate_harmonics_data(currentSampledWaveform, frequency));
-                currentSignalDescriptor.set_processed(InputsWrapper::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
+                auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), frequency);
+                currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSampledWaveform, frequency));
+                currentSignalDescriptor.set_processed(Inputs::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
 
                 secondaryExcitation.set_voltage(voltageSignalDescriptor);
                 secondaryExcitation.set_current(currentSignalDescriptor);

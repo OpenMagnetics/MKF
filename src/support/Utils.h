@@ -1,11 +1,9 @@
 #pragma once
-#include "constructive_models/WireWrapper.h"
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/BobbinWrapper.h"
-#include "constructive_models/MasWrapper.h"
-#include "constructive_models/InsulationMaterialWrapper.h"
-
-#include "Constants.h"
+#include "constructive_models/Wire.h"
+#include "constructive_models/Core.h"
+#include "constructive_models/Bobbin.h"
+#include "constructive_models/Mas.h"
+#include "constructive_models/InsulationMaterial.h"
 
 #include <MAS.hpp>
 #include <filesystem>
@@ -16,15 +14,24 @@
 #include "spline.h"
 #include <exception>
 
-extern std::vector<OpenMagnetics::CoreWrapper> coreDatabase;
-extern std::map<std::string, OpenMagnetics::CoreMaterial> coreMaterialDatabase;
-extern std::map<std::string, OpenMagnetics::CoreShape> coreShapeDatabase;
-extern std::vector<OpenMagnetics::CoreShapeFamily> coreShapeFamiliesInDatabase;
-extern std::map<std::string, OpenMagnetics::WireWrapper> wireDatabase;
-extern std::map<std::string, OpenMagnetics::BobbinWrapper> bobbinDatabase;
-extern std::map<std::string, OpenMagnetics::InsulationMaterialWrapper> insulationMaterialDatabase;
-extern std::map<std::string, OpenMagnetics::WireMaterial> wireMaterialDatabase;
+#include "Defaults.h"
+#include "Constants.h"
+#include "support/Settings.h"
+#include "Definitions.h"
+
+
+extern OpenMagnetics::Defaults defaults;
 extern OpenMagnetics::Constants constants;
+extern OpenMagnetics::Settings *settings;
+
+extern std::vector<OpenMagnetics::Core> coreDatabase;
+extern std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
+extern std::map<std::string, MAS::CoreShape> coreShapeDatabase;
+extern std::vector<MAS::CoreShapeFamily> coreShapeFamiliesInDatabase;
+extern std::map<std::string, OpenMagnetics::Wire> wireDatabase;
+extern std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
+extern std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
+extern std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
 
 extern tk::spline bobbinFillingFactorInterpWidth;
 extern tk::spline bobbinFillingFactorInterpHeight;
@@ -58,105 +65,21 @@ extern std::map<std::string, double> maxWireConductingDimensions;
 extern std::map<std::string, int64_t> minLitzWireNumberConductors;
 extern std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
-class missing_material_data_exception : public std::exception {
-private:
-    std::string message;
-
-public:
-    missing_material_data_exception(std::string msg)
-        : message(msg)
-    {
-    }
-
-    const char* what() const throw()
-    {
-        return message.c_str();
-    }
-};
-
-enum class DimensionalValues : int {
-    MAXIMUM,
-    NOMINAL,
-    MINIMUM
-};
-enum class GappingType : int {
-    GROUND,
-    SPACER,
-    RESIDUAL,
-    DISTRIBUTED
-};
-
-enum class OrderedIsolationSide : int { 
-    PRIMARY,
-    SECONDARY,
-    TERTIARY,
-    QUATERNARY,
-    QUINARY,
-    SENARY,
-    SEPTENARY,
-    OCTONARY,
-    NONARY,
-    DENARY,
-    UNDENARY,
-    DUODENARY
-};
-
-
-class Curve2D {
-
-    std::vector<double> xPoints;
-    std::vector<double> yPoints;
-    std::string title;
-
-    public: 
-        Curve2D() = default;
-        virtual ~Curve2D() = default;
-        Curve2D(std::vector<double> xPoints, std::vector<double> yPoints, std::string title) : xPoints(xPoints), yPoints(yPoints), title(title){}
-
-        const std::vector<double> & get_x_points() const { return xPoints; }
-        std::vector<double> & get_mutable_x_points() { return xPoints; }
-        void set_x_points(const std::vector<double> & value) { this->xPoints = value; }
-
-        const std::vector<double> & get_y_points() const { return yPoints; }
-        std::vector<double> & get_mutable_y_points() { return yPoints; }
-        void set_y_points(const std::vector<double> & value) { this->yPoints = value; }
-
-        const std::string & get_title() const { return title; }
-        std::string & get_mutable_title() { return title; }
-        void set_title(const std::string & value) { this->title = value; }
-};
-                
-void from_json(const json & j, Curve2D & x);
-void to_json(json & j, const Curve2D & x);
-
-inline void from_json(const json & j, Curve2D& x) {
-    x.set_x_points(j.at("xPoints").get<std::vector<double>>());
-    x.set_y_points(j.at("yPoints").get<std::vector<double>>());
-    x.set_title(j.at("title").get<std::string>());
-}
-
-inline void to_json(json & j, const Curve2D & x) {
-    j = json::object();
-    j["xPoints"] = x.get_x_points();
-    j["yPoints"] = x.get_y_points();
-    j["title"] = x.get_title();
-}
-
-
-double resolve_dimensional_values(OpenMagnetics::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+double resolve_dimensional_values(Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 bool check_requirement(DimensionWithTolerance requirement, double value);
-OpenMagnetics::CoreWrapper find_core_by_name(std::string name);
-OpenMagnetics::CoreMaterial find_core_material_by_name(std::string name);
-OpenMagnetics::CoreShape find_core_shape_by_name(std::string name);
-OpenMagnetics::WireWrapper find_wire_by_name(std::string name);
-OpenMagnetics::WireWrapper find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true);
-OpenMagnetics::BobbinWrapper find_bobbin_by_name(std::string name);
-OpenMagnetics::InsulationMaterialWrapper find_insulation_material_by_name(std::string name);
-OpenMagnetics::WireMaterial find_wire_material_by_name(std::string name);
-OpenMagnetics::CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter);
+Core find_core_by_name(std::string name);
+CoreMaterial find_core_material_by_name(std::string name);
+CoreShape find_core_shape_by_name(std::string name);
+Wire find_wire_by_name(std::string name);
+Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt, bool obfuscate=true);
+Bobbin find_bobbin_by_name(std::string name);
+InsulationMaterial find_insulation_material_by_name(std::string name);
+WireMaterial find_wire_material_by_name(std::string name);
+CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter);
 
 
 void clear_loaded_cores();
@@ -176,18 +99,18 @@ std::vector<std::string> get_shape_names(CoreShapeFamily family);
 std::vector<std::string> get_shape_names();
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype=std::nullopt);
 std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family);
-std::vector<OpenMagnetics::CoreShapeFamily> get_shape_families();
+std::vector<CoreShapeFamily> get_shape_families();
 std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();
 std::vector<std::string> get_insulation_material_names();
 std::vector<std::string> get_wire_material_names();
 
-std::vector<OpenMagnetics::CoreMaterial> get_materials(std::optional<std::string> manufacturer);
-std::vector<OpenMagnetics::CoreShape> get_shapes(bool includeToroidal = true);
-std::vector<OpenMagnetics::WireWrapper> get_wires(std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt);
-std::vector<OpenMagnetics::BobbinWrapper> get_bobbins();
-std::vector<OpenMagnetics::InsulationMaterialWrapper> get_insulation_materials();
-std::vector<OpenMagnetics::WireMaterial> get_wire_materials();
+std::vector<CoreMaterial> get_materials(std::optional<std::string> manufacturer);
+std::vector<CoreShape> get_shapes(bool includeToroidal = true);
+std::vector<Wire> get_wires(std::optional<WireType> wireType=std::nullopt, std::optional<WireStandard> wireStandard=std::nullopt);
+std::vector<Bobbin> get_bobbins();
+std::vector<InsulationMaterial> get_insulation_materials();
+std::vector<WireMaterial> get_wire_materials();
 
 template<int decimals> double roundFloat(double value);
 
@@ -236,7 +159,8 @@ double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
-MasWrapper mas_autocomplete(MasWrapper mas, bool simulate = true);
-MagneticWrapper magnetic_autocomplete(MagneticWrapper magnetic);
+Mas mas_autocomplete(Mas mas, bool simulate = true);
+Magnetic magnetic_autocomplete(Magnetic magnetic);
 
 } // namespace OpenMagnetics
+

@@ -2,8 +2,8 @@
 #include "Constants.h"
 #include "MAS.hpp"
 #include "physical_models/Resistivity.h"
-#include "constructive_models/CoilWrapper.h"
-#include "constructive_models/WireWrapper.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Wire.h"
 #include "support/Utils.h"
 #include "Models.h"
 #include "Defaults.h"
@@ -18,6 +18,8 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 
@@ -25,12 +27,12 @@ class WindingSkinEffectLossesModel {
     private:
     protected:
         std::map<size_t, std::map<double, std::map<double, double>>> _skinFactorPerWirePerFrequencyPerTemperature;
-        std::optional<double> try_get_skin_factor(WireWrapper wire,  double frequency, double temperature);
-        void set_skin_factor(WireWrapper wire, double frequency, double temperature, double skinFactor);
+        std::optional<double> try_get_skin_factor(Wire wire,  double frequency, double temperature);
+        void set_skin_factor(Wire wire, double frequency, double temperature, double skinFactor);
 
     public:
         std::string methodName = "Default";
-        virtual double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0) = 0;
+        virtual double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0) = 0;
         static std::shared_ptr<WindingSkinEffectLossesModel> factory(WindingSkinEffectLossesModels modelName);
 };
 
@@ -41,9 +43,9 @@ class WindingSkinEffectLosses {
     public:
       static std::shared_ptr<WindingSkinEffectLossesModel> get_model(WireType wireType);
       static double calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature);
-      static double calculate_skin_depth(WireWrapper wire, double frequency, double temperature);
-      static WindingLossesOutput calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
-      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider = 1, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
+      static double calculate_skin_depth(Wire wire, double frequency, double temperature);
+      static WindingLossesOutput calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
+      static std::pair<double, std::vector<std::pair<double, double>>> calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider = 1, double windingLossesHarmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold);
 
 };
 
@@ -60,9 +62,9 @@ class WindingSkinEffectLosses {
 class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
   public:
     std::string methodName = "Wojda";
-    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
-    double calculate_penetration_ratio(const WireWrapper& wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_penetration_ratio(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 
 };
 
@@ -71,15 +73,15 @@ class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 // https://sci-hub.wf/10.1109/tpel.2011.2143729
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // Based on The Ac Resistance Of Rectangular Conductors by Alan Payne
 // https://www.researchgate.net/publication/351307928_THE_AC_RESISTANCE_OF_RECTANGULAR_CONDUCTORS
 class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // // Based on An Improved Calculation of Proximity-Effect Loss in High-Frequency Windings of Round Conductors by Xi Nan
@@ -102,22 +104,22 @@ class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
 // https://sci-hub.wf/10.1109/63.712319
 class WindingSkinEffectLossesKutkutModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // Based on Two-Dimensional Skin Effect in Power Foils for High-Frequency Applications by Ashraf W. Lotfi
 // https://sci-hub.wf/https://ieeexplore.ieee.org/document/364775
 class WindingSkinEffectLossesLotfiModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_turn_losses(WireWrapper wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_turn_losses(Wire wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
 // https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9485268
 class WindingSkinEffectLossesFerreiraModel : public WindingSkinEffectLossesModel {
   public:
-    double calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
+    double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
 // // Based on A New Model for the Determination of Copper Losses in Transformer Windings with Arbitrary Conductor Distribution under High Frequency Sinusoidal Excitation by G. S. Dimitrakakis

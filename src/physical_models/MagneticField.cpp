@@ -1,6 +1,6 @@
 #include "physical_models/MagneticField.h"
-#include "constructive_models/WireWrapper.h"
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Wire.h"
+#include "constructive_models/Magnetic.h"
 #include "support/CoilMesher.h"
 #include "Models.h"
 #include "physical_models/Reluctance.h"
@@ -27,8 +27,8 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     std::vector<double> magneticFluxData;
     auto compressedMagnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
 
-    if (InputsWrapper::is_waveform_sampled(compressedMagnetizingCurrentWaveform)) {
-        compressedMagnetizingCurrentWaveform = InputsWrapper::compress_waveform(compressedMagnetizingCurrentWaveform);
+    if (Inputs::is_waveform_sampled(compressedMagnetizingCurrentWaveform)) {
+        compressedMagnetizingCurrentWaveform = Inputs::compress_waveform(compressedMagnetizingCurrentWaveform);
     }
 
     for (auto& datum : compressedMagnetizingCurrentWaveform.get_data()) {
@@ -75,7 +75,7 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor
         magneticFluxDensity.set_harmonics(harmonics);
     }
     magneticFluxDensity.set_processed(
-        InputsWrapper::calculate_basic_processed_data(magneticFluxDensityWaveform));
+        Inputs::calculate_basic_processed_data(magneticFluxDensityWaveform));
 
     return magneticFluxDensity;
 }
@@ -106,7 +106,7 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescript
         magneticFieldStrength.set_harmonics(harmonics);
     }
     magneticFieldStrength.set_processed(
-        InputsWrapper::calculate_basic_processed_data(magneticFieldStrengthWaveform));
+        Inputs::calculate_basic_processed_data(magneticFieldStrengthWaveform));
 
     return magneticFieldStrength;
 }
@@ -138,7 +138,7 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
     return factory(defaults.magneticFieldStrengthModelDefault);
 }
 
-bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, WireWrapper inducingWire) {
+bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, Wire inducingWire) {
     double distanceX = fabs(inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0]);
     double distanceY = fabs(inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1]);
     if (inducingWire.get_type() == WireType::ROUND || inducingWire.get_type() == WireType::LITZ) {
@@ -155,7 +155,7 @@ bool is_inside_inducing_turns(FieldPoint inducingFieldPoint, FieldPoint inducedF
     return false;
 }
 
-bool is_inside_core(FieldPoint inducedFieldPoint, CoreWrapper core) {
+bool is_inside_core(FieldPoint inducedFieldPoint, Core core) {
     if (core.get_shape_family() != CoreShapeFamily::T) {
         return false;
     }
@@ -173,7 +173,7 @@ bool is_inside_core(FieldPoint inducedFieldPoint, CoreWrapper core) {
     return true;
 }
 
-double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWrapper magnetic, double frequency) {
+double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, Magnetic magnetic, double frequency) {
     auto numberTurns = magnetic.get_mutable_coil().get_number_turns(0);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     OpenMagnetics::InitialPermeability initial_permeability;
@@ -188,7 +188,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
         throw std::runtime_error("Magnetizing current is missing waveform");
     }
     if (!magnetizingCurrent.get_waveform()->get_time()) {
-        magnetizingCurrent = InputsWrapper::standardize_waveform(magnetizingCurrent, frequency);
+        magnetizingCurrent = Inputs::standardize_waveform(magnetizingCurrent, frequency);
     }
     auto magneticFlux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, reluctance, numberTurns);
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area());
@@ -197,7 +197,7 @@ double get_magnetic_field_strength_gap(OperatingPoint operatingPoint, MagneticWr
     return magneticFieldStrengthGap;
 }
 
-WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings->get_magnetic_field_include_fringing();
     CoilMesher coilMesher; 
@@ -258,8 +258,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
 
                 auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                auto includeDcCurrent = InputsWrapper::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
+                auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
                                                                                        resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
                                                                                        true, includeDcCurrent);
 
@@ -269,7 +269,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
                 auto excitations = operatingPoint.get_excitations_per_winding();
                 auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
-                auto processed = InputsWrapper::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+                auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
                 magnetizingCurrent.set_processed(processed);
                 excitations[0].set_magnetizing_current(magnetizingCurrent);
                 operatingPoint.set_excitations_per_winding(excitations);
@@ -312,8 +312,8 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                 if (includeFringing && inducedFields[harmonicIndex].get_frequency() == operatingPoint.get_excitations_per_winding()[0].get_frequency()) {
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
                         auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                        auto includeDcCurrent = InputsWrapper::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                        auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                        auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
+                        auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
                                                                                                resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
                                                                                                true, includeDcCurrent);
 
@@ -323,7 +323,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_processed()) {
                         auto excitations = operatingPoint.get_excitations_per_winding();
                         auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
-                        auto processed = InputsWrapper::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
+                        auto processed = Inputs::calculate_basic_processed_data(magnetizingCurrent.get_waveform().value());
                         magnetizingCurrent.set_processed(processed);
                         excitations[0].set_magnetizing_current(magnetizingCurrent);
                         operatingPoint.set_excitations_per_winding(excitations);
@@ -344,7 +344,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
             }
 
             for (auto& inducingFieldPoint : inducingFields[harmonicIndex].get_data()) {
-                std::optional<WireWrapper> inducingWire;
+                std::optional<Wire> inducingWire;
                 if (inducingFieldPoint.get_turn_index()) {
                     auto windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turns[inducingFieldPoint.get_turn_index().value()].get_winding());
                     inducingWire = wirePerWinding[windingIndex];
@@ -388,7 +388,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     return windingWindowMagneticStrengthFieldOutput;
 }
 
-ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire) {
+ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
     double Hx;
     double Hy;
     if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {
@@ -533,7 +533,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
     return complexFieldPoint;   
 }
 
-ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<WireWrapper> inducingWire) {
+ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
     double Hx;
     double Hy;
     if (!inducingWire || inducingWire.value().get_type() == WireType::ROUND || inducingWire.value().get_type() == WireType::LITZ) {

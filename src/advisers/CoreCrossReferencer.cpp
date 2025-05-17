@@ -1,10 +1,8 @@
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreCrossReferencer.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
-#include "Defaults.h"
-#include "support/Settings.h"
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
@@ -96,7 +94,7 @@ std::map<std::string, std::map<CoreCrossReferencer::CoreCrossReferencerFilters, 
     return swappedScoredValues;
 }
 
-void normalize_scoring(std::vector<std::pair<CoreWrapper, double>>* rankedCores, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {
+void normalize_scoring(std::vector<std::pair<Core, double>>* rankedCores, std::vector<double>* newScoring, double weight, std::map<std::string, bool> filterConfiguration) {
     double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
     double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
 
@@ -133,22 +131,22 @@ void normalize_scoring(std::vector<std::pair<CoreWrapper, double>>* rankedCores,
             (*rankedCores)[i].second = (*rankedCores)[i].second + 1;
         }
     }
-    sort((*rankedCores).begin(), (*rankedCores).end(), [](std::pair<CoreWrapper, double>& b1, std::pair<CoreWrapper, double>& b2) {
+    sort((*rankedCores).begin(), (*rankedCores).end(), [](std::pair<Core, double>& b1, std::pair<Core, double>& b2) {
         return b1.second > b2.second;
     });
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterPermeance::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterPermeance::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
     if (models.find("gapReluctance") == models.end()) {
-        models["gapReluctance"] = magic_enum::enum_name(Defaults().reluctanceModelDefault);
+        models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
     }
 
     std::vector<double> newScoring;
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(models);
-    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     double referencePermeance = 0;
 
     if (inputs.get_operating_points()[0].get_excitations_per_winding().size() > 0) {
@@ -165,7 +163,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
-        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        Core core = (*unfilteredCores)[coreIndex].first;
 
         if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE)) {
             if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::PERMEANCE].contains(core.get_name().value())) {
@@ -221,13 +219,13 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterWindingWindowArea::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterWindingWindowArea::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
 
     std::vector<double> newScoring;
-    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     if (!referenceCore.get_winding_windows()[0].get_area()) {
         throw std::runtime_error("Winding window is missing area");
     }
@@ -236,7 +234,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
-        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        Core core = (*unfilteredCores)[coreIndex].first;
 
         if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA)) {
             if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::WINDING_WINDOW_AREA].contains(core.get_name().value())) {
@@ -285,13 +283,13 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterEffectiveArea::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffectiveArea::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
 
     std::vector<double> newScoring;
-    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     if (!referenceCore.get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
@@ -300,7 +298,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
-        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        Core core = (*unfilteredCores)[coreIndex].first;
 
         if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA)) {
             if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::EFFECTIVE_AREA].contains(core.get_name().value())) {
@@ -349,13 +347,13 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterEnvelopingVolume::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEnvelopingVolume::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
 
     std::vector<double> newScoring;
-    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     double referenceDepth = referenceCore.get_depth();
     double referenceHeight = referenceCore.get_height();
     double referenceWidth = referenceCore.get_width();
@@ -363,7 +361,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
-        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        Core core = (*unfilteredCores)[coreIndex].first;
         if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME)) {
             if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME].contains(core.get_name().value())) {
                 if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::ENVELOPING_VOLUME][core.get_name().value()]) {
@@ -410,10 +408,9 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::calculate_average_core_losses_and_magnetic_flux_density(CoreWrapper core, int64_t numberTurns, InputsWrapper inputs, std::map<std::string, std::string> models) {
-    auto defaults = Defaults();
+std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::calculate_average_core_losses_and_magnetic_flux_density(Core core, int64_t numberTurns, Inputs inputs, std::map<std::string, std::string> models) {
     if (models.find("coreLosses") == models.end()) {
-        models["coreLosses"] = magic_enum::enum_name(Defaults().reluctanceModelDefault);
+        models["coreLosses"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
     }
 
     auto temperature = inputs.get_maximum_temperature();
@@ -490,7 +487,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
                 magneticFluxDensityProcessed.set_peak_to_peak(magneticFluxDensityPeak * 2);
                 magneticFluxDensity.set_processed(magneticFluxDensityProcessed);
                 for (auto frequency : _frequencies) {
-                    magneticFluxDensity.set_waveform(InputsWrapper::create_waveform(magneticFluxDensityProcessed, frequency));
+                    magneticFluxDensity.set_waveform(Inputs::create_waveform(magneticFluxDensityProcessed, frequency));
                     excitation.set_frequency(frequency);
                     excitation.set_magnetic_flux_density(magneticFluxDensity);
                     double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(core.resolve_material(), excitation, temperature);
@@ -508,7 +505,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
     }
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFilterCoreLosses::filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<std::string, std::string> models, double weight, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCoreLosses::filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight, double limit) {
     if (weight <= 0) {
         return *unfilteredCores;
     }
@@ -527,11 +524,11 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     magneticFluxDensityProcessed.set_offset(0);
     magneticFluxDensityProcessed.set_duty_cycle(0.5);
 
-    std::vector<std::pair<CoreWrapper, double>> filteredCoresWithScoring;
+    std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     std::list<size_t> listOfIndexesToErase;
 
     for (size_t coreIndex = 0; coreIndex < (*unfilteredCores).size(); ++coreIndex){
-        CoreWrapper core = (*unfilteredCores)[coreIndex].first;
+        Core core = (*unfilteredCores)[coreIndex].first;
         if ((*_validScorings).contains(CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES)) {
             if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES].contains(core.get_name().value())) {
                 if ((*_validScorings)[CoreCrossReferencer::CoreCrossReferencerFilters::CORE_LOSSES][core.get_name().value()]) {
@@ -585,20 +582,18 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::MagneticCoreFil
     return filteredCoresWithScoring;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, size_t maximumNumberResults) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, size_t maximumNumberResults) {
     return get_cross_referenced_core(referenceCore, referenceNumberTurns, inputs, _weights, maximumNumberResults);
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto defaults = Defaults();
+std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
     _weights = weights;
 
     if (coreDatabase.empty()) {
         load_cores();
     }
 
-    std::vector<std::pair<CoreWrapper, double>> cores;
+    std::vector<std::pair<Core, double>> cores;
     std::string referenceShapeName = referenceCore.get_shape_name();
     std::string referenceMaterialName = referenceCore.get_material_name();
 
@@ -635,7 +630,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
     }
 
     double limit = 0;
-    std::vector<std::pair<CoreWrapper, double>> filteredCores;
+    std::vector<std::pair<Core, double>> filteredCores;
 
     while (limit <= _limit && filteredCores.size() < maximumNumberResults) {
         if (limit < 1) {
@@ -653,7 +648,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::get_cross_refer
     return filteredCores;
 }
 
-std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(std::vector<std::pair<CoreWrapper, double>>* cores, CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit) {
+std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vector<std::pair<Core, double>>* cores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit) {
     MagneticCoreFilterPermeance filterPermeance;
     MagneticCoreFilterCoreLosses filterVolumetricLosses;
     MagneticCoreFilterWindingWindowArea filterEffectiveArea;
@@ -681,7 +676,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
     filterEnvelopingVolume.set_scored_value(&_scoredValues);
     filterEnvelopingVolume.set_filter_configuration(&_filterConfiguration);
 
-    std::vector<std::pair<CoreWrapper, double>> rankedCores = *cores;
+    std::vector<std::pair<Core, double>> rankedCores = *cores;
 
     magic_enum::enum_for_each<CoreCrossReferencerFilters>([&] (auto val) {
         CoreCrossReferencerFilters filter = val;
@@ -704,7 +699,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
     });
 
     if (rankedCores.size() > (1.1 * maximumNumberResults)) {
-        rankedCores = std::vector<std::pair<CoreWrapper, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - (1.1 * maximumNumberResults)));
+        rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - (1.1 * maximumNumberResults)));
     }
 
     // We leave core losses for the last one, as it is the most computationally costly
@@ -712,7 +707,7 @@ std::vector<std::pair<CoreWrapper, double>> CoreCrossReferencer::apply_filters(s
         logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + std::string{magic_enum::enum_name(CoreCrossReferencerFilters::CORE_LOSSES)} + ".");
 
     if (rankedCores.size() > maximumNumberResults) {
-        rankedCores = std::vector<std::pair<CoreWrapper, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - maximumNumberResults));
+        rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - maximumNumberResults));
     }
 
     return rankedCores;

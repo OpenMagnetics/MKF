@@ -13,12 +13,12 @@
 
 namespace OpenMagnetics {
 
-double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const WireWrapper& wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const Wire& wire, double temperature) {
     double wireLength = turn.get_length();
     return calculate_dc_resistance(wireLength, wire, temperature);
 }
 
-double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const WireWrapper& wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const Wire& wire, double temperature) {
     if (std::isnan(wireLength)) {
         throw std::runtime_error("NaN found in wireLength value");
     }
@@ -26,7 +26,7 @@ double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const Wire
     return calculate_dc_resistance_per_meter(wire, temperature) * wireLength;
 }
 
-double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, double temperature) {
+double WindingOhmicLosses::calculate_dc_resistance_per_meter(Wire wire, double temperature) {
 
     WireMaterial wireMaterial = wire.resolve_material();
 
@@ -46,7 +46,7 @@ double WindingOhmicLosses::calculate_dc_resistance_per_meter(WireWrapper wire, d
     return dcResistancePerMeter;
 };
 
-double WindingOhmicLosses::calculate_effective_resistance_per_meter(WireWrapper wire, double frequency, double temperature) {
+double WindingOhmicLosses::calculate_effective_resistance_per_meter(Wire wire, double frequency, double temperature) {
     WireMaterial wireMaterial = wire.resolve_material();
 
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
@@ -58,7 +58,7 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(WireWrapper 
     return dcResistancePerMeter;
 };
 
-std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(CoilWrapper coil, double temperature) {
+std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil coil, double temperature) {
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Missing turns description");
     }
@@ -90,7 +90,7 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
     return dcResistancePerWinding;
 }
 
-WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil, OperatingPoint operatingPoint, double temperature) {
+WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature) {
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Missing turns description");
     }
@@ -186,7 +186,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(CoilWrapper coil,
     return result;
 }
 
-double WindingOhmicLosses::calculate_ohmic_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature) {
+double WindingOhmicLosses::calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature) {
 
     double dcResistancePerMeter = calculate_dc_resistance_per_meter(wire, temperature);
     if (!current.get_processed()) {

@@ -189,7 +189,7 @@ namespace OpenMagnetics {
             Processed currentProcessed;
             Processed voltageProcessed;
 
-            currentWaveform = InputsWrapper::create_waveform(WaveformLabel::FLYBACK_PRIMARY, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryCurrentOffset, deadTime);
+            currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryCurrentOffset, deadTime);
             currentProcessed.set_label(WaveformLabel::FLYBACK_PRIMARY);
             currentProcessed.set_peak_to_peak(primaryCurrentPeakToPeak);
             currentProcessed.set_peak(primaryCurrentOffset + primaryCurrentPeakToPeak / 2);
@@ -204,14 +204,14 @@ namespace OpenMagnetics {
             voltageProcessed.set_dead_time(deadTime);
             switch (mode) {
                 case Flyback::Modes::ContinuousConductionMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
                     break;
                 }
                 case Flyback::Modes::QuasiResonantMode:
                 case Flyback::Modes::BoundaryModeOperation:
                 case Flyback::Modes::DiscontinuousConductionMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     voltageProcessed.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
                     break;
                 }
@@ -220,24 +220,24 @@ namespace OpenMagnetics {
             excitation.set_frequency(switchingFrequency);
             SignalDescriptor current;
             current.set_waveform(currentWaveform);
-            currentProcessed = InputsWrapper::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
-            auto sampledCurrentWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            auto currentHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
+            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
+            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
             current.set_processed(currentProcessed);
             current.set_harmonics(currentHarmonics);
             excitation.set_current(current);
             SignalDescriptor voltage;
             voltage.set_waveform(voltageWaveform);
-            voltageProcessed = InputsWrapper::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
-            auto sampledVoltageWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-            auto voltageHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
+            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
+            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
             voltage.set_processed(voltageProcessed);
             voltage.set_harmonics(voltageHarmonics);
             excitation.set_voltage(voltage);
             json isolationSideJson;
             to_json(isolationSideJson, get_isolation_side_from_index(0));
             excitation.set_name(isolationSideJson);
-            excitation = InputsWrapper::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
+            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
 
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
@@ -274,8 +274,8 @@ namespace OpenMagnetics {
 
             switch (mode) {
                 case Flyback::Modes::ContinuousConductionMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
-                    currentWaveform = InputsWrapper::create_waveform(WaveformLabel::FLYBACK_SECONDARY, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     voltageProcessed.set_label(WaveformLabel::SECONDARY_RECTANGULAR);
                     currentProcessed.set_label(WaveformLabel::FLYBACK_SECONDARY);
                     break;
@@ -283,8 +283,8 @@ namespace OpenMagnetics {
                 case Flyback::Modes::QuasiResonantMode:
                 case Flyback::Modes::BoundaryModeOperation:
                 case Flyback::Modes::DiscontinuousConductionMode: {
-                    voltageWaveform = InputsWrapper::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
-                    currentWaveform = InputsWrapper::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
+                    voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                    currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     voltageProcessed.set_label(WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);
                     currentProcessed.set_label(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
                     break;
@@ -294,24 +294,24 @@ namespace OpenMagnetics {
             excitation.set_frequency(switchingFrequency);
             SignalDescriptor current;
             current.set_waveform(currentWaveform);
-            currentProcessed = InputsWrapper::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
-            auto sampledCurrentWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            auto currentHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
+            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
+            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
             current.set_processed(currentProcessed);
             current.set_harmonics(currentHarmonics);
             excitation.set_current(current);
             SignalDescriptor voltage;
             voltage.set_waveform(voltageWaveform);
-            voltageProcessed = InputsWrapper::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
-            auto sampledVoltageWaveform = OpenMagnetics::InputsWrapper::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-            auto voltageHarmonics = OpenMagnetics::InputsWrapper::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
+            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
+            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
             voltage.set_processed(voltageProcessed);
             voltage.set_harmonics(voltageHarmonics);
             excitation.set_voltage(voltage);
             json isolationSideJson;
             to_json(isolationSideJson, get_isolation_side_from_index(secondaryIndex + 1));
             excitation.set_name(isolationSideJson);
-            excitation = InputsWrapper::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
+            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
@@ -374,10 +374,10 @@ namespace OpenMagnetics {
         return true;
     }
 
-    InputsWrapper Flyback::process() {
+    Inputs Flyback::process() {
         Flyback::run_checks(_assertErrors);
 
-        InputsWrapper inputs;
+        Inputs inputs;
 
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
@@ -505,10 +505,10 @@ namespace OpenMagnetics {
         return inputs;
     }
 
-    InputsWrapper Flyback::process(MagneticWrapper magnetic) {
+    Inputs Flyback::process(Magnetic magnetic) {
         Flyback::run_checks(_assertErrors);
 
-        InputsWrapper inputs;
+        Inputs inputs;
 
         if (!get_maximum_drain_source_voltage() && !get_maximum_duty_cycle()) {
             throw std::invalid_argument("Missing both maximum duty cycle and maximum drain source voltage");
@@ -578,10 +578,10 @@ namespace OpenMagnetics {
         return inputs;
     }
 
-    InputsWrapper AdvancedFlyback::process() {
+    Inputs AdvancedFlyback::process() {
         Flyback::run_checks(_assertErrors);
 
-        InputsWrapper inputs;
+        Inputs inputs;
 
         double maximumNeededInductance = get_desired_inductance();
         std::vector<double> turnsRatios = get_desired_turns_ratios();

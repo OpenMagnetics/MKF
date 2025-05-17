@@ -1,14 +1,16 @@
 #pragma once
 #include "MAS.hpp"
-#include "Defaults.h"
-#include "support/Painter.h"
+#include "Definitions.h"
+#include "Models.h"
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
 class Settings
 {
     protected:
-        Settings() {}
+        Settings();
 
         static Settings* settings_;
         std::string selfFilePath = __FILE__;
@@ -17,7 +19,7 @@ class Settings
         bool _useConcentricCores = true;
 
         bool _inputsTrimHarmonics = true;
-        size_t _inputsNumberPointsSampledWaveforms = Constants().numberPointsSampledWaveforms;
+        size_t _inputsNumberPointsSampledWaveforms;
 
         bool _magnetizingInductanceIncludeAirInductance = false;
 
@@ -35,8 +37,8 @@ class Settings
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
-        int _painterMirroringDimension = Defaults().magneticFieldMirroringDimension;
-        Painter::PainterModes _painterMode = Painter::PainterModes::CONTOUR;
+        int _painterMirroringDimension;
+        PainterModes _painterMode = PainterModes::CONTOUR;
         bool _painterLogarithmicScale = false;
         bool _painterIncludeFringing = true;
         bool _painterDrawSpacer = true;
@@ -63,7 +65,7 @@ class Settings
 
         size_t _magneticFieldNumberPointsX = 25;
         size_t _magneticFieldNumberPointsY = 50;
-        int _magneticFieldMirroringDimension = Defaults().magneticFieldMirroringDimension;
+        int _magneticFieldMirroringDimension;
         bool _magneticFieldIncludeFringing = true;
 
         size_t _coilAdviserMaximumNumberWires = 100;
@@ -80,10 +82,10 @@ class Settings
         bool _wireAdviserAllowRectangularInToroidalCores = false;
 
         bool _harmonicAmplitudeThresholdQuickMode = true;
-        double _harmonicAmplitudeThreshold = Defaults().harmonicAmplitudeThreshold;
+        double _harmonicAmplitudeThreshold;
 
 
-        std::vector<CoreLossesModels> _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        std::vector<CoreLossesModels> _coreLossesModelNames;
 
         bool _verbose = false;
 
@@ -150,8 +152,8 @@ class Settings
         size_t get_painter_number_points_y() const;
         void set_painter_number_points_y(size_t value);
 
-        Painter::PainterModes get_painter_mode() const;
-        void set_painter_mode(Painter::PainterModes value);
+        PainterModes get_painter_mode() const;
+        void set_painter_mode(PainterModes value);
 
         bool get_painter_logarithmic_scale() const;
         void set_painter_logarithmic_scale(bool value);

@@ -9,24 +9,27 @@
 #include <sstream>
 #include <vector>
 
-std::map<OpenMagnetics::CoreTemperatureModels, double> maximumAdmittedErrorTemperature = {
-    {OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK, 0.6}, {OpenMagnetics::CoreTemperatureModels::MANIKTALA, 0.6},
-    {OpenMagnetics::CoreTemperatureModels::TDK, 0.71},         {OpenMagnetics::CoreTemperatureModels::DIXON, 0.59},
-    {OpenMagnetics::CoreTemperatureModels::AMIDON, 0.6},
+using namespace MAS;
+using namespace OpenMagnetics;
+
+std::map<CoreTemperatureModels, double> maximumAdmittedErrorTemperature = {
+    {CoreTemperatureModels::KAZIMIERCZUK, 0.6}, {CoreTemperatureModels::MANIKTALA, 0.6},
+    {CoreTemperatureModels::TDK, 0.71},         {CoreTemperatureModels::DIXON, 0.59},
+    {CoreTemperatureModels::AMIDON, 0.6},
 };
-std::map<OpenMagnetics::CoreTemperatureModels, std::vector<double>> testCoreTemperatureAverageErrors = {};
-std::map<OpenMagnetics::CoreTemperatureModels, double> testCoreTemperatureMaximumErrors = {};
+std::map<CoreTemperatureModels, std::vector<double>> testCoreTemperatureAverageErrors = {};
+std::map<CoreTemperatureModels, double> testCoreTemperatureMaximumErrors = {};
 
 
-double run_test_core_temperature(const OpenMagnetics::CoreTemperatureModels& modelName,
+double run_test_core_temperature(const CoreTemperatureModels& modelName,
                                  const std::string& shapeName,
                                  const std::string& materialName,
                                  double coreLosses,
                                  double ambientTemperature,
                                  double expectedCoreTemperature) {
     double maximumAdmittedErrorTemperatureValue = maximumAdmittedErrorTemperature[modelName];
-    OpenMagnetics::CoreWrapper core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
-    auto coreTemperatureModel = OpenMagnetics::CoreTemperatureModel::factory(modelName);
+    Core core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
+    auto coreTemperatureModel = CoreTemperatureModel::factory(modelName);
 
     auto coreTemperature = coreTemperatureModel->get_core_temperature(core, coreLosses, ambientTemperature);
     double calculatedTemperature = coreTemperature.get_maximum_temperature();
@@ -45,7 +48,7 @@ double run_test_core_temperature(const OpenMagnetics::CoreTemperatureModels& mod
     return error;
 }
 
-void test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_sotiris_47(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "ETD 49";
@@ -71,7 +74,7 @@ void test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels model
     }
 }
 
-void test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_sotiris_46(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "ETD 44";
@@ -97,7 +100,7 @@ void test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels model
     }
 }
 
-void test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_sotiris_40(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "ETD 29";
@@ -123,7 +126,7 @@ void test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels model
     }
 }
 
-void test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_sotiris_37(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "EQ 25/6";
@@ -152,7 +155,7 @@ void test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels model
     }
 }
 
-void test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_miserable_40(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "PQ 28/20";
@@ -178,7 +181,7 @@ void test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels mod
     }
 }
 
-void test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels modelName) {
+void test_core_temperature_miserable_43(CoreTemperatureModels modelName) {
     double meanError = 0;
 
     std::string coreShape = "PQ 26/20";
@@ -206,105 +209,105 @@ void test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels mod
 
 SUITE(KazimierczukCoreTemperatureModel) {
     TEST(Test_Sotiris_47) {
-        test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_sotiris_47(CoreTemperatureModels::KAZIMIERCZUK);
     }
     TEST(Test_Sotiris_46) {
-        test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_sotiris_46(CoreTemperatureModels::KAZIMIERCZUK);
     }
     TEST(Test_Sotiris_40) {
-        test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_sotiris_40(CoreTemperatureModels::KAZIMIERCZUK);
     }
     TEST(Test_Sotiris_37) {
-        test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_sotiris_37(CoreTemperatureModels::KAZIMIERCZUK);
     }
     TEST(Test_Miserable_40) {
-        test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_miserable_40(CoreTemperatureModels::KAZIMIERCZUK);
     }
     TEST(Test_Miserable_43) {
-        test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels::KAZIMIERCZUK);
+        test_core_temperature_miserable_43(CoreTemperatureModels::KAZIMIERCZUK);
     }
 }
 
 SUITE(ManiktalaCoreTemperatureModel) {
     TEST(Test_Sotiris_47) {
-        test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_sotiris_47(CoreTemperatureModels::MANIKTALA);
     }
     TEST(Test_Sotiris_46) {
-        test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_sotiris_46(CoreTemperatureModels::MANIKTALA);
     }
     TEST(Test_Sotiris_40) {
-        test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_sotiris_40(CoreTemperatureModels::MANIKTALA);
     }
     TEST(Test_Sotiris_37) {
-        test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_sotiris_37(CoreTemperatureModels::MANIKTALA);
     }
     TEST(Test_Miserable_40) {
-        test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_miserable_40(CoreTemperatureModels::MANIKTALA);
     }
     TEST(Test_Miserable_43) {
-        test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels::MANIKTALA);
+        test_core_temperature_miserable_43(CoreTemperatureModels::MANIKTALA);
     }
 }
 
 SUITE(TdkCoreTemperatureModel) {
     TEST(Test_Sotiris_47) {
-        test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_sotiris_47(CoreTemperatureModels::TDK);
     }
     TEST(Test_Sotiris_46) {
-        test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_sotiris_46(CoreTemperatureModels::TDK);
     }
     TEST(Test_Sotiris_40) {
-        test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_sotiris_40(CoreTemperatureModels::TDK);
     }
     TEST(Test_Sotiris_37) {
-        test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_sotiris_37(CoreTemperatureModels::TDK);
     }
     TEST(Test_Miserable_40) {
-        test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_miserable_40(CoreTemperatureModels::TDK);
     }
     TEST(Test_Miserable_43) {
-        test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels::TDK);
+        test_core_temperature_miserable_43(CoreTemperatureModels::TDK);
     }
 }
 
 SUITE(DixonCoreTemperatureModel) {
     TEST(Test_Sotiris_47) {
-        test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_sotiris_47(CoreTemperatureModels::DIXON);
     }
     TEST(Test_Sotiris_46) {
-        test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_sotiris_46(CoreTemperatureModels::DIXON);
     }
     TEST(Test_Sotiris_40) {
-        test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_sotiris_40(CoreTemperatureModels::DIXON);
     }
     TEST(Test_Sotiris_37) {
-        test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_sotiris_37(CoreTemperatureModels::DIXON);
     }
     TEST(Test_Miserable_40) {
-        test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_miserable_40(CoreTemperatureModels::DIXON);
     }
     TEST(Test_Miserable_43) {
-        test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels::DIXON);
+        test_core_temperature_miserable_43(CoreTemperatureModels::DIXON);
     }
 }
 
 SUITE(AmidonCoreTemperatureModel) {
     TEST(Test_Sotiris_47) {
-        test_core_temperature_sotiris_47(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_sotiris_47(CoreTemperatureModels::AMIDON);
     }
     TEST(Test_Sotiris_46) {
-        test_core_temperature_sotiris_46(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_sotiris_46(CoreTemperatureModels::AMIDON);
     }
     TEST(Test_Sotiris_40) {
-        test_core_temperature_sotiris_40(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_sotiris_40(CoreTemperatureModels::AMIDON);
     }
     TEST(Test_Sotiris_37) {
-        test_core_temperature_sotiris_37(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_sotiris_37(CoreTemperatureModels::AMIDON);
     }
     TEST(Test_Miserable_40) {
-        test_core_temperature_miserable_40(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_miserable_40(CoreTemperatureModels::AMIDON);
     }
     TEST(Test_Miserable_43) {
-        test_core_temperature_miserable_43(OpenMagnetics::CoreTemperatureModels::AMIDON);
+        test_core_temperature_miserable_43(CoreTemperatureModels::AMIDON);
     }
 }

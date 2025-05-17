@@ -1,8 +1,9 @@
 #pragma once
 #include "Constants.h"
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -60,7 +61,7 @@ public:
     Temperature() = default;
     ~Temperature() = default;
 
-    static double calculate_temperature_from_core_thermal_resistance(CoreWrapper core, double totalLosses);
+    static double calculate_temperature_from_core_thermal_resistance(Core core, double totalLosses);
     static double calculate_temperature_from_core_thermal_resistance(double thermalResistance, double totalLosses);
 };
 

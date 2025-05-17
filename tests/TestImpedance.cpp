@@ -1,3 +1,4 @@
+#include "support/Painter.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
 #include "support/Settings.h"
@@ -5,24 +6,27 @@
 #include "support/Utils.h"
 #include <UnitTest++.h>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 
 SUITE(Impedance) {
     double maximumError = 0.25;
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     TEST(Test_Impedance_0) {
 
         std::vector<int64_t> numberTurns = {54, 54};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 17/10.7/6.8";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 0.15 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -37,26 +41,26 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "80";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
         double expectedSelfResonantFrequency = 1400000;
         settings->_debug = true;
-        auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
+        auto selfResonantFrequency = Impedance().calculate_self_resonant_frequency(magnetic);
         CHECK_CLOSE(expectedSelfResonantFrequency, selfResonantFrequency, expectedSelfResonantFrequency * maximumError);
         settings->_debug = false;
 
         {
-            auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 1000);
+            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 1000);
 
             auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
 
             outFile.append("Test_Impedance_0.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile, false, true);
+            Painter painter(outFile, false, true);
             painter.paint_curve(impedanceSweep, true);
             painter.export_svg();
             CHECK(std::filesystem::exists(outFile));
@@ -68,7 +72,7 @@ SUITE(Impedance) {
             std::string filename = "Test_Impedance_0_magnetic.svg";
             outFile.append(filename);
             settings->set_painter_include_fringing(false);
-            OpenMagnetics::Painter painter(outFile, false);
+            Painter painter(outFile, false);
 
             painter.paint_core(magnetic);
             // painter.paint_bobbin(magnetic);
@@ -82,15 +86,15 @@ SUITE(Impedance) {
         std::vector<int64_t> numberTurns = {110, 110};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 12.5/7.5/5";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 0.15 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -105,7 +109,7 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A07";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -120,19 +124,19 @@ SUITE(Impedance) {
         settings->_debug = true;
 
         for (auto [frequency, expectedImpedance] : expectedImpedances) {
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+            auto impedance = Impedance().calculate_impedance(magnetic, frequency);
             CHECK_CLOSE(expectedImpedance, abs(impedance), expectedImpedance * maximumError);
         }
 
         // {
-        //     auto impedanceSweep = OpenMagnetics::Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 400000, 1000);
+        //     auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 400000, 1000);
 
         //     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
         //     auto outFile = outputFilePath;
 
         //     outFile.append("Test_Impedance_Many_Turns.svg");
         //     std::filesystem::remove(outFile);
-        //     OpenMagnetics::Painter painter(outFile, false, true);
+        //     Painter painter(outFile, false, true);
         //     painter.paint_curve(impedanceSweep, true);
         //     painter.export_svg();
         //     CHECK(std::filesystem::exists(outFile));
@@ -145,15 +149,15 @@ SUITE(Impedance) {
         std::vector<int64_t> numberTurns = {110, 110};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 12.5/7.5/5";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 0.15 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 0.15 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -168,13 +172,13 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A07";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
         double expectedSelfResonantFrequency = 180000;
-        auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
+        auto selfResonantFrequency = Impedance().calculate_self_resonant_frequency(magnetic);
         CHECK_CLOSE(expectedSelfResonantFrequency, selfResonantFrequency, expectedSelfResonantFrequency * maximumError);
 
     }
@@ -183,15 +187,15 @@ SUITE(Impedance) {
         std::vector<int64_t> numberTurns = {18, 18};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 12.5/7.5/5";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 0.425 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 0.425 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -206,7 +210,7 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A07";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -220,7 +224,7 @@ SUITE(Impedance) {
         };
 
         for (auto [frequency, expectedImpedance] : expectedImpedances) {
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+            auto impedance = Impedance().calculate_impedance(magnetic, frequency);
             CHECK_CLOSE(expectedImpedance, abs(impedance), expectedImpedance * maximumError);
         }
 
@@ -231,15 +235,15 @@ SUITE(Impedance) {
         std::vector<int64_t> numberTurns = {9, 9};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 36/23/15";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 2.50 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 2.50 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -254,7 +258,7 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A05";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -268,7 +272,7 @@ SUITE(Impedance) {
         };
 
         for (auto [frequency, expectedImpedance] : expectedImpedances) {
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+            auto impedance = Impedance().calculate_impedance(magnetic, frequency);
             CHECK_CLOSE(expectedImpedance, abs(impedance), expectedImpedance * maximumError);
         }
     }
@@ -278,15 +282,15 @@ SUITE(Impedance) {
         std::vector<int64_t> numberTurns = {17, 17};
         std::vector<int64_t> numberParallels = {1, 1};
         std::string shapeName = "T 36/23/15";
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        auto wire = OpenMagnetics::find_wire_by_name("Round 1.40 - Grade 1");
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 1.40 - Grade 1");
         wires.push_back(wire);
         wires.push_back(wire);
 
-        OpenMagnetics::WindingOrientation windingOrientation = OpenMagnetics::WindingOrientation::CONTIGUOUS;
-        OpenMagnetics::WindingOrientation layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        OpenMagnetics::CoilAlignment sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        OpenMagnetics::CoilAlignment turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -301,7 +305,7 @@ SUITE(Impedance) {
 
         int64_t numberStacks = 1;
         std::string coreMaterial = "A05";
-        std::vector<OpenMagnetics::CoreGap> gapping = {};
+        std::vector<CoreGap> gapping = {};
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -315,7 +319,7 @@ SUITE(Impedance) {
         };
 
         for (auto [frequency, expectedImpedance] : expectedImpedances) {
-            auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+            auto impedance = Impedance().calculate_impedance(magnetic, frequency);
             CHECK_CLOSE(expectedImpedance, abs(impedance), expectedImpedance * maximumError);
         }
 

@@ -1,4 +1,4 @@
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "Defaults.h"
@@ -185,14 +185,14 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
-    double referenceRemanenceWithTemperature = CoreWrapper::get_remanence(referenceCoreMaterial, temperature, true);
+    double referenceRemanenceWithTemperature = Core::get_remanence(referenceCoreMaterial, temperature, true);
     add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE, referenceRemanenceWithTemperature);
 
  
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double remanenceWithTemperature = CoreWrapper::get_remanence(coreMaterial, temperature, true);
+        double remanenceWithTemperature = Core::get_remanence(coreMaterial, temperature, true);
 
         double scoring = fabs(referenceRemanenceWithTemperature - remanenceWithTemperature);
         newScoring.push_back(scoring);
@@ -216,14 +216,14 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
-    double referenceCoerciveForceWithTemperature = CoreWrapper::get_coercive_force(referenceCoreMaterial, temperature, true);
+    double referenceCoerciveForceWithTemperature = Core::get_coercive_force(referenceCoreMaterial, temperature, true);
     add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE, referenceCoerciveForceWithTemperature);
 
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double coerciveForceWithTemperature = CoreWrapper::get_coercive_force(coreMaterial, temperature, true);
+        double coerciveForceWithTemperature = Core::get_coercive_force(coreMaterial, temperature, true);
 
         double scoring = fabs(referenceCoerciveForceWithTemperature - coerciveForceWithTemperature);
         newScoring.push_back(scoring);
@@ -247,14 +247,14 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
-    double referenceSaturationWithTemperature = CoreWrapper::get_magnetic_flux_density_saturation(referenceCoreMaterial, temperature);
+    double referenceSaturationWithTemperature = Core::get_magnetic_flux_density_saturation(referenceCoreMaterial, temperature);
     add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION, referenceSaturationWithTemperature);
 
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double saturationWithTemperature = CoreWrapper::get_magnetic_flux_density_saturation(coreMaterial, temperature);
+        double saturationWithTemperature = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature);
 
         double scoring = fabs(referenceSaturationWithTemperature - saturationWithTemperature);
         newScoring.push_back(scoring);
@@ -278,14 +278,14 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
-    double referenceCurieTemperatureWithTemperature = CoreWrapper::get_curie_temperature(referenceCoreMaterial);
+    double referenceCurieTemperatureWithTemperature = Core::get_curie_temperature(referenceCoreMaterial);
     add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, referenceCurieTemperatureWithTemperature);
 
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double curieTemperatureWithTemperature = CoreWrapper::get_curie_temperature(coreMaterial);
+        double curieTemperatureWithTemperature = Core::get_curie_temperature(coreMaterial);
 
         double scoring = fabs(referenceCurieTemperatureWithTemperature - curieTemperatureWithTemperature);
         newScoring.push_back(scoring);
@@ -336,7 +336,7 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
             magneticFluxDensityProcessed.set_peak_to_peak(magneticFluxDensityPeak * 2);
             magneticFluxDensity.set_processed(magneticFluxDensityProcessed);
             for (auto frequency : _frequencies) {
-                magneticFluxDensity.set_waveform(InputsWrapper::create_waveform(magneticFluxDensityProcessed, frequency));
+                magneticFluxDensity.set_waveform(Inputs::create_waveform(magneticFluxDensityProcessed, frequency));
                 excitation.set_frequency(frequency);
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
                 double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(coreMaterial, excitation, temperature);
@@ -407,14 +407,14 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     }
     std::vector<double> newScoring;
 
-    double referenceResistivityWithTemperature = CoreWrapper::get_resistivity(referenceCoreMaterial, temperature);
+    double referenceResistivityWithTemperature = Core::get_resistivity(referenceCoreMaterial, temperature);
     add_scored_value("Reference", CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY, referenceResistivityWithTemperature);
 
 
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double resistivityWithTemperature = CoreWrapper::get_resistivity(coreMaterial, temperature);
+        double resistivityWithTemperature = Core::get_resistivity(coreMaterial, temperature);
 
         double scoring = fabs(referenceResistivityWithTemperature - resistivityWithTemperature);
         newScoring.push_back(scoring);

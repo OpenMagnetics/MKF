@@ -30,7 +30,7 @@ double linear_table_interpolation(std::vector<std::pair<double, double>> table, 
     return DBL_MAX;
 }
 
-InsulationCoordinationOutput InsulationCoordinator::calculate_insulation_coordination(InputsWrapper& inputs) {
+InsulationCoordinationOutput InsulationCoordinator::calculate_insulation_coordination(Inputs& inputs) {
     InsulationCoordinationOutput insulationCoordinationOutput;
     insulationCoordinationOutput.set_clearance(calculate_clearance(inputs));
     insulationCoordinationOutput.set_creepage_distance(calculate_creepage_distance(inputs, true));
@@ -41,7 +41,7 @@ InsulationCoordinationOutput InsulationCoordinator::calculate_insulation_coordin
 }
 
 
-bool InsulationCoordinator::can_fully_insulated_wire_be_used(InputsWrapper& inputs) {
+bool InsulationCoordinator::can_fully_insulated_wire_be_used(Inputs& inputs) {
     auto standards = inputs.get_standards();
     for (auto standard : standards) {
         if (standard == InsulationStandards::IEC_603351 || standard == InsulationStandards::IEC_606641) {
@@ -51,7 +51,7 @@ bool InsulationCoordinator::can_fully_insulated_wire_be_used(InputsWrapper& inpu
     return true;
 }
 
-size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWrapper rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
     auto leftCoatingMaybe = leftWire.resolve_coating();
     auto rightCoatingMaybe = rightWire.resolve_coating();
 
@@ -61,7 +61,7 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
 
         if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = leftWire.resolve_strand();
-            coating = WireWrapper::resolve_coating(strand).value();
+            coating = Wire::resolve_coating(strand).value();
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -86,7 +86,7 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
 
         if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = rightWire.resolve_strand();
-            coating = WireWrapper::resolve_coating(strand).value();
+            coating = Wire::resolve_coating(strand).value();
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -110,14 +110,14 @@ size_t times_withstand_voltage_is_covered_by_wires(WireWrapper leftWire, WireWra
     return times;
 }
 
-double insulation_distance_provided_by_wires(WireWrapper leftWire, WireWrapper rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
     double distance = 0;
     {
         auto coating = leftWire.resolve_coating().value();
 
         if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = leftWire.resolve_strand();
-            coating = WireWrapper::resolve_coating(strand).value();
+            coating = Wire::resolve_coating(strand).value();
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -140,7 +140,7 @@ double insulation_distance_provided_by_wires(WireWrapper leftWire, WireWrapper r
 
         if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
             auto strand = rightWire.resolve_strand();
-            coating = WireWrapper::resolve_coating(strand).value();
+            coating = Wire::resolve_coating(strand).value();
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -162,7 +162,7 @@ double insulation_distance_provided_by_wires(WireWrapper leftWire, WireWrapper r
     return distance;
 }
 
-std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_section_interface_layers(InputsWrapper& inputs, WireWrapper leftWire, WireWrapper rightWire, InsulationMaterialWrapper insulationMaterial) {
+std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_section_interface_layers(Inputs& inputs, Wire leftWire, Wire rightWire, InsulationMaterial insulationMaterial) {
     auto settings = Settings::GetInstance();
     bool allowMarginTape = settings->get_coil_allow_margin_tape();
     bool allowInsulatedWire = settings->get_coil_allow_insulated_wire();
@@ -328,7 +328,7 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
     return coilSectionInterface;
 }
 
-double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper& inputs) {
+double InsulationCoordinator::calculate_withstand_voltage(Inputs& inputs) {
     if (!inputs.get_design_requirements().get_insulation()) {
         return 0;
     }
@@ -356,7 +356,7 @@ double InsulationCoordinator::calculate_withstand_voltage(InputsWrapper& inputs)
     return solidInsulation;
 }
 
-double InsulationCoordinator::calculate_clearance(InputsWrapper& inputs) {
+double InsulationCoordinator::calculate_clearance(Inputs& inputs) {
     if (!inputs.get_design_requirements().get_insulation()) {
         return 0;
     }
@@ -385,7 +385,7 @@ double InsulationCoordinator::calculate_clearance(InputsWrapper& inputs) {
     return clearance;
 }
 
-double InsulationCoordinator::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+double InsulationCoordinator::calculate_creepage_distance(Inputs& inputs, bool includeClearance) {
     if (!inputs.get_design_requirements().get_insulation()) {
         return 0;
     }
@@ -413,7 +413,7 @@ double InsulationCoordinator::calculate_creepage_distance(InputsWrapper& inputs,
     return creepageDistance;
 }
 
-double InsulationCoordinator::calculate_distance_through_insulation(InputsWrapper& inputs) {
+double InsulationCoordinator::calculate_distance_through_insulation(Inputs& inputs) {
     if (!inputs.get_design_requirements().get_insulation()) {
         return 0;
     }
@@ -617,7 +617,7 @@ double InsulationIEC60664Model::get_clearance_altitude_factor_correction(double 
 }
 
 double InsulationIEC60664Model::get_clearance_over_30kHz(double ratedVoltagePeak, double frequency, double currentClearance){
-    auto windingSkinEffectLossesModel = OpenMagnetics::WindingSkinEffectLosses();
+    auto windingSkinEffectLossesModel = WindingSkinEffectLosses();
     auto wireCurvature = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, 20);
     bool isHomogeneus = wireCurvature >= currentClearance * 0.2;
     if (isHomogeneus) {
@@ -641,7 +641,7 @@ double InsulationIEC60664Model::get_clearance_over_30kHz(double ratedVoltagePeak
     return currentClearance;
 }
 
-double InsulationIEC60664Model::calculate_distance_through_insulation(InputsWrapper& inputs) {
+double InsulationIEC60664Model::calculate_distance_through_insulation(Inputs& inputs) {
     double maximumVoltageRms = inputs.get_maximum_voltage_rms();
     double maximumFrequency = inputs.get_maximum_frequency();
     double distanceThroughInsulation = 0;
@@ -652,7 +652,7 @@ double InsulationIEC60664Model::calculate_distance_through_insulation(InputsWrap
     return ceilFloat(distanceThroughInsulation, 5);
 }
 
-double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper& inputs) {
+double InsulationIEC60664Model::calculate_withstand_voltage(Inputs& inputs) {
     double maximumVoltageRms = inputs.get_maximum_voltage_rms();
     auto overvoltageCategory = inputs.get_overvoltage_category();
     auto insulationType = inputs.get_insulation_type();
@@ -674,7 +674,7 @@ double InsulationIEC60664Model::calculate_withstand_voltage(InputsWrapper& input
     return std::max(voltageDueToTransientOvervoltages, std::max(voltageDueToTemporaryWithstandOvervoltages, std::max(voltageDueToRecurringPeakVoltages, voltageDueToSteadyStateVoltages)));
 }
 
-double InsulationIEC60664Model::calculate_clearance(InputsWrapper& inputs) {
+double InsulationIEC60664Model::calculate_clearance(Inputs& inputs) {
     auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology();
     auto pollutionDegree = inputs.get_pollution_degree();
     double maximumFrequency = inputs.get_maximum_frequency();
@@ -726,7 +726,7 @@ double InsulationIEC60664Model::calculate_clearance(InputsWrapper& inputs) {
     return clearance;
 }
 
-double InsulationIEC60664Model::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+double InsulationIEC60664Model::calculate_creepage_distance(Inputs& inputs, bool includeClearance) {
     auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology();
     auto pollutionDegree = inputs.get_pollution_degree();
     auto cti = inputs.get_cti();
@@ -789,15 +789,15 @@ double InsulationIEC60664Model::calculate_creepage_distance(InputsWrapper& input
     return roundFloat(creepageDistance, 5);
 }
 
-double InsulationIEC62368Model::get_working_voltage(InputsWrapper& inputs) {
+double InsulationIEC62368Model::get_working_voltage(Inputs& inputs) {
     return inputs.get_maximum_voltage_peak();
 }
 
-double InsulationIEC62368Model::get_working_voltage_rms(InputsWrapper& inputs) {
+double InsulationIEC62368Model::get_working_voltage_rms(Inputs& inputs) {
     return inputs.get_maximum_voltage_rms();
 }
 
-double InsulationIEC62368Model::get_required_withstand_voltage(InputsWrapper& inputs) {
+double InsulationIEC62368Model::get_required_withstand_voltage(Inputs& inputs) {
     return get_working_voltage(inputs);
 }
 
@@ -1023,7 +1023,7 @@ double InsulationIEC62368Model::get_es2_voltage_limit(double frequency){
     }
 }
 
-double InsulationIEC62368Model::calculate_withstand_voltage(InputsWrapper& inputs) {
+double InsulationIEC62368Model::calculate_withstand_voltage(Inputs& inputs) {
     // double maximumFrequency = inputs.get_maximum_frequency();
     double workingVoltage = get_working_voltage(inputs);
     double requiredWithstandVoltage = get_required_withstand_voltage(inputs);
@@ -1049,7 +1049,7 @@ double InsulationIEC62368Model::calculate_withstand_voltage(InputsWrapper& input
     return std::max(voltageDueToTransientOvervoltages, std::max(voltageDueToRecurringPeakVoltages, voltageDueToTemporaryOvervoltages));
 }
 
-double InsulationIEC62368Model::calculate_distance_through_insulation(InputsWrapper& inputs) {
+double InsulationIEC62368Model::calculate_distance_through_insulation(Inputs& inputs) {
     double maximumFrequency = inputs.get_maximum_frequency();
     double es2VoltageLimit = get_es2_voltage_limit(maximumFrequency);
     double workingVoltageRms = get_working_voltage_rms(inputs);
@@ -1068,7 +1068,7 @@ double InsulationIEC62368Model::calculate_distance_through_insulation(InputsWrap
     }
 }
 
-double InsulationIEC62368Model::calculate_clearance(InputsWrapper& inputs) {
+double InsulationIEC62368Model::calculate_clearance(Inputs& inputs) {
     auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology();
     auto pollutionDegree = inputs.get_pollution_degree();
     auto overvoltageCategory = inputs.get_overvoltage_category();
@@ -1103,7 +1103,7 @@ double InsulationIEC62368Model::calculate_clearance(InputsWrapper& inputs) {
     // TODO: remove distance if FIW complies with conditions in table G.4
 }
 
-double InsulationIEC62368Model::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+double InsulationIEC62368Model::calculate_creepage_distance(Inputs& inputs, bool includeClearance) {
     auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology();
     double voltagePeak = inputs.get_maximum_voltage_peak();
     double workingVoltageRms = get_working_voltage_rms(inputs);
@@ -1135,11 +1135,11 @@ double InsulationIEC62368Model::calculate_creepage_distance(InputsWrapper& input
     // TODO: remove distance if FIW complies with conditions in table G.4
 }
 
-double InsulationIEC61558Model::get_working_voltage_peak(InputsWrapper& inputs) {
+double InsulationIEC61558Model::get_working_voltage_peak(Inputs& inputs) {
     return inputs.get_maximum_voltage_peak();
 }
 
-double InsulationIEC61558Model::get_working_voltage_rms(InputsWrapper& inputs) {
+double InsulationIEC61558Model::get_working_voltage_rms(Inputs& inputs) {
     return inputs.get_maximum_voltage_rms();
 }
 
@@ -1329,7 +1329,7 @@ double InsulationIEC61558Model::calculate_creepage_distance_over_30kHz(Insulatio
     throw std::invalid_argument("Too much frequency for IEC 60664-4: " + std::to_string(frequency));
 }
 
-double InsulationIEC61558Model::calculate_distance_through_insulation(InputsWrapper& inputs, bool usingThinLayers) {
+double InsulationIEC61558Model::calculate_distance_through_insulation(Inputs& inputs, bool usingThinLayers) {
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     if (mainSupplyVoltage > iec61558MaximumSupplyVoltage) {
         throw std::invalid_argument("Too much supply voltage for IEC 61558-1: " + std::to_string(mainSupplyVoltage));
@@ -1349,7 +1349,7 @@ double InsulationIEC61558Model::calculate_distance_through_insulation(InputsWrap
     return ceilFloat(distanceThroughInsulation, 5);
 }
 
-double InsulationIEC61558Model::calculate_withstand_voltage(InputsWrapper& inputs) {
+double InsulationIEC61558Model::calculate_withstand_voltage(Inputs& inputs) {
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     if (mainSupplyVoltage > iec61558MaximumSupplyVoltage) {
         throw std::invalid_argument("Too much supply voltage for IEC 61558-1: " + std::to_string(mainSupplyVoltage));
@@ -1368,7 +1368,7 @@ double InsulationIEC61558Model::calculate_withstand_voltage(InputsWrapper& input
     return withstandVoltage;
 }
 
-double InsulationIEC61558Model::calculate_clearance(InputsWrapper& inputs) {
+double InsulationIEC61558Model::calculate_clearance(Inputs& inputs) {
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     if (mainSupplyVoltage > iec61558MaximumSupplyVoltage) {
         throw std::invalid_argument("Too much supply voltage for IEC 61558-1: " + std::to_string(mainSupplyVoltage));
@@ -1393,11 +1393,11 @@ double InsulationIEC61558Model::calculate_clearance(InputsWrapper& inputs) {
 
     if (altitude > lowerAltitudeLimit) {
         if (_data.empty()) {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model();
+            auto insulationIEC60664Model = InsulationIEC60664Model();
             return insulationIEC60664Model.calculate_clearance(inputs);
         }
         else {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model(_data);
+            auto insulationIEC60664Model = InsulationIEC60664Model(_data);
             return insulationIEC60664Model.calculate_clearance(inputs);
         }
     }
@@ -1409,7 +1409,7 @@ double InsulationIEC61558Model::calculate_clearance(InputsWrapper& inputs) {
     return ceilFloat(clearance, 5);
 }
 
-double InsulationIEC61558Model::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+double InsulationIEC61558Model::calculate_creepage_distance(Inputs& inputs, bool includeClearance) {
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     if (mainSupplyVoltage > iec61558MaximumSupplyVoltage) {
         throw std::invalid_argument("Too much supply voltage for IEC 61558-1: " + std::to_string(mainSupplyVoltage));
@@ -1553,7 +1553,7 @@ double InsulationIEC60335Model::get_creepage_distance_table_18(Cti cti, Pollutio
 }
 
 
-double InsulationIEC60335Model::calculate_distance_through_insulation(InputsWrapper& inputs) {
+double InsulationIEC60335Model::calculate_distance_through_insulation(Inputs& inputs) {
     auto insulationType = inputs.get_insulation_type();
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     double maximumPrimaryVoltageRms = inputs.get_maximum_voltage_rms(0);
@@ -1575,7 +1575,7 @@ double InsulationIEC60335Model::calculate_distance_through_insulation(InputsWrap
     return dti;
 }
 
-double InsulationIEC60335Model::calculate_withstand_voltage(InputsWrapper& inputs) {
+double InsulationIEC60335Model::calculate_withstand_voltage(Inputs& inputs) {
     auto insulationType = inputs.get_insulation_type();
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
     double maximumPrimaryVoltageRms = inputs.get_maximum_voltage_rms(0);
@@ -1592,7 +1592,7 @@ double InsulationIEC60335Model::calculate_withstand_voltage(InputsWrapper& input
     }
 }
 
-double InsulationIEC60335Model::calculate_clearance(InputsWrapper& inputs) {
+double InsulationIEC60335Model::calculate_clearance(Inputs& inputs) {
     auto wiringTechnology = inputs.get_design_requirements().get_wiring_technology().value();
     auto pollutionDegree = inputs.get_pollution_degree();
     double mainSupplyVoltage = resolve_dimensional_values(inputs.get_main_supply_voltage());
@@ -1617,11 +1617,11 @@ double InsulationIEC60335Model::calculate_clearance(InputsWrapper& inputs) {
         maximumFrequency > ieC60335MaximumStandardFrequency) {
         double clearanceIEC60664 = DBL_MAX;
         if (_data.empty()) {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model();
+            auto insulationIEC60664Model = InsulationIEC60664Model();
             clearanceIEC60664 = insulationIEC60664Model.calculate_clearance(inputs);
         }
         else {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model(_data);
+            auto insulationIEC60664Model = InsulationIEC60664Model(_data);
             clearanceIEC60664 = insulationIEC60664Model.calculate_clearance(inputs);
         }
         clearance = std::max(clearance, clearanceIEC60664);
@@ -1630,7 +1630,7 @@ double InsulationIEC60335Model::calculate_clearance(InputsWrapper& inputs) {
     return clearance;
 }
 
-double InsulationIEC60335Model::calculate_creepage_distance(InputsWrapper& inputs, bool includeClearance) {
+double InsulationIEC60335Model::calculate_creepage_distance(Inputs& inputs, bool includeClearance) {
     auto pollutionDegree = inputs.get_pollution_degree();
     double maximumPrimaryVoltagePeak = inputs.get_maximum_voltage_peak(0);
     double maximumFrequency = inputs.get_maximum_frequency();
@@ -1653,11 +1653,11 @@ double InsulationIEC60335Model::calculate_creepage_distance(InputsWrapper& input
     else {
         double creepageDistanceIEC60664 = DBL_MAX;
         if (_data.empty()) {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model();
+            auto insulationIEC60664Model = InsulationIEC60664Model();
             creepageDistanceIEC60664 = insulationIEC60664Model.calculate_creepage_distance(inputs);
         }
         else {
-            auto insulationIEC60664Model = OpenMagnetics::InsulationIEC60664Model(_data);
+            auto insulationIEC60664Model = InsulationIEC60664Model(_data);
             creepageDistanceIEC60664 = insulationIEC60664Model.calculate_creepage_distance(inputs);
         }
         creepageDistance = creepageDistanceIEC60664;

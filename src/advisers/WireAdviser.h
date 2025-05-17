@@ -1,8 +1,10 @@
 #pragma once
-#include "constructive_models/WireWrapper.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Wire.h"
 #include "Defaults.h"
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -107,7 +109,7 @@ class WireAdviser {
                                                                                    double temperature,
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
-        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(std::vector<WireWrapper>* wires,
+        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_wire(std::vector<Wire>* wires,
                                                                                    CoilFunctionalDescription coilFunctionalDescription,
                                                                                    Section section,
                                                                                    SignalDescriptor current,
@@ -139,7 +141,7 @@ class WireAdviser {
                                                                                                  WireSolidInsulationRequirements wireSolidInsulationRequirements);
 
         std::vector<std::pair<CoilFunctionalDescription, double>> create_dataset(CoilFunctionalDescription coilFunctionalDescription,
-                                                                                 std::vector<WireWrapper>* wires,
+                                                                                 std::vector<Wire>* wires,
                                                                                  Section section,
                                                                                  SignalDescriptor current,
                                                                                  double temperature);

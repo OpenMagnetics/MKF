@@ -1,9 +1,11 @@
 #pragma once
 #include "Defaults.h"
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Magnetic.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include "Models.h"
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -15,7 +17,7 @@ class StrayCapacitanceModel {
     public:
         std::string methodName = "Default";
         static std::shared_ptr<StrayCapacitanceModel> factory(StrayCapacitanceModels modelName);
-        std::vector<double> preprocess_data(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil);
+        std::vector<double> preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil);
         virtual double calculate_static_capacitance_between_two_turns(double insulationThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double epsilonD, double epsilonF) = 0;
 };
 
@@ -66,16 +68,16 @@ class StrayCapacitance{
 
 
         static std::vector<Turn> get_surrounding_turns(Turn currentTurn, std::vector<Turn> turnsDescription);
-        static StrayCapacitanceOutput calculate_voltages_per_turn(CoilWrapper coil, OperatingPoint operatingPoint);
-        static StrayCapacitanceOutput calculate_voltages_per_turn(CoilWrapper coil, std::map<std::string, double> voltageRmsPerWinding);
-        static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, CoilWrapper coil);
-        double calculate_static_capacitance_between_two_turns(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil);
+        static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, OperatingPoint operatingPoint);
+        static StrayCapacitanceOutput calculate_voltages_per_turn(Coil coil, std::map<std::string, double> voltageRmsPerWinding);
+        static std::vector<Layer> get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil);
+        double calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil);
 
-        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_turns(CoilWrapper coil);
+        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_turns(Coil coil);
 
-        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_windings(CoilWrapper coil);
+        std::map<std::pair<std::string, std::string>, double> calculate_capacitance_among_windings(Coil coil);
         static std::map<std::string, double> calculate_capacitance_matrix(double energy, double voltageDrop, double relativeTurnsRatio);
-        std::map<std::pair<std::string, std::string>, double> calculate_maxwell_capacitance_matrix(CoilWrapper coil);
+        std::map<std::pair<std::string, std::string>, double> calculate_maxwell_capacitance_matrix(Coil coil);
 
 };
 
@@ -88,7 +90,7 @@ class StrayCapacitanceOneLayer{
         StrayCapacitanceOneLayer(){
         };
         virtual ~StrayCapacitanceOneLayer() = default;
-        double calculate_capacitance(CoilWrapper coil);
+        double calculate_capacitance(Coil coil);
 
 
 };

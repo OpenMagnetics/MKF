@@ -1,38 +1,40 @@
 #pragma once
 
 #include <MAS.hpp>
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/CoilWrapper.h"
-#include "constructive_models/WireWrapper.h"
-#include "constructive_models/BobbinWrapper.h"
+#include "constructive_models/Core.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Wire.h"
+#include "constructive_models/Bobbin.h"
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
-class MagneticWrapper : public Magnetic {
+class Magnetic : public MAS::Magnetic {
     private:
-        CoreWrapper core;
+        Core core;
         std::optional<std::vector<DistributorInfo>> distributors_info;
         std::optional<ManufacturerInfo> manufacturer_info;
-        CoilWrapper coil;
+        Coil coil;
     public:
-        MagneticWrapper() = default;
-        virtual ~MagneticWrapper() = default;
+        Magnetic() = default;
+        virtual ~Magnetic() = default;
 
         /**
          * Data describing the coil
          */
-        const CoilWrapper & get_coil() const { return coil; }
-        CoilWrapper & get_mutable_coil() { return coil; }
-        void set_coil(const CoilWrapper & value) { this->coil = value; }
+        const Coil & get_coil() const { return coil; }
+        Coil & get_mutable_coil() { return coil; }
+        void set_coil(const Coil & value) { this->coil = value; }
 
         /**
          * Data describing the magnetic core.
          */
-        const CoreWrapper & get_core() const { return core; }
-        CoreWrapper & get_mutable_core() { return core; }
-        void set_core(const CoreWrapper & value) { this->core = value; }
+        const Core & get_core() const { return core; }
+        Core & get_mutable_core() { return core; }
+        void set_core(const Core & value) { this->core = value; }
 
-        MagneticWrapper(const Magnetic magnetic) {
+        Magnetic(const MAS::Magnetic magnetic) {
             set_core(magnetic.get_core());
             set_coil(magnetic.get_coil());
 
@@ -45,10 +47,10 @@ class MagneticWrapper : public Magnetic {
         }
 
 
-        BobbinWrapper get_bobbin();
-        std::vector<WireWrapper> get_wires();
+        Bobbin get_bobbin();
+        std::vector<Wire> get_wires();
         std::vector<double> get_turns_ratios();
-        WireWrapper get_wire(size_t windingIndex=0);
+        Wire get_wire(size_t windingIndex=0);
         std::string get_reference();
         std::vector<double> get_maximum_dimensions();
         bool fits(MaximumDimensions maximumDimensions, bool allowRotation);
@@ -57,18 +59,18 @@ class MagneticWrapper : public Magnetic {
 
 };
 
-void from_json(const json & j, MagneticWrapper & x);
-void to_json(json & j, const MagneticWrapper & x);
+void from_json(const json & j, Magnetic & x);
+void to_json(json & j, const Magnetic & x);
 
-inline void from_json(const json & j, MagneticWrapper& x) {
-    x.set_coil(j.at("coil").get<CoilWrapper>());
-    x.set_core(j.at("core").get<CoreWrapper>());
+inline void from_json(const json & j, Magnetic& x) {
+    x.set_coil(j.at("coil").get<Coil>());
+    x.set_core(j.at("core").get<Core>());
     x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(j, "distributorsInfo"));
     x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(j, "manufacturerInfo"));
     x.set_rotation(get_stack_optional<std::vector<double>>(j, "rotation"));
 }
 
-inline void to_json(json & j, const MagneticWrapper & x) {
+inline void to_json(json & j, const Magnetic & x) {
     j = json::object();
     j["coil"] = x.get_coil();
     j["core"] = x.get_core();

@@ -3,11 +3,11 @@
 #include "Defaults.h"
 #include "support/Utils.h"
 
-#include "constructive_models/CoreWrapper.h"
-#include "processors/InputsWrapper.h"
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Core.h"
+#include "processors/Inputs.h"
+#include "constructive_models/Magnetic.h"
 #include <MAS.hpp>
-#include "constructive_models/CoilWrapper.h"
+#include "constructive_models/Coil.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +17,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -37,36 +39,36 @@ class MagnetizingInductance {
     MagnetizingInductance(std::string model) {
         _models["gapReluctance"] = model;
     }
-    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(CoreWrapper core,
-                                                                                   CoilWrapper coil,
+    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(Core core,
+                                                                                   Coil coil,
                                                                                    OperatingPoint* operatingPoint = nullptr);
 
-    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(MagneticWrapper magnetic,
+    MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(Magnetic magnetic,
                                                                                    OperatingPoint* operatingPoint = nullptr);
 
-    std::vector<CoreGap> calculate_gapping_from_number_turns_and_inductance(CoreWrapper core,
-                                                                      CoilWrapper coil,
-                                                                      InputsWrapper* inputs,
+    std::vector<CoreGap> calculate_gapping_from_number_turns_and_inductance(Core core,
+                                                                      Coil coil,
+                                                                      Inputs* inputs,
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
 
-    int calculate_number_turns_from_gapping_and_inductance(CoreWrapper core, InputsWrapper* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+    int calculate_number_turns_from_gapping_and_inductance(Core core, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
-        CoreWrapper core,
-        CoilWrapper coil,
+        Core core,
+        Coil coil,
         OperatingPoint* operatingPoint = nullptr);
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> calculate_inductance_and_magnetic_flux_density(
-        MagneticWrapper magnetic,
+        Magnetic magnetic,
         OperatingPoint* operatingPoint = nullptr);
 
     double calculate_inductance_air_solenoid(
-        MagneticWrapper magnetic);
+        Magnetic magnetic);
 
     double calculate_inductance_air_solenoid(
-        CoreWrapper core,
-        CoilWrapper coil);
+        Core core,
+        Coil coil);
 };
 
 } // namespace OpenMagnetics

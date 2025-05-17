@@ -1,26 +1,56 @@
 #pragma once
 
 #include "constructive_models/Insulation.h"
-#include "constructive_models/CoreWrapper.h"
-#include "processors/InputsWrapper.h"
-#include "constructive_models/WireWrapper.h"
-#include "constructive_models/BobbinWrapper.h"
+#include "constructive_models/Core.h"
+#include "processors/Inputs.h"
+#include "constructive_models/Wire.h"
+#include "constructive_models/Bobbin.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
-#include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <magic_enum.hpp>
-#include <numbers>
-#include <streambuf>
 #include <vector>
+
+using namespace MAS;
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-class CoilWrapper : public Coil {
+using BobbinDataOrNameUnion = std::variant<Bobbin, std::string>;
+using WireDataOrNameUnion = std::variant<Wire, std::string>;
+
+
+class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
+    private:
+        WireDataOrNameUnion wire;
+
+    public:
+        const WireDataOrNameUnion & get_wire() const { return wire; }
+        WireDataOrNameUnion & get_mutable_wire() { return wire; }
+        void set_wire(const WireDataOrNameUnion & value) { this->wire = value; }
+        CoilFunctionalDescription(const MAS::CoilFunctionalDescription coilFunctionalDescription) {
+
+            if (coilFunctionalDescription.get_connections()) {
+                set_connections(coilFunctionalDescription.get_connections());
+            }
+
+            set_isolation_side(coilFunctionalDescription.get_isolation_side());
+            set_name(coilFunctionalDescription.get_name());
+            set_number_parallels(coilFunctionalDescription.get_number_parallels());
+            set_number_turns(coilFunctionalDescription.get_number_turns());
+            auto wireVariant = coilFunctionalDescription.get_wire();
+            if (std::holds_alternative<std::string>(wireVariant)) {
+                set_wire(std::get<std::string>(wireVariant));
+            }
+            else {
+                set_wire(std::get<MAS::Wire>(wireVariant));
+            }
+        };
+        CoilFunctionalDescription() = default;
+        virtual ~CoilFunctionalDescription() = default;
+
+};
+
+class Coil : public MAS::Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
         std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationLayers;
@@ -34,7 +64,7 @@ class CoilWrapper : public Coil {
         WindingOrientation _layersOrientation = WindingOrientation::OVERLAPPING;
         CoilAlignment _turnsAlignment = CoilAlignment::CENTERED;
         CoilAlignment _sectionAlignment = CoilAlignment::INNER_OR_TOP;
-        std::optional<InputsWrapper> _inputs;
+        std::optional<Inputs> _inputs;
         std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
         std::map<std::string, WindingOrientation> _layersOrientationPerSection;
         std::string coilLog;
@@ -44,19 +74,21 @@ class CoilWrapper : public Coil {
         size_t _currentRepetitions;
         bool _strict = true;
         bool _bobbin_resolved = false;
-        BobbinWrapper _bobbin;
+        Bobbin _bobbin;
+        BobbinDataOrNameUnion bobbin;
+        std::vector<CoilFunctionalDescription> functional_description;
 
     public:
 
-        CoilWrapper(const json& j, size_t interleavingLevel = 1,
+        Coil(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
                        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING,
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
-        CoilWrapper(const Coil coil);
-        CoilWrapper(const json& j, bool windInConstructor);
-        CoilWrapper() = default;
-        virtual ~CoilWrapper() = default;
+        Coil(const MAS::Coil coil);
+        Coil(const json& j, bool windInConstructor);
+        Coil() = default;
+        virtual ~Coil() = default;
         bool fast_wind();
         bool unwind();
         bool wind();
@@ -66,6 +98,15 @@ class CoilWrapper : public Coil {
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();
+
+        const BobbinDataOrNameUnion & get_bobbin() const { return bobbin; }
+        BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
+        void set_bobbin(const BobbinDataOrNameUnion & value) { this->bobbin = value; }
+
+        const std::vector<CoilFunctionalDescription> & get_functional_description() const { return functional_description; }
+        std::vector<CoilFunctionalDescription> & get_mutable_functional_description() { return functional_description; }
+        void set_functional_description(const std::vector<CoilFunctionalDescription> & value) { this->functional_description = value; }
+
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);
         WindingStyle wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots);
@@ -110,7 +151,7 @@ class CoilWrapper : public Coil {
         void log(std::string entry);
         std::string read_log();
         void set_strict(bool value);
-        void set_inputs(InputsWrapper inputs);  // TODO: change to DesignRequirements?
+        void set_inputs(Inputs inputs);  // TODO: change to DesignRequirements?
 
         void set_interleaving_level(uint8_t interleavingLevel);
         void reset_margins_per_section();
@@ -202,44 +243,126 @@ class CoilWrapper : public Coil {
         size_t get_layer_index_by_name(std::string name);
         size_t get_section_index_by_name(std::string name);
 
-        std::vector<WireWrapper> get_wires();
+        std::vector<Wire> get_wires();
         WireType get_wire_type(size_t windingIndex);
         static WireType get_wire_type(CoilFunctionalDescription coilFunctionalDescription);
         std::string get_wire_name(size_t windingIndex);
         static std::string get_wire_name(CoilFunctionalDescription coilFunctionalDescription);
-        WireWrapper resolve_wire(size_t windingIndex);
-        static WireWrapper resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
+        Wire resolve_wire(size_t windingIndex);
+        static Wire resolve_wire(CoilFunctionalDescription coilFunctionalDescription);
 
         double overlapping_filling_factor(Section section);
 
         double contiguous_filling_factor(Section section);
 
-        static BobbinWrapper resolve_bobbin(CoilWrapper coil);
-        BobbinWrapper resolve_bobbin();
+        static Bobbin resolve_bobbin(Coil coil);
+        Bobbin resolve_bobbin();
 
         void preload_margins(std::vector<std::vector<double>> marginPairs);
         void add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins);
-        static double calculate_external_proportion_for_wires_in_toroidal_cores(CoreWrapper core, CoilWrapper coil);
+        static double calculate_external_proportion_for_wires_in_toroidal_cores(Core core, Coil coil);
 
         void set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers);
 
-        static InsulationMaterialWrapper resolve_insulation_layer_insulation_material(CoilWrapper coil, std::string layerName);
-        InsulationMaterialWrapper resolve_insulation_layer_insulation_material(std::string layerName);
-        InsulationMaterialWrapper resolve_insulation_layer_insulation_material(Layer layer);
+        static InsulationMaterial resolve_insulation_layer_insulation_material(Coil coil, std::string layerName);
+        InsulationMaterial resolve_insulation_layer_insulation_material(std::string layerName);
+        InsulationMaterial resolve_insulation_layer_insulation_material(Layer layer);
         double get_insulation_section_thickness(std::string sectionName);
-        static double get_insulation_section_thickness(CoilWrapper coil, std::string sectionName);
+        static double get_insulation_section_thickness(Coil coil, std::string sectionName);
 
         double get_insulation_layer_thickness(Layer layer);
         double get_insulation_layer_thickness(std::string layerName);
-        static double get_insulation_layer_thickness(CoilWrapper coil, std::string layerName);
+        static double get_insulation_layer_thickness(Coil coil, std::string layerName);
 
         double get_insulation_layer_relative_permittivity(Layer layer);
         double get_insulation_layer_relative_permittivity(std::string layerName);
-        static double get_insulation_layer_relative_permittivity(CoilWrapper coil, std::string layerName);
+        static double get_insulation_layer_relative_permittivity(Coil coil, std::string layerName);
         double get_insulation_section_relative_permittivity(std::string sectionName);
-        static double get_insulation_section_relative_permittivity(CoilWrapper coil, std::string sectionName);
+        static double get_insulation_section_relative_permittivity(Coil coil, std::string sectionName);
 
         std::vector<double> get_turns_ratios();
         std::vector<double> get_maximum_dimensions();
 };
+}
+namespace OpenMagnetics {
+
+void from_json(const json & j, Coil & x);
+void from_json(const json & j, CoilFunctionalDescription & x);
 } // namespace OpenMagnetics
+
+
+namespace nlohmann {
+template <>
+struct adl_serializer<std::variant<OpenMagnetics::Bobbin, std::string>> {
+    static void from_json(const json & j, std::variant<OpenMagnetics::Bobbin, std::string> & x);
+    static void to_json(json & j, const std::variant<OpenMagnetics::Bobbin, std::string> & x);
+};
+
+template <>
+struct adl_serializer<std::variant<OpenMagnetics::Wire, std::string>> {
+    static void from_json(const json & j, std::variant<OpenMagnetics::Wire, std::string> & x);
+    static void to_json(json & j, const std::variant<OpenMagnetics::Wire, std::string> & x);
+};
+} // namespace nlohmann
+
+
+namespace OpenMagnetics {
+inline void from_json(const json & j, Coil& x) {
+    x.set_bobbin(j.at("bobbin").get<OpenMagnetics::BobbinDataOrNameUnion>());
+    x.set_functional_description(j.at("functionalDescription").get<std::vector<CoilFunctionalDescription>>());
+    x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
+    x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
+    x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
+}
+
+inline void from_json(const json & j, CoilFunctionalDescription& x) {
+    x.set_connections(get_stack_optional<std::vector<ConnectionElement>>(j, "connections"));
+    x.set_isolation_side(j.at("isolationSide").get<IsolationSide>());
+    x.set_name(j.at("name").get<std::string>());
+    x.set_number_parallels(j.at("numberParallels").get<int64_t>());
+    x.set_number_turns(j.at("numberTurns").get<int64_t>());
+    x.set_wire(j.at("wire").get<OpenMagnetics::WireDataOrNameUnion>());
+}
+} // namespace OpenMagnetics
+
+
+namespace nlohmann {
+inline void adl_serializer<std::variant<OpenMagnetics::Bobbin, std::string>>::from_json(const json & j, std::variant<OpenMagnetics::Bobbin, std::string> & x) {
+    if (j.is_string())
+        x = j.get<std::string>();
+    else if (j.is_object())
+        x = j.get<OpenMagnetics::Bobbin>();
+    else throw std::runtime_error("Could not deserialise!");
+}
+
+inline void adl_serializer<std::variant<OpenMagnetics::Bobbin, std::string>>::to_json(json & j, const std::variant<OpenMagnetics::Bobbin, std::string> & x) {
+    switch (x.index()) {
+        case 0:
+            j = std::get<OpenMagnetics::Bobbin>(x);
+            break;
+        case 1:
+            j = std::get<std::string>(x);
+            break;
+        default: throw std::runtime_error("Input JSON does not conform to schema!");
+    }
+}
+inline void adl_serializer<std::variant<OpenMagnetics::Wire, std::string>>::from_json(const json & j, std::variant<OpenMagnetics::Wire, std::string> & x) {
+    if (j.is_string())
+        x = j.get<std::string>();
+    else if (j.is_object())
+        x = j.get<OpenMagnetics::Wire>();
+    else throw std::runtime_error("Could not deserialise!");
+}
+
+inline void adl_serializer<std::variant<OpenMagnetics::Wire, std::string>>::to_json(json & j, const std::variant<OpenMagnetics::Wire, std::string> & x) {
+    switch (x.index()) {
+        case 0:
+            j = std::get<OpenMagnetics::Wire>(x);
+            break;
+        case 1:
+            j = std::get<std::string>(x);
+            break;
+        default: throw std::runtime_error("Input JSON does not conform to schema!");
+    }
+}
+} // namespace nlohmann

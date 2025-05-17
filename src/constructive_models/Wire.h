@@ -1,19 +1,15 @@
 #pragma once
 
-#include "processors/InputsWrapper.h"
-#include "constructive_models/InsulationMaterialWrapper.h"
+#include "constructive_models/InsulationMaterial.h"
+#include "processors/Inputs.h"
 #include "Defaults.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
-#include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <magic_enum.hpp>
-#include <numbers>
-#include <streambuf>
 #include <vector>
+
+using namespace MAS;
+
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
@@ -57,9 +53,9 @@ class WireMagneticStrengthFieldOutput : public WindingWindowMagneticStrengthFiel
 };
 
 
-class WireWrapper : public Wire {
+class Wire : public MAS::Wire {
     public:
-        WireWrapper(Wire wire) {
+        Wire(MAS::Wire wire) {
             set_type(wire.get_type());
             if (wire.get_coating())
                 set_coating(wire.get_coating().value());
@@ -95,7 +91,7 @@ class WireWrapper : public Wire {
                 set_edge_radius(wire.get_edge_radius().value());
         }
 
-        WireWrapper(WireRound wire) {
+        Wire(WireRound wire) {
             set_type(wire.get_type());
             if (wire.get_coating())
                 set_coating(wire.get_coating().value());
@@ -118,22 +114,20 @@ class WireWrapper : public Wire {
                 set_conducting_area(wire.get_conducting_area().value());
         }
 
+        Wire() = default;
+        virtual ~Wire() = default;
 
-        WireWrapper() = default;
-        virtual ~WireWrapper() = default;
-
-
-        static WireRound convert_from_wire_to_strand(WireWrapper wire);
-        static std::optional<InsulationWireCoating> resolve_coating(const WireWrapper& wire);
+        static WireRound convert_from_wire_to_strand(Wire wire);
+        static std::optional<InsulationWireCoating> resolve_coating(const Wire& wire);
         std::optional<InsulationWireCoating> resolve_coating();
-        static WireRound resolve_strand(const WireWrapper& wire);
+        static WireRound resolve_strand(const Wire& wire);
         WireRound resolve_strand();
-        static WireMaterial resolve_material(WireWrapper wire);
+        static WireMaterial resolve_material(Wire wire);
         static WireMaterial resolve_material(WireRound wire);
         WireMaterial resolve_material();
-        static InsulationMaterialWrapper resolve_coating_insulation_material(WireWrapper wire);
-        static InsulationMaterialWrapper resolve_coating_insulation_material(WireRound wire);
-        InsulationMaterialWrapper resolve_coating_insulation_material();
+        static InsulationMaterial resolve_coating_insulation_material(Wire wire);
+        static InsulationMaterial resolve_coating_insulation_material(WireRound wire);
+        InsulationMaterial resolve_coating_insulation_material();
 
         // Thought for enamelled round wires
         static double get_filling_factor_round(double conductingDiameter, int grade = 1, WireStandard standard = WireStandard::IEC_60317, bool includeAirInCell = false);
@@ -202,10 +196,10 @@ class WireWrapper : public Wire {
         double calculate_effective_conducting_area(double frequency, double temperature);
         double calculate_conducting_area();
 
-        static int calculate_number_parallels_needed(InputsWrapper inputs, WireWrapper& wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
-        static int calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
-        static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
-        static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, WireWrapper& wire, double maximumEffectiveCurrentDensity);
+        static int calculate_number_parallels_needed(Inputs inputs, Wire& wire, double maximumEffectiveCurrentDensity, size_t windingIndex = 0);
+        static int calculate_number_parallels_needed(OperatingPointExcitation excitation, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
+        static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
+        static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
 
         double get_maximum_outer_width();
         double get_maximum_outer_height();
@@ -217,21 +211,21 @@ class WireWrapper : public Wire {
 
         double get_coating_thickness();
         double get_coating_dielectric_strength();
-        static double get_coating_thickness(WireWrapper wire);
-        static double get_coating_dielectric_strength(WireWrapper wire);
+        static double get_coating_thickness(Wire wire);
+        static double get_coating_dielectric_strength(Wire wire);
         std::string encode_coating_label();
-        static std::string encode_coating_label(WireWrapper wire);
+        static std::string encode_coating_label(Wire wire);
         static std::optional<InsulationWireCoating> decode_coating_label(std::string label);
         double get_coating_relative_permittivity();
-        static double get_coating_relative_permittivity(WireWrapper wire);
+        static double get_coating_relative_permittivity(Wire wire);
 
         void cut_foil_wire_to_section(Section section);
         void cut_planar_wire_to_section(Section section);
         double get_relative_cost();
 
-        static WireWrapper get_equivalent_wire(WireWrapper oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
-        static WireWrapper get_wire_for_frequency(double effectiveFrequency, double temperature=Defaults().ambientTemperature, bool exact=false);
-        static WireWrapper get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
+        static Wire get_equivalent_wire(Wire oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
+        static Wire get_wire_for_frequency(double effectiveFrequency, double temperature=Defaults().ambientTemperature, bool exact=false);
+        static Wire get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
 
 };
 } // namespace OpenMagnetics

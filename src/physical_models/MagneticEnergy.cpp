@@ -13,7 +13,7 @@
 namespace OpenMagnetics {
 
 
-double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint){
+double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint){
     auto constants = Constants();
     double temperature = Defaults().ambientTemperature;
     if (operatingPoint) {
@@ -28,7 +28,7 @@ double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper cor
     }
 }
 
-double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency){
+double MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency){
     auto constants = Constants();
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
     OpenMagnetics::InitialPermeability initialPermeability;
@@ -63,8 +63,7 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
 
 }
 
-double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint){
-    double totalEnergy = 0;
+double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint){
     double temperature = Defaults().ambientTemperature;
     if (operatingPoint) {
         temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
@@ -72,7 +71,7 @@ double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, 
     return calculate_core_maximum_magnetic_energy(core, temperature);
 }
 
-double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency){
+double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency){
     double totalEnergy = 0;
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature);
 
@@ -85,24 +84,24 @@ double MagneticEnergy::calculate_core_maximum_magnetic_energy(CoreWrapper core, 
     return totalEnergy;
 }
 
-DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(InputsWrapper inputs){
+DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs inputs){
     DimensionWithTolerance desiredMagnetizingInductance = inputs.get_design_requirements().get_magnetizing_inductance();
     double magnetizingCurrentPeak = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
-        if (!InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()) {
+        if (!Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()) {
             throw std::runtime_error("Missing magnetizing current");
         }
-        if (!InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()->get_processed()) {
-            auto excitation = InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
+        if (!Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current()->get_processed()) {
+            auto excitation = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex));
             auto magnetizingCurrent = excitation.get_magnetizing_current().value();
             auto magnetizingCurrentExcitationWaveform = magnetizingCurrent.get_waveform().value();
-            auto sampledCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrentExcitationWaveform, excitation.get_frequency());
-            magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
-            magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true, magnetizingCurrent.get_processed()));
+            auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrentExcitationWaveform, excitation.get_frequency());
+            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+            magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true, magnetizingCurrent.get_processed()));
             excitation.set_magnetizing_current(magnetizingCurrent);
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0] = excitation;
         }
-        magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, InputsWrapper::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current().value().get_processed().value().get_peak().value());
+        magnetizingCurrentPeak = std::max(magnetizingCurrentPeak, Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_magnetizing_current().value().get_processed().value().get_peak().value());
     }
     DimensionWithTolerance magneticEnergyRequirement;
     auto get_energy = [magnetizingCurrentPeak](double magnetizingInductance)

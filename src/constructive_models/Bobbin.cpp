@@ -1,6 +1,5 @@
 #include "support/Utils.h"
-#include "Defaults.h"
-#include "constructive_models/BobbinWrapper.h"
+#include "constructive_models/Bobbin.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -29,7 +28,7 @@ namespace OpenMagnetics {
 
 class BobbinEDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
@@ -49,7 +48,7 @@ class BobbinEDataProcessor : public BobbinDataProcessor{
 
 class BobbinRmDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -69,7 +68,7 @@ class BobbinRmDataProcessor : public BobbinDataProcessor{
 
 class BobbinEpDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -90,7 +89,7 @@ class BobbinEpDataProcessor : public BobbinDataProcessor{
 
 class BobbinEtdDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -111,7 +110,7 @@ class BobbinEtdDataProcessor : public BobbinDataProcessor{
 
 class BobbinPmDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -131,7 +130,7 @@ class BobbinPmDataProcessor : public BobbinDataProcessor{
 
 class BobbinPqDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -151,7 +150,7 @@ class BobbinPqDataProcessor : public BobbinDataProcessor{
 
 class BobbinEcDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::ROUND);
@@ -171,7 +170,7 @@ class BobbinEcDataProcessor : public BobbinDataProcessor{
 
 class BobbinEfdDataProcessor : public BobbinDataProcessor{
     public:
-        CoreBobbinProcessedDescription process_data(Bobbin bobbin) {
+        CoreBobbinProcessedDescription process_data(OpenMagnetics::Bobbin bobbin) {
             auto dimensions = flatten_dimensions(bobbin.get_functional_description()->get_dimensions());
             CoreBobbinProcessedDescription processedDescription;
             processedDescription.set_column_shape(ColumnShape::RECTANGULAR);
@@ -255,7 +254,7 @@ void load_interpolators() {
             try {
                 auto coreShapeName = datum.second.get_functional_description()->get_shape();
                 auto coreShape = find_core_shape_by_name(coreShapeName);
-                auto corePiece = OpenMagnetics::CorePiece::factory(coreShape);
+                auto corePiece = CorePiece::factory(coreShape);
 
                 auto bobbinWindingWindowArea = datum.second.get_processed_description()->get_winding_windows()[0].get_area().value();
                 auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
@@ -361,7 +360,7 @@ void load_interpolators() {
         }
     }
 }
-double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windingWindowHeight){
+double Bobbin::get_filling_factor(double windingWindowWidth, double windingWindowHeight){
     load_interpolators();
 
     windingWindowWidth = std::max(windingWindowWidth, minBobbinWidth);
@@ -377,7 +376,7 @@ double BobbinWrapper::get_filling_factor(double windingWindowWidth, double windi
     return (fillingFactorWidth + fillingFactorHeight) / 2;
 }
 
-std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
+std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
 
     load_interpolators();
 
@@ -420,7 +419,7 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(double coreWind
     return {bobbinWindingWindowWidth, bobbinWindingWindowHeight};
 }
 
-BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
+Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWindowWidth) {
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     WindingWindowElement windingWindowElement;
 
@@ -436,12 +435,12 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(double windingWindowHeight, dou
     coreBobbinProcessedDescription.set_column_depth(windingWindowWidth / 2);
     coreBobbinProcessedDescription.set_column_width(windingWindowWidth / 2);
 
-    BobbinWrapper bobbin;
+    Bobbin bobbin;
     bobbin.set_processed_description(coreBobbinProcessedDescription);
     return bobbin;
 }
 
-BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDimensions) {
+Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
     if (!core.get_processed_description()) {
         throw std::runtime_error("Core has not been processed yet");
     }
@@ -535,13 +534,13 @@ BobbinWrapper BobbinWrapper::create_quick_bobbin(CoreWrapper core, bool nullDime
             throw std::runtime_error("Something wrong happened in section bobbin second : " + std::to_string(bobbinWindingWindowDimensions[1]));
         }
     }
-    BobbinWrapper bobbin;
+    Bobbin bobbin;
     bobbin.set_processed_description(coreBobbinProcessedDescription);
     auto windingWindowCoordinates = bobbin.get_winding_window_coordinates(0);
     return bobbin;
 }
 
-std::vector<double> BobbinWrapper::get_winding_window_dimensions(size_t windingWindowIndex) {
+std::vector<double> Bobbin::get_winding_window_dimensions(size_t windingWindowIndex) {
     if (get_winding_window_shape(windingWindowIndex) == WindingWindowShape::RECTANGULAR) {
         double width = get_processed_description()->get_winding_windows()[windingWindowIndex].get_width().value();
         double height = get_processed_description()->get_winding_windows()[windingWindowIndex].get_height().value();
@@ -555,7 +554,7 @@ std::vector<double> BobbinWrapper::get_winding_window_dimensions(size_t windingW
 }
 
 
-double BobbinWrapper::get_winding_window_area(size_t windingWindowIndex) {
+double Bobbin::get_winding_window_area(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw std::runtime_error("Winding window does not exist");
     }
@@ -577,41 +576,41 @@ double BobbinWrapper::get_winding_window_area(size_t windingWindowIndex) {
     }
 }
 
-std::vector<double> BobbinWrapper::get_winding_window_coordinates(size_t windingWindowIndex) {
+std::vector<double> Bobbin::get_winding_window_coordinates(size_t windingWindowIndex) {
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_coordinates().value();
 }
 
-WindingOrientation BobbinWrapper::get_winding_window_sections_orientation(size_t windingWindowIndex) {
+WindingOrientation Bobbin::get_winding_window_sections_orientation(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation()) {
         if (get_winding_window_shape() == WindingWindowShape::ROUND) {
-            return Defaults().defaultRoundWindowSectionsOrientation;
+            return defaults.defaultRoundWindowSectionsOrientation;
         }
         else {
-            return Defaults().defaultRectangularWindowSectionsOrientation;
+            return defaults.defaultRectangularWindowSectionsOrientation;
         }
     }
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_orientation().value();
 }
 
-CoilAlignment BobbinWrapper::get_winding_window_sections_alignment(size_t windingWindowIndex) {
+CoilAlignment Bobbin::get_winding_window_sections_alignment(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
     if (!get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_alignment()) {
         if (get_winding_window_shape() == WindingWindowShape::ROUND) {
-            return Defaults().defaultRoundWindowSectionsAlignment;
+            return defaults.defaultRoundWindowSectionsAlignment;
         }
         else {
-            return Defaults().defaultRectangularWindowSectionsAlignment;
+            return defaults.defaultRectangularWindowSectionsAlignment;
         }
     }
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_sections_alignment().value();
 }
 
-WindingWindowShape BobbinWrapper::get_winding_window_shape(size_t windingWindowIndex) {
+WindingWindowShape Bobbin::get_winding_window_shape(size_t windingWindowIndex) {
     if (windingWindowIndex >= get_processed_description()->get_winding_windows().size()) {
         throw std::runtime_error("Invalid windingWindowIndex: " + std::to_string(windingWindowIndex) + ", bobbin only has" + std::to_string(get_processed_description()->get_winding_windows().size()) + " winding windows.");
     }
@@ -631,12 +630,12 @@ WindingWindowShape BobbinWrapper::get_winding_window_shape(size_t windingWindowI
     return get_processed_description()->get_winding_windows()[windingWindowIndex].get_shape().value();
 }
 
-void BobbinWrapper::process_data() {
+void Bobbin::process_data() {
     auto processor = BobbinDataProcessor::factory(*this);
     set_processed_description((*processor).process_data(*this));
 }
 
-bool BobbinWrapper::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t windingWindowIndex) {
+bool Bobbin::check_if_fits(double dimension, bool isHorizontalOrRadial, size_t windingWindowIndex) {
     if (get_winding_window_shape() == WindingWindowShape::RECTANGULAR) {
         auto windingWindowDimensions = get_winding_window_dimensions();
         if (isHorizontalOrRadial) {
@@ -663,7 +662,7 @@ bool BobbinWrapper::check_if_fits(double dimension, bool isHorizontalOrRadial, s
 
 
 
-void BobbinWrapper::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
+void Bobbin::set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex) {
     if (!get_processed_description()) {
         throw std::runtime_error("Boobbin has not been processed yet");
     }
@@ -679,7 +678,7 @@ void BobbinWrapper::set_winding_orientation(WindingOrientation windingOrientatio
 }
 
 
-std::optional<WindingOrientation> BobbinWrapper::get_winding_orientation(size_t windingWindowIndex) {
+std::optional<WindingOrientation> Bobbin::get_winding_orientation(size_t windingWindowIndex) {
     if (!get_processed_description()) {
         return std::nullopt;
     }
@@ -696,7 +695,7 @@ std::optional<WindingOrientation> BobbinWrapper::get_winding_orientation(size_t 
     return std::nullopt;
 }
 
-std::vector<double> BobbinWrapper::get_maximum_dimensions() {
+std::vector<double> Bobbin::get_maximum_dimensions() {
     if (!get_processed_description()) {
         process_data();
     }

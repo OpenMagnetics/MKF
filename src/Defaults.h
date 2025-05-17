@@ -3,6 +3,10 @@
 #    pragma once
 
 #include "Models.h"
+#include "cstdint"
+#include <MAS.hpp>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 struct Defaults {

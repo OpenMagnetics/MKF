@@ -112,13 +112,12 @@ void CircuitSimulatorExporter::core_ladder_func(double *p, double *x, int m, int
         x[i]=core_ladder_model(p, dcResistanceAndFrequencies[i + 1], dcResistance);
 }
 
-std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(MagneticWrapper magnetic) {
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(Magnetic magnetic) {
     const size_t numberUnknowns = 10;
 
     const size_t numberElements = 100;
     const size_t numberElementsPlusOne = 101;
     size_t loopIterations = 5;
-    size_t maxIterations = 10000;
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
     auto coil = magnetic.get_coil();
@@ -187,13 +186,12 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
-std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(MagneticWrapper magnetic) {
+std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic) {
     const size_t numberUnknowns = 6;
 
     const size_t numberElements = 100;
     const size_t numberElementsPlusOne = 101;
     size_t loopIterations = 5;
-    size_t maxIterations = 10000;
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
     auto coil = magnetic.get_coil();
@@ -261,11 +259,10 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
 }
 
 
-std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(MagneticWrapper magnetic) {
+std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(Magnetic magnetic) {
     const size_t numberUnknowns = 4;
     const size_t numberElements = 100;
 
-    size_t maxIterations = 10000;
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
     auto coil = magnetic.get_coil();
@@ -314,7 +311,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 }
 
 
-std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode) {
+std::vector<std::vector<double>> CircuitSimulatorExporter::calculate_ac_resistance_coefficients_per_winding(Magnetic magnetic, CircuitSimulatorExporterCurveFittingModes mode) {
     if (mode == CircuitSimulatorExporterCurveFittingModes::LADDER) {
         return calculate_ac_resistance_coefficients_per_winding_ladder(magnetic);
     }
@@ -346,7 +343,7 @@ std::shared_ptr<CircuitSimulatorExporterModel> CircuitSimulatorExporterModel::fa
         throw std::runtime_error("Unknown Circuit Simulator program, available options are: {SIMBA, NGSPICE, LTSPICE}");
 }
 
-std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     auto result = _model->export_magnetic_as_subcircuit(magnetic, frequency, filePathOrFile, mode);
     if (outputFilename) {
         std::ofstream o(outputFilename.value());
@@ -355,7 +352,7 @@ std::string CircuitSimulatorExporter::export_magnetic_as_subcircuit(MagneticWrap
     return result;
 }
 
-std::string CircuitSimulatorExporter::export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporter::export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> outputFilename, std::optional<std::string> filePathOrFile) {
     auto result = _model->export_magnetic_as_symbol(magnetic, filePathOrFile);
     if (outputFilename) {
         std::ofstream o(outputFilename.value());
@@ -545,7 +542,7 @@ ordered_json CircuitSimulatorExporterSimbaModel::merge_connectors(ordered_json c
     return mergeConnectors;
 }
 
-std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     ordered_json simulation;
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
@@ -761,7 +758,7 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     return simulation.dump(2);
 }
 
-std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
     headerString += "* " + magnetic.get_reference() + "\n\n";
     headerString += ".subckt " + fix_filename(magnetic.get_reference());
@@ -826,7 +823,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 
-std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
+std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
     headerString += "* " + magnetic.get_reference() + "\n\n";
     headerString += ".subckt " + fix_filename(magnetic.get_reference());
@@ -892,7 +889,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
     return headerString + "\n" + circuitString + "\n" + parametersString + "\n" + footerString;
 }
 
-std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile) {
+std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile) {
     std::string symbolString = "Version 4\n";
     symbolString += "SymbolType BLOCK\n";
 
@@ -1139,8 +1136,8 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
 
     double periodEnd = time.back();
     double periodStart = periodEnd - period;
-    int periodStartIndex = 0;
-    int periodStopIndex = -1;
+    size_t periodStartIndex = 0;
+    size_t periodStopIndex = -1;
 
     if (_periodStartIndex && _periodStopIndex) {
         periodStartIndex = _periodStartIndex.value();
@@ -1167,7 +1164,7 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
         }
 
 
-        for (int i = periodStartIndex; i < time.size(); ++i)
+        for (size_t i = periodStartIndex; i < time.size(); ++i)
         {
             if (time[i] >= periodStart + period) {
                 periodStopIndex = i + 1;
@@ -1197,7 +1194,7 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     newWaveform.set_time(periodTime);
 
     if (sample) {
-        auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(newWaveform, frequency);
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(newWaveform, frequency);
         return sampledWaveform;
     }
     else {
@@ -1228,9 +1225,9 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
         double originalThreshold = settings->get_harmonic_amplitude_threshold();
         while (reconstructedWaveform.get_data().size() > 8192) {
             settings->set_harmonic_amplitude_threshold(settings->get_harmonic_amplitude_threshold() * 2);
-            auto harmonics = InputsWrapper::calculate_harmonics_data(waveformOnePeriod, frequency);
+            auto harmonics = Inputs::calculate_harmonics_data(waveformOnePeriod, frequency);
             settings->set_inputs_number_points_sampled_waveforms(2 * OpenMagnetics::round_up_size_to_power_of_2(harmonics.get_frequencies().back() / frequency));
-            reconstructedWaveform = InputsWrapper::reconstruct_signal(harmonics, frequency);
+            reconstructedWaveform = Inputs::reconstruct_signal(harmonics, frequency);
         }
 
         settings->set_harmonic_amplitude_threshold(originalThreshold);
@@ -1254,7 +1251,6 @@ std::vector<int> get_numbers_in_string(std::string s) {
 }
 
 bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
-    bool result = true;
     size_t numberFoundIndexes = 0;
     std::vector<size_t> indexes;
     std::map<std::string, size_t> windingLabels = {
@@ -1490,19 +1486,19 @@ OperatingPoint CircuitSimulationReader::extract_operating_point(size_t numberWin
         OperatingPointExcitation excitation;
         for (auto column : _columns) {
             excitation.set_frequency(frequency);
-            if (column.windingIndex == int(windingIndex) && column.type == DataType::CURRENT) {
+            if (column.windingIndex == windingIndex && column.type == DataType::CURRENT) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
                 excitation.set_current(current);
             }
-            if (column.windingIndex == int(windingIndex) && column.type == DataType::MAGNETIZING_CURRENT) {
+            if (column.windingIndex == windingIndex && column.type == DataType::MAGNETIZING_CURRENT) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor current;
                 current.set_waveform(waveform);
                 excitation.set_magnetizing_current(current);
             }
-            if (column.windingIndex == int(windingIndex) && column.type == DataType::VOLTAGE) {
+            if (column.windingIndex == windingIndex && column.type == DataType::VOLTAGE) {
                 auto waveform = extract_waveform(column, frequency);
                 SignalDescriptor voltage;
                 voltage.set_waveform(waveform);

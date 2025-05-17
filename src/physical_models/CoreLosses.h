@@ -2,8 +2,8 @@
 #include "Constants.h"
 #include "Models.h"
 
-#include "constructive_models/CoreWrapper.h"
-#include "processors/InputsWrapper.h"
+#include "constructive_models/Core.h"
+#include "processors/Inputs.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include <cmath>
@@ -16,16 +16,18 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 class CoreLossesModel {
   private:
   protected:
-    double _get_frequency_from_core_losses(CoreWrapper core,
+    double _get_frequency_from_core_losses(Core core,
                                            SignalDescriptor magneticFluxDensity,
                                            double temperature,
                                            double coreLosses);
-    SignalDescriptor _get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor _get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses);
@@ -41,7 +43,7 @@ class CoreLossesModel {
     bool _steinmetzDatumSet = false;
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
-    virtual CoreLossesOutput get_core_losses(CoreWrapper core,
+    virtual CoreLossesOutput get_core_losses(Core core,
                                              OperatingPointExcitation excitation,
                                              double temperature) = 0;
     virtual double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -50,18 +52,18 @@ class CoreLossesModel {
     virtual double get_core_mass_losses(CoreMaterial coreMaterial,
                                              OperatingPointExcitation excitation,
                                              double temperature) = 0;
-    virtual double get_frequency_from_core_losses(CoreWrapper core,
+    virtual double get_frequency_from_core_losses(Core core,
                                                   SignalDescriptor magneticFluxDensity,
                                                   double temperature,
                                                   double coreLosses) = 0;
-    virtual SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    virtual SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                                 double frequency,
                                                                                 double temperature,
                                                                                 double coreLosses) = 0;
     static std::shared_ptr<CoreLossesModel> factory(CoreLossesModels modelName);
     static std::shared_ptr<CoreLossesModel> factory(std::map<std::string, std::string> models);
     static std::shared_ptr<CoreLossesModel> factory(json models);
-    static OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum get_steinmetz_coefficients(
+    static SteinmetzCoreLossesMethodRangeDatum get_steinmetz_coefficients(
         CoreMaterialDataOrNameUnion material,
         double frequency);
     bool is_steinmetz_datum_loaded() { return _steinmetzDatumSet; }
@@ -71,7 +73,7 @@ class CoreLossesModel {
         _steinmetzDatum = steinmetzDatum;
     }
 
-    double get_core_losses_series_resistance(CoreWrapper core,
+    double get_core_losses_series_resistance(Core core,
                                              double frequency,
                                              double temperature,
                                              double magnetizingInductance);
@@ -190,7 +192,7 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
   private:
     std::string _modelName = "Steinmetz";
   public:
-    CoreLossesOutput get_core_losses(CoreWrapper core,
+    CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -201,11 +203,11 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses);
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses);
@@ -225,13 +227,13 @@ class CoreLossesIGSEModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -254,13 +256,13 @@ class CoreLossesBargModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -276,7 +278,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
   private:
     std::string _modelName = "Roshen";
   public:
-    CoreLossesOutput get_core_losses(CoreWrapper core,
+    CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -287,25 +289,25 @@ class CoreLossesRoshenModel : public CoreLossesModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
 
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
     double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
-    double get_eddy_current_losses_density(CoreWrapper core, OperatingPointExcitation excitation, double resistivity);
+    double get_eddy_current_losses_density(Core core, OperatingPointExcitation excitation, double resistivity);
     double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
                                                   double resistivity,
                                                   double alphaTimesN0);
-    std::map<std::string, double> get_roshen_parameters(CoreWrapper core,
+    std::map<std::string, double> get_roshen_parameters(Core core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature);
 };
@@ -324,13 +326,13 @@ class CoreLossesAlbachModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -352,13 +354,13 @@ class CoreLossesNSEModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -381,13 +383,13 @@ class CoreLossesMSEModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -409,13 +411,13 @@ class CoreLossesGSEModel : public CoreLossesSteinmetzModel {
                                       double temperature) {
         throw std::runtime_error("Mass losses is only valid for Proprietary models from Magnetec");
     }
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -434,11 +436,11 @@ class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
     double get_core_mass_losses(CoreMaterial coreMaterial,
                                      OperatingPointExcitation excitation,
                                      double temperature);
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           [[maybe_unused]]double temperature,
                                           double coreLosses);
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
@@ -452,7 +454,7 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
   private:
     std::string _modelName = "Loss Factor";
   public:
-    CoreLossesOutput get_core_losses(CoreWrapper core,
+    CoreLossesOutput get_core_losses(Core core,
                                      OperatingPointExcitation excitation,
                                      double temperature);
     double get_core_volumetric_losses(CoreMaterial coreMaterial,
@@ -476,21 +478,21 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
                                      double temperature,
                                      double magnetizingInductance);
 
-    double get_frequency_from_core_losses(CoreWrapper core,
+    double get_frequency_from_core_losses(Core core,
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses) {
         return _get_frequency_from_core_losses(core, magneticFluxDensity, temperature, coreLosses);
     }
 
-    SignalDescriptor get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+    SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
 
-    static double calculate_magnetizing_inductance_from_excitation(CoreWrapper core, OperatingPointExcitation excitation, double temperature);
+    static double calculate_magnetizing_inductance_from_excitation(Core core, OperatingPointExcitation excitation, double temperature);
 
 };
 
@@ -516,10 +518,10 @@ class CoreLosses {
         }
     }
 
-    CoreLossesOutput calculate_core_losses(CoreWrapper core, OperatingPointExcitation excitation, double temperature);
+    CoreLossesOutput calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
     std::shared_ptr<CoreLossesModel> get_core_losses_model(std::string materialName);
     double get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature);
-    double get_core_losses_series_resistance(CoreWrapper core, double frequency, double temperature, double magnetizingInductance);
+    double get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance);
 };
 
 } // namespace OpenMagnetics

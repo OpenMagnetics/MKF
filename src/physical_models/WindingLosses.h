@@ -5,6 +5,8 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/WindingProximityEffectLosses.h"
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 class WindingLosses
@@ -22,12 +24,12 @@ class WindingLosses
             _magneticFieldStrengthFringingEffectModel = magneticFieldStrengthFringingEffectModel;
         }
 
-        WindingLossesOutput calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature);
-        static double calculate_effective_resistance_of_winding(MagneticWrapper magnetic, size_t windingIndex, double frequency, double temperature);
-        ResistanceMatrixAtFrequency calculate_resistance_matrix(MagneticWrapper magnetic, double temperature, double frequency);
-        static double calculate_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
-        static double calculate_effective_resistance_per_meter(const WireWrapper& wire, double effectiveFrequency, double temperature);
-        static double calculate_skin_effect_resistance_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
+        WindingLossesOutput calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature);
+        static double calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature);
+        ResistanceMatrixAtFrequency calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency);
+        static double calculate_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
+        static double calculate_effective_resistance_per_meter(const Wire& wire, double effectiveFrequency, double temperature);
+        static double calculate_skin_effect_resistance_per_meter(Wire wire, SignalDescriptor current, double temperature);
 
 };
 

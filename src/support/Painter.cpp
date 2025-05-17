@@ -3,7 +3,6 @@
 #include "support/CoilMesher.h"
 #include "MAS.hpp"
 #include "support/Utils.h"
-#include "support/Settings.h"
 #include "json.hpp"
 #include <matplot/matplot.h>
 #include <cfloat>
@@ -118,10 +117,7 @@ void Painter::increment_current_map_index() {
 //     }
 // }
 
-ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-
-
+ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw std::runtime_error("Current is missing in excitation");
     }
@@ -131,16 +127,16 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
             if (!current.get_waveform()) {
                 throw std::runtime_error("Waveform is missing from current");
             }
-            auto sampledWaveform = InputsWrapper::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = InputsWrapper::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
+            auto harmonics = Inputs::calculate_harmonics_data(sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
             current.set_harmonics(harmonics);
             if (!current.get_processed()) {
-                auto processed = InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, true);
+                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
                 current.set_processed(processed);
             }
             else {
                 if (!current.get_processed()->get_rms()) {
-                    auto processed = InputsWrapper::calculate_processed_data(harmonics, sampledWaveform, true);
+                    auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
                     current.set_processed(processed);
                 }
             }
@@ -154,13 +150,13 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
     bool includeFringing = settings->get_painter_include_fringing();
     bool mirroringDimension = settings->get_painter_mirroring_dimension();
 
-    _extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+    _extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
 
     size_t numberPointsX = settings->get_painter_number_points_x();
     size_t numberPointsY = settings->get_painter_number_points_y();
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY).first;
 
-    OpenMagnetics::MagneticField magneticField;
+    MagneticField magneticField;
     settings->set_magnetic_field_include_fringing(includeFringing);
     settings->set_magnetic_field_mirroring_dimension(mirroringDimension);
     ComplexField field;
@@ -190,7 +186,7 @@ ComplexField Painter::calculate_magnetic_field(OperatingPoint operatingPoint, Ma
     return field;
 }
 
-bool is_inside_inducing_turns(std::vector<double> point, CoilWrapper coil) {
+bool is_inside_inducing_turns(std::vector<double> point, Coil coil) {
     auto turns = coil.get_turns_description().value();
     auto wires = coil.get_wires();
 
@@ -228,8 +224,7 @@ bool is_inside_inducing_turns(std::vector<double> point, CoilWrapper coil) {
     return false;
 }
 
-void Painter::paint_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
     matplot::gcf()->quiet_mode(true);
     matplot::cla();
     get_image_size(magnetic);
@@ -493,7 +488,7 @@ void Painter::export_png() {
     matplot::save(outFile);
 }
 
-void Painter::paint_core(MagneticWrapper magnetic) {
+void Painter::paint_core(Magnetic magnetic) {
     _paintingFullMagnetic = true;
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
@@ -506,7 +501,7 @@ void Painter::paint_core(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_bobbin(MagneticWrapper magnetic) {
+void Painter::paint_bobbin(Magnetic magnetic) {
     CoreShape shape = std::get<CoreShape>(magnetic.get_core().get_functional_description().get_shape());
     switch(shape.get_family()) {
         case CoreShapeFamily::T:
@@ -517,8 +512,8 @@ void Painter::paint_bobbin(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_sections(MagneticWrapper magnetic) {
-    CoreWrapper core = magnetic.get_core();
+void Painter::paint_coil_sections(Magnetic magnetic) {
+    Core core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
     switch(shape.get_family()) {
@@ -531,8 +526,8 @@ void Painter::paint_coil_sections(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_layers(MagneticWrapper magnetic) {
-    CoreWrapper core = magnetic.get_core();
+void Painter::paint_coil_layers(Magnetic magnetic) {
+    Core core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
     switch(shape.get_family()) {
@@ -545,8 +540,8 @@ void Painter::paint_coil_layers(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_coil_turns(MagneticWrapper magnetic) {
-    CoreWrapper core = magnetic.get_core();
+void Painter::paint_coil_turns(Magnetic magnetic) {
+    Core core = magnetic.get_core();
     CoreShape shape = std::get<CoreShape>(core.get_functional_description().get_shape());
     auto windingWindows = core.get_winding_windows();
     switch(shape.get_family()) {
@@ -559,7 +554,7 @@ void Painter::paint_coil_turns(MagneticWrapper magnetic) {
     }
 }
 
-std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
+std::vector<double> Painter::get_image_size(Magnetic magnetic) {
     auto core = magnetic.get_core();
 
 
@@ -569,9 +564,9 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     double showingCoreWidth;
     auto family = core.get_shape_family();
     switch (family) {
-        case OpenMagnetics::CoreShapeFamily::C:
-        case OpenMagnetics::CoreShapeFamily::U:
-        case OpenMagnetics::CoreShapeFamily::UR:
+        case CoreShapeFamily::C:
+        case CoreShapeFamily::U:
+        case CoreShapeFamily::UR:
             _extraDimension = 1;
             showingCoreWidth = (processedDescription.get_width() - mainColumn.get_width() / 2);
             if (_addProportionForColorBar) {
@@ -580,8 +575,8 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
             }
             _offsetForColorBar = (showingCoreWidth - (processedDescription.get_width() - mainColumn.get_width() / 2)) / 2;
             break;
-        case OpenMagnetics::CoreShapeFamily::T:
-            _extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+        case CoreShapeFamily::T:
+            _extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
             showingCoreWidth = processedDescription.get_width() * _extraDimension;
             if (_addProportionForColorBar) {
                 double proportionForColorBar = 0.25;
@@ -609,7 +604,7 @@ std::vector<double> Painter::get_image_size(MagneticWrapper magnetic) {
     return {showingCoreWidth, showingCoreHeight};
 }
 
-void Painter::set_image_size(WireWrapper wire) {
+void Painter::set_image_size(Wire wire) {
     if (_paintingFullMagnetic) {
         return;
     }
@@ -649,8 +644,7 @@ void Painter::set_image_size(WireWrapper wire) {
     matplot::gca()->position({0.0f, 0.0f, 1.0f, 1.0f});
 }
 
-void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_toroidal_core(Magnetic magnetic) {
 
     auto aux = get_image_size(magnetic);
     double imageWidth = aux[0];
@@ -680,8 +674,7 @@ void Painter::paint_toroidal_core(MagneticWrapper magnetic) {
     _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_ferrite(), 0, 16));
 }
 
-void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_two_piece_set_core(Magnetic magnetic) {
     auto core = magnetic.get_core();
     std::vector<std::vector<double>> topPiecePoints = {};
     std::vector<std::vector<double>> bottomPiecePoints = {};
@@ -694,9 +687,9 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     double showingCoreWidth;
     double showingMainColumnWidth;
     switch (family) {
-        case OpenMagnetics::CoreShapeFamily::C:
-        case OpenMagnetics::CoreShapeFamily::U:
-        case OpenMagnetics::CoreShapeFamily::UR:
+        case CoreShapeFamily::C:
+        case CoreShapeFamily::U:
+        case CoreShapeFamily::UR:
             showingMainColumnWidth = mainColumn.get_width() / 2;
             showingCoreWidth = processedDescription.get_width() - mainColumn.get_width() / 2;
             break;
@@ -823,8 +816,7 @@ void Painter::paint_two_piece_set_core(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()) {
         throw std::runtime_error("Bobbin has not being processed");
@@ -870,8 +862,7 @@ void Painter::paint_two_piece_set_bobbin(MagneticWrapper magnetic) {
     matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_bobbin()));
 }
 
-void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
     for (size_t i = 0; i < sections.size(); ++i){
         if (sections[i].get_margin()) {
@@ -943,8 +934,7 @@ void Painter::paint_two_piece_set_margin(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_toroidal_margin(Magnetic magnetic) {
     bool drawSpacer = settings->get_painter_draw_spacer();
     auto sections = magnetic.get_coil().get_sections_description().value();
 
@@ -1108,9 +1098,7 @@ void Painter::paint_toroidal_margin(MagneticWrapper magnetic) {
     }
 }
 
-void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
+void Painter::paint_two_piece_set_winding_sections(Magnetic magnetic) {
 
     if (!magnetic.get_coil().get_sections_description()) {
         throw std::runtime_error("Winding sections not created");
@@ -1144,9 +1132,7 @@ void Painter::paint_two_piece_set_winding_sections(MagneticWrapper magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
-void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
+void Painter::paint_toroidal_winding_sections(Magnetic magnetic) {
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();
 
@@ -1190,11 +1176,9 @@ void Painter::paint_toroidal_winding_sections(MagneticWrapper magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
-    CoilWrapper winding = magnetic.get_coil();
-    CoreWrapper core = magnetic.get_core();
+void Painter::paint_two_piece_set_winding_layers(Magnetic magnetic) {
+    Coil winding = magnetic.get_coil();
+    Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
         throw std::runtime_error("Core has not being processed");
     }
@@ -1231,11 +1215,9 @@ void Painter::paint_two_piece_set_winding_layers(MagneticWrapper magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
-void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
-    CoilWrapper winding = magnetic.get_coil();
-    CoreWrapper core = magnetic.get_core();
+void Painter::paint_toroidal_winding_layers(Magnetic magnetic) {
+    Coil winding = magnetic.get_coil();
+    Core core = magnetic.get_core();
     if (!core.get_processed_description()) {
         throw std::runtime_error("Core has not being processed");
     }
@@ -1281,7 +1263,7 @@ void Painter::paint_toroidal_winding_layers(MagneticWrapper magnetic) {
     paint_toroidal_margin(magnetic);
 }
 
-void Painter::paint_wire(WireWrapper wire) {
+void Painter::paint_wire(Wire wire) {
     set_image_size(wire);
 
     switch (wire.get_type()) {
@@ -1309,7 +1291,6 @@ struct CoatingInfo {
 };
 
 CoatingInfo process_coating(double insulationThickness, InsulationWireCoating coating) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     InsulationWireCoatingType insulationWireCoatingType = coating.get_type().value();
     size_t numberLines = 0;
     double strokeWidth = 0;
@@ -1375,11 +1356,10 @@ CoatingInfo process_coating(double insulationThickness, InsulationWireCoating co
     return coatingInfo;
 }
 
-void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapper wire) {
+void Painter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire) {
     if (!wire.get_outer_diameter()) {
         throw std::runtime_error("Wire is missing outerDiameter");
     }
-    auto settings = OpenMagnetics::Settings::GetInstance();
 
     double outerDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
     double conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
@@ -1427,11 +1407,10 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, WireWrapp
 
 }
 
-void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrapper wire) {
+void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire) {
     if (!wire.get_outer_diameter()) {
         throw std::runtime_error("Wire is missing outerDiameter");
     }
-    auto settings = OpenMagnetics::Settings::GetInstance();
     bool simpleMode = settings->get_painter_simple_litz();
     auto coating = wire.resolve_coating();
     size_t numberConductors = wire.get_number_conductors().value();
@@ -1445,9 +1424,9 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
 
     if (coating->get_type() == InsulationWireCoatingType::BARE) {
         conductingDiameter = outerDiameter;
-        auto strandCoating = WireWrapper::resolve_coating(strand);
+        auto strandCoating = Wire::resolve_coating(strand);
         double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
-        auto conductingDiameterTheory = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        auto conductingDiameterTheory = Wire::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
         if (conductingDiameterTheory > conductingDiameter) {
             conductingDiameter = conductingDiameterTheory;
             outerDiameter = conductingDiameterTheory;
@@ -1460,20 +1439,20 @@ void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, WireWrappe
         if (!coating->get_number_layers()) {
             throw std::runtime_error("Number layers missing in litz served");
         }
-        auto strandCoating = WireWrapper::resolve_coating(strand);
+        auto strandCoating = Wire::resolve_coating(strand);
         double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
-        conductingDiameter = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        conductingDiameter = Wire::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
         if (outerDiameter <= conductingDiameter) {
-            double servedThickness = WireWrapper::get_serving_thickness_from_standard(coating->get_number_layers().value(), outerDiameter);
+            double servedThickness = Wire::get_serving_thickness_from_standard(coating->get_number_layers().value(), outerDiameter);
             outerDiameter = conductingDiameter + 2 * servedThickness;
             wire.set_nominal_value_outer_diameter(outerDiameter);
             set_image_size(wire);
         }
     }
     else if (coating->get_type() == InsulationWireCoatingType::INSULATED) {
-        auto strandCoating = WireWrapper::resolve_coating(strand);
+        auto strandCoating = Wire::resolve_coating(strand);
         double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
-        conductingDiameter = WireWrapper::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
+        conductingDiameter = Wire::get_outer_diameter_bare_litz(strandConductingDiameter, numberConductors, strandCoating->get_grade().value());
         if (outerDiameter <= conductingDiameter) {
             double insulationThickness = coating->get_number_layers().value() * coating->get_thickness_layers().value();
             outerDiameter = conductingDiameter + 2 * insulationThickness;
@@ -1643,8 +1622,7 @@ std::string Painter::paint_rectangle(std::vector<double> cornerData, bool fill, 
     return key;
 }
 
-void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, WireWrapper wire, double angle, std::vector<double> center) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center) {
 
     if (!wire.get_outer_width()) {
         throw std::runtime_error("Wire is missing outerWidth");
@@ -1737,7 +1715,7 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
     }
 }
 
-void Painter::paint_wire_with_current_density(WireWrapper wire, OperatingPoint operatingPoint, size_t windingIndex) {
+void Painter::paint_wire_with_current_density(Wire wire, OperatingPoint operatingPoint, size_t windingIndex) {
     if (operatingPoint.get_excitations_per_winding().size() <= windingIndex) {
         throw std::runtime_error("Excitation missing for winding index: " + std::to_string(windingIndex));
     }
@@ -1756,12 +1734,11 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, OperatingPoint o
     return paint_wire_with_current_density(wire, current, frequency, temperature);
 }
 
-void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor current, double frequency, double temperature) {
+void Painter::paint_wire_with_current_density(Wire wire, SignalDescriptor current, double frequency, double temperature) {
     set_image_size(wire);
-    auto settings = OpenMagnetics::Settings::GetInstance();
     std::vector<std::vector<double>> currentDensityPoints;
     if (wire.get_type() == WireType::LITZ) {
-        WireWrapper strand(wire.resolve_strand());
+        Wire strand(wire.resolve_strand());
         currentDensityPoints = strand.calculate_current_density_distribution(current, frequency, temperature);
     }
     else {
@@ -1772,7 +1749,6 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
     if (wire.get_type() == WireType::LITZ) {
         _postProcessingDefs.push_back(R"(  </radialGradient>)");
         auto strand = wire.resolve_strand();
-        double conductingDiameter = resolve_dimensional_values(strand.get_outer_diameter().value());
         auto maximumValue = currentDensityPoints[0].back();
         auto numberPoints = currentDensityPoints[0].size();
         for (size_t pointIndex = numberPoints - 1; pointIndex > 0 ; --pointIndex) {
@@ -1866,10 +1842,8 @@ void Painter::paint_wire_with_current_density(WireWrapper wire, SignalDescriptor
     }
 }
 
-void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
-    CoilWrapper winding = magnetic.get_coil();
+void Painter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
+    Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
     if (!winding.get_turns_description()) {
@@ -1950,10 +1924,8 @@ void Painter::paint_two_piece_set_winding_turns(MagneticWrapper magnetic) {
     paint_two_piece_set_margin(magnetic);
 }
 
-void Painter::paint_toroidal_winding_turns(MagneticWrapper magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
-    CoilWrapper winding = magnetic.get_coil();
+void Painter::paint_toroidal_winding_turns(Magnetic magnetic) {
+    Coil winding = magnetic.get_coil();
     auto wirePerWinding = winding.get_wires();
 
     auto processedDescription = magnetic.get_core().get_processed_description().value();

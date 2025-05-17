@@ -1,9 +1,10 @@
 #pragma once
 #include "Constants.h"
 #include <MAS.hpp>
-#include "processors/InputsWrapper.h"
-#include "constructive_models/MagneticWrapper.h"
+#include "processors/Inputs.h"
+#include "constructive_models/Magnetic.h"
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -107,8 +108,8 @@ public:
     bool run_checks(bool assert = false);
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
-    InputsWrapper process();
-    InputsWrapper process(MagneticWrapper magnetic);
+    Inputs process();
+    Inputs process(Magnetic magnetic);
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
@@ -133,8 +134,8 @@ public:
 
     AdvancedFlyback(const json& j);
 
-    InputsWrapper process();
-    InputsWrapper process(MagneticWrapper magnetic);
+    Inputs process();
+    Inputs process(Magnetic magnetic);
 
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }

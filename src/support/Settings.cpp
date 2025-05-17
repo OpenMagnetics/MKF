@@ -1,3 +1,4 @@
+#include "support/Utils.h"
 #include "support/Settings.h"
 
 namespace OpenMagnetics {
@@ -10,6 +11,15 @@ namespace OpenMagnetics {
         }
         return settings_;
     }
+
+    Settings::Settings() {
+        _inputsNumberPointsSampledWaveforms = constants.numberPointsSampledWaveforms;
+        _painterMirroringDimension = defaults.magneticFieldMirroringDimension;
+        _magneticFieldMirroringDimension = defaults.magneticFieldMirroringDimension;
+        _harmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold;
+        _coreLossesModelNames = {defaults.coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+    }
+
 
     void Settings::reset() {
 
@@ -37,7 +47,7 @@ namespace OpenMagnetics {
         _painterNumberPointsX = 25;
         _painterNumberPointsY = 50;
         _painterMirroringDimension = Defaults().magneticFieldMirroringDimension;
-        _painterMode = Painter::PainterModes::CONTOUR;
+        _painterMode = PainterModes::CONTOUR;
         _painterLogarithmicScale = false;
         _painterIncludeFringing = true;
         _painterDrawSpacer = true;
@@ -213,10 +223,10 @@ namespace OpenMagnetics {
         _painterNumberPointsY = value;
     }
 
-    Painter::PainterModes Settings::get_painter_mode() const {
+    PainterModes Settings::get_painter_mode() const {
         return _painterMode;
     }
-    void Settings::set_painter_mode(Painter::PainterModes value) {
+    void Settings::set_painter_mode(PainterModes value) {
         _painterMode = value;
     }
 
