@@ -3,7 +3,7 @@
 #include "physical_models/MagneticEnergy.h"
 #include "Constants.h"
 
-std::map<std::string, OpenMagnetics::MagneticWrapper> magneticsCache;
+std::map<std::string, OpenMagnetics::Magnetic> magneticsCache;
 std::map<double, std::string> magneticEnergyCache;
 
 
@@ -20,7 +20,7 @@ std::vector<std::string> get_magnetic_cache_references() {
     return filteredReferences;
 }
 
-std::vector<OpenMagnetics::MagneticWrapper> get_magnetics_from_cache(std::optional<std::vector<std::string>> references) {
+std::vector<OpenMagnetics::Magnetic> get_magnetics_from_cache(std::optional<std::vector<std::string>> references) {
     if (references) {
         return magneticsCache | std::views::filter([references](auto&& p) { return std::find(references.value().begin(), references.value().end(), p.first) != references.value().end();})
                               | std::views::values
@@ -32,7 +32,7 @@ std::vector<OpenMagnetics::MagneticWrapper> get_magnetics_from_cache(std::option
     }
 }
 
-void load_magnetic_in_cache(std::string reference, OpenMagnetics::MagneticWrapper magnetic) {
+void load_magnetic_in_cache(std::string reference, OpenMagnetics::Magnetic magnetic) {
     magneticsCache[reference] = magnetic;
 }
 

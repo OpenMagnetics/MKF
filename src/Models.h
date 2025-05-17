@@ -1,5 +1,4 @@
 #pragma once
-#include <MAS.hpp>
 
 namespace OpenMagnetics {
 

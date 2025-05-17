@@ -1,7 +1,6 @@
 #include "support/CoilMesher.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/LeakageInductance.h"
-#include "support/Settings.h"
 #include "MAS.hpp"
 #include "support/Utils.h"
 #include "json.hpp"
@@ -9,8 +8,7 @@
 
 namespace OpenMagnetics {
 
-std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, MagneticWrapper magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];
@@ -21,7 +19,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     Field inducedField = aux.first;
     double dA = aux.second;
 
-    OpenMagnetics::MagneticField magneticField;
+    MagneticField magneticField;
 
     std::vector<int8_t> currentDirectionPerWinding;
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
@@ -69,8 +67,7 @@ std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(Oper
     return {field, dA};
 }
 
-LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(MagneticWrapper magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
     auto originallyIncludeFringing = settings->get_magnetic_field_include_fringing();
     settings->set_magnetic_field_include_fringing(false);
 
@@ -83,42 +80,42 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     }
 
 
-    OpenMagnetics::Processed sourceProcessed;
+    Processed sourceProcessed;
     sourceProcessed.set_peak_to_peak(2);
     sourceProcessed.set_duty_cycle(0.5);
     sourceProcessed.set_offset(0);
     sourceProcessed.set_rms(1 / sqrt(2));
     sourceProcessed.set_label(WaveformLabel::SINUSOIDAL);
-    auto sourceWaveform = OpenMagnetics::InputsWrapper::create_waveform(sourceProcessed, frequency);
+    auto sourceWaveform = Inputs::create_waveform(sourceProcessed, frequency);
     SignalDescriptor sourceCurrent;
     sourceCurrent.set_waveform(sourceWaveform);
     sourceCurrent.set_processed(sourceProcessed);
-    sourceCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sourceWaveform, frequency));
+    sourceCurrent.set_harmonics(Inputs::calculate_harmonics_data(sourceWaveform, frequency));
     OperatingPointExcitation sourceExcitation;
     sourceExcitation.set_current(sourceCurrent);
 
 
-    OpenMagnetics::Processed destinationProcessed = sourceProcessed;
+    Processed destinationProcessed = sourceProcessed;
     double sourceDestinationTurnsRatio = double(magnetic.get_mutable_coil().get_number_turns(sourceIndex)) / magnetic.get_mutable_coil().get_number_turns(destinationIndex);
     destinationProcessed.set_peak_to_peak(2.0 * sourceDestinationTurnsRatio);
-    auto destinationWaveform = OpenMagnetics::InputsWrapper::create_waveform(destinationProcessed, frequency);
+    auto destinationWaveform = Inputs::create_waveform(destinationProcessed, frequency);
     SignalDescriptor destinationCurrent;
     destinationProcessed.set_rms(sourceDestinationTurnsRatio / sqrt(2.0));
     destinationCurrent.set_waveform(destinationWaveform);
     destinationCurrent.set_processed(destinationProcessed);
-    destinationCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(destinationWaveform, frequency));
+    destinationCurrent.set_harmonics(Inputs::calculate_harmonics_data(destinationWaveform, frequency));
     OperatingPointExcitation destinationExcitation;
     destinationExcitation.set_current(destinationCurrent);
 
 
-    OpenMagnetics::Processed restProcessed = sourceProcessed;
+    Processed restProcessed = sourceProcessed;
     restProcessed.set_peak_to_peak(1e-9);
     restProcessed.set_rms(1e-9);
-    auto restWaveform = OpenMagnetics::InputsWrapper::create_waveform(restProcessed, frequency);
+    auto restWaveform = Inputs::create_waveform(restProcessed, frequency);
     SignalDescriptor restCurrent;
     restCurrent.set_waveform(restWaveform);
     restCurrent.set_processed(restProcessed);
-    restCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(restWaveform, frequency));
+    restCurrent.set_harmonics(Inputs::calculate_harmonics_data(restWaveform, frequency));
     OperatingPointExcitation restExcitation;
     restExcitation.set_current(restCurrent);
 
@@ -169,7 +166,7 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
             }
         }
         else {
-            auto cartesianCoordinates = CoilWrapper::cartesian_to_polar(datum.get_point(), windingWindowRadialHeight);
+            auto cartesianCoordinates = Coil::cartesian_to_polar(datum.get_point(), windingWindowRadialHeight);
             // Only half turn, as we are integrating also field from outside
             double radialHeightFromCenter = fabs(cartesianCoordinates[0] + bobbinColumnWidth);
             if (coreColumnShape == ColumnShape::ROUND) {
@@ -199,9 +196,7 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     return leakageInductanceOutput;
 }
 
-ComplexField LeakageInductance::calculate_leakage_magnetic_field(MagneticWrapper magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto originallyIncludeFringing = settings->get_magnetic_field_include_fringing();
+ComplexField LeakageInductance::calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
     settings->set_magnetic_field_include_fringing(false);
 
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -213,42 +208,42 @@ ComplexField LeakageInductance::calculate_leakage_magnetic_field(MagneticWrapper
     }
 
 
-    OpenMagnetics::Processed sourceProcessed;
+    Processed sourceProcessed;
     sourceProcessed.set_peak_to_peak(2);
     sourceProcessed.set_duty_cycle(0.5);
     sourceProcessed.set_offset(0);
     sourceProcessed.set_rms(1 / sqrt(2));
     sourceProcessed.set_label(WaveformLabel::SINUSOIDAL);
-    auto sourceWaveform = OpenMagnetics::InputsWrapper::create_waveform(sourceProcessed, frequency);
+    auto sourceWaveform = Inputs::create_waveform(sourceProcessed, frequency);
     SignalDescriptor sourceCurrent;
     sourceCurrent.set_waveform(sourceWaveform);
     sourceCurrent.set_processed(sourceProcessed);
-    sourceCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sourceWaveform, frequency));
+    sourceCurrent.set_harmonics(Inputs::calculate_harmonics_data(sourceWaveform, frequency));
     OperatingPointExcitation sourceExcitation;
     sourceExcitation.set_current(sourceCurrent);
 
 
-    OpenMagnetics::Processed destinationProcessed = sourceProcessed;
+    Processed destinationProcessed = sourceProcessed;
     double sourceDestinationTurnsRatio = double(magnetic.get_mutable_coil().get_number_turns(sourceIndex)) / magnetic.get_mutable_coil().get_number_turns(destinationIndex);
     destinationProcessed.set_peak_to_peak(2.0 * sourceDestinationTurnsRatio);
-    auto destinationWaveform = OpenMagnetics::InputsWrapper::create_waveform(destinationProcessed, frequency);
+    auto destinationWaveform = Inputs::create_waveform(destinationProcessed, frequency);
     SignalDescriptor destinationCurrent;
     destinationProcessed.set_rms(sourceDestinationTurnsRatio / sqrt(2.0));
     destinationCurrent.set_waveform(destinationWaveform);
     destinationCurrent.set_processed(destinationProcessed);
-    destinationCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(destinationWaveform, frequency));
+    destinationCurrent.set_harmonics(Inputs::calculate_harmonics_data(destinationWaveform, frequency));
     OperatingPointExcitation destinationExcitation;
     destinationExcitation.set_current(destinationCurrent);
 
 
-    OpenMagnetics::Processed restProcessed = sourceProcessed;
+    Processed restProcessed = sourceProcessed;
     restProcessed.set_peak_to_peak(1e-9);
     restProcessed.set_rms(1e-9);
-    auto restWaveform = OpenMagnetics::InputsWrapper::create_waveform(restProcessed, frequency);
+    auto restWaveform = Inputs::create_waveform(restProcessed, frequency);
     SignalDescriptor restCurrent;
     restCurrent.set_waveform(restWaveform);
     restCurrent.set_processed(restProcessed);
-    restCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(restWaveform, frequency));
+    restCurrent.set_harmonics(Inputs::calculate_harmonics_data(restWaveform, frequency));
     OperatingPointExcitation restExcitation;
     restExcitation.set_current(restCurrent);
 
@@ -273,7 +268,7 @@ ComplexField LeakageInductance::calculate_leakage_magnetic_field(MagneticWrapper
 }
 
 
-LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance_all_windings(MagneticWrapper magnetic, double frequency, size_t sourceIndex, size_t harmonicIndex) {
+LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance_all_windings(Magnetic magnetic, double frequency, size_t sourceIndex, size_t harmonicIndex) {
     LeakageInductanceOutput leakageInductanceOutput;
 
     leakageInductanceOutput.set_method_used("Energy");

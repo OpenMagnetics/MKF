@@ -14,7 +14,7 @@
 namespace OpenMagnetics {
 
 
-double ReluctanceModel::get_ungapped_core_reluctance(const CoreWrapper& core, double initialPermeability) {
+double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double initialPermeability) {
     auto constants = Constants();
     double absolutePermeability = constants.vacuumPermeability * initialPermeability;
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
@@ -24,7 +24,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(const CoreWrapper& core, do
     return reluctanceCore;
 }
 
-double ReluctanceModel::get_air_cored_reluctance(BobbinWrapper bobbin) {
+double ReluctanceModel::get_air_cored_reluctance(Bobbin bobbin) {
     if (!bobbin.get_processed_description()) {
         throw std::runtime_error("Bobbin not processed");
     }
@@ -53,8 +53,8 @@ double ReluctanceModel::get_air_cored_reluctance(BobbinWrapper bobbin) {
     return reluctanceAirCore;
 }
 
-double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> operatingPoint) {
-    OpenMagnetics::InitialPermeability initialPermeability;
+double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> operatingPoint) {
+    InitialPermeability initialPermeability;
 
     auto coreMaterial = core.resolve_material();
 
@@ -73,7 +73,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(CoreWrapper core, std::opti
 }
 
 
-MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> operatingPoint) {
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, std::optional<OperatingPoint> operatingPoint) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
     auto magnetizingInductanceOutput = get_gapping_reluctance(core);
 
@@ -94,7 +94,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper cor
     return magnetizingInductanceOutput;
 }
 
-MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper core, double initialPermeability) {
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, double initialPermeability) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
 
     auto magnetizingInductanceOutput = get_gapping_reluctance(core);
@@ -106,7 +106,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(CoreWrapper cor
     return magnetizingInductanceOutput;
 }
 
-MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(CoreWrapper core) {
+MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
     double calculatedReluctance = 0;
     double calculatedCentralReluctance = 0;
     double calculatedLateralReluctance = 0;
@@ -129,7 +129,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(CoreWrapper 
             auto gapReluctance = get_gap_reluctance(gap);
             auto gapColumn = core.find_closest_column_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);
-            if (gapColumn.get_type() == OpenMagnetics::ColumnType::LATERAL) {
+            if (gapColumn.get_type() == ColumnType::LATERAL) {
                 calculatedLateralReluctance += 1 / gapReluctance.get_reluctance();
             }
             else {
@@ -505,7 +505,7 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
 };
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(std::map<std::string, std::string> models) {
-    return factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(models["gapReluctance"]).value());
+    return factory(magic_enum::enum_cast<ReluctanceModels>(models["gapReluctance"]).value());
 }
 
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels modelName) {

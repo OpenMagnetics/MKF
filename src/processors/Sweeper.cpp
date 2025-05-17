@@ -12,7 +12,7 @@
 namespace OpenMagnetics {
 
 
-Curve2D Sweeper::sweep_impedance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -35,7 +35,7 @@ Curve2D Sweeper::sweep_impedance_over_frequency(MagneticWrapper magnetic, double
     return Curve2D(frequencies, impedances, title);
 }
 
-Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_winding_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -58,7 +58,7 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magneti
 
     std::vector<double> effectiveResistances;
     for (auto frequency : frequencies) {
-        auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
         auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
 
         auto proximityLossesPerharmonic = windingLossesPerWinding[windingIndex].get_proximity_effect_losses()->get_losses_per_harmonic();
@@ -74,7 +74,7 @@ Curve2D Sweeper::sweep_winding_resistance_over_frequency(MagneticWrapper magneti
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
-Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -97,7 +97,7 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
 
     std::vector<double> effectiveResistances;
     for (auto frequency : frequencies) {
-        auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
         auto windingLosses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
         double effectiveResistance = windingLosses / pow(currentMask[0], 2);
@@ -107,7 +107,7 @@ Curve2D Sweeper::sweep_resistance_over_frequency(MagneticWrapper magnetic, doubl
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
-Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -134,7 +134,7 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(MagneticWrapper magnetic, 
     return Curve2D(frequencies, coreResistances, title);
 }
 
-Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -166,30 +166,30 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, Oper
     coreLossesModel.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
 
     for (auto frequency : frequencies) {
-        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency, true);
-        // operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
-        OperatingPointExcitation excitation = InputsWrapper::get_primary_excitation(operatingPoint);
+        Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+        // operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
 
         if (numberWindings == 1 && excitation.get_current()) {
-            InputsWrapper::set_current_as_magnetizing_current(&operatingPoint);
+            Inputs::set_current_as_magnetizing_current(&operatingPoint);
         }
-        else if (InputsWrapper::is_multiport_inductor(operatingPoint, coil.get_isolation_sides())) {
-            auto magnetizingCurrent = InputsWrapper::get_multiport_inductor_magnetizing_current(operatingPoint);
+        else if (Inputs::is_multiport_inductor(operatingPoint, coil.get_isolation_sides())) {
+            auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(operatingPoint);
             excitation.set_magnetizing_current(magnetizingCurrent);
             operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
         }
         else if (excitation.get_voltage()) {
             auto voltage = operatingPoint.get_mutable_excitations_per_winding()[0].get_voltage().value();
-            auto sampledVoltageWaveform = InputsWrapper::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
+            auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
-            auto magnetizingCurrent = InputsWrapper::calculate_magnetizing_current(excitation,
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,
                                                                                    sampledVoltageWaveform,
                                                                                    magnetizingInductance,
                                                                                    false);
 
-            auto sampledMagnetizingCurrentWaveform = InputsWrapper::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
-            magnetizingCurrent.set_harmonics(InputsWrapper::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
-            magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
+            auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
+            magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+            magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
 
             excitation.set_magnetizing_current(magnetizingCurrent);
             operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
@@ -207,7 +207,7 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(MagneticWrapper magnetic, Oper
     return Curve2D(frequencies, coreLossesPerFrequency, title);
 }
 
-Curve2D Sweeper::sweep_winding_losses_over_frequency(MagneticWrapper magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_winding_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -230,17 +230,13 @@ Curve2D Sweeper::sweep_winding_losses_over_frequency(MagneticWrapper magnetic, O
 
     std::vector<double> windingLossesPerFrequency;
     for (auto frequency : frequencies) {
-        InputsWrapper::scale_time_to_frequency(operatingPoint, frequency, true);
-        operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
+        Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+        operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
         auto windingLosses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
         auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
 
         auto proximityLossesPerharmonic = windingLossesPerWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic();
-        double proximityLosses = std::accumulate(proximityLossesPerharmonic.begin(), proximityLossesPerharmonic.end(), 0.0);
-        auto skinLossesPerharmonic = windingLossesPerWinding[0].get_skin_effect_losses()->get_losses_per_harmonic();
-        double skinLosses = std::accumulate(skinLossesPerharmonic.begin(), skinLossesPerharmonic.end(), 0.0);
-        double lossesThisWinding = windingLossesPerWinding[0].get_ohmic_losses()->get_losses() + proximityLosses + skinLosses;
 
         windingLossesPerFrequency.push_back(windingLosses);
     }

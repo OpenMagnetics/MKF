@@ -1,11 +1,13 @@
 #pragma once
 #include "json.hpp"
 #include "MAS.hpp"
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Magnetic.h"
 #include <random>
 #include <chrono>
 
 using ordered_json = nlohmann::ordered_json;
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -47,8 +49,8 @@ class CircuitSimulatorExporterModel {
         CircuitSimulatorExporterCurveFittingModes _acResistanceMode = CircuitSimulatorExporterCurveFittingModes::LADDER;
     public:
         std::string programName = "Default";
-        virtual std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) = 0;
-        virtual std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER) = 0;
+        virtual std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt) = 0;
+        virtual std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER) = 0;
         static std::shared_ptr<CircuitSimulatorExporterModel> factory(CircuitSimulatorExporterModels programName);
 
 };
@@ -68,10 +70,10 @@ class CircuitSimulatorExporter {
         static double core_ladder_model(double x[], double frequency, double dcResistance);
         static void core_ladder_func(double *p, double *x, int m, int n, void *data);
 
-        static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(MagneticWrapper magnetic, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
-        static std::vector<double> calculate_core_resistance_coefficients(MagneticWrapper magnetic);
-        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
-        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
+        static std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding(Magnetic magnetic, CircuitSimulatorExporterCurveFittingModes mode = CircuitSimulatorExporterCurveFittingModes::LADDER);
+        static std::vector<double> calculate_core_resistance_coefficients(Magnetic magnetic);
+        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };
 
 class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel {
@@ -83,10 +85,10 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         std::string generate_id();
         std::mt19937 _gen;
         CircuitSimulatorExporterSimbaModel();
-        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
+        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
             return "Not supported";
         }
-        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
+        std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
         ordered_json create_device(std::string libraryName, std::vector<int> coordinates, int angle, std::string name);
         ordered_json create_air_gap(std::vector<int> coordinates, double area, double length, int angle, std::string name);
         ordered_json create_core(double initialPermeability, std::vector<int> coordinates, double area, double length, int angle, std::string name);
@@ -102,17 +104,17 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
 class CircuitSimulatorExporterNgspiceModel : public CircuitSimulatorExporterModel {
     public:
         std::string programName = "Ngspice";
-        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
+        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
             return "Not supported";
         }
-        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
+        std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };
 
 class CircuitSimulatorExporterLtspiceModel : public CircuitSimulatorExporterModel {
     public:
         std::string programName = "Ltspice";
-        std::string export_magnetic_as_subcircuit(MagneticWrapper magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
-        std::string export_magnetic_as_symbol(MagneticWrapper magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
+        std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = Defaults().measurementFrequency, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
+        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt);
 };
 
 class CircuitSimulationReader {
@@ -133,8 +135,8 @@ class CircuitSimulationReader {
             std::string name;
             std::vector<double> data;
             DataType type;
-            int windingIndex;
-            int operatingPointIndex;
+            size_t windingIndex;
+            size_t operatingPointIndex;
 
         public:
 
@@ -145,8 +147,8 @@ class CircuitSimulationReader {
     std::vector<Waveform> _waveforms;
     CircuitSimulationSignal _time;
 
-    std::optional<int> _periodStartIndex = std::nullopt;
-    std::optional<int> _periodStopIndex = std::nullopt;
+    std::optional<size_t> _periodStartIndex = std::nullopt;
+    std::optional<size_t> _periodStopIndex = std::nullopt;
 
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
     std::vector<std::string> _magnetizingCurrentAliases = {"MAG", "mag", "Im", "Imag"};

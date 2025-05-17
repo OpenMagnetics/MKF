@@ -11,23 +11,26 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+using namespace MAS;
+
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
 
-class InsulationMaterialWrapper : public InsulationMaterial {
+class InsulationMaterial : public MAS::InsulationMaterial {
 private:
     std::vector<std::pair<double, double>> _available_thicknesses;
 public:
-    InsulationMaterialWrapper(const json& j) {
+    InsulationMaterial(const json& j) {
         from_json(j, *this);
         extract_available_thicknesses();
     }
-    InsulationMaterialWrapper() = default;
-    virtual ~InsulationMaterialWrapper() = default;
+    InsulationMaterial() = default;
+    virtual ~InsulationMaterial() = default;
 
-    InsulationMaterialWrapper(InsulationMaterial insulationMaterial) {
+    InsulationMaterial(MAS::InsulationMaterial insulationMaterial) {
         if (insulationMaterial.get_aliases()) {
             set_aliases(insulationMaterial.get_aliases().value());
         }

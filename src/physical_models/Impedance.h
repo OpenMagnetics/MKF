@@ -2,12 +2,14 @@
 #include "Constants.h"
 #include "Defaults.h"
 #include "physical_models/MagnetizingInductance.h"
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Magnetic.h"
 #include "physical_models/CoreLosses.h"
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/CoilWrapper.h"
+#include "constructive_models/Core.h"
+#include "constructive_models/Coil.h"
 #include <MAS.hpp>
 #include <complex>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -22,10 +24,10 @@ class Impedance {
 
     virtual ~Impedance() = default;
 
-    std::complex<double> calculate_impedance(MagneticWrapper magnetic, double frequency, double temperature = Defaults().ambientTemperature);
-    std::complex<double> calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency, double temperature = Defaults().ambientTemperature);
-    double calculate_self_resonant_frequency(MagneticWrapper magnetic, double temperature = Defaults().ambientTemperature);
-    double calculate_self_resonant_frequency(CoreWrapper core, CoilWrapper coil, double temperature = Defaults().ambientTemperature);
+    std::complex<double> calculate_impedance(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
+    std::complex<double> calculate_impedance(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
+    double calculate_self_resonant_frequency(Magnetic magnetic, double temperature = Defaults().ambientTemperature);
+    double calculate_self_resonant_frequency(Core core, Coil coil, double temperature = Defaults().ambientTemperature);
 
 };
 

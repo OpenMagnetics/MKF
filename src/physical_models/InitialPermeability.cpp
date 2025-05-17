@@ -25,7 +25,7 @@ double InitialPermeability::get_initial_permeability(std::string coreMaterialNam
                                                      std::optional<double> magneticFieldDcBias,
                                                      std::optional<double> frequency,
                                                      std::optional<double> magneticFluxDensity) {
-    CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
+    CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
     return get_initial_permeability(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
 }
 
@@ -53,7 +53,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial, 
 }
 
 double InitialPermeability::get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint) {
-    CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
+    CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
     return get_initial_permeability(coreMaterial, operatingPoint);
 }
 
@@ -642,7 +642,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
         initialPermeabilityValue = get_initial_permeability_formula(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity);
     }
     else {
-        double initialPermeabilityValueReference;
+        double initialPermeabilityValueReference = 1;
         bool hasTemperatureRequirement = temperature.has_value();
         bool hasFrequencyRequirement = frequency.has_value();
         bool hasMagneticFieldDcBiasRequirement = magneticFieldDcBias.has_value();

@@ -1,9 +1,10 @@
 #pragma once
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
-#include "constructive_models/MasWrapper.h"
+#include "constructive_models/Mas.h"
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -31,14 +32,14 @@ class MagneticAdviser{
             }
         }
 
-        std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults=1);
-        std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults);
-        std::vector<std::pair<MasWrapper, double>> get_advised_magnetic(InputsWrapper inputs, std::vector<MagneticWrapper> catalogMagnetics, size_t maximumNumberResults=1);
-        std::vector<std::pair<MasWrapper, double>> score_magnetics(std::vector<MasWrapper> masMagneticsWithCoil, std::map<MagneticAdviserFilters, double> weights);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, size_t maximumNumberResults=1);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults);
+        std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults=1);
+        std::vector<std::pair<Mas, double>> score_magnetics(std::vector<Mas> masMagneticsWithCoil, std::map<MagneticAdviserFilters, double> weights);
         std::vector<double> normalize_scoring(std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration);
         std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
-        void normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration);
-        static void preview_magnetic(MasWrapper mas);
+        void normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration);
+        static void preview_magnetic(Mas mas);
 
         std::map<std::string, std::map<MagneticAdviserFilters, double>> get_scorings(){
             return get_scorings(false);

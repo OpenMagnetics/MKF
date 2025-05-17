@@ -1,7 +1,7 @@
 #pragma once
 #include "Constants.h"
 
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +11,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 

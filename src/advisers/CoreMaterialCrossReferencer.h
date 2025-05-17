@@ -2,10 +2,11 @@
 #include "Constants.h"
 #include "physical_models/CoreLosses.h"
 #include "Defaults.h"
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include <cmath>
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 

@@ -1,26 +1,26 @@
 #include <MAS.hpp>
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Magnetic.h"
 #include "physical_models/Reluctance.h"
 
 namespace OpenMagnetics {
 
-BobbinWrapper MagneticWrapper::get_bobbin() {
+Bobbin Magnetic::get_bobbin() {
     return get_mutable_coil().resolve_bobbin();
 }
 
-std::vector<WireWrapper> MagneticWrapper::get_wires() {
+std::vector<Wire> Magnetic::get_wires() {
     return get_mutable_coil().get_wires();
 }
 
-std::vector<double> MagneticWrapper::get_turns_ratios() {
+std::vector<double> Magnetic::get_turns_ratios() {
     return get_mutable_coil().get_turns_ratios();
 }
 
-WireWrapper MagneticWrapper::get_wire(size_t windingIndex) {
+Wire Magnetic::get_wire(size_t windingIndex) {
     return get_mutable_coil().resolve_wire(windingIndex);
 }
 
-std::string MagneticWrapper::get_reference() {
+std::string Magnetic::get_reference() {
     if (get_manufacturer_info()) {
         if (get_manufacturer_info()->get_reference()) {
             return get_manufacturer_info()->get_reference().value();
@@ -29,7 +29,7 @@ std::string MagneticWrapper::get_reference() {
     return "Custom component made with OpenMagnetic";
 }
 
-std::vector<double> MagneticWrapper::get_maximum_dimensions() {
+std::vector<double> Magnetic::get_maximum_dimensions() {
     auto coreMaximumDimensions = get_mutable_core().get_maximum_dimensions();
     auto coilMaximumDimensions = get_mutable_coil().get_maximum_dimensions();
     return {std::max(coreMaximumDimensions[0], coilMaximumDimensions[0]),
@@ -65,7 +65,7 @@ bool fits_three_dimensions(std::vector<double> magneticDimensions, double firstD
     return false;
 }
 
-bool MagneticWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
+bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
 
     auto magneticDimensions = get_maximum_dimensions();
 
@@ -145,7 +145,7 @@ bool MagneticWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotati
     }
 }
 
-double MagneticWrapper::calculate_saturation_current(double temperature) {
+double Magnetic::calculate_saturation_current(double temperature) {
     auto magneticFluxDensitySaturation = get_mutable_core().get_magnetic_flux_density_saturation();
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();

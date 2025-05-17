@@ -1,7 +1,7 @@
 #pragma once
 #include "MAS.hpp"
-#include "constructive_models/CoilWrapper.h"
-#include "constructive_models/WireWrapper.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Wire.h"
 #include "support/Utils.h"
 
 #include <cmath>
@@ -14,6 +14,8 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 class WindingOhmicLosses {
@@ -22,13 +24,13 @@ class WindingOhmicLosses {
     public:
         WindingOhmicLosses() {
         }
-        static double calculate_effective_resistance_per_meter(WireWrapper wire, double frequency, double temperature);
-        static double calculate_dc_resistance_per_meter(WireWrapper wire, double temperature);
-        static double calculate_dc_resistance(Turn turn, const WireWrapper& wire, double temperature);
-        static double calculate_dc_resistance(double wireLength, const WireWrapper& wire, double temperature);
-        static std::vector<double> calculate_dc_resistance_per_winding(CoilWrapper coil, double temperature);
-        static WindingLossesOutput calculate_ohmic_losses(CoilWrapper coil, OperatingPoint operatingPoint, double temperature);
-        static double calculate_ohmic_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature);
+        static double calculate_effective_resistance_per_meter(Wire wire, double frequency, double temperature);
+        static double calculate_dc_resistance_per_meter(Wire wire, double temperature);
+        static double calculate_dc_resistance(Turn turn, const Wire& wire, double temperature);
+        static double calculate_dc_resistance(double wireLength, const Wire& wire, double temperature);
+        static std::vector<double> calculate_dc_resistance_per_winding(Coil coil, double temperature);
+        static WindingLossesOutput calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature);
+        static double calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
 };
 
 } // namespace OpenMagnetics

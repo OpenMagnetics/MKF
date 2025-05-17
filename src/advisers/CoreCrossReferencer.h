@@ -2,10 +2,11 @@
 #include "Constants.h"
 #include "physical_models/CoreLosses.h"
 #include "Defaults.h"
-#include "constructive_models/CoreWrapper.h"
+#include "constructive_models/Core.h"
 #include <cmath>
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -86,9 +87,9 @@ class CoreCrossReferencer {
         std::map<std::string, std::map<CoreCrossReferencerFilters, double>> get_scored_values();
         std::map<std::string, std::map<CoreCrossReferencerFilters, double>> get_scorings(bool weighted);
 
-        std::vector<std::pair<CoreWrapper, double>> get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, size_t maximumNumberResults=10);
-        std::vector<std::pair<CoreWrapper, double>> get_cross_referenced_core(CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults=10);
-        std::vector<std::pair<CoreWrapper, double>> apply_filters(std::vector<std::pair<CoreWrapper, double>>* cores, CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit);
+        std::vector<std::pair<Core, double>> get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, size_t maximumNumberResults=10);
+        std::vector<std::pair<Core, double>> get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults=10);
+        std::vector<std::pair<Core, double>> apply_filters(std::vector<std::pair<Core, double>>* cores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults, double limit);
 
         void use_only_manufacturer(std::string onlyManufacturer) {
             _onlyManufacturer = onlyManufacturer;
@@ -136,27 +137,27 @@ class CoreCrossReferencer {
             }
             MagneticCoreFilter(){
             }
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<CoreWrapper> unfilteredCores, CoreWrapper referenceCore, InputsWrapper inputs, double weight=1);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<Core> unfilteredCores, Core referenceCore, Inputs inputs, double weight=1);
     };
     
     class MagneticCoreFilterPermeance : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, Inputs inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25);
     };
     
     class MagneticCoreFilterWindingWindowArea : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight=1, double limit=0.25);
     };
     
     class MagneticCoreFilterEffectiveArea : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight=1, double limit=0.25);
     };
     
     class MagneticCoreFilterEnvelopingVolume : public MagneticCoreFilter {
         public:
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, double weight=1, double limit=0.25);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, double weight=1, double limit=0.25);
     };
 
     class MagneticCoreFilterCoreLosses : public MagneticCoreFilter {
@@ -173,8 +174,8 @@ class CoreCrossReferencer {
                     _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
                 }
             }
-            std::vector<std::pair<CoreWrapper, double>> filter_core(std::vector<std::pair<CoreWrapper, double>>* unfilteredCores, CoreWrapper referenceCore, int64_t referenceNumberTurns, InputsWrapper inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25);
-            std::pair<double, double> calculate_average_core_losses_and_magnetic_flux_density(CoreWrapper core, int64_t numberTurns, InputsWrapper inputs, std::map<std::string, std::string> models);
+            std::vector<std::pair<Core, double>> filter_core(std::vector<std::pair<Core, double>>* unfilteredCores, Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<std::string, std::string> models, double weight=1, double limit=0.25);
+            std::pair<double, double> calculate_average_core_losses_and_magnetic_flux_density(Core core, int64_t numberTurns, Inputs inputs, std::map<std::string, std::string> models);
     };
 };
 

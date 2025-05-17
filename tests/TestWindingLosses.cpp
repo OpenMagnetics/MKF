@@ -2,8 +2,8 @@
 #include "support/Painter.h"
 #include "physical_models/WindingLosses.h"
 #include "support/Utils.h"
-#include "constructive_models/CoreWrapper.h"
-#include "processors/InputsWrapper.h"
+#include "constructive_models/Core.h"
+#include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
 #include "TestingUtils.h"
 
@@ -16,34 +16,36 @@
 #include <typeinfo>
 #include <cmath>
 
+using namespace MAS;
+using namespace OpenMagnetics;
 
 auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
 
 SUITE(WindingLossesRound) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     double maximumError = 0.15;
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Stacked) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "E 42/21/20";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
         int64_t numberStacks = 2;
 
@@ -66,7 +68,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -76,12 +78,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -90,7 +92,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -99,13 +101,13 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Tendency) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -113,12 +115,12 @@ SUITE(WindingLossesRound) {
         double magnetizingInductance = 1e-3;
         std::string shapeName = "ETD 34/17/11";
 
-        OpenMagnetics::Processed processed;
+        Processed processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -127,10 +129,10 @@ SUITE(WindingLossesRound) {
                                                                                          offset);
 
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -149,16 +151,16 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto ohmicLosses100kHz = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+        auto ohmicLosses100kHz = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
         CHECK_CLOSE(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError);
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
 
-        // auto scaledOperationPoint = OpenMagnetics::InputsWrapper::scale_time_to_frequency(inputs.get_operating_point(0), frequency * 10);
-        OpenMagnetics::OperatingPoint scaledOperationPoint = inputs.get_operating_point(0);
-        OpenMagnetics::InputsWrapper::scale_time_to_frequency(scaledOperationPoint, frequency * 10);
-        scaledOperationPoint = OpenMagnetics::InputsWrapper::process_operating_point(scaledOperationPoint, frequency * 10);
-        auto ohmicLosses1MHz = OpenMagnetics::WindingLosses().calculate_losses(magnetic, scaledOperationPoint, temperature);
+        // auto scaledOperationPoint = OpenMagnetics::Inputs::scale_time_to_frequency(inputs.get_operating_point(0), frequency * 10);
+        OperatingPoint scaledOperationPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(scaledOperationPoint, frequency * 10);
+        scaledOperationPoint = OpenMagnetics::Inputs::process_operating_point(scaledOperationPoint, frequency * 10);
+        auto ohmicLosses1MHz = WindingLosses().calculate_losses(magnetic, scaledOperationPoint, temperature);
         CHECK_CLOSE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
                     ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
                     ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError);
@@ -169,25 +171,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -208,7 +210,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -224,12 +226,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -238,7 +240,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -246,25 +248,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -285,7 +287,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -301,12 +303,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -315,7 +317,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto windingLosses = OpenMagnetics::WindingLosses();
+            auto windingLosses = WindingLosses();
             settings->set_magnetic_field_mirroring_dimension(1);
             settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
@@ -326,25 +328,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Interleaving) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({20, 20});
         std::vector<int64_t> numberParallels({1, 1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 2;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
         wires.push_back(wire);
 
@@ -366,7 +368,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -382,13 +384,13 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
             std::vector<double> turnsRatios = {1};
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -398,7 +400,7 @@ SUITE(WindingLossesRound) {
                                                                                                   turnsRatios);
 
 
-            auto windingLosses = OpenMagnetics::WindingLosses();
+            auto windingLosses = WindingLosses();
             settings->set_magnetic_field_mirroring_dimension(1);
             settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
@@ -411,25 +413,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Interleaving_Rectangular_Column) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({20, 20});
         std::vector<int64_t> numberParallels({1, 1});
         std::string shapeName = "E 34/14/9";
         uint8_t interleavingLevel = 2;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
         wires.push_back(wire);
 
@@ -451,7 +453,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -467,13 +469,13 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
             std::vector<double> turnsRatios = {1};
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -483,7 +485,7 @@ SUITE(WindingLossesRound) {
                                                                                                   turnsRatios);
 
 
-            auto windingLosses = OpenMagnetics::WindingLosses();
+            auto windingLosses = WindingLosses();
             settings->set_magnetic_field_mirroring_dimension(1);
             settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
@@ -495,25 +497,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_With_DC) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -534,7 +536,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 4.2;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -550,12 +552,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -563,7 +565,7 @@ SUITE(WindingLossesRound) {
                                                                                                   dutyCycle,
                                                                                                   offset);
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
 
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
@@ -572,25 +574,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -611,7 +613,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -623,12 +625,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -637,7 +639,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -645,25 +647,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_50_Duty_With_DC) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -684,7 +686,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 4.2;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -696,12 +698,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -710,7 +712,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -718,25 +720,25 @@ SUITE(WindingLossesRound) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Triangular_90_Duty) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -757,7 +759,7 @@ SUITE(WindingLossesRound) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.9;
@@ -769,12 +771,12 @@ SUITE(WindingLossesRound) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -783,7 +785,7 @@ SUITE(WindingLossesRound) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -791,41 +793,41 @@ SUITE(WindingLossesRound) {
 }
 
 SUITE(WindingLossesLitz) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     double maximumError = 0.15;
     bool plot = false;
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.000071);
         strandOuterDiameter.set_nominal(0.0000762);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.000873);
         wire.set_number_conductors(60);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -846,7 +848,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -862,12 +864,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -876,7 +878,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -884,35 +886,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Strands) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.00004);
         strandOuterDiameter.set_nominal(0.000049);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.001576);
         wire.set_number_conductors(600);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -933,7 +935,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -949,12 +951,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -963,7 +965,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -971,35 +973,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Triangular_With_DC_Many_Strands) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.00004);
         strandOuterDiameter.set_nominal(0.000049);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.001576);
         wire.set_number_conductors(600);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1020,7 +1022,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 10;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -1030,12 +1032,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1044,7 +1046,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -1052,35 +1054,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Few_Strands) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.0001);
         strandOuterDiameter.set_nominal(0.00011);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.000551);
         wire.set_number_conductors(12);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1101,7 +1103,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -1117,12 +1119,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1131,7 +1133,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -1139,35 +1141,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_One_Turn_Litz_Sinusoidal_Many_Many_Strands) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.00002);
         strandOuterDiameter.set_nominal(0.000029);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.004384);
         wire.set_number_conductors(20000);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1188,7 +1190,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -1204,12 +1206,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1218,7 +1220,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -1226,35 +1228,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.000071);
         strandOuterDiameter.set_nominal(0.0000762);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.000873);
         wire.set_number_conductors(60);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1275,7 +1277,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -1291,12 +1293,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1305,14 +1307,14 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
             if (plot) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_Ten_Turns_Litz_Sinusoidal_" + std::to_string(testPoint.first) +".svg");
                 std::filesystem::remove(outFile);
-                OpenMagnetics::Painter painter(outFile, true);
-                settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+                Painter painter(outFile, true);
+                settings->set_painter_mode(PainterModes::CONTOUR);
                 settings->set_painter_logarithmic_scale(false);
                 settings->set_painter_include_fringing(false);
                 settings->set_painter_number_points_x(200);
@@ -1331,35 +1333,35 @@ SUITE(WindingLossesLitz) {
 
     TEST(Test_Winding_Losses_Thirty_Turns_Litz_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({30});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "P 26/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireRound strand;
-        OpenMagnetics::WireWrapper wire;
-        OpenMagnetics::DimensionWithTolerance strandConductingDiameter;
-        OpenMagnetics::DimensionWithTolerance strandOuterDiameter;
+        std::vector<OpenMagnetics::Wire> wires;
+        WireRound strand;
+        OpenMagnetics::Wire wire;
+        DimensionWithTolerance strandConductingDiameter;
+        DimensionWithTolerance strandOuterDiameter;
         strandConductingDiameter.set_nominal(0.000071);
         strandOuterDiameter.set_nominal(0.0000762);
         strand.set_conducting_diameter(strandConductingDiameter);
         strand.set_outer_diameter(strandOuterDiameter);
         strand.set_number_conductors(1);
         strand.set_material("copper");
-        strand.set_type(OpenMagnetics::WireType::ROUND);
+        strand.set_type(WireType::ROUND);
 
         wire.set_strand(strand);
         wire.set_nominal_value_outer_diameter(0.000873);
         wire.set_number_conductors(60);
-        wire.set_type(OpenMagnetics::WireType::LITZ);
+        wire.set_type(WireType::LITZ);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1380,7 +1382,7 @@ SUITE(WindingLossesLitz) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -1396,12 +1398,12 @@ SUITE(WindingLossesLitz) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1410,7 +1412,7 @@ SUITE(WindingLossesLitz) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -1418,32 +1420,32 @@ SUITE(WindingLossesLitz) {
 }
 
 SUITE(WindingLossesRectangular) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     double maximumError = 0.2;
 
     TEST(Test_Winding_Losses_One_Turn_Rectangular_Sinusoidal_No_Fringing) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 44/22/15";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0038);
         wire.set_nominal_value_conducting_height(0.00076);
         wire.set_nominal_value_outer_width(0.0039);
         wire.set_nominal_value_outer_height(0.0007676);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1468,7 +1470,7 @@ SUITE(WindingLossesRectangular) {
         coil.set_turns_description(turns);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2;
         double dutyCycle = 0.5;
@@ -1488,12 +1490,12 @@ SUITE(WindingLossesRectangular) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1502,7 +1504,7 @@ SUITE(WindingLossesRectangular) {
                                                                                                   offset);
 
 
-            OpenMagnetics::WindingLosses windingLosses;
+            WindingLosses windingLosses;
             settings->set_magnetic_field_include_fringing(false);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
@@ -1511,27 +1513,27 @@ SUITE(WindingLossesRectangular) {
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({5});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.004);
         wire.set_nominal_value_conducting_height(0.0009);
         wire.set_nominal_value_outer_height(0.000909);
         wire.set_nominal_value_outer_width(0.00404);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1553,7 +1555,7 @@ SUITE(WindingLossesRectangular) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2;
         double dutyCycle = 0.5;
@@ -1573,12 +1575,12 @@ SUITE(WindingLossesRectangular) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1587,7 +1589,7 @@ SUITE(WindingLossesRectangular) {
                                                                                                   offset);
 
 
-            OpenMagnetics::WindingLosses windingLosses;
+            WindingLosses windingLosses;
             settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
@@ -1596,27 +1598,27 @@ SUITE(WindingLossesRectangular) {
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Ungapped_Sinusoidal_7_Amps) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({5});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.004);
         wire.set_nominal_value_conducting_height(0.0009);
         wire.set_nominal_value_outer_height(0.000909);
         wire.set_nominal_value_outer_width(0.00404);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1638,7 +1640,7 @@ SUITE(WindingLossesRectangular) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 14;
         double dutyCycle = 0.5;
@@ -1658,12 +1660,12 @@ SUITE(WindingLossesRectangular) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1672,7 +1674,7 @@ SUITE(WindingLossesRectangular) {
                                                                                                   offset);
 
 
-            OpenMagnetics::WindingLosses windingLosses;
+            WindingLosses windingLosses;
             settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
@@ -1681,27 +1683,27 @@ SUITE(WindingLossesRectangular) {
     }
     TEST(Test_Winding_Losses_Five_Turns_Rectangular_Gapped_Sinusoidal_7_Amps) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({5});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 20/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.004);
         wire.set_nominal_value_conducting_height(0.0009);
         wire.set_nominal_value_outer_height(0.000909);
         wire.set_nominal_value_outer_width(0.00404);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1723,7 +1725,7 @@ SUITE(WindingLossesRectangular) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 14;
         double dutyCycle = 0.5;
@@ -1743,12 +1745,12 @@ SUITE(WindingLossesRectangular) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1757,7 +1759,7 @@ SUITE(WindingLossesRectangular) {
                                                                                                   offset);
 
 
-            OpenMagnetics::WindingLosses windingLosses;
+            WindingLosses windingLosses;
             settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
@@ -1766,27 +1768,27 @@ SUITE(WindingLossesRectangular) {
     }
     TEST(Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({7});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "PQ 27/17";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0038);
         wire.set_nominal_value_conducting_height(0.00076);
         wire.set_nominal_value_outer_height(0.0007676);
         wire.set_nominal_value_outer_width(0.003838);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1810,7 +1812,7 @@ SUITE(WindingLossesRectangular) {
         bobbinProcessedDescription.set_wall_thickness(bobbinColumnThickness);
         bobbinProcessedDescription.set_column_thickness(bobbinColumnThickness);
 
-        OpenMagnetics::WindingWindowElement windingWindowElement;
+        WindingWindowElement windingWindowElement;
 
         auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
         auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
@@ -1819,7 +1821,7 @@ SUITE(WindingLossesRectangular) {
         windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + windingWindowElement.get_width().value() / 2, 0, 0}));
         bobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + bobbinColumnThickness);
         bobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + bobbinColumnThickness);
-        bobbinProcessedDescription.set_winding_windows(std::vector<OpenMagnetics::WindingWindowElement>({windingWindowElement}));
+        bobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
 
         bobbin.set_processed_description(bobbinProcessedDescription);
         coil.set_bobbin(bobbin);
@@ -1829,7 +1831,7 @@ SUITE(WindingLossesRectangular) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2;
         double dutyCycle = 0.5;
@@ -1850,12 +1852,12 @@ SUITE(WindingLossesRectangular) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1864,14 +1866,14 @@ SUITE(WindingLossesRectangular) {
                                                                                                   offset);
 
 
-            OpenMagnetics::WindingLosses windingLosses;
+            WindingLosses windingLosses;
             settings->set_magnetic_field_mirroring_dimension(2);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
             // auto outFile = outputFilePath;
             // outFile.append("Test_Winding_Losses_Seven_Turns_Rectangular_Ungapped_Sinusoidal_" + std::to_string(testPoint.first) +".svg");
             // std::filesystem::remove(outFile);
-            // OpenMagnetics::Painter painter(outFile, OpenMagnetics::Painter::PainterModes::QUIVER);
+            // Painter painter(outFile, PainterModes::QUIVER);
             // painter.set_number_points_x(100);
             // painter.set_number_points_y(100);
             // painter.set_logarithmic_scale(false);
@@ -1890,31 +1892,31 @@ SUITE(WindingLossesRectangular) {
 }
 
 SUITE(WindingLossesFoil) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     double maximumError = 0.3;
     TEST(Test_Winding_Losses_One_Turn_Foil_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0001);
         wire.set_nominal_value_conducting_height(0.02);
         wire.set_nominal_value_outer_width(0.00011);
         wire.set_nominal_value_outer_height(0.02);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::FOIL);
+        wire.set_type(WireType::FOIL);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -1936,7 +1938,7 @@ SUITE(WindingLossesFoil) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -1952,12 +1954,12 @@ SUITE(WindingLossesFoil) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -1966,7 +1968,7 @@ SUITE(WindingLossesFoil) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -1974,27 +1976,27 @@ SUITE(WindingLossesFoil) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0001);
         wire.set_nominal_value_conducting_height(0.02);
         wire.set_nominal_value_outer_width(0.00018);
         wire.set_nominal_value_outer_height(0.02);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::FOIL);
+        wire.set_type(WireType::FOIL);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2016,7 +2018,7 @@ SUITE(WindingLossesFoil) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2032,12 +2034,12 @@ SUITE(WindingLossesFoil) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2046,7 +2048,7 @@ SUITE(WindingLossesFoil) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -2054,27 +2056,27 @@ SUITE(WindingLossesFoil) {
 
     TEST(Test_Winding_Losses_Ten_Short_Turns_Foil_Sinusoidal) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "ETD 34/17/11";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0001);
         wire.set_nominal_value_conducting_height(0.007);
         wire.set_nominal_value_outer_width(0.00015);
         wire.set_nominal_value_outer_height(0.007);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::FOIL);
+        wire.set_type(WireType::FOIL);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2096,7 +2098,7 @@ SUITE(WindingLossesFoil) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2111,12 +2113,12 @@ SUITE(WindingLossesFoil) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2125,7 +2127,7 @@ SUITE(WindingLossesFoil) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
 
         }
@@ -2134,20 +2136,20 @@ SUITE(WindingLossesFoil) {
 }
 
 SUITE(WindingLossesToroidalCores) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
     double maximumError = 0.15;
     bool plot = false;
 
     TEST(Test_Winding_Losses_Toroidal_Core_One_Turn_Round_Tendency) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::vector<double> turnsRatios;
 
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -2155,12 +2157,12 @@ SUITE(WindingLossesToroidalCores) {
         double magnetizingInductance = 1e-3;
         std::string shapeName = "T 20/10/7";
 
-        OpenMagnetics::Processed processed;
+        Processed processed;
         processed.set_label(label);
         processed.set_offset(offset);
         processed.set_peak_to_peak(peakToPeak);
         processed.set_duty_cycle(dutyCycle);
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -2170,10 +2172,10 @@ SUITE(WindingLossesToroidalCores) {
                                                                                          turnsRatios);
 
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::SPREAD;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
@@ -2191,17 +2193,17 @@ SUITE(WindingLossesToroidalCores) {
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        auto ohmicLosses100kHz = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+        auto ohmicLosses100kHz = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
 
 
         CHECK_CLOSE(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0], ohmicLosses100kHz.get_dc_resistance_per_turn().value()[0] * maximumError);
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses());
         CHECK(ohmicLosses100kHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
 
-        OpenMagnetics::OperatingPoint scaledOperationPoint = inputs.get_operating_point(0);
-        OpenMagnetics::InputsWrapper::scale_time_to_frequency(scaledOperationPoint, frequency * 10);
-        scaledOperationPoint = OpenMagnetics::InputsWrapper::process_operating_point(scaledOperationPoint, frequency * 10);
-        auto ohmicLosses1MHz = OpenMagnetics::   WindingLosses().calculate_losses(magnetic, scaledOperationPoint, temperature);
+        OperatingPoint scaledOperationPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(scaledOperationPoint, frequency * 10);
+        scaledOperationPoint = OpenMagnetics::Inputs::process_operating_point(scaledOperationPoint, frequency * 10);
+        auto ohmicLosses1MHz =    WindingLosses().calculate_losses(magnetic, scaledOperationPoint, temperature);
         CHECK_CLOSE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
                     ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(),
                     ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError);
@@ -2217,12 +2219,12 @@ SUITE(WindingLossesToroidalCores) {
             auto outFile = outputFilePath;
             outFile.append("Test_Winding_Losses_Toroidal_Core_One_Turn_Round_Tendency.svg");
             std::filesystem::remove(outFile);
-            OpenMagnetics::Painter painter(outFile);
-            OpenMagnetics::MagneticWrapper magnetic;
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
-            // settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+            // settings->set_painter_mode(PainterModes::CONTOUR);
+            settings->set_painter_mode(PainterModes::QUIVER);
             settings->set_painter_logarithmic_scale(false);
             settings->set_painter_include_fringing(true);
             settings->set_painter_number_points_x(50);
@@ -2239,25 +2241,25 @@ SUITE(WindingLossesToroidalCores) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "T 40/24/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2278,7 +2280,7 @@ SUITE(WindingLossesToroidalCores) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2294,12 +2296,12 @@ SUITE(WindingLossesToroidalCores) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2308,7 +2310,7 @@ SUITE(WindingLossesToroidalCores) {
                                                                                                   offset);
 
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -2316,25 +2318,25 @@ SUITE(WindingLossesToroidalCores) {
 
     TEST(Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "T 40/24/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_diameter(0.00071);
         wire.set_nominal_value_outer_diameter(0.000762);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::ROUND);
+        wire.set_type(WireType::ROUND);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2355,7 +2357,7 @@ SUITE(WindingLossesToroidalCores) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2371,12 +2373,12 @@ SUITE(WindingLossesToroidalCores) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2385,7 +2387,7 @@ SUITE(WindingLossesToroidalCores) {
                                                                                                   offset);
 
 
-            auto windingLosses = OpenMagnetics::WindingLosses();
+            auto windingLosses = WindingLosses();
             settings->set_magnetic_field_mirroring_dimension(1);
             settings->set_magnetic_field_include_fringing(true);
             auto ohmicLosses = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
@@ -2396,27 +2398,27 @@ SUITE(WindingLossesToroidalCores) {
 
     TEST(Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({1});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "T 40/24/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0058);
         wire.set_nominal_value_conducting_height(0.002);
         wire.set_nominal_value_outer_width(0.0059);
         wire.set_nominal_value_outer_height(0.002076);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2437,7 +2439,7 @@ SUITE(WindingLossesToroidalCores) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2453,12 +2455,12 @@ SUITE(WindingLossesToroidalCores) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2471,12 +2473,12 @@ SUITE(WindingLossesToroidalCores) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire" + std::to_string(testPoint.first) + ".svg");
                 std::filesystem::remove(outFile);
-                OpenMagnetics::Painter painter(outFile);
-                OpenMagnetics::MagneticWrapper magnetic;
+                Painter painter(outFile);
+                OpenMagnetics::Magnetic magnetic;
                 magnetic.set_core(core);
                 magnetic.set_coil(coil);
-                // settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-                settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+                // settings->set_painter_mode(PainterModes::CONTOUR);
+                settings->set_painter_mode(PainterModes::QUIVER);
                 settings->set_painter_logarithmic_scale(false);
                 settings->set_painter_include_fringing(true);
                 settings->set_painter_number_points_x(50);
@@ -2490,7 +2492,7 @@ SUITE(WindingLossesToroidalCores) {
                 painter.export_svg();
             }
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -2498,27 +2500,27 @@ SUITE(WindingLossesToroidalCores) {
 
     TEST(Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire) {
         settings->reset();
-        OpenMagnetics::clear_databases();
+        clear_databases();
 
         double temperature = 20;
         std::vector<int64_t> numberTurns({10});
         std::vector<int64_t> numberParallels({1});
         std::string shapeName = "T 40/24/16";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::CENTERED;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
-        OpenMagnetics::WireWrapper wire;
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_width(0.0058);
         wire.set_nominal_value_conducting_height(0.002);
         wire.set_nominal_value_outer_width(0.0059);
         wire.set_nominal_value_outer_height(0.002076);
         wire.set_number_conductors(1);
         wire.set_material("copper");
-        wire.set_type(OpenMagnetics::WireType::RECTANGULAR);
+        wire.set_type(WireType::RECTANGULAR);
         wires.push_back(wire);
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
@@ -2539,7 +2541,7 @@ SUITE(WindingLossesToroidalCores) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto label = OpenMagnetics::WaveformLabel::SINUSOIDAL;
+        auto label = WaveformLabel::SINUSOIDAL;
         double offset = 0;
         double peakToPeak = 2 * 1.4142;
         double dutyCycle = 0.5;
@@ -2555,12 +2557,12 @@ SUITE(WindingLossesToroidalCores) {
 
         for (auto& testPoint : expectedWindingLosses) {
 
-            OpenMagnetics::Processed processed;
+            Processed processed;
             processed.set_label(label);
             processed.set_offset(offset);
             processed.set_peak_to_peak(peakToPeak);
             processed.set_duty_cycle(dutyCycle);
-            auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(testPoint.first,
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(testPoint.first,
                                                                                                   magnetizingInductance,
                                                                                                   temperature,
                                                                                                   label,
@@ -2573,12 +2575,12 @@ SUITE(WindingLossesToroidalCores) {
                 auto outFile = outputFilePath;
                 outFile.append("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire" + std::to_string(testPoint.first) + ".svg");
                 std::filesystem::remove(outFile);
-                OpenMagnetics::Painter painter(outFile);
-                OpenMagnetics::MagneticWrapper magnetic;
+                Painter painter(outFile);
+                OpenMagnetics::Magnetic magnetic;
                 magnetic.set_core(core);
                 magnetic.set_coil(coil);
-                // settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
-                settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::QUIVER);
+                // settings->set_painter_mode(PainterModes::CONTOUR);
+                settings->set_painter_mode(PainterModes::QUIVER);
                 settings->set_painter_logarithmic_scale(false);
                 settings->set_painter_include_fringing(true);
                 settings->set_painter_number_points_x(50);
@@ -2592,7 +2594,7 @@ SUITE(WindingLossesToroidalCores) {
                 painter.export_svg();
             }
 
-            auto ohmicLosses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
             CHECK_CLOSE(testPoint.second, ohmicLosses.get_winding_losses(), testPoint.second * maximumError);
         }
         settings->reset();
@@ -2608,22 +2610,22 @@ SUITE(WindingLossesResistanceMatrix) {
         std::vector<double> turnsRatios = {16, 13};
         std::string shapeName = "ER 28";
         uint8_t interleavingLevel = 1;
-        auto windingOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto layersOrientation = OpenMagnetics::WindingOrientation::OVERLAPPING;
-        auto turnsAlignment = OpenMagnetics::CoilAlignment::SPREAD;
-        auto sectionsAlignment = OpenMagnetics::CoilAlignment::CENTERED;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
 
-        std::vector<OpenMagnetics::WireWrapper> wires;
+        std::vector<OpenMagnetics::Wire> wires;
         {
-            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            OpenMagnetics::Wire wire = find_wire_by_name("Round 0.25 - FIW 6");
             wires.push_back(wire);
         }
         {
-            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round T21A01TXXX-1");
+            OpenMagnetics::Wire wire = find_wire_by_name("Round T21A01TXXX-1");
             wires.push_back(wire);
         }
         {
-            OpenMagnetics::WireWrapper wire = OpenMagnetics::find_wire_by_name("Round 0.25 - FIW 6");
+            OpenMagnetics::Wire wire = find_wire_by_name("Round 0.25 - FIW 6");
             wires.push_back(wire);
         }
 
@@ -2650,12 +2652,12 @@ SUITE(WindingLossesResistanceMatrix) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto resistanceMatrixAtFrequency = OpenMagnetics::WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
+        auto resistanceMatrixAtFrequency = WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
 
         CHECK(resistanceMatrixAtFrequency.get_magnitude().size() == magnetic.get_coil().get_functional_description().size());
         for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
             CHECK(resistanceMatrixAtFrequency.get_magnitude()[windingIndex].size() == magnetic.get_coil().get_functional_description().size());
-            CHECK(OpenMagnetics::resolve_dimensional_values(resistanceMatrixAtFrequency.get_magnitude()[windingIndex][windingIndex]) > 0);
+            CHECK(resolve_dimensional_values(resistanceMatrixAtFrequency.get_magnitude()[windingIndex][windingIndex]) > 0);
         }
 
     }
@@ -2670,7 +2672,7 @@ SUITE(WindingLossesWeb) {
         auto magnetic = mas.get_magnetic();
         auto inputs = mas.get_inputs();
 
-        auto losses = OpenMagnetics::WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+        auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
 
         json mierda;
         to_json(mierda, losses);

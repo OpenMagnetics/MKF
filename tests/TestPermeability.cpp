@@ -12,9 +12,12 @@
 using json = nlohmann::json;
 #include <typeinfo>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 SUITE(InitialPermeability) {
     TEST(Test_Initial_Permeability_51) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "51";
         auto materialData = materialName;
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
@@ -34,7 +37,7 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_Mix_3) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "Mix 3";
         auto materialData = materialName;
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
@@ -75,7 +78,7 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_XFlux_60) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "XFlux 60";
         auto materialData = materialName;
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
@@ -106,9 +109,9 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_N88) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "N88";
-        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        auto materialData = find_core_material_by_name(materialName);
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
 
         double expected = 1900;
@@ -140,9 +143,9 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_N30) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "N30";
-        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        auto materialData = find_core_material_by_name(materialName);
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
 
         double expected = 4300;
@@ -174,7 +177,7 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_X_Indmix_A) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "X-Indmix A";
         auto materialData = materialName;
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData, 85);
@@ -183,9 +186,9 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_Nanoperm_1000) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 1000";
-        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        auto materialData = find_core_material_by_name(materialName);
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
         double manufacturerTolerance = 0.05;
 
@@ -246,9 +249,9 @@ SUITE(InitialPermeability) {
     }
 
     TEST(Test_Initial_Permeability_Nanoperm_80000) {
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 80000";
-        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        auto materialData = find_core_material_by_name(materialName);
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
         double manufacturerTolerance = 0.05;
 
@@ -310,9 +313,9 @@ SUITE(InitialPermeability) {
 
     TEST(Test_Frequency_For_Initial_Permeability_Drop_Nanoperm_80000) {
         srand (time(NULL));
-        OpenMagnetics::InitialPermeability initialPermeability;
+        InitialPermeability initialPermeability;
         std::string materialName = "Nanoperm 80000";
-        auto materialData = OpenMagnetics::find_core_material_by_name(materialName);
+        auto materialData = find_core_material_by_name(materialName);
         double manufacturerTolerance = 0.05;
         for (size_t i = 0; i < 1000; ++i)
         {
@@ -328,7 +331,7 @@ SUITE(InitialPermeability) {
 
 SUITE(ComplexPermeability) {
     TEST(Test_Complex_Permeability_N22) {
-        OpenMagnetics::ComplexPermeability complexPermeability;
+        ComplexPermeability complexPermeability;
         std::string materialName = "N22";
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
@@ -338,7 +341,7 @@ SUITE(ComplexPermeability) {
     }
 
     TEST(Test_Complex_Permeability_3C97) {
-        OpenMagnetics::ComplexPermeability complexPermeability;
+        ComplexPermeability complexPermeability;
         std::string materialName = "3C97";
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
@@ -348,7 +351,7 @@ SUITE(ComplexPermeability) {
     }
 
     TEST(Test_Complex_Permeability_N49) {
-        OpenMagnetics::ComplexPermeability complexPermeability;
+        ComplexPermeability complexPermeability;
         std::string materialName = "N49";
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
@@ -358,7 +361,7 @@ SUITE(ComplexPermeability) {
     }
 
     TEST(Test_Complex_Permeability_67) {
-        OpenMagnetics::ComplexPermeability complexPermeability;
+        ComplexPermeability complexPermeability;
         std::string materialName = "67";
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
@@ -368,7 +371,7 @@ SUITE(ComplexPermeability) {
     }
 
     TEST(Test_Complex_Permeability_Nanoperm_8000) {
-        OpenMagnetics::ComplexPermeability complexPermeability;
+        ComplexPermeability complexPermeability;
         std::string materialName = "Nanoperm 8000";
         auto materialData = materialName;
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);

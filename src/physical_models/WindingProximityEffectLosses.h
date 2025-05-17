@@ -1,8 +1,8 @@
 #pragma once
 #include "Constants.h"
 #include "MAS.hpp"
-#include "constructive_models/CoilWrapper.h"
-#include "constructive_models/WireWrapper.h"
+#include "constructive_models/Coil.h"
+#include "constructive_models/Wire.h"
 #include "support/Utils.h"
 #include "Models.h"
 
@@ -16,6 +16,8 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 
@@ -25,9 +27,9 @@ class WindingProximityEffectLossesModel {
     std::map<size_t, std::map<double, std::map<double, double>>> _proximityFactorPerWirePerFrequencyPerTemperature;
   public:
     std::string methodName = "Default";
-    virtual double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
-    std::optional<double> try_get_proximity_factor(WireWrapper wire, double frequency, double temperature);
-    void set_proximity_factor(WireWrapper wire, double frequency, double temperature, double proximityFactor);
+    virtual double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
+    std::optional<double> try_get_proximity_factor(Wire wire, double frequency, double temperature);
+    void set_proximity_factor(Wire wire, double frequency, double temperature, double proximityFactor);
     static std::shared_ptr<WindingProximityEffectLossesModel> factory(WindingProximityEffectLossesModels modelName);
 };
 
@@ -36,8 +38,8 @@ class WindingProximityEffectLosses {
   protected:
   public:
     static std::shared_ptr<WindingProximityEffectLossesModel> get_model(WireType wireType);
-    static WindingLossesOutput calculate_proximity_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput);
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(WireWrapper wire, double temperature, std::vector<ComplexField> fields);
+    static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields);
 
 };
 
@@ -46,8 +48,8 @@ class WindingProximityEffectLosses {
 class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Rossmanith";
-    double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 
 };
 
@@ -56,7 +58,7 @@ class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffec
 class WindingProximityEffectLossesWangModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Wang";
-    double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // Based on A New Approach to Analyse Conduction Losses in High Frequency Magnetic Components by J.A. Ferreira
@@ -64,8 +66,8 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
 class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Ferreira";
-    double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 
@@ -74,7 +76,7 @@ class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectL
 class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Albach";
-    double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // Based on Eddy currents by Jiří Lammeraner
@@ -82,8 +84,8 @@ class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLos
 class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Lammeraner";
-    double calculate_proximity_factor(WireWrapper wire, double frequency, double temperature);
-    double calculate_turn_losses(WireWrapper wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 } // namespace OpenMagnetics

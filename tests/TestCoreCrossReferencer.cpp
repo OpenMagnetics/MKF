@@ -1,7 +1,6 @@
-#include "support/Settings.h"
 #include "advisers/CoreCrossReferencer.h"
 #include "support/Utils.h"
-#include "processors/InputsWrapper.h"
+#include "processors/Inputs.h"
 #include "TestingUtils.h"
 
 #include <UnitTest++.h>
@@ -12,21 +11,23 @@
 #include <vector>
 #include <typeinfo>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 
 SUITE(CoreCrossReferencer) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Test_All_Core_Materials) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
 
         std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -34,7 +35,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                               magnetizingInductance,
                                                                                               temperature,
                                                                                               label,
@@ -52,16 +53,16 @@ SUITE(CoreCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Same_Material) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
         coreCrossReferencer.use_only_reference_material(true);
 
         std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -69,7 +70,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                               magnetizingInductance,
                                                                                               temperature,
                                                                                               label,
@@ -87,16 +88,16 @@ SUITE(CoreCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Same_Material_Maximum_Height) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
         coreCrossReferencer.use_only_reference_material(true);
 
         std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -104,7 +105,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                               magnetizingInductance,
                                                                                               temperature,
                                                                                               label,
@@ -112,7 +113,7 @@ SUITE(CoreCrossReferencer) {
                                                                                               dutyCycle,
                                                                                               offset);
 
-        OpenMagnetics::MaximumDimensions maximumDimensions;
+        MaximumDimensions maximumDimensions;
         maximumDimensions.set_depth(0.04);
         maximumDimensions.set_height(0.025);
         maximumDimensions.set_width(0.025);
@@ -128,16 +129,16 @@ SUITE(CoreCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_TDK) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
         coreCrossReferencer.use_only_manufacturer("TDK");
 
         std::string coreName = "EC 35/17/10 - 3C91 - Gapped 1.000 mm";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -145,7 +146,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6   ;
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -163,15 +164,15 @@ SUITE(CoreCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Powder) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
 
         std::string coreName = "E 25/9.5/6.3 - XFlux 60 - Ungapped";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -179,7 +180,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;  
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -197,16 +198,16 @@ SUITE(CoreCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_Micrometals) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
         coreCrossReferencer.use_only_manufacturer("Micrometals");
 
         std::string coreName = "E 25/9.5/6.3 - XFlux 60 - Ungapped";
-        OpenMagnetics::CoreWrapper core = OpenMagnetics::find_core_by_name(coreName);
+        Core core = find_core_by_name(coreName);
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -214,7 +215,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;
         int64_t numberTurns = 28;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -233,9 +234,9 @@ SUITE(CoreCrossReferencer) {
     TEST(Test_Cross_Reference_Core_Web_0) {
         settings->reset();
         settings->set_use_only_cores_in_stock(false);
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreCrossReferencer coreCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreCrossReferencer coreCrossReferencer;
 
         std::string shapeName = "PQ 40/40";
         std::string materialName = "3C97";
@@ -244,7 +245,7 @@ SUITE(CoreCrossReferencer) {
 
 
         double temperature = 20;
-        auto label = OpenMagnetics::WaveformLabel::TRIANGULAR;
+        auto label = WaveformLabel::TRIANGULAR;
         double offset = 0;
         double peakToPeak = 2 * 1.73205;
         double dutyCycle = 0.5;
@@ -252,7 +253,7 @@ SUITE(CoreCrossReferencer) {
         double magnetizingInductance = 100e-6;
         int64_t numberTurns = 16;
 
-        auto inputs = OpenMagnetics::InputsWrapper::create_quick_operating_point_only_current(frequency,
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
                                                                                          magnetizingInductance,
                                                                                          temperature,
                                                                                          label,
@@ -275,20 +276,20 @@ SUITE(CoreCrossReferencer) {
             std::string name = core.get_name().value();
 
             json coreJson;
-            OpenMagnetics::to_json(coreJson, core);
+            to_json(coreJson, core);
             results["cores"].push_back(coreJson);
             results["scorings"].push_back(scoring);
 
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreCrossReferencer::CoreCrossReferencerFilters>()) {
                 std::string filterString(filter);
 
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
-                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
-                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()];
+                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
+                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreCrossReferencer::CoreCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }

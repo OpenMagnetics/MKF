@@ -1,9 +1,7 @@
 #include "support/CoilMesher.h"
 #include "physical_models/WindingOhmicLosses.h"
-#include "constructive_models/CoilWrapper.h"
+#include "constructive_models/Coil.h"
 #include "support/Utils.h"
-#include "Defaults.h"
-#include "support/Settings.h"
 
 #include <cmath>
 #include <complex>
@@ -43,12 +41,11 @@ std::vector<size_t> CoilMesher::get_common_harmonic_indexes(OperatingPoint opera
 }
 
 
-std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(MagneticWrapper magnetic, double frequency, size_t numberPointsX, size_t numberPointsY) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(Magnetic magnetic, double frequency, size_t numberPointsX, size_t numberPointsY) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
 
     std::vector<FieldPoint> points;
-    auto extraDimension = CoilWrapper::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
+    auto extraDimension = Coil::calculate_external_proportion_for_wires_in_toroidal_cores(magnetic.get_core(), magnetic.get_coil());
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     std::vector<double> bobbinPointsX;
     std::vector<double> bobbinPointsY;
@@ -80,7 +77,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(MagneticWrapper 
 
     for (size_t j = 0; j < bobbinPointsY.size(); ++j) {
         for (size_t i = 0; i < bobbinPointsX.size(); ++i) {
-            OpenMagnetics::FieldPoint fieldPoint;
+            FieldPoint fieldPoint;
             fieldPoint.set_point(std::vector<double>{bobbinPointsX[i], bobbinPointsY[j]});
             points.push_back(fieldPoint);
         }
@@ -93,8 +90,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_induced_grid(MagneticWrapper 
 }
 
 
-std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
-    auto defaults = Defaults();
+std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
@@ -203,7 +199,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(MagneticWrapper magne
     return fieldPerHarmonic;
 }
 
-std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
+std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
@@ -277,15 +273,14 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(MagneticWrapper magnet
     return fieldPerHarmonic;
 }
 
-std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn turn, [[maybe_unused]] Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core) {
     auto mirroringDimension = settings->get_magnetic_field_mirroring_dimension();
     std::vector<FieldPoint> fieldPoints;
 
     int M = mirroringDimension;
     int N = mirroringDimension;
 
-    double corePermeability = core.get_initial_permeability(Defaults().ambientTemperature);
+    double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
     if (!core.get_processed_description()) {
         throw std::runtime_error("Core is not processed");
     }
@@ -366,7 +361,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(Turn 
     return fieldPoints;
 }
 
-std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] WireWrapper wire, std::optional<size_t> turnIndex) {
+std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn turn, [[maybe_unused]] Wire wire, std::optional<size_t> turnIndex) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
 
@@ -382,7 +377,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(Turn t
     return fieldPoints;
 }
 
-std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex) {
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_value(0);
@@ -447,7 +442,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
 }
 
 
-std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, WireWrapper wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, CoreWrapper core) {
+std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
     fieldPoint.set_value(0.5);

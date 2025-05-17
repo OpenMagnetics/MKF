@@ -4,6 +4,8 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 class NumberTurns {

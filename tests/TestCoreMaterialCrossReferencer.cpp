@@ -1,7 +1,7 @@
 #include "support/Settings.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "support/Utils.h"
-#include "processors/InputsWrapper.h"
+#include "processors/Inputs.h"
 
 #include <UnitTest++.h>
 #include <filesystem>
@@ -11,18 +11,21 @@
 #include <vector>
 #include <typeinfo>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 
 SUITE(CoreMaterialCrossReferencer) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+    auto settings = Settings::GetInstance();
 
     TEST(Test_All_Core_Materials) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
         std::string coreMaterialName = "3C97";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
@@ -41,20 +44,20 @@ SUITE(CoreMaterialCrossReferencer) {
             std::string name = coreMaterial.get_name();
 
             json coreMaterialJson;
-            OpenMagnetics::to_json(coreMaterialJson, coreMaterial);
+            to_json(coreMaterialJson, coreMaterial);
             results["cores"].push_back(coreMaterialJson);
             results["scorings"].push_back(scoring);
 
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
                 std::string filterString(filter);
 
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
-                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                CHECK(!std::isnan(scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
+                CHECK(!std::isnan(scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]));
             };
             results["data"].push_back(result);
         }
@@ -62,13 +65,13 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_TDK) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("TDK");
 
         std::string coreMaterialName = "3C97";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
@@ -80,12 +83,12 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Powder) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
         std::string coreMaterialName = "Kool Mµ MAX 26";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
@@ -97,13 +100,13 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Powder_Only_Micrometals) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Micrometals");
 
         std::string coreMaterialName = "Kool Mµ MAX 26";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
@@ -115,13 +118,13 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Micrometals");
 
         std::string coreMaterialName = "3C95";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, 5);
 
@@ -133,21 +136,21 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_Volumetric_Losses) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
-        std::map<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 1;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 0.5;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
+        std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 1;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 0.5;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
 
         std::string coreMaterialName = "3C97";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, weights, 5);
 
@@ -158,21 +161,21 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_Volumetric_Losses_Powder) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
 
-        std::map<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
-        weights[OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
+        std::map<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters, double> weights;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::REMANENCE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::COERCIVE_FORCE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::SATURATION] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE] = 0;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES] = 1;
+        weights[CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters::RESISTIVITY] = 0;
 
         std::string coreMaterialName = "Kool Mµ MAX 26";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 25, weights, 5);
 
@@ -183,14 +186,14 @@ SUITE(CoreMaterialCrossReferencer) {
 
     TEST(Test_All_Core_Materials_Only_Fair_Rite) {
         settings->reset();
-        OpenMagnetics::clear_databases();
-        OpenMagnetics::OperatingPoint operatingPoint;
-        OpenMagnetics::CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        clear_databases();
+        OperatingPoint operatingPoint;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
         coreMaterialCrossReferencer.use_only_manufacturer("Fair-Rite");
         settings->set_use_only_cores_in_stock(false);
 
         std::string coreMaterialName = "3C97";
-        OpenMagnetics::CoreMaterial coreMaterial = OpenMagnetics::CoreWrapper::resolve_material(coreMaterialName);
+        CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
 
         auto crossReferencedCoreMaterials = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, 50, 20);
 
@@ -205,19 +208,19 @@ SUITE(CoreMaterialCrossReferencer) {
             std::string name = coreMaterial.get_name();
 
             json coreMaterialJson;
-            OpenMagnetics::to_json(coreMaterialJson, coreMaterial);
+            to_json(coreMaterialJson, coreMaterial);
             results["coreMaterials"].push_back(coreMaterialJson);
             results["scorings"].push_back(scoring);
 
             json result;
             result["scoringPerFilter"] = json();
             result["scoredValuePerFilter"] = json();
-            for (auto& filter : magic_enum::enum_names<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
+            for (auto& filter : magic_enum::enum_names<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>()) {
                 std::string filterString(filter);
-                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
-                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoringPerFilter"][filterString] = scorings[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
+                result["scoredValuePerFilter"][filterString] = scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()];
                 std::cout << "name: " << name << std::endl;
-                std::cout << "scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]: " << scoredValues[name][magic_enum::enum_cast<OpenMagnetics::CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()] << std::endl;
+                std::cout << "scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()]: " << scoredValues[name][magic_enum::enum_cast<CoreMaterialCrossReferencer::CoreMaterialCrossReferencerFilters>(filterString).value()] << std::endl;
             };
             results["data"].push_back(result);
         }

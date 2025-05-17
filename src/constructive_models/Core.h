@@ -4,96 +4,25 @@
 
 #include <MAS.hpp>
 #include "Defaults.h"
+#include "CorePiece.h"
 
-#include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <magic_enum.hpp>
-#include <numbers>
-#include <streambuf>
 #include <vector>
+
+using namespace MAS;
+
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
-class CorePiece {
-  private:
-    std::vector<ColumnElement> columns;
-    double depth;
-    double height;
-    double width;
-    CoreShape shape;
-    WindingWindowElement winding_window;
-    EffectiveParameters partial_effective_parameters;
-
-  public:
-    virtual std::tuple<double, double, double> get_shape_constants() = 0;
-    virtual void process_columns() = 0;
-    virtual void process_winding_window() = 0;
-    virtual void process_extra_data() = 0;
-
-    virtual ~CorePiece() = default;
-
-    /**
-     * List of columns in the piece
-     */
-    const std::vector<ColumnElement>& get_columns() const { return columns; }
-    std::vector<ColumnElement>& get_mutable_columns() { return columns; }
-    void set_columns(const std::vector<ColumnElement>& value) { this->columns = value; }
-
-    /**
-     * Total depth of the piece
-     */
-    const double& get_depth() const { return depth; }
-    void set_depth(const double& value) { this->depth = value; }
-
-    /**
-     * Total height of the piece
-     */
-    const double& get_height() const { return height; }
-    void set_height(const double& value) { this->height = value; }
-
-    /**
-     * Total width of the piece
-     */
-    const double& get_width() const { return width; }
-    void set_width(const double& value) { this->width = value; }
-
-    /**
-     * List of winding windows, all elements in the list must be of the same type
-     */
-    const WindingWindowElement& get_winding_window() const { return winding_window; }
-    WindingWindowElement& get_mutable_winding_window() { return winding_window; }
-    void set_winding_window(const WindingWindowElement& value) { this->winding_window = value; }
-
-    const CoreShape get_shape() const { return shape; }
-    CoreShape get_mutable_shape() { return shape; }
-    void set_shape(CoreShape value) { this->shape = value; }
-
-    const EffectiveParameters& get_partial_effective_parameters() const { return partial_effective_parameters; }
-    EffectiveParameters& get_mutable_partial_effective_parameters() { return partial_effective_parameters; }
-    void set_partial_effective_parameters(const EffectiveParameters& value) {
-        this->partial_effective_parameters = value;
-    }
-
-    static std::shared_ptr<CorePiece> factory(CoreShape shape, bool process=true);
-
-    void process();
-};
-
-void from_json(const json& j, OpenMagnetics::CorePiece& x);
-void to_json(json& j, const OpenMagnetics::CorePiece& x);
-
-class CoreWrapper : public MagneticCore {
+class Core : public MAS::MagneticCore {
   private:
     bool _includeMaterialData = false;
 
   public:
-    CoreWrapper(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
-    CoreWrapper(const MagneticCore core);
-    CoreWrapper() = default;
-    virtual ~CoreWrapper() = default;
+    Core(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
+    Core(const MagneticCore core);
+    Core() = default;
+    virtual ~Core() = default;
 
     std::optional<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
     std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
@@ -152,7 +81,7 @@ class CoreWrapper : public MagneticCore {
     int64_t get_number_stacks();
     std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
     bool can_be_used_for_filtering();
-    OpenMagnetics::CoreType get_type();
+    CoreType get_type();
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
 };

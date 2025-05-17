@@ -3,23 +3,19 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/MagnetizingInductance.h"
-#include "Constants.h"
 #include "support/Utils.h"
-#include "support/Settings.h"
 #include <cmath>
 
 
 namespace OpenMagnetics {
 
-std::complex<double>  Impedance::calculate_impedance(MagneticWrapper magnetic, double frequency, double temperature) {
+std::complex<double>  Impedance::calculate_impedance(Magnetic magnetic, double frequency, double temperature) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
     return calculate_impedance(core, coil, frequency, temperature);
 }
 
-std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrapper coil, double frequency, double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
+std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double frequency, double temperature) {
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
@@ -49,14 +45,13 @@ std::complex<double> Impedance::calculate_impedance(CoreWrapper core, CoilWrappe
     return impedance;
 }
 
-double Impedance::calculate_self_resonant_frequency(MagneticWrapper magnetic, double temperature) {
+double Impedance::calculate_self_resonant_frequency(Magnetic magnetic, double temperature) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
     return calculate_self_resonant_frequency(core, coil, temperature);
 }
 
-double Impedance::calculate_self_resonant_frequency(CoreWrapper core, CoilWrapper coil, double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
+double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double temperature) {
     double capacitance;
     if (_fastCapacitance) {
         capacitance = StrayCapacitanceOneLayer().calculate_capacitance(coil);

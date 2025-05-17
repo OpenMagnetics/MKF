@@ -78,7 +78,7 @@ std::vector<Turn> StrayCapacitance::get_surrounding_turns(Turn currentTurn, std:
     return surroundingTurns;
 }
 
-std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, CoilWrapper coil) {
+std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil) {
     if (!coil.get_sections_description()) {
         throw std::invalid_argument("Missing sections description");
     }
@@ -149,7 +149,7 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Tur
     return layersInBetween;
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper coil, OperatingPoint operatingPoint) {
+StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(Coil coil, OperatingPoint operatingPoint) {
     std::map<std::string, double> voltageRmsPerWinding;
     for (size_t windingIndex = 0; windingIndex <  coil.get_functional_description().size(); ++windingIndex) {
         if (windingIndex >= operatingPoint.get_excitations_per_winding().size()) {
@@ -167,7 +167,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper
     return StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding);
 }
 
-StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper coil, std::map<std::string, double> voltageRmsPerWinding) {
+StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(Coil coil, std::map<std::string, double> voltageRmsPerWinding) {
     if (!coil.get_turns_description()) {
         throw std::invalid_argument("Missing turns description");
     }
@@ -179,7 +179,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_voltages_per_turn(CoilWrapper
 
     std::map<std::string, std::map<size_t, size_t>> turnIndexPerWindingPerParallel;
         for (auto winding : coil.get_functional_description()) {
-            for (size_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(); ++parallelIndex) {
+            for (int64_t parallelIndex = 0; parallelIndex < winding.get_number_parallels(); ++parallelIndex) {
                 turnIndexPerWindingPerParallel[winding.get_name()][parallelIndex] = 0;
             }
         }
@@ -229,7 +229,7 @@ double get_effective_relative_permittivity(double firstThickness, double firstRe
     return firstRelativePermittivity * secondRelativePermittivity * (firstThickness + secondThickness) / (firstThickness * secondRelativePermittivity + secondThickness * firstRelativePermittivity);
 }
 
-double get_wire_insulation_relative_permittivity(WireWrapper wire) {
+double get_wire_insulation_relative_permittivity(Wire wire) {
     if (wire.get_type() != WireType::ROUND) {
         throw std::runtime_error("Other wires not implemented yet, check Albach's book");
     }
@@ -256,12 +256,12 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
         throw std::runtime_error("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
 }
 
-std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil) {
+std::vector<double> StrayCapacitanceModel::preprocess_data(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil) {
     if (firstWire.get_type() != WireType::ROUND || secondWire.get_type() != WireType::ROUND) {
         throw std::runtime_error("Other wires not implemented yet, check Albach's book");
     }
 
-    InsulationMaterialWrapper insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
+    InsulationMaterial insulationMaterial = find_insulation_material_by_name(Defaults().defaultInsulationMaterial);
 
     auto epsilonDFirstWire = get_wire_insulation_relative_permittivity(firstWire);
     auto epsilonDSecondWire = get_wire_insulation_relative_permittivity(secondWire);
@@ -388,7 +388,7 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     return C0;
 }
 
-double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, WireWrapper firstWire, Turn secondTurn, WireWrapper secondWire, CoilWrapper coil) {
+double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, Coil coil) {
     auto aux = _model->preprocess_data(firstTurn, firstWire, secondTurn, secondWire, coil);
     double insulationThickness = aux[0];
     double averageTurnLength = aux[1];
@@ -401,7 +401,7 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     return _model->calculate_static_capacitance_between_two_turns(insulationThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, epsilonD, epsilonF);
 }
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_turns(CoilWrapper coil) {
+std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
     if (!coil.get_turns_description()) {
         throw std::invalid_argument("Missing turns description");
     }
@@ -409,7 +409,6 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
     std::map<std::pair<std::string, std::string>, double> capacitanceAmongTurns;
 
     auto turns = coil.get_turns_description().value();
-    auto vacuumPermittivity = Constants().vacuumPermittivity;
     auto wirePerWinding = coil.get_wires();
 
     std::set<std::pair<std::string, std::string>> turnsCombinations;
@@ -422,7 +421,6 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
         for (auto surroundingTurn : surroundingTurns) {
             auto secondTurnName = surroundingTurn.get_name();
             auto key = std::make_pair(firstTurnName, secondTurnName);
-            auto surroundingTurnIndex = coil.get_turn_index_by_name(surroundingTurn.get_name());
             if (turnsCombinations.contains(key) || turnsCombinations.contains(std::make_pair(secondTurnName, firstTurnName))) {
                 continue;
             }
@@ -466,7 +464,7 @@ std::map<std::string, double> StrayCapacitance::calculate_capacitance_matrix(dou
 }
 
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_windings(CoilWrapper coil) {
+std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_capacitance_among_windings(Coil coil) {
     auto capacitanceAmongTurns = calculate_capacitance_among_turns(coil);
 
     std::map<std::string, double> voltageRmsPerWinding;
@@ -506,7 +504,6 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
             while (V3 != V3calculated) {
                 V3 = V3calculated;
                 double energyInBetweenTheseWindings = 0;
-                double voltageDropInBetweenTheseWindings = 0;
                 // double C0 = 0;
                 auto turnsInSecondWinding = coil.get_turns_names_by_winding(secondWinding.get_name());
                 bool windingAreNotAdjacent = true;
@@ -551,7 +548,7 @@ std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculat
 }
 
 
-std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_maxwell_capacitance_matrix(CoilWrapper coil) {
+std::map<std::pair<std::string, std::string>, double> StrayCapacitance::calculate_maxwell_capacitance_matrix(Coil coil) {
     auto capacitanceMapPerWindings = calculate_capacitance_among_windings(coil);
     std::map<std::pair<std::string, std::string>, double> result;
     auto windings = coil.get_functional_description();
@@ -620,7 +617,7 @@ double cas(double n, double ctt, double cts) {
     }
 }
 
-double StrayCapacitanceOneLayer::calculate_capacitance(CoilWrapper coil) {
+double StrayCapacitanceOneLayer::calculate_capacitance(Coil coil) {
     // Baed on https://sci-hub.st/https://ieeexplore.ieee.org/document/793378
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     auto wireRadius = coil.resolve_wire(0).get_maximum_conducting_width() / 2;

@@ -2,7 +2,7 @@
 
 namespace OpenMagnetics {
 
-    double Temperature::calculate_temperature_from_core_thermal_resistance(CoreWrapper core, double totalLosses){
+    double Temperature::calculate_temperature_from_core_thermal_resistance(Core core, double totalLosses){
     	if (!core.get_processed_description()) {
     		throw std::runtime_error("Core is missing processed description");
     	}

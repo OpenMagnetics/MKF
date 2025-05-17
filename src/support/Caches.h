@@ -1,17 +1,19 @@
 #pragma once
-#include "constructive_models/MagneticWrapper.h"
+#include "constructive_models/Magnetic.h"
 
 
-extern std::map<std::string, OpenMagnetics::MagneticWrapper> magneticsCache;
+extern std::map<std::string, OpenMagnetics::Magnetic> magneticsCache;
 extern std::map<double, std::string> magneticEnergyCache;
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
 void clear_magnetic_cache();
 std::vector<std::string> get_magnetic_cache_references();
-std::vector<OpenMagnetics::MagneticWrapper> get_magnetics_from_cache(std::optional<std::vector<std::string>> references);
+std::vector<OpenMagnetics::Magnetic> get_magnetics_from_cache(std::optional<std::vector<std::string>> references);
 void autocomplete_magnetics_in_cache();
-void load_magnetic_in_cache(std::string reference, OpenMagnetics::MagneticWrapper magnetic);
+void load_magnetic_in_cache(std::string reference, OpenMagnetics::Magnetic magnetic);
 void remove_magnetic_from_cache(std::string reference);
 void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);
 void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt);

@@ -1,16 +1,14 @@
-#include "processors/InputsWrapper.h"
+#include "processors/Inputs.h"
 #include "advisers/MagneticAdviser.h"
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Painter.h"
-#include "Defaults.h"
-#include "support/Settings.h"
 #include <magic_enum_utility.hpp>
 
 
 namespace OpenMagnetics {
 
-std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic(InputsWrapper inputs, size_t maximumNumberResults) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
     std::map<MagneticAdviserFilters, double> weights;
     magic_enum::enum_for_each<MagneticAdviserFilters>([&] (auto val) {
         MagneticAdviserFilters filter = val;
@@ -19,10 +17,9 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
     return get_advised_magnetic(inputs, weights, maximumNumberResults);
 }
 
-std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic(InputsWrapper inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticAdviserFilters, double> weights, size_t maximumNumberResults) {
     bool filterMode = bool(inputs.get_design_requirements().get_minimum_impedance());
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    std::vector<MasWrapper> masData;
+    std::vector<Mas> masData;
 
     if (filterMode) {
         settings->set_use_toroidal_cores(true);
@@ -114,26 +111,25 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
 
     auto masMagneticsWithScoring = score_magnetics(masData, weights);
 
-    sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
+    sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
         return b1.second > b2.second;
     });
 
     if (masMagneticsWithScoring.size() > maximumNumberResults) {
-        masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+        masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
     }
 
     settings->set_coil_include_additional_coordinates(previousCoilIncludeAdditionalCoordinates);
     return masMagneticsWithScoring;
 }
 
-std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic(InputsWrapper inputs, std::vector<MagneticWrapper> catalogMagnetics, size_t maximumNumberResults) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    std::vector<MasWrapper> validMagnetics;
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults) {
+    std::vector<Mas> validMagnetics;
     MagneticSimulator magneticSimulator;
 
     std::map<std::string, std::map<std::string, double>> scoringPerReferencePerRequirement;
     std::map<std::string, double> scoringPerReference;
-    std::vector<MagneticWrapper> catalogMagneticsWithSameTurnsRatio;
+    std::vector<Magnetic> catalogMagneticsWithSameTurnsRatio;
 
     for (size_t magneticIndex = 0; magneticIndex < catalogMagnetics.size(); ++magneticIndex) {
         auto magnetic = catalogMagnetics[magneticIndex];
@@ -193,13 +189,13 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
                 auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
                 auto dcCurrentDensity = wire.calculate_dc_current_density(current);
 
-                scoringPerReferencePerRequirement["effectiveCurrentDensity"][reference] += fabs(Defaults().maximumEffectiveCurrentDensity - effectiveCurrentDensity);
-                if (effectiveCurrentDensity > Defaults().maximumEffectiveCurrentDensity) {
+                scoringPerReferencePerRequirement["effectiveCurrentDensity"][reference] += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
+                if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
                     validMagnetic = false;
                 }
 
-                scoringPerReferencePerRequirement["dcCurrentDensity"][reference] += fabs(Defaults().maximumCurrentDensity - dcCurrentDensity);
-                if (dcCurrentDensity > Defaults().maximumCurrentDensity) {
+                scoringPerReferencePerRequirement["dcCurrentDensity"][reference] += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
+                if (dcCurrentDensity > defaults.maximumCurrentDensity) {
                     validMagnetic = false;
                 }
             }
@@ -247,7 +243,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
         // }
         if (validMagnetic){
             // std::cout << "magnetic.get_manufacturer_info().value().get_reference().value(): " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
-            MasWrapper mas;
+            Mas mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);
             mas = magneticSimulator.simulate(mas, true);
@@ -255,7 +251,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
         }
     }
 
-    std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoring;
+    std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
 
     if (validMagnetics.size() > 0) {
         std::map<MagneticAdviserFilters, double> weights;
@@ -265,11 +261,11 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
         });
 
         masMagneticsWithScoring = score_magnetics(validMagnetics, weights);
-        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
+        sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
         });
         if (masMagneticsWithScoring.size() > maximumNumberResults) {
-            masMagneticsWithScoring = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+            masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
         }
 
         return masMagneticsWithScoring;
@@ -283,20 +279,20 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::get_advised_magnetic
             }
         }
 
-        std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoringNoSimulation;
+        std::vector<std::pair<Mas, double>> masMagneticsWithScoringNoSimulation;
         for (auto magnetic : catalogMagneticsWithSameTurnsRatio) {
             std::string reference = magnetic.get_manufacturer_info().value().get_reference().value();
-            MasWrapper mas;
+            Mas mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);
             masMagneticsWithScoringNoSimulation.push_back({mas, -scoringPerReference[reference]});
         }
-        sort(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end(), [](std::pair<MasWrapper, double>& b1, std::pair<MasWrapper, double>& b2) {
+        sort(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
             return b1.second < b2.second;
         });
 
         if (masMagneticsWithScoringNoSimulation.size() > maximumNumberResults) {
-            masMagneticsWithScoringNoSimulation = std::vector<std::pair<MasWrapper, double>>(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end() - (masMagneticsWithScoringNoSimulation.size() - maximumNumberResults));
+            masMagneticsWithScoringNoSimulation = std::vector<std::pair<Mas, double>>(masMagneticsWithScoringNoSimulation.begin(), masMagneticsWithScoringNoSimulation.end() - (masMagneticsWithScoringNoSimulation.size() - maximumNumberResults));
         }
 
         for (auto [mas, scoring] : masMagneticsWithScoringNoSimulation) {
@@ -388,7 +384,7 @@ std::vector<double> MagneticAdviser::normalize_scoring(std::vector<double>* scor
     return normalizedScorings;
 }
 
-void MagneticAdviser::normalize_scoring(std::vector<std::pair<MasWrapper, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
+void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
     auto normalizedScorings = normalize_scoring(scoring, weight, filterConfiguration);
 
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i) {
@@ -396,9 +392,9 @@ void MagneticAdviser::normalize_scoring(std::vector<std::pair<MasWrapper, double
     }
 }
 
-std::vector<std::pair<MasWrapper, double>> MagneticAdviser::score_magnetics(std::vector<MasWrapper> masMagnetics, std::map<MagneticAdviserFilters, double> weights) {
+std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::map<MagneticAdviserFilters, double> weights) {
     _weights = weights;
-    std::vector<std::pair<MasWrapper, double>> masMagneticsWithScoring;
+    std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
     for (auto mas : masMagnetics) {
         masMagneticsWithScoring.push_back({mas, 0.0});
     }
@@ -421,7 +417,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::score_magnetics(std:
     {
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            std::vector<WireWrapper> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
+            std::vector<Wire> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
             auto wireRelativeCosts = 0;
             for (auto wire : wires) {
                 wireRelativeCosts += wire.get_relative_cost();
@@ -439,7 +435,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::score_magnetics(std:
     {
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            std::vector<WireWrapper> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
+            std::vector<Wire> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
             auto layers = mas.get_mutable_magnetic().get_mutable_coil().get_layers_description().value();
             auto coilDepth = 0.0;
             for (auto layer : layers) {
@@ -458,7 +454,7 @@ std::vector<std::pair<MasWrapper, double>> MagneticAdviser::score_magnetics(std:
 }
 
 
-void MagneticAdviser::preview_magnetic(MasWrapper mas) {
+void MagneticAdviser::preview_magnetic(Mas mas) {
     std::string text = "";
 
     text += "Core shape: " + mas.get_mutable_magnetic().get_mutable_core().get_shape_name() + "\n";
@@ -469,7 +465,7 @@ void MagneticAdviser::preview_magnetic(MasWrapper mas) {
     text += "Core stacks: " + std::to_string(mas.get_mutable_magnetic().get_mutable_core().get_functional_description().get_number_stacks().value()) + "\n";
     for (size_t windingIndex = 0; windingIndex < mas.get_mutable_magnetic().get_mutable_coil().get_functional_description().size(); ++windingIndex) {
         auto winding = mas.get_mutable_magnetic().get_mutable_coil().get_functional_description()[windingIndex];
-        auto wire = OpenMagnetics::CoilWrapper::resolve_wire(winding);
+        auto wire = OpenMagnetics::Coil::resolve_wire(winding);
         text += "Winding: " + winding.get_name() + "\n";
         text += "\tNumber Turns: " + std::to_string(winding.get_number_turns()) + "\n";
         text += "\tNumber Parallels: " + std::to_string(winding.get_number_parallels()) + "\n";
@@ -629,7 +625,7 @@ int main(int argc, char* argv[]) {
             masJson["inputs"]["designRequirements"]["insulation"]["cti"] = "Group IIIB";
         }
 
-        OpenMagnetics::InputsWrapper inputs(masJson["inputs"]);
+        OpenMagnetics::Inputs inputs(masJson["inputs"]);
 
         auto outputFolder = inputFilepath.parent_path();
 
@@ -652,8 +648,7 @@ int main(int argc, char* argv[]) {
 
             outputFilename.replace_extension("svg");
             OpenMagnetics::Painter painter(outputFilename);
-            auto settings = OpenMagnetics::Settings::GetInstance();
-            settings->set_painter_mode(OpenMagnetics::Painter::PainterModes::CONTOUR);
+            settings->set_painter_mode(OpenMagnetics::PainterModes::CONTOUR);
 
             settings->set_painter_number_points_x(20);
             settings->set_painter_number_points_y(20);

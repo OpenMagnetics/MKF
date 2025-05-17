@@ -1,4 +1,4 @@
-#include "constructive_models/MasWrapper.h"
+#include "constructive_models/Mas.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
@@ -12,9 +12,12 @@
 #include <typeinfo>
 #include <vector>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 using json = nlohmann::json;
 
-SUITE(Magnetic) {
+SUITE(Mas) {
     TEST(Test_Expand_Magnetic) {
 
         std::string file_path = __FILE__;
@@ -23,8 +26,8 @@ SUITE(Magnetic) {
 
         CHECK(!mas.get_magnetic().get_core().get_processed_description());
 
-        auto magnetic = OpenMagnetics::MasWrapper::expand_magnetic(mas.get_magnetic());
-        auto inputs = OpenMagnetics::MasWrapper::expand_inputs(magnetic, mas.get_inputs());
+        auto magnetic = OpenMagnetics::Mas::expand_magnetic(mas.get_magnetic());
+        auto inputs = OpenMagnetics::Mas::expand_inputs(magnetic, mas.get_inputs());
         CHECK(magnetic.get_core().get_processed_description());
 
     }

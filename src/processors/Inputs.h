@@ -13,11 +13,13 @@
 #include <vector>
 using json = nlohmann::json;
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
-class InputsWrapper : public Inputs {
+class Inputs : public MAS::Inputs {
   public:
-    InputsWrapper(const json& j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
+    Inputs(const json& j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
         from_json(j, *this);
         auto check_passed = check_integrity();
         if (!check_passed.first) {
@@ -27,8 +29,8 @@ class InputsWrapper : public Inputs {
             process(magnetizingInductance);
         }
     }
-    InputsWrapper() = default;
-    virtual ~InputsWrapper() = default;
+    Inputs() = default;
+    virtual ~Inputs() = default;
 
     std::pair<bool, std::string> check_integrity();
     void process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt);
@@ -85,7 +87,7 @@ class InputsWrapper : public Inputs {
                                                              double frequency);
     static void make_waveform_size_power_of_two(OperatingPoint* operatingPoint);
 
-    static InputsWrapper create_quick_operating_point(double frequency,
+    static Inputs create_quick_operating_point(double frequency,
                                                       double magnetizingInductance,
                                                       double temperature,
                                                       WaveformLabel waveShape,
@@ -93,7 +95,7 @@ class InputsWrapper : public Inputs {
                                                       double dutyCycle,
                                                       double dcCurrent,
                                                       std::vector<double> turnsRatios={});
-    static InputsWrapper create_quick_operating_point_only_current(double frequency,
+    static Inputs create_quick_operating_point_only_current(double frequency,
                                                                   double magnetizingInductance,
                                                                   double temperature,
                                                                   WaveformLabel waveShape,
@@ -101,7 +103,7 @@ class InputsWrapper : public Inputs {
                                                                   double dutyCycle,
                                                                   double dcCurrent,
                                                                   std::vector<double> turnsRatios={});
-    static InputsWrapper create_quick_operating_point_only_current(double frequency,
+    static Inputs create_quick_operating_point_only_current(double frequency,
                                                                   double magnetizingInductance,
                                                                   double temperature,
                                                                   WaveformLabel waveShape,
@@ -129,7 +131,7 @@ class InputsWrapper : public Inputs {
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    static void scale_time_to_frequency(InputsWrapper& inputs, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
+    static void scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
     static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
     static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
     static Waveform scale_time_to_frequency(Waveform waveform, double newFrequency);
@@ -167,18 +169,18 @@ class InputsWrapper : public Inputs {
 };
 void from_json(const json& j, Inputs& x);
 void to_json(json& j, const Inputs& x);
-void to_file(std::filesystem::path filepath, const InputsWrapper & x);
+void to_file(std::filesystem::path filepath, const Inputs & x);
 
-inline void from_json(const json& j, InputsWrapper& x) {
+inline void from_json(const json& j, Inputs& x) {
     x.set_design_requirements(j.at("designRequirements").get<DesignRequirements>());
     x.set_operating_points(j.at("operatingPoints").get<std::vector<OperatingPoint>>());
 }
-inline void to_json(json& j, const InputsWrapper& x) {
+inline void to_json(json& j, const Inputs& x) {
     j = json::object();
     j["designRequirements"] = x.get_design_requirements();
     j["operatingPoints"] = x.get_operating_points();
 }
-inline void to_file(std::filesystem::path filepath, const InputsWrapper & x) {
+inline void to_file(std::filesystem::path filepath, const Inputs & x) {
     json masJson;
     to_json(masJson, x);
 

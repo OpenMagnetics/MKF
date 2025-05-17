@@ -11,6 +11,8 @@
 #include <streambuf>
 #include <vector>
 
+using namespace MAS;
+
 namespace OpenMagnetics {
 
 enum class ResistivityModels : int {

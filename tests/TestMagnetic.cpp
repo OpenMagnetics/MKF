@@ -1,5 +1,4 @@
 #include "physical_models/MagneticEnergy.h"
-#include "support/Settings.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
 #include "json.hpp"
@@ -12,10 +11,12 @@
 #include <typeinfo>
 #include <vector>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 using json = nlohmann::json;
 
 SUITE(Magnetic) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     double max_error = 0.05;
 
     TEST(Test_Magnetic_Saturation_Current) {
@@ -34,7 +35,7 @@ SUITE(Magnetic) {
         std::string coreMaterial = "3C97";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
-        OpenMagnetics::MagneticWrapper magnetic;
+        OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 

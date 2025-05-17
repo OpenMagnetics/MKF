@@ -1,12 +1,5 @@
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/WireWrapper.h"
-#include "physical_models/Resistivity.h"
-#include "physical_models/Reluctance.h"
-#include "physical_models/InitialPermeability.h"
-#include "spline.h"
+#include "constructive_models/CorePiece.h"
 
-#include "Defaults.h"
-#include "Constants.h"
 #include "json.hpp"
 #include "support/Utils.h"
 
@@ -23,162 +16,6 @@
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
-
-
-CoreWrapper::CoreWrapper(const json& j, bool includeMaterialData, bool includeProcessedDescription, bool includeGeometricalDescription) {
-    _includeMaterialData = includeMaterialData;
-    from_json(j, *this);
-    
-    if (includeProcessedDescription) {
-        process_data();
-        process_gap();
-    }
-
-    if (!get_geometrical_description() && includeGeometricalDescription) {
-        auto geometricalDescription = create_geometrical_description();
-
-        set_geometrical_description(geometricalDescription);
-    }
-}
-
-CoreWrapper::CoreWrapper(const MagneticCore core) {
-    set_functional_description(core.get_functional_description());
-
-    if (core.get_geometrical_description()) {
-        set_geometrical_description(core.get_geometrical_description());
-    }
-    if (core.get_processed_description()) {
-        set_processed_description(core.get_processed_description());
-    }
-    if (core.get_distributors_info()) {
-        set_distributors_info(core.get_distributors_info());
-    }
-    if (core.get_manufacturer_info()) {
-        set_manufacturer_info(core.get_manufacturer_info());
-    }
-    if (core.get_name()) {
-        set_name(core.get_name());
-    }
-}
-
-double CoreWrapper::get_depth() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_depth();
-}
-double CoreWrapper::get_height() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_height();
-}
-double CoreWrapper::get_width() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_width();
-}
-double CoreWrapper::get_mass() {
-    if (get_shape_family() == CoreShapeFamily::T) {
-        auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
-        double volume = std::numbers::pi * (pow(dimensions["A"] / 2, 2) - pow(dimensions["B"] / 2, 2)) * dimensions["C"];
-        return volume * get_density();
-    }
-    else{
-        throw std::runtime_error("get_mass only implemented for toroidal cores for now");
-    }
-}
-double CoreWrapper::get_effective_length() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_effective_parameters().get_effective_length();
-}
-double CoreWrapper::get_effective_area() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_effective_parameters().get_effective_area();
-}
-double CoreWrapper::get_minimum_area() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_effective_parameters().get_minimum_area();
-}
-double CoreWrapper::get_effective_volume() {
-    if (!get_processed_description()) {
-        throw std::runtime_error("Core is not processed");
-    }
-    return get_processed_description()->get_effective_parameters().get_effective_volume();
-}
-
-double roundFloat(double value, int64_t decimals) {
-    return round(value * pow(10, decimals)) / pow(10, decimals);
-}
-
-double interp(std::vector<std::pair<double, double>> data, double temperature) {
-    double result;
-
-    if (data.size() == 0) {
-        throw std::runtime_error("Data cannot be empty");
-    }
-    else if (data.size() == 1) {
-        result = data[0].second;
-    }
-    else if (data.size() == 2) {
-        result = data[0].second -
-        (data[0].first - temperature) *
-            (data[0].second - data[1].second) /
-            (data[0].first - data[1].first);
-    }
-    else {
-        std::sort(data.begin(), data.end(), [](const std::pair<double, double>& b1, const std::pair<double, double>& b2) {
-                return b1.first < b2.first;
-        });
-        size_t n = data.size();
-        std::vector<double> x, y;
-
-        for (size_t i = 0; i < n; i++) {
-            if (x.size() == 0 || data[i].first != x.back()) {
-                x.push_back(data[i].first);
-                y.push_back(data[i].second);
-            }
-        }
-        tk::spline interp(x, y, tk::spline::cspline_hermite, true);
-        result = interp(temperature);
-    }
-    return result;
-}
-
-template<int decimals> double roundFloat(double value) {
-    if (value < 0)
-        return floor(value * pow(10, decimals)) / pow(10, decimals);
-    else
-        return ceil(value * pow(10, decimals)) / pow(10, decimals);
-}
-
-CoreShape flatten_dimensions(CoreShape shape) {
-    CoreShape flattenedShape(shape);
-    std::map<std::string, Dimension> dimensions = shape.get_dimensions().value();
-    std::map<std::string, Dimension> flattenedDimensions;
-    for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values(dimension.second);
-        flattenedDimensions[dimension.first] = value;
-    }
-    flattenedShape.set_dimensions(flattenedDimensions);
-    return flattenedShape;
-}
-
-std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions) {
-    std::map<std::string, double> flattenedDimensions;
-    for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values(dimension.second);
-        flattenedDimensions[dimension.first] = value;
-    }
-    return flattenedDimensions;
-}
 
 void CorePiece::process() {
     
@@ -224,16 +61,16 @@ class CorePieceE : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -315,17 +152,17 @@ class CorePieceEtd : public CorePieceE {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
+        lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
@@ -392,8 +229,8 @@ class CorePieceEl : public CorePieceE {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::OBLONG);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::OBLONG);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -402,8 +239,8 @@ class CorePieceEl : public CorePieceE {
                               dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -472,16 +309,16 @@ class CorePieceEfd : public CorePieceEl {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::IRREGULAR);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -609,16 +446,16 @@ class CorePieceEp : public CorePieceE {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
             lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 ) -
                               dimensions["K"]);
@@ -710,16 +547,16 @@ class CorePieceLp : public CorePieceEp {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
@@ -741,8 +578,8 @@ class CorePieceEpx : public CorePieceEp {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::OBLONG);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::OBLONG);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]) / 2 + roundFloat<6>(dimensions["K"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -751,8 +588,8 @@ class CorePieceEpx : public CorePieceEp {
                               dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
             lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 )-
                               dimensions["K"]);
@@ -824,16 +661,16 @@ class CorePieceRm : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
@@ -981,16 +818,16 @@ class CorePiecePq : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_depth(dimensions["C"]);
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
@@ -1126,16 +963,16 @@ class CorePiecePm : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
@@ -1272,16 +1109,16 @@ class CorePieceP : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         mainColumn.set_width(roundFloat<6>(dimensions["F"]));
         mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::IRREGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
         lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
@@ -1403,8 +1240,8 @@ class CorePieceU : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
         if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
             mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         }
@@ -1416,8 +1253,8 @@ class CorePieceU : public CorePiece {
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -1526,8 +1363,8 @@ class CorePieceUr : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::ROUND);
         if (familySubtype == "1" || familySubtype == "2" || familySubtype == "4") {
             mainColumn.set_width(roundFloat<6>(dimensions["C"]));
             mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
@@ -1540,15 +1377,15 @@ class CorePieceUr : public CorePiece {
         mainColumn.set_height(roundFloat<6>(dimensions["D"]));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
+        lateralColumn.set_type(ColumnType::LATERAL);
         if (familySubtype == "1" || familySubtype == "3") {
-            lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+            lateralColumn.set_shape(ColumnShape::RECTANGULAR);
             lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
             lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
             lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
         }
         else {
-            lateralColumn.set_shape(OpenMagnetics::ColumnShape::ROUND);
+            lateralColumn.set_shape(ColumnShape::ROUND);
             lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
             lateralColumn.set_depth(roundFloat<6>(dimensions["H"]));
             lateralColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
@@ -1661,8 +1498,8 @@ class CorePieceUt : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_type(ColumnType::LATERAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
         if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
             mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
         }
@@ -1674,8 +1511,8 @@ class CorePieceUt : public CorePiece {
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -1746,8 +1583,8 @@ class CorePieceT : public CorePiece {
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
         double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
         mainColumn.set_width(columnWidth);
         mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
         mainColumn.set_height(2 * std::numbers::pi * (dimensions["B"] / 2 + columnWidth / 2));
@@ -1803,8 +1640,8 @@ class CorePieceC : public CorePiece {
         std::vector<ColumnElement> windingWindows;
         ColumnElement mainColumn;
         ColumnElement lateralColumn;
-        mainColumn.set_type(OpenMagnetics::ColumnType::CENTRAL);
-        mainColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        mainColumn.set_type(ColumnType::CENTRAL);
+        mainColumn.set_shape(ColumnShape::RECTANGULAR);
         mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
 
         mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
@@ -1812,8 +1649,8 @@ class CorePieceC : public CorePiece {
         mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
-        lateralColumn.set_type(OpenMagnetics::ColumnType::LATERAL);
-        lateralColumn.set_shape(OpenMagnetics::ColumnShape::RECTANGULAR);
+        lateralColumn.set_type(ColumnType::LATERAL);
+        lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
         lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
         lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
@@ -2021,17 +1858,17 @@ std::shared_ptr<CorePiece> CorePiece::factory(CoreShape shape, bool process) {
                                  "ETD, P, PLANAR_E, PLANAR_EL, PLANAR_ER, PM, PQ, RM, U, UR, UT, T, C}");
 }
 
-inline void from_json(const json& j, OpenMagnetics::CorePiece& x) {
-    x.set_columns(j.at("columns").get<std::vector<OpenMagnetics::ColumnElement>>());
+inline void from_json(const json& j, CorePiece& x) {
+    x.set_columns(j.at("columns").get<std::vector<ColumnElement>>());
     x.set_depth(j.at("depth").get<double>());
     x.set_height(j.at("height").get<double>());
     x.set_width(j.at("width").get<double>());
-    x.set_shape(j.at("shape").get<OpenMagnetics::CoreShape>());
-    x.set_winding_window(j.at("winding_window").get<OpenMagnetics::WindingWindowElement>());
-    x.set_partial_effective_parameters(j.at("partial_effective_parameters").get<OpenMagnetics::EffectiveParameters>());
+    x.set_shape(j.at("shape").get<CoreShape>());
+    x.set_winding_window(j.at("winding_window").get<WindingWindowElement>());
+    x.set_partial_effective_parameters(j.at("partial_effective_parameters").get<EffectiveParameters>());
 }
 
-inline void to_json(json& j, const OpenMagnetics::CorePiece& x) {
+inline void to_json(json& j, const CorePiece& x) {
     j = json::object();
     j["columns"] = x.get_columns();
     j["depth"] = x.get_depth();
@@ -2040,1183 +1877,6 @@ inline void to_json(json& j, const OpenMagnetics::CorePiece& x) {
     j["shape"] = x.get_winding_window();
     j["winding_window"] = x.get_shape();
     j["partial_effective_parameters"] = x.get_partial_effective_parameters();
-}
-
-std::optional<std::vector<CoreGeometricalDescriptionElement>> CoreWrapper::create_geometrical_description() {
-    std::vector<CoreGeometricalDescriptionElement> geometricalDescription;
-    auto numberStacks = *(get_functional_description().get_number_stacks());
-    auto gapping = get_functional_description().get_gapping();
-
-    auto corePiece =
-        OpenMagnetics::CorePiece::factory(std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()));
-    auto corePieceHeight = corePiece->get_height();
-    auto corePieceDepth = corePiece->get_depth();
-
-    CoreGeometricalDescriptionElement spacer;
-    std::vector<Machining> machining;
-    CoreGeometricalDescriptionElement piece;
-    double currentDepth = roundFloat<6>((-corePieceDepth * (numberStacks - 1)) / 2);
-    double spacerThickness = 0;
-
-    for (auto& gap : gapping) {
-        if (gap.get_type() == OpenMagnetics::GapType::ADDITIVE) {
-            spacerThickness = gap.get_length();
-        }
-        else if (gap.get_type() == OpenMagnetics::GapType::SUBTRACTIVE) {
-            Machining aux;
-            aux.set_length(gap.get_length());
-            if (!gap.get_coordinates()) {
-                aux.set_coordinates({0, 0, 0});
-            }
-            else {
-                aux.set_coordinates(gap.get_coordinates().value());
-            }
-            // else {  // Gap coordinates are centered in the gap, while machining coordinates start at the base of the
-            // central column surface, therefore, we must correct them
-            //     aux["coordinates"][1] = aux["coordinates"].at(1).get<double>() - gap.get_length() / 2;
-            // }
-            machining.push_back(aux);
-        }
-    }
-
-    piece.set_material(get_functional_description().get_material());
-    piece.set_shape(std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()));
-    auto topPiece = piece;
-    auto bottomPiece = piece;
-    switch (get_functional_description().get_type()) {
-        case OpenMagnetics::CoreType::TOROIDAL:
-            piece.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::TOROIDAL);
-            for (auto i = 0; i < numberStacks; ++i) {
-                std::vector<double> coordinates = {0, 0, currentDepth};
-                piece.set_coordinates(coordinates);
-                piece.set_rotation(std::vector<double>({std::numbers::pi / 2, std::numbers::pi / 2, 0}));
-
-                geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
-
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
-            }
-            break;
-        case OpenMagnetics::CoreType::CLOSED_SHAPE:
-            piece.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::CLOSED);
-            for (auto i = 0; i < numberStacks; ++i) {
-                double currentHeight = roundFloat<6>(corePieceHeight);
-                std::vector<double> coordinates = {0, currentHeight, currentDepth};
-                piece.set_coordinates(coordinates);
-                piece.set_rotation(std::vector<double>({0, 0, 0}));
-                piece.set_machining(std::nullopt);
-                geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
-            }
-            break;
-        case OpenMagnetics::CoreType::TWO_PIECE_SET:
-            topPiece.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
-            bottomPiece.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::HALF_SET);
-            for (auto i = 0; i < numberStacks; ++i) {
-                double currentHeight = roundFloat<6>(spacerThickness / 2);
-                std::vector<Machining> topHalfMachining;
-                std::vector<double> coordinates = {0, currentHeight, currentDepth};
-                topPiece.set_coordinates(coordinates);
-                topPiece.set_rotation(std::vector<double>({std::numbers::pi, std::numbers::pi, 0}));
-                for (auto& operating : machining) {
-                    if (operating.get_coordinates()[1] >= 0 &&
-                        operating.get_coordinates()[1] < operating.get_length() / 2) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperating);
-                    }
-                    else if (operating.get_coordinates()[1] < 0 &&
-                             (operating.get_coordinates()[1] + operating.get_length() / 2) >
-                                 0) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperating);
-                    }
-                    else if (operating.get_coordinates()[1] > 0) {
-                        topHalfMachining.push_back(operating);
-                    }
-                }
-
-                if (topHalfMachining.size() > 0) {
-                    topPiece.set_machining(topHalfMachining);
-                }
-                geometricalDescription.push_back(topPiece);
-
-                std::vector<Machining> bottomHalfMachining;
-
-                for (auto& operating : machining) {
-                    if (operating.get_coordinates()[1] <= 0 &&
-                        (-operating.get_coordinates()[1] < operating.get_length() / 2)) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperating);
-                    }
-                    else if (operating.get_coordinates()[1] > 0 &&
-                             (operating.get_coordinates()[1] - operating.get_length() / 2) <
-                                 0) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperating);
-                    }
-                    else if (operating.get_coordinates()[1] < 0) {
-                        bottomHalfMachining.push_back(operating);
-                    }
-                }
-
-                if (std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
-                        CoreShapeFamily::UR ||
-                    std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
-                        CoreShapeFamily::U ||
-                    std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family() ==
-                        CoreShapeFamily::C) {
-                    bottomPiece.set_rotation(std::vector<double>({0, std::numbers::pi, 0}));
-                }
-                else {
-                    bottomPiece.set_rotation(std::vector<double>({0, 0, 0}));
-                }
-
-                if (bottomHalfMachining.size() > 0) {
-                    bottomPiece.set_machining(bottomHalfMachining);
-                }
-                currentHeight = -currentHeight;
-                coordinates = {0, currentHeight, currentDepth};
-                bottomPiece.set_coordinates(coordinates);
-                geometricalDescription.push_back(bottomPiece);
-
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
-            }
-
-            if (spacerThickness > 0) {
-                for (auto& column : corePiece->get_columns()) {
-                    auto shape_data = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape());
-                    if (column.get_type() == OpenMagnetics::ColumnType::LATERAL) {
-                        spacer.set_type(OpenMagnetics::CoreGeometricalDescriptionElementType::SPACER);
-                        spacer.set_material("plastic");
-                        // We cannot use directly column.get_width()
-                        auto dimensions = flatten_dimensions(shape_data.get_dimensions().value());
-                        double windingWindowWidth;
-                        if (dimensions.find("E") == dimensions.end() ||
-                            (roundFloat<6>(dimensions["E"]) == 0)) {
-                            if (dimensions.find("F") == dimensions.end() ||
-                                (roundFloat<6>(dimensions["F"]) == 0)) {
-                                windingWindowWidth = dimensions["A"] -
-                                                     dimensions["C"] -
-                                                     dimensions["H"];
-                            }
-                            else {
-                                windingWindowWidth = dimensions["A"] -
-                                                     dimensions["F"] -
-                                                     dimensions["H"];
-                            }
-                        }
-                        else {
-                            windingWindowWidth = dimensions["E"];
-                        }
-                        double minimum_column_width;
-                        double minimum_column_depth;
-                        if ((shape_data.get_family() == CoreShapeFamily::EP ||
-                             shape_data.get_family() == CoreShapeFamily::EPX) &&
-                            corePiece->get_columns().size() == 2) {
-                            minimum_column_width = dimensions["A"];
-                        }
-                        else if (shape_data.get_family() == CoreShapeFamily::U ||
-                                 shape_data.get_family() == CoreShapeFamily::UR ||
-                                 shape_data.get_family() == CoreShapeFamily::C) {
-                            if (dimensions.find("H") == dimensions.end() ||
-                                (roundFloat<6>(dimensions["H"]) == 0)) {
-                                minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
-                            }
-                            else {
-                                minimum_column_width = dimensions["H"];
-                            }
-                        }
-                        else {
-                            minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
-                        }
-
-                        if ((shape_data.get_family() == CoreShapeFamily::EP ||
-                             shape_data.get_family() == CoreShapeFamily::EPX) &&
-                            corePiece->get_columns().size() == 2) {
-                            minimum_column_depth = column.get_depth();
-                        }
-                        else if (shape_data.get_family() == CoreShapeFamily::P ||
-                                 shape_data.get_family() == CoreShapeFamily::PM) {
-                            minimum_column_depth = dimensions["F"];
-                        }
-                        else if (shape_data.get_family() == CoreShapeFamily::RM) {
-                            if (dimensions.find("J") != dimensions.end() &&
-                                (roundFloat<6>(dimensions["J"]) != 0)) {
-                                minimum_column_depth =
-                                    sqrt(2) * dimensions["J"] - dimensions["A"];
-                            }
-                            else if (dimensions.find("H") != dimensions.end() &&
-                                     (roundFloat<6>(dimensions["H"]) != 0)) {
-                                minimum_column_depth = dimensions["H"];
-                            }
-                            else {
-                                minimum_column_depth = dimensions["F"];
-                            }
-                        }
-                        else {
-                            minimum_column_depth =
-                                std::min(dimensions["C"], column.get_depth()) * numberStacks;
-                        }
-                        minimum_column_width *= (1 + constants.spacerProtudingPercentage);
-                        minimum_column_depth *= (1 + constants.spacerProtudingPercentage);
-                        double protuding_width = minimum_column_width * constants.spacerProtudingPercentage;
-                        double protuding_depth = minimum_column_depth * constants.spacerProtudingPercentage;
-                        spacer.set_dimensions(std::vector<double>({minimum_column_width, spacerThickness, minimum_column_depth}));
-                        spacer.set_rotation(std::vector<double>({0, 0, 0}));
-                        if (column.get_coordinates()[0] == 0) {
-                            spacer.set_coordinates({0, column.get_coordinates()[1],
-                                                         -dimensions["C"] / 2 +
-                                                             minimum_column_depth / 2 - protuding_depth});
-                        }
-                        else if (column.get_coordinates()[0] < 0) {
-                            if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR ||
-                                shape_data.get_family() == CoreShapeFamily::C) {
-                                spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] - column.get_width() / 2 +
-                                                                 minimum_column_width / 2 - protuding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                            else {
-                                spacer.set_coordinates(std::vector<double>({-dimensions["A"] / 2 +
-                                                                 minimum_column_width / 2 - protuding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                        }
-                        else {
-                            if (shape_data.get_family() == CoreShapeFamily::U ||
-                                shape_data.get_family() == CoreShapeFamily::UR ||
-                                shape_data.get_family() == CoreShapeFamily::C) {
-                                spacer.set_coordinates(std::vector<double>({column.get_coordinates()[0] + column.get_width() / 2 -
-                                                                 minimum_column_width / 2 + protuding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                            else {
-                                spacer.set_coordinates(std::vector<double>({dimensions["A"] / 2 -
-                                                                 minimum_column_width / 2 + protuding_width,
-                                                             column.get_coordinates()[1], column.get_coordinates()[2]}));
-                            }
-                        }
-                        geometricalDescription.push_back(spacer);
-                    }
-                }
-            }
-            break;
-        case OpenMagnetics::CoreType::PIECE_AND_PLATE:
-            // TODO add for toroPIECE_AND_PLATE
-            break;
-        default:
-            throw std::runtime_error(
-                "Unknown type of core, options are {TOROIDAL, TWO_PIECE_SET, PIECE_AND_PLATE, CLOSED_SHAPE}");
-    }
-
-    return geometricalDescription;
-}
-
-std::vector<ColumnElement> CoreWrapper::find_columns_by_type(ColumnType columnType) {
-    std::vector<ColumnElement> foundColumns;
-    auto processedDescription = get_processed_description().value();
-    for (auto& column : processedDescription.get_columns()) {
-        if (column.get_type() == columnType) {
-            foundColumns.push_back(column);
-        }
-    }
-    return foundColumns;
-}
-
-int CoreWrapper::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
-    double closestDistance = std::numeric_limits<double>::infinity();
-    int closestColumnIndex = -1;
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
-    for (size_t index = 0; index < columns.size(); ++index) {
-        double distance = 0;
-        auto column_coordinates = columns[index].get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
-            if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
-                          // axis X and Z
-                distance += fabs(column_coordinates[i] - coordinates[i]);
-            }
-        }
-        if (distance < closestDistance) {
-            closestColumnIndex = index;
-            closestDistance = distance;
-        }
-    }
-    return closestColumnIndex;
-}
-
-int CoreWrapper::find_exact_column_index_by_coordinates(std::vector<double> coordinates) {
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
-    for (size_t index = 0; index < columns.size(); ++index) {
-        double distance = 0;
-        auto column_coordinates = columns[index].get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
-            if (i != 1) { // We don't care about how high in the column the gap is, just about its projection, with are
-                          // axis X and Z
-                distance += fabs(column_coordinates[i] - coordinates[i]);
-            }
-        }
-        if (distance == 0) {
-            return index;
-        }
-    }
-    return -1;
-}
-
-ColumnElement CoreWrapper::find_closest_column_by_coordinates(std::vector<double> coordinates) {
-    double closestDistance = std::numeric_limits<double>::infinity();
-    ColumnElement closestColumn;
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
-    for (auto& column : columns) {
-        double distance = 0;
-        auto column_coordinates = column.get_coordinates();
-        for (size_t i = 0; i < column_coordinates.size(); ++i) {
-            distance += fabs(column_coordinates[i] - coordinates[i]);
-        }
-        if (distance < closestDistance) {
-            closestColumn = column;
-            closestDistance = distance;
-        }
-    }
-    return closestColumn;
-}
-
-std::vector<CoreGap> CoreWrapper::find_gaps_by_type(GapType gappingType) {
-    std::vector<CoreGap> foundGaps;
-    for (auto& gap : get_functional_description().get_gapping()) {
-        if (gap.get_type() == gappingType) {
-            foundGaps.push_back(gap);
-        }
-    }
-    return foundGaps;
-}
-
-std::vector<CoreGap> CoreWrapper::find_gaps_by_column(ColumnElement column) {
-    std::vector<CoreGap> foundGaps;
-    double columnLeftLimit = column.get_coordinates()[0] - column.get_width() / 2;
-    double columnRightLimit = column.get_coordinates()[0] + column.get_width() / 2;
-    double columnFrontLimit = column.get_coordinates()[2] + column.get_depth() / 2;
-    double columnBackLimit = column.get_coordinates()[2] - column.get_depth() / 2;
-
-    bool gapIsComplete = true;
-    for (auto& gap : get_functional_description().get_gapping()) {
-        if (!gap.get_coordinates()) {
-            gapIsComplete = false;
-        }
-    }
-
-    if (!gapIsComplete) {
-        process_gap();
-    }
-
-    for (auto& gap : get_functional_description().get_gapping()) {
-        if (gap.get_coordinates().value()[0] >= columnLeftLimit &&
-            gap.get_coordinates().value()[0] <= columnRightLimit &&
-            gap.get_coordinates().value()[2] <= columnFrontLimit &&
-            gap.get_coordinates().value()[2] >= columnBackLimit) {
-            foundGaps.push_back(gap);
-        }
-    }
-    return foundGaps;
-}
-
-void CoreWrapper::scale_to_stacks(int64_t numberStacks) {
-    auto processedDescription = get_processed_description().value();
-    processedDescription.get_mutable_effective_parameters().set_effective_area(
-        processedDescription.get_effective_parameters().get_effective_area() * numberStacks);
-    processedDescription.get_mutable_effective_parameters().set_minimum_area(
-        processedDescription.get_effective_parameters().get_minimum_area() * numberStacks);
-    processedDescription.get_mutable_effective_parameters().set_effective_volume(
-        processedDescription.get_effective_parameters().get_effective_volume() * numberStacks);
-    processedDescription.set_depth(processedDescription.get_depth() * numberStacks);
-    for (auto& column : processedDescription.get_mutable_columns()) {
-        column.set_area(column.get_area() * numberStacks);
-        column.set_depth(column.get_depth() * numberStacks);
-    }
-    set_processed_description(processedDescription);
-
-    auto functionalDescription = get_functional_description();
-    auto gapping = functionalDescription.get_gapping();
-    std::vector<CoreGap> scaledGapping;
-    for (auto& gapInfo : gapping) {
-        if (gapInfo.get_section_dimensions()) {
-            auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
-            gapSectionDimensions[1] *= numberStacks;
-            gapInfo.set_section_dimensions(gapSectionDimensions);
-        }
-        if (gapInfo.get_area()) {
-            gapInfo.set_area(gapInfo.get_area().value() * numberStacks);
-        }
-        scaledGapping.push_back(gapInfo);
-    }
-    functionalDescription.set_gapping(scaledGapping);
-    set_functional_description(functionalDescription);
-}
-
-bool CoreWrapper::distribute_and_process_gap() {
-    auto constants = Constants();
-    std::vector<CoreGap> newGapping;
-    auto gapping = get_functional_description().get_gapping();
-    double centralColumnGapsHeightOffset;
-    double distanceClosestNormalSurface;
-    double coreChunkSizePlusGap = 0;
-    auto nonResidualGaps = find_gaps_by_type(GapType::SUBTRACTIVE);
-    auto additiveGaps = find_gaps_by_type(GapType::ADDITIVE);
-    nonResidualGaps.insert(nonResidualGaps.end(), additiveGaps.begin(), additiveGaps.end());
-    auto residualGaps = find_gaps_by_type(GapType::RESIDUAL);
-    int numberNonResidualGaps = nonResidualGaps.size();
-    int numberResidualGaps = residualGaps.size();
-    int numberGaps = numberNonResidualGaps + numberResidualGaps;
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
-    int numberColumns = columns.size();
-
-    // Check if current information is valid
-    // if (numberNonResidualGaps + numberResidualGaps < numberColumns && (numberNonResidualGaps + numberResidualGaps) >
-    // 0) {
-    //     numberNonResidualGaps = 0;
-    //     numberResidualGaps = 0;
-    //     // if (!(get_functional_description().get_type() == OpenMagnetics::CoreType::TOROIDAL && numberColumns == 1))
-    //     {
-    //     //     throw std::runtime_error("A TWO_PIECE_SET core cannot have less gaps than columns");
-    //     // }
-    // }
-
-    if (numberNonResidualGaps == 0 && numberResidualGaps > numberColumns) {
-        gapping = std::vector<CoreGap>(gapping.begin(), gapping.end() - (numberResidualGaps - numberColumns));
-        get_mutable_functional_description().set_gapping(gapping);
-        residualGaps = find_gaps_by_type(GapType::RESIDUAL);
-        numberResidualGaps = residualGaps.size();
-        numberGaps = numberNonResidualGaps + numberResidualGaps;
-    }
-
-    if (numberNonResidualGaps + numberResidualGaps == 0) {
-        for (size_t i = 0; i < columns.size(); ++i) {
-            CoreGap gap;
-            gap.set_type(GapType::RESIDUAL);
-            gap.set_length(constants.residualGap);
-            gap.set_coordinates(columns[i].get_coordinates());
-            gap.set_shape(columns[i].get_shape());
-            if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
-
-            }
-            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - constants.residualGap / 2);
-            gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-            gap.set_area(columns[i].get_area());
-            gap.set_section_dimensions(std::vector<double>({columns[i].get_width(), columns[i].get_depth()}));
-            newGapping.push_back(gap);
-        }
-    }
-    else if (numberNonResidualGaps + numberResidualGaps < numberColumns) {
-        for (size_t i = 0; i < columns.size(); ++i) {
-            size_t gapIndex = i;
-            if (i >= gapping.size()) {
-                gapIndex = gapping.size() - 1;
-            }
-            CoreGap gap;
-            gap.set_type(gapping[gapIndex].get_type());
-            gap.set_length(gapping[gapIndex].get_length());
-            gap.set_coordinates(columns[i].get_coordinates());
-            gap.set_shape(columns[i].get_shape());
-            if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
-
-            }
-            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
-            gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-            gap.set_area(columns[i].get_area());
-            gap.set_section_dimensions(std::vector<double>({columns[i].get_width(), columns[i].get_depth()}));
-            newGapping.push_back(gap);
-        }
-    }
-    else if ((numberResidualGaps == numberColumns || numberNonResidualGaps == numberColumns) &&
-             (numberGaps == numberColumns)) {
-        for (size_t i = 0; i < columns.size(); ++i) {
-            CoreGap gap;
-            gap.set_type(gapping[i].get_type());
-            gap.set_length(gapping[i].get_length());
-            gap.set_coordinates(columns[i].get_coordinates());
-            gap.set_shape(columns[i].get_shape());
-            if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
-
-            }
-            gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[i].get_length() / 2);
-            gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-            gap.set_area(columns[i].get_area());
-            gap.set_section_dimensions(std::vector<double>({columns[i].get_width(), columns[i].get_depth()}));
-            newGapping.push_back(gap);
-        }
-    }
-    else {
-        auto lateralColumns = find_columns_by_type(ColumnType::LATERAL);
-        auto centralColumns = find_columns_by_type(ColumnType::CENTRAL);
-
-        ColumnElement windingColumn;
-        std::vector<ColumnElement> returnColumns;
-        if (centralColumns.size() == 0) {
-            windingColumn = lateralColumns[0];
-            returnColumns = std::vector<ColumnElement>(lateralColumns.begin() + 1, lateralColumns.end());
-        }
-        else {
-            windingColumn = centralColumns[0];
-            returnColumns = lateralColumns;
-        }
-
-        if (numberGaps == numberColumns) {
-            if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
-                centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
-            }
-            else {
-                centralColumnGapsHeightOffset = 0;
-            }
-            distanceClosestNormalSurface = roundFloat<6>(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
-        }
-        else {
-            coreChunkSizePlusGap = roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
-            centralColumnGapsHeightOffset = roundFloat<6>(-coreChunkSizePlusGap * (nonResidualGaps.size() - 1) / 2);
-            distanceClosestNormalSurface = roundFloat<6>(coreChunkSizePlusGap - nonResidualGaps[0].get_length() / 2);
-        }
-
-        for (size_t i = 0; i < nonResidualGaps.size(); ++i) {
-            CoreGap gap;
-            gap.set_type(nonResidualGaps[i].get_type());
-            gap.set_length(nonResidualGaps[i].get_length());
-            gap.set_coordinates(std::vector<double>({windingColumn.get_coordinates()[0],
-                                      windingColumn.get_coordinates()[1] + centralColumnGapsHeightOffset,
-                                      windingColumn.get_coordinates()[2]}));
-            gap.set_shape(windingColumn.get_shape());
-            if (distanceClosestNormalSurface < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
-
-            }
-            gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
-            gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-            gap.set_area(windingColumn.get_area());
-            gap.set_section_dimensions(std::vector<double>({windingColumn.get_width(), windingColumn.get_depth()}));
-            newGapping.push_back(gap);
-
-            centralColumnGapsHeightOffset += roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
-            if (i < nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface + coreChunkSizePlusGap);
-            }
-            else if (i > nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface - coreChunkSizePlusGap);
-            }
-        }
-
-        if (residualGaps.size() < returnColumns.size()) {
-            for (size_t i = 0; i < returnColumns.size(); ++i) {
-                CoreGap gap;
-                gap.set_type(GapType::RESIDUAL);
-                gap.set_length(constants.residualGap);
-                gap.set_coordinates(returnColumns[i].get_coordinates());
-                gap.set_shape(returnColumns[i].get_shape());
-                if (returnColumns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                    return false;
-                    // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
-
-                }
-                gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2 - constants.residualGap / 2);
-                gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-                gap.set_area(returnColumns[i].get_area());
-                gap.set_section_dimensions(std::vector<double>({returnColumns[i].get_width(), returnColumns[i].get_depth()}));
-                newGapping.push_back(gap);
-            }
-        }
-        else {
-            for (size_t i = 0; i < returnColumns.size(); ++i) {
-                CoreGap gap;
-                gap.set_type(residualGaps[i].get_type());
-                gap.set_length(residualGaps[i].get_length());
-                gap.set_coordinates(returnColumns[i].get_coordinates());
-                gap.set_shape(returnColumns[i].get_shape());
-                if (returnColumns[i].get_height() / 2 < 0) {
-                    return false;
-                    // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", return column of index: " + std::to_string(i));
-
-                }
-                gap.set_distance_closest_normal_surface(returnColumns[i].get_height() / 2);
-                gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-                gap.set_area(returnColumns[i].get_area());
-                gap.set_section_dimensions(std::vector<double>({returnColumns[i].get_width(), returnColumns[i].get_depth()}));
-                newGapping.push_back(gap);
-            }
-        }
-    }
-
-    get_mutable_functional_description().set_gapping(newGapping);
-    return true;
-}
-
-bool CoreWrapper::is_gapping_missaligned() {
-    auto gapping = get_functional_description().get_gapping();
-    for (size_t i = 0; i < gapping.size(); ++i) {
-        if (!gapping[i].get_coordinates()) {
-            return true;
-        }
-        auto columnIndex = find_exact_column_index_by_coordinates(*gapping[i].get_coordinates());
-        if (columnIndex == -1) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool CoreWrapper::is_gap_processed() {
-    for (auto& gap : get_gapping()) {
-        if (!gap.get_coordinates()) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool CoreWrapper::process_gap() {
-    std::vector<CoreGap> newGapping;
-    auto gapping = get_functional_description().get_gapping();
-    auto family = std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()).get_family();
-    auto processedDescription = get_processed_description().value();
-    auto columns = processedDescription.get_columns();
-
-    if (family == CoreShapeFamily::T && gapping.size() > 0 ) {
-        throw std::runtime_error("Toroids cannot be gapped: " + std::to_string(gapping[0].get_length()));
-    }
-
-    if (family != CoreShapeFamily::T) {
-        if (gapping.size() == 0 || !gapping[0].get_coordinates() || is_gapping_missaligned()) {
-            return distribute_and_process_gap();
-        }
-
-        for (size_t i = 0; i < gapping.size(); ++i) {
-            CoreGap gap;
-            auto columnIndex = find_closest_column_index_by_coordinates(*gapping[i].get_coordinates());
-
-            gap.set_type(gapping[i].get_type());
-            gap.set_length(gapping[i].get_length());
-            gap.set_coordinates(gapping[i].get_coordinates());
-            gap.set_shape(columns[columnIndex].get_shape());
-            if (roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
-
-            }
-            gap.set_distance_closest_normal_surface(roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
-            gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
-            gap.set_area(columns[columnIndex].get_area());
-            gap.set_section_dimensions(std::vector<double>({columns[columnIndex].get_width(), columns[columnIndex].get_depth()}));
-            newGapping.push_back(gap);
-        }
-    }
-
-    get_mutable_functional_description().set_gapping(newGapping);
-    return true;
-}
-
-CoreMaterial CoreWrapper::resolve_material() {
-    return resolve_material(get_functional_description().get_material());
-}
-
-CoreMaterial CoreWrapper::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
-    // If the material is a string, we have to load its data from the database
-    if (std::holds_alternative<std::string>(coreMaterial)) {
-        auto coreMaterialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(coreMaterial));
-        coreMaterial = coreMaterialData;
-        return coreMaterialData;
-    }
-    else {
-        return std::get<CoreMaterial>(coreMaterial);
-    }
-}
-
-CoreShape CoreWrapper::resolve_shape() {
-    return resolve_shape(get_functional_description().get_shape());
-}
-
-CoreShape CoreWrapper::resolve_shape(CoreShapeDataOrNameUnion coreShape) {
-    // If the shape is a string, we have to load its data from the database
-    if (std::holds_alternative<std::string>(coreShape)) {
-        auto coreShapeData = OpenMagnetics::find_core_shape_by_name(std::get<std::string>(coreShape));
-        coreShape = coreShapeData;
-        return coreShapeData;
-    }
-    else {
-        return std::get<CoreShape>(coreShape);
-    }
-}
-
-void CoreWrapper::process_data() {
-    // If the shape is a string, we have to load its data from the database
-    if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
-
-        auto shape_data = OpenMagnetics::find_core_shape_by_name(std::get<std::string>(get_functional_description().get_shape()));
-        shape_data.set_name(std::get<std::string>(get_functional_description().get_shape()));
-        get_mutable_functional_description().set_shape(shape_data);
-    }
-
-    // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
-    // long loading operatings)
-    if (_includeMaterialData && std::holds_alternative<std::string>(get_functional_description().get_material()) &&
-        std::get<std::string>(get_functional_description().get_material()) != "dummy") {
-        auto material_data = OpenMagnetics::find_core_material_by_name(
-            std::get<std::string>(get_functional_description().get_material()));
-        get_mutable_functional_description().set_material(material_data);
-    }
-
-    auto corePiece =
-        OpenMagnetics::CorePiece::factory(std::get<OpenMagnetics::CoreShape>(get_functional_description().get_shape()));
-    CoreProcessedDescription processedDescription;
-    auto coreColumns = corePiece->get_columns();
-    auto coreWindingWindow = corePiece->get_winding_window();
-    auto coreEffectiveParameters = corePiece->get_partial_effective_parameters();
-    switch (get_functional_description().get_type()) {
-        case OpenMagnetics::CoreType::TOROIDAL:
-        case OpenMagnetics::CoreType::CLOSED_SHAPE:
-            processedDescription.set_columns(coreColumns);
-            processedDescription.set_effective_parameters(corePiece->get_partial_effective_parameters());
-            processedDescription.get_mutable_winding_windows().push_back(corePiece->get_winding_window());
-            processedDescription.set_depth(corePiece->get_depth());
-            processedDescription.set_height(corePiece->get_height());
-            processedDescription.set_width(corePiece->get_width());
-            break;
-
-        case OpenMagnetics::CoreType::TWO_PIECE_SET:
-            for (auto& column : coreColumns) {
-                column.set_height(2 * column.get_height());
-            }
-            processedDescription.set_columns(coreColumns);
-
-            coreEffectiveParameters.set_effective_length(2 * coreEffectiveParameters.get_effective_length());
-            coreEffectiveParameters.set_effective_area(coreEffectiveParameters.get_effective_area());
-            coreEffectiveParameters.set_effective_volume(2 * coreEffectiveParameters.get_effective_volume());
-            coreEffectiveParameters.set_minimum_area(coreEffectiveParameters.get_minimum_area());
-            processedDescription.set_effective_parameters(coreEffectiveParameters);
-
-            coreWindingWindow.set_area(2 * coreWindingWindow.get_area().value());
-            coreWindingWindow.set_height(2 * coreWindingWindow.get_height().value());
-            processedDescription.get_mutable_winding_windows().push_back(coreWindingWindow);
-            processedDescription.set_depth(corePiece->get_depth());
-            processedDescription.set_height(corePiece->get_height() * 2);
-            processedDescription.set_width(corePiece->get_width());
-            break;
-        default:
-            throw std::runtime_error("Unknown type of core, available options are {TOROIDAL, TWO_PIECE_SET}");
-    }
-    set_processed_description(processedDescription);
-    scale_to_stacks(*(get_functional_description().get_number_stacks()));
-}
-
-double CoreWrapper::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion) {
-    auto defaults = Defaults();
-    auto saturationData = coreMaterial.get_saturation();
-    std::vector<std::pair<double, double>> data;
-
-    if (saturationData.size() == 0) {
-        throw std::runtime_error("Missing saturation data in core material");
-    }
-    for (auto& datum : saturationData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
-    }
-
-    double saturationMagneticFluxDensity = interp(data, temperature);
-
-    if (proportion)
-        return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;
-    else
-        return saturationMagneticFluxDensity;
-}
-
-double CoreWrapper::get_magnetic_flux_density_saturation(double temperature, bool proportion) {
-    auto coreMaterial = resolve_material();
-    return get_magnetic_flux_density_saturation(coreMaterial, temperature, proportion);
-}
-
-double CoreWrapper::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, bool proportion) {
-    return get_magnetic_flux_density_saturation(coreMaterial, 25, proportion);
-}
-double CoreWrapper::get_magnetic_flux_density_saturation(bool proportion) {
-    return get_magnetic_flux_density_saturation(25, proportion);
-}
-
-double CoreWrapper::get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature) {
-    auto saturationData = coreMaterial.get_saturation();
-    std::vector<std::pair<double, double>> data;
-
-    if (saturationData.size() == 0) {
-        throw std::runtime_error("Missing saturation data in core material");
-    }
-    for (auto& datum : saturationData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
-    }
-
-    double saturationMagneticFieldStrength = interp(data, temperature);
-
-    return saturationMagneticFieldStrength;
-}
-
-double CoreWrapper::get_magnetic_field_strength_saturation(double temperature) {
-    auto coreMaterial = resolve_material();
-    return get_magnetic_field_strength_saturation(coreMaterial, temperature);
-}
-
-double CoreWrapper::get_remanence(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
-    if (!coreMaterial.get_remanence()) {
-        if (returnZeroIfMissing) {
-            return 0;
-        }
-        else {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-    }
-    auto remanenceData = coreMaterial.get_remanence().value();
-    std::vector<std::pair<double, double>> data;
-
-    if (remanenceData.size() == 0) {
-        throw std::runtime_error("Missing remanence data in core material");
-    }
-    for (auto& datum : remanenceData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
-    }
-
-    double remanence = interp(data, temperature);
-
-    return remanence;
-}
-
-double CoreWrapper::get_remanence(double temperature) {
-    auto coreMaterial = resolve_material();
-    return get_remanence(coreMaterial, temperature);
-}
-
-double CoreWrapper::get_curie_temperature(CoreMaterial coreMaterial) {
-    if (!coreMaterial.get_curie_temperature()) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    return coreMaterial.get_curie_temperature().value();
-}
-
-double CoreWrapper::get_curie_temperature() {
-    auto coreMaterial = resolve_material();
-    return get_curie_temperature(coreMaterial);
-}
-
-double CoreWrapper::get_coercive_force(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
-    if (!coreMaterial.get_coercive_force()) {
-        if (returnZeroIfMissing) {
-            return 0;
-        }
-        else {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
-    }
-    auto coerciveForceData = coreMaterial.get_coercive_force().value();
-    std::vector<std::pair<double, double>> data;
-
-    if (coerciveForceData.size() == 0) {
-        throw std::runtime_error("Missing coercive force data in core material");
-    }
-    for (auto& datum : coerciveForceData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
-    }
-
-    double coerciveForce = interp(data, temperature);
-
-    return coerciveForce;
-}
-
-double CoreWrapper::get_coercive_force(double temperature) {
-    auto coreMaterial = resolve_material();
-    return get_coercive_force(coreMaterial, temperature);
-}
-
-
-double CoreWrapper::get_initial_permeability(double temperature){
-    auto coreMaterial = resolve_material();
-    return get_initial_permeability(coreMaterial, temperature);
-}
-
-double CoreWrapper::get_initial_permeability(CoreMaterial coreMaterial, double temperature){
-    InitialPermeability initialPermeability;
-    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
-    return initialPermeabilityValue;
-}
-
-double CoreWrapper::get_effective_permeability(double temperature){
-    auto constants = Constants();
-    auto reluctance = get_reluctance(temperature);
-    if (!get_processed_description()) {
-        process_data();
-    }
-    auto effectiveLength = get_processed_description().value().get_effective_parameters().get_effective_length();
-    auto effectiveArea = get_processed_description().value().get_effective_parameters().get_effective_area();
-    double effectivePermeability = effectiveLength / (reluctance * effectiveArea) / constants.vacuumPermeability;
-    return effectivePermeability;
-}
-
-double CoreWrapper::get_reluctance(double temperature){
-    auto coreMaterial = resolve_material();
-    InitialPermeability initialPermeability;
-    auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-
-    auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(*this, initialPermeabilityValue);
-    double calculatedReluctance = magnetizingInductanceOutput.get_core_reluctance();
-    return calculatedReluctance;
-}
-
-double CoreWrapper::get_resistivity(double temperature){
-    auto coreMaterial = resolve_material();
-    return get_resistivity(coreMaterial, temperature);
-}
-
-double CoreWrapper::get_resistivity(CoreMaterial coreMaterial, double temperature){
-    auto resistivityModel = ResistivityModel::factory(ResistivityModels::CORE_MATERIAL);
-    auto resistivity = (*resistivityModel).get_resistivity(coreMaterial, temperature);
-    return resistivity;
-}
-
-double CoreWrapper::get_density(CoreMaterial coreMaterial) {
-    if (!coreMaterial.get_density()) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    return coreMaterial.get_density().value();
-}
-
-double CoreWrapper::get_density() {
-    auto coreMaterial = resolve_material();
-    return get_density(coreMaterial);
-}
-
-std::vector<ColumnElement> CoreWrapper::get_columns() {
-    if (get_processed_description()) {
-        return get_processed_description().value().get_columns();
-    }
-    else {
-        return std::vector<ColumnElement>();
-    }
-}
-
-std::vector<WindingWindowElement> CoreWrapper::get_winding_windows() {
-    if (get_processed_description()) {
-        return get_processed_description().value().get_winding_windows();
-    }
-    else {
-        return std::vector<WindingWindowElement>();
-    }
-}
-
-CoreShapeFamily CoreWrapper::get_shape_family() {
-    return resolve_shape().get_family();
-}
-
-std::string CoreWrapper::get_shape_name() {
-    if (resolve_shape().get_name())
-        return resolve_shape().get_name().value();
-    else
-        return "Custom";
-}
-
-int64_t CoreWrapper::get_number_stacks() {
-    if (get_functional_description().get_number_stacks()) {
-        return get_functional_description().get_number_stacks().value();
-    }
-    else {
-        return 1;
-    }
-}
-
-std::string CoreWrapper::get_material_name() {
-    return resolve_material().get_name();
-}
-
-std::vector<VolumetricCoreLossesMethodType> CoreWrapper::get_available_core_losses_methods(){
-    std::vector<VolumetricCoreLossesMethodType> methods;
-    auto volumetricLossesMethodsVariants = resolve_material().get_volumetric_losses();
-    for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
-        auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
-        for (auto& volumetricLossesMethod : volumetricLossesMethods) {
-            if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
-                auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
-                if (std::find(methods.begin(), methods.end(), methodData.get_method()) == methods.end()) {
-                    methods.push_back(methodData.get_method());
-                }
-            }
-        }
-    }
-    return methods;
-}
-
-
-bool CoreWrapper::can_be_used_for_filtering(){
-    auto permeability = resolve_material().get_permeability();
-
-    if (!permeability.get_complex()) {
-        return false;
-    }
-    else {
-        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_real())) {
-            return false;
-        }
-        else {
-            auto realPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_real());
-            if (realPermeabilityPoints.size() < 2) {
-                return false;
-            }
-        }
-
-        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_imaginary())) {
-            return false;
-        }
-        else {
-            auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_imaginary());
-            if (imaginaryPermeabilityPoints.size() < 2) {
-                return false;
-            }
-        }
-        return true;
-    }
-}
-
-OpenMagnetics::CoreType CoreWrapper::get_type() {
-    return get_functional_description().get_type();
-}
-
-bool fits_one_dimension(CoreProcessedDescription coreProcessedDescription, double dimension) {
-    if (coreProcessedDescription.get_depth() <= dimension || coreProcessedDescription.get_height() <= dimension || coreProcessedDescription.get_width() <= dimension) {
-        return true;
-    }
-    return false;
-}
-
-bool fits_two_dimensions(CoreProcessedDescription coreProcessedDescription, double firstDimension, double secondDimension) {
-    if ((coreProcessedDescription.get_depth() <= firstDimension && (coreProcessedDescription.get_height() <= secondDimension || coreProcessedDescription.get_width() <= secondDimension)) ||
-        (coreProcessedDescription.get_height() <= firstDimension && (coreProcessedDescription.get_depth() <= secondDimension || coreProcessedDescription.get_width() <= secondDimension)) ||
-        (coreProcessedDescription.get_width() <= firstDimension && (coreProcessedDescription.get_height() <= secondDimension || coreProcessedDescription.get_depth() <= secondDimension))) {
-        return true;
-    }
-    return false;
-}
-
-bool fits_three_dimensions(CoreProcessedDescription coreProcessedDescription, double firstDimension, double secondDimension, double thirdDimension) {
-    if ((coreProcessedDescription.get_depth() <= firstDimension && coreProcessedDescription.get_height() <= secondDimension && coreProcessedDescription.get_width() <= thirdDimension) ||
-        (coreProcessedDescription.get_depth() <= firstDimension && coreProcessedDescription.get_height() <= thirdDimension && coreProcessedDescription.get_width() <= secondDimension) ||
-        (coreProcessedDescription.get_depth() <= secondDimension && coreProcessedDescription.get_height() <= firstDimension && coreProcessedDescription.get_width() <= thirdDimension) ||
-        (coreProcessedDescription.get_depth() <= secondDimension && coreProcessedDescription.get_height() <= thirdDimension && coreProcessedDescription.get_width() <= firstDimension) ||
-        (coreProcessedDescription.get_depth() <= thirdDimension && coreProcessedDescription.get_height() <= firstDimension && coreProcessedDescription.get_width() <= secondDimension) ||
-        (coreProcessedDescription.get_depth() <= thirdDimension && coreProcessedDescription.get_height() <= secondDimension && coreProcessedDescription.get_width() <= firstDimension)){
-        return true;
-    }
-    return false;
-}
-
-bool CoreWrapper::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
-    if (!get_processed_description()) {
-        process_data();
-    }
-
-    auto coreProcessedDescription = get_processed_description().value();
-
-    if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
-        return true;
-    }
-    else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
-        auto depth = maximumDimensions.get_depth().value();
-        if (allowRotation) {
-            return fits_one_dimension(coreProcessedDescription, depth);
-        }
-        else {
-            return coreProcessedDescription.get_depth() <= depth;
-        }
-    }
-    else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
-        auto height = maximumDimensions.get_height().value();
-        if (allowRotation) {
-            return fits_one_dimension(coreProcessedDescription, height);
-        }
-        else {
-            return coreProcessedDescription.get_height() <= height;
-        }
-    }
-    else if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
-        auto width = maximumDimensions.get_width().value();
-        if (allowRotation) {
-            return fits_one_dimension(coreProcessedDescription, width);
-        }
-        else {
-            return coreProcessedDescription.get_width() <= width;
-        }
-    }
-    else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && !maximumDimensions.get_width()) {
-        auto depth = maximumDimensions.get_depth().value();
-        auto height = maximumDimensions.get_height().value();
-        if (allowRotation) {
-            return fits_two_dimensions(coreProcessedDescription, depth, height);
-        }
-        else {
-            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_height() <= height;
-        }
-    }
-    else if (!maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
-        auto width = maximumDimensions.get_width().value();
-        auto height = maximumDimensions.get_height().value();
-        if (allowRotation) {
-            return fits_two_dimensions(coreProcessedDescription, width, height);
-        }
-        else {
-            return coreProcessedDescription.get_width() <= width && coreProcessedDescription.get_height() <= height;
-        }
-    }
-    else if (maximumDimensions.get_depth() && !maximumDimensions.get_height() && maximumDimensions.get_width()) {
-        auto width = maximumDimensions.get_width().value();
-        auto depth = maximumDimensions.get_depth().value();
-        if (allowRotation) {
-            return fits_two_dimensions(coreProcessedDescription, width, depth);
-        }
-        else {
-            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_width() <= width;
-        }
-    }
-    else if (maximumDimensions.get_depth() && maximumDimensions.get_height() && maximumDimensions.get_width()) {
-        auto depth = maximumDimensions.get_depth().value();
-        auto height = maximumDimensions.get_height().value();
-        auto width = maximumDimensions.get_width().value();
-        if (allowRotation) {
-            return fits_three_dimensions(coreProcessedDescription, depth, height, width);
-        }
-        else {
-            return coreProcessedDescription.get_depth() <= depth && coreProcessedDescription.get_height() <= height && coreProcessedDescription.get_width() <= width;
-        }
-    }
-    else {
-        throw std::runtime_error("Not sure how this happened");
-    }
-}
-
-std::vector<double> CoreWrapper::get_maximum_dimensions() {
-    if (!get_processed_description()) {
-        process_data();
-    }
-
-    auto coreProcessedDescription = get_processed_description().value();
-    return {coreProcessedDescription.get_width(), coreProcessedDescription.get_height(), coreProcessedDescription.get_depth()};
 }
 
 } // namespace OpenMagnetics

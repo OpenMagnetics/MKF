@@ -3,8 +3,8 @@
 #include "Defaults.h"
 
 #include "physical_models/Reluctance.h"
-#include "constructive_models/CoreWrapper.h"
-#include "processors/InputsWrapper.h"
+#include "constructive_models/Core.h"
+#include "processors/Inputs.h"
 #include <MAS.hpp>
 #include <cmath>
 #include <filesystem>
@@ -15,6 +15,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -34,12 +36,12 @@ public:
         auto defaults = OpenMagnetics::Defaults();
         _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
     }
-    static double get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint = std::nullopt);
-    static double get_ungapped_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency = std::nullopt);
+    static double get_ungapped_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint = std::nullopt);
+    static double get_ungapped_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt);
     double get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, std::optional<double> fringing_factor = std::nullopt);
-    double calculate_core_maximum_magnetic_energy(CoreWrapper core, std::optional<OperatingPoint> operatingPoint = std::nullopt);
-    double calculate_core_maximum_magnetic_energy(CoreWrapper core, double temperature, std::optional<double> frequency = std::nullopt);
-    DimensionWithTolerance calculate_required_magnetic_energy(InputsWrapper inputs);
+    double calculate_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint = std::nullopt);
+    double calculate_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt);
+    DimensionWithTolerance calculate_required_magnetic_energy(Inputs inputs);
 };
 
 } // namespace OpenMagnetics

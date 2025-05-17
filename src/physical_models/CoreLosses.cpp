@@ -1,10 +1,8 @@
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Resistivity.h"
-#include "support/Settings.h"
 #include "physical_models/InitialPermeability.h"
 
-#include "Constants.h"
-#include "processors/InputsWrapper.h"
+#include "processors/Inputs.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
 
@@ -28,15 +26,15 @@ std::map<std::string, tk::spline> lossFactorInterps;
 namespace OpenMagnetics {
 
 std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNameUnion material) {
-    OpenMagnetics::CoreMaterial materialData;
+    CoreMaterial materialData;
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to
     // avoid long loading operatings)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
         materialData =
-            OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
+            find_core_material_by_name(std::get<std::string>(material));
     }
     else {
-        materialData = std::get<OpenMagnetics::CoreMaterial>(material);
+        materialData = std::get<CoreMaterial>(material);
     }
 
     std::vector<CoreLossesModels> models;
@@ -46,8 +44,8 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
             auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
             for (auto& volumetricLossesMethod : volumetricLossesMethods) {
-                if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
-                    auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
+                if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {
+                    auto methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
                     methods.push_back(methodData.get_method());
                 }
             }
@@ -77,8 +75,8 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         for (auto& massLossesMethodVariant : massLossesMethodsVariants) {
             auto massLossesMethods = massLossesMethodVariant.second;
             for (auto& massLossesMethod : massLossesMethods) {
-                if (std::holds_alternative<OpenMagnetics::MagneticsCoreLossesMethodData>(massLossesMethod)) {
-                    auto methodData = std::get<OpenMagnetics::MagneticsCoreLossesMethodData>(massLossesMethod);
+                if (std::holds_alternative<MagneticsCoreLossesMethodData>(massLossesMethod)) {
+                    auto methodData = std::get<MagneticsCoreLossesMethodData>(massLossesMethod);
                     methods.push_back(methodData.get_method());
                 }
             }
@@ -110,7 +108,7 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 }
 
 
-CoreLossesOutput CoreLosses::calculate_core_losses(CoreWrapper core, OperatingPointExcitation excitation, double temperature) {
+CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
@@ -123,7 +121,7 @@ double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, Operati
     return coreVolumetricLosses;
 }
 
-double CoreLosses::get_core_losses_series_resistance(CoreWrapper core, double frequency, double temperature, double magnetizingInductance){
+double CoreLosses::get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance){
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
     double coreLossesSeriesResistance = coreLossesModelForMaterial->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
@@ -132,12 +130,12 @@ double CoreLosses::get_core_losses_series_resistance(CoreWrapper core, double fr
 
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(std::map<std::string, std::string> models) {
-    return factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(models["coreLosses"]).value());
+    return factory(magic_enum::enum_cast<CoreLossesModels>(models["coreLosses"]).value());
 }
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(json models) {
     std::string model = models["coreLosses"];
-    return factory(magic_enum::enum_cast<OpenMagnetics::CoreLossesModels>(model).value());
+    return factory(magic_enum::enum_cast<CoreLossesModels>(model).value());
 }
 
 std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels modelName) {
@@ -181,8 +179,8 @@ CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string meth
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
-            if (std::holds_alternative<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod)) {
-                auto methodData = std::get<OpenMagnetics::CoreLossesMethodData>(volumetricLossesMethod);
+            if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {
+                auto methodData = std::get<CoreLossesMethodData>(volumetricLossesMethod);
                 std::string methodDataNameString = std::string{magic_enum::enum_name(methodData.get_method())};
 
                 if (methodDataNameString == methodUpper) {
@@ -194,15 +192,15 @@ CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string meth
     throw std::runtime_error("Material " + materialData.get_name() + " does not have method:" + method);
 }
 
-OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
-    OpenMagnetics::CoreMaterial materialData;
+SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
+    CoreMaterial materialData;
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operatings)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData = OpenMagnetics::find_core_material_by_name(std::get<std::string>(material));
+        materialData = find_core_material_by_name(std::get<std::string>(material));
     }
     else {
-        materialData = std::get<OpenMagnetics::CoreMaterial>(material);
+        materialData = std::get<CoreMaterial>(material);
     }
 
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
@@ -246,7 +244,7 @@ OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmet
     throw std::runtime_error("Error getting Steinmetz coefficients");
 }
 
-CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(CoreWrapper core,
+CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(Core core,
                                                   OperatingPointExcitation excitation,
                                                   double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -281,14 +279,14 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
         throw std::runtime_error("Missing magnetizing flux density in excitation");
     }
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
-    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
 
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
 
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -310,7 +308,7 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     return CoreLossesModel::apply_temperature_coefficients(volumetricLosses, steinmetzDatum, temperature);
 };
 
-double CoreLossesModel::get_core_losses_series_resistance(CoreWrapper core,
+double CoreLossesModel::get_core_losses_series_resistance(Core core,
                                                           double frequency,
                                                           double temperature,
                                                           double magnetizingInductance) {
@@ -320,15 +318,15 @@ double CoreLossesModel::get_core_losses_series_resistance(CoreWrapper core,
     double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
 
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto reluctanceModel = ReluctanceModel::factory();
     auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
 
     int64_t numberTurnsPrimary = sqrt(magnetizingInductance * reluctance);
-    auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, {}, {virtualCurrentRms * sqrt(2)});
-    operatingPoint = InputsWrapper::process_operating_point(operatingPoint, magnetizingInductance);
+    auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, {}, {virtualCurrentRms * sqrt(2)});
+    operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
     auto excitation = operatingPoint.get_excitations_per_winding()[0];
-    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(excitation.get_magnetizing_current().value(), reluctance, numberTurnsPrimary);
-    auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
+    auto magneticFlux = MagneticField::calculate_magnetic_flux(excitation.get_magnetizing_current().value(), reluctance, numberTurnsPrimary);
+    auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
     excitation.set_magnetic_flux_density(magneticFluxDensity);
 
     double coreLosses = get_core_losses(core, excitation, temperature).get_core_losses();
@@ -339,12 +337,11 @@ double CoreLossesModel::get_core_losses_series_resistance(CoreWrapper core,
 }
 
 double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();
     std::vector<double> theta_vect(settings->get_inputs_number_points_sampled_waveforms());
-    std::generate(theta_vect.begin(), theta_vect.end(), [n = 0, &settings]() mutable {
+    std::generate(theta_vect.begin(), theta_vect.end(), [n = 0]() mutable {
         return n++ * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
     });
     double theta_int = 0;
@@ -362,20 +359,18 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
                                                        OperatingPointExcitation excitation,
                                                        double temperature) {
 
-    auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
-    double mainHarmonicMagneticFluxDensityPeakToPeak = magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
-    double magneticFluxDensityAcPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    double frequency = Inputs::get_switching_frequency(excitation);
+    double magneticFluxDensityAcPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
 
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -415,22 +410,21 @@ double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial
 double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-    double magneticFluxDensityPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
-    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
+    double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -475,13 +469,12 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
 double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-    double magneticFluxDensityPeakToPeak = InputsWrapper::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
-    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
+    double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
 
@@ -491,7 +484,7 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -533,11 +526,10 @@ double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
 }
 
 double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     double alpha = steinmetzDatum.get_alpha();
     double k = steinmetzDatum.get_k();
     std::vector<double> theta_vect(settings->get_inputs_number_points_sampled_waveforms());
-    std::generate(theta_vect.begin(), theta_vect.end(), [n = 0, &settings]() mutable {
+    std::generate(theta_vect.begin(), theta_vect.end(), [n = 0]() mutable {
         return n++ * 2 * std::numbers::pi / settings->get_inputs_number_points_sampled_waveforms();
     });
     double theta_int = 0;
@@ -553,19 +545,18 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
 double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
 
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -612,10 +603,10 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    double frequency = Inputs::get_switching_frequency(excitation);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-    double magneticFluxDensityAcPeak = InputsWrapper::get_magnetic_flux_density_peak(excitation, frequency) -
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
                                        magneticFluxDensity.get_processed().value().get_offset();
 
 
@@ -625,7 +616,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     if (is_steinmetz_datum_loaded()) {
         steinmetzDatum = get_steinmetz_datum();
     }
@@ -657,7 +648,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
     return dutyCycleFactor * lossesFrameT1;
 } 
  
-CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
+CoreLossesOutput CoreLossesRoshenModel::get_core_losses(Core core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -688,7 +679,7 @@ CoreLossesOutput CoreLossesRoshenModel::get_core_losses(CoreWrapper core,
 double CoreLossesRoshenModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
-    CoreWrapper ringCore;
+    Core ringCore;
     ringCore.set_name("Dummy Ring Core");
     ringCore.get_mutable_functional_description().set_material(coreMaterial);
     ringCore.get_mutable_functional_description().set_shape("T 10/6/4");
@@ -711,7 +702,7 @@ double CoreLossesRoshenModel::get_core_volumetric_losses(CoreMaterial coreMateri
     return volumetricLosses;
 } 
  
-std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreWrapper core,
+std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core core,
                                                                            OperatingPointExcitation excitation,
                                                                            double temperature) {
     std::map<std::string, double> roshenParameters;
@@ -727,7 +718,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
     if (roshenData.get_coefficients()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
         double frequency = excitation.get_frequency();
-        magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+        magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
         double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() -
                                            magneticFluxDensity.get_processed().value().get_offset();
 
@@ -747,7 +738,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(CoreW
         roshenParameters["resistivity"] = resistivity;
     }
     else {
-        auto resistivityModel = OpenMagnetics::ResistivityModel::factory(OpenMagnetics::ResistivityModels::CORE_MATERIAL);
+        auto resistivityModel = ResistivityModel::factory(ResistivityModels::CORE_MATERIAL);
         auto resistivity = (*resistivityModel).get_resistivity(materialData, temperature);
         roshenParameters["resistivity"] = resistivity;
     }
@@ -781,8 +772,6 @@ std::map<std::string, double> get_major_loop_parameters(double saturationMagneti
 
 double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
-    auto constants = Constants();
     double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
     double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
     double coerciveForce = parameters["coerciveForce"];
@@ -911,13 +900,12 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     return hysteresisLossesDensity;
 }
 
-double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
+double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
                                                               OperatingPointExcitation excitation,
                                                               double resistivity) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -953,10 +941,9 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(CoreWrapper core,
 double CoreLossesRoshenModel::get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
                                                                      double resistivity,
                                                                      double alphaTimesN0) {
-    auto settings = OpenMagnetics::Settings::GetInstance();
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = excitation.get_frequency();
-    magneticFluxDensity = InputsWrapper::standardize_waveform(magneticFluxDensity, frequency);
+    magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
     std::vector<double> magneticFluxDensityTime;
     if (magneticFluxDensity.get_waveform().value().get_time()) {
@@ -988,7 +975,7 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
                                                              double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
 
@@ -1028,7 +1015,7 @@ double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMateria
                                                              double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
 
     CoreLossesOutput result;
@@ -1040,14 +1027,14 @@ double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMateria
     return massLosses;
 }
  
-double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core,
+double CoreLossesSteinmetzModel::get_frequency_from_core_losses(Core core,
                                                                 SignalDescriptor magneticFluxDensity,
                                                                 double temperature,
                                                                 double coreLosses) {
     double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
     double frequency = 100000;
 
     steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
@@ -1069,7 +1056,7 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(CoreWrapper core
     return frequency;
 }
 
-SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_losses(Core core,
                                                                                               double frequency,
                                                                                               double temperature,
                                                                                               double coreLosses) {
@@ -1081,7 +1068,7 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
 
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
 
-    OpenMagnetics::SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
 
     steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
 
@@ -1098,15 +1085,14 @@ SignalDescriptor CoreLossesSteinmetzModel::get_magnetic_flux_density_from_core_l
     return magneticFluxDensity;
 }
 
-double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitation(CoreWrapper core, OperatingPointExcitation excitation, double temperature) {
+double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitation(Core core, OperatingPointExcitation excitation, double temperature) {
     auto currentPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
     auto magneticFluxDensityPeak = excitation.get_magnetic_flux_density()->get_processed()->get_peak().value();
     auto coreMaterial = core.resolve_material();
     double effectiveArea = core.get_processed_description().value().get_effective_parameters().get_effective_area();
-    double effectiveLength = core.get_processed_description().value().get_effective_parameters().get_effective_length();
 
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
+    auto reluctanceModel = ReluctanceModel::factory();
     auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
     int64_t numberTurns = round(ceilFloat(magneticFluxDensityPeak / currentPeak * reluctance * effectiveArea, 0));
 
@@ -1114,7 +1100,7 @@ double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitati
     return magnetizingInductance;
 }
 
-CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
+CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(Core core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     if (!excitation.get_magnetizing_current()) {
@@ -1125,7 +1111,7 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(CoreWrapper core,
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
-        magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
+        magnetizingCurrent.set_processed(Inputs::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
         excitation.set_magnetizing_current(magnetizingCurrent);
 
         // throw std::runtime_error("Missing RMS value in magnetizing current");
@@ -1161,12 +1147,12 @@ double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMa
     }
     if (!excitation.get_magnetizing_current()->get_processed()->get_rms()) {
         auto magnetizingCurrent = excitation.get_magnetizing_current().value();
-        magnetizingCurrent.set_processed(InputsWrapper::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
+        magnetizingCurrent.set_processed(Inputs::calculate_processed_data(excitation.get_magnetizing_current()->get_waveform().value(), excitation.get_frequency()));
         excitation.set_magnetizing_current(magnetizingCurrent);
         // throw std::runtime_error("Missing RMS value in magnetizing current");
     }
     auto currentRms = excitation.get_magnetizing_current()->get_processed()->get_rms().value();
-    double frequency = InputsWrapper::get_switching_frequency(excitation);
+    double frequency = Inputs::get_switching_frequency(excitation);
 
     auto seriesResistance = get_core_losses_series_resistance(coreMaterial, frequency, temperature, magnetizingInductance);
     double volumetricLosses = seriesResistance * pow(currentRms, 2);
@@ -1209,7 +1195,7 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
     return seriesResistance;
 }
 
-double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper core,
+double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
                                                                     SignalDescriptor magneticFluxDensity,
                                                                     [[maybe_unused]]double temperature,
                                                                     double coreLosses) {
@@ -1249,7 +1235,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(CoreWrapper co
     return frequency;
 }
 
-double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
+double CoreLossesModel::_get_frequency_from_core_losses(Core core,
                                                        SignalDescriptor magneticFluxDensity,
                                                        double temperature,
                                                        double coreLosses) {
@@ -1273,7 +1259,7 @@ double CoreLossesModel::_get_frequency_from_core_losses(CoreWrapper core,
     return frequencyMinimumError;
 }
 
-SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(CoreWrapper core,
+SignalDescriptor CoreLossesModel::_get_magnetic_flux_density_from_core_losses(Core core,
                                                                                      double frequency,
                                                                                      double temperature,
                                                                                      double coreLosses) {

@@ -5,10 +5,11 @@
 #include "physical_models/WindingLosses.h"
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
-#include "support/Settings.h"
-#include "constructive_models/MasWrapper.h"
+#include "support/Utils.h"
+#include "constructive_models/Mas.h"
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -26,10 +27,9 @@ class MagneticSimulator {
     public:
 
         MagneticSimulator() {
-            auto settings = Settings::GetInstance();
-            _coreTemperatureModelName = Defaults().coreTemperatureModelDefault;
+            _coreTemperatureModelName = defaults.coreTemperatureModelDefault;
             
-            _reluctanceModelName = Defaults().reluctanceModelDefault;
+            _reluctanceModelName = defaults.reluctanceModelDefault;
 
             _coreTemperatureModel = CoreTemperatureModel::factory(_coreTemperatureModelName);
             _magnetizingInductanceModel = MagnetizingInductance(std::string(magic_enum::enum_name(_reluctanceModelName)));
@@ -45,12 +45,12 @@ class MagneticSimulator {
             _coreLossesModel.set_core_losses_model_name(model);
         }
 
-        MasWrapper simulate(MasWrapper mas, bool fastMode=false);
-        MasWrapper simulate(const InputsWrapper& inputs, const MagneticWrapper& magnetic, bool fastMode=false);
-        CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
-        LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
-        MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, MagneticWrapper magnetic);
-        WindingLossesOutput calculate_winding_losses(OperatingPoint& operatingPoint, MagneticWrapper magnetic, std::optional<double> temperature = std::nullopt);
+        Mas simulate(Mas mas, bool fastMode=false);
+        Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
+        CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic);
+        LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
+        MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
+        WindingLossesOutput calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature = std::nullopt);
 
 };
 

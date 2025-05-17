@@ -3,9 +3,9 @@
 #include "physical_models/InitialPermeability.h"
 #include "Models.h"
 
-#include "constructive_models/CoreWrapper.h"
-#include "constructive_models/BobbinWrapper.h"
-#include "processors/InputsWrapper.h"
+#include "constructive_models/Core.h"
+#include "constructive_models/Bobbin.h"
+#include "processors/Inputs.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -15,6 +15,8 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+
+using namespace MAS;
 
 namespace OpenMagnetics {
 
@@ -26,10 +28,10 @@ class ReluctanceModel {
   public:
     virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
 
-    double get_ungapped_core_reluctance(const CoreWrapper& core, double initialPermeability);
+    double get_ungapped_core_reluctance(const Core& core, double initialPermeability);
 
-    double get_ungapped_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> = std::nullopt);
-    double get_air_cored_reluctance(BobbinWrapper bobbin);
+    double get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
+    double get_air_cored_reluctance(Bobbin bobbin);
     double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
         auto constants = Constants();
         auto gapLength = gapInfo.get_length();
@@ -101,9 +103,9 @@ class ReluctanceModel {
         internalLinks["Classic"] = "";
         return internalLinks;
     }
-    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, std::optional<OperatingPoint> = std::nullopt);
-    MagnetizingInductanceOutput get_core_reluctance(CoreWrapper core, double initialPermeability);
-    MagnetizingInductanceOutput get_gapping_reluctance(CoreWrapper core);
+    MagnetizingInductanceOutput get_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
+    MagnetizingInductanceOutput get_core_reluctance(Core core, double initialPermeability);
+    MagnetizingInductanceOutput get_gapping_reluctance(Core core);
     ReluctanceModel() = default;
     virtual ~ReluctanceModel() = default;
 

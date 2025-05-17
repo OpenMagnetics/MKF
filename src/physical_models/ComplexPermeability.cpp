@@ -10,7 +10,7 @@ std::map<std::string, tk::spline> complexPermeabilityImaginaryInterps;
 namespace OpenMagnetics {
 
 std::pair<double, double> ComplexPermeability::get_complex_permeability(std::string coreMaterialName, double frequency) {
-    CoreMaterial coreMaterial = CoreWrapper::resolve_material(coreMaterialName);
+    CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
     return get_complex_permeability(coreMaterial, frequency);
 }
 
@@ -57,8 +57,6 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
     else {
         complexPermeabilityData = coreMaterial.get_permeability().get_complex().value();
     }
-
-    double complexPermeabilityValue = 1;
 
     auto realPart = complexPermeabilityData.get_real();
     auto imaginaryPart = complexPermeabilityData.get_imaginary();

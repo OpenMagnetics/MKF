@@ -75,11 +75,11 @@ double WindingSkinEffectLosses::calculate_skin_depth(WireMaterialDataOrNameUnion
     return skinDepth;
 };
 
-double WindingSkinEffectLosses::calculate_skin_depth(WireWrapper wire, double frequency, double temperature) {
+double WindingSkinEffectLosses::calculate_skin_depth(Wire wire, double frequency, double temperature) {
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature, double currentDivider, double windingLossesHarmonicAmplitudeThreshold) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider, double windingLossesHarmonicAmplitudeThreshold) {
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
 
     auto model = get_model(wire.get_type());
@@ -119,7 +119,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 }
 
 
-WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWrapper coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold) {
+WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold) {
     if (!coil.get_turns_description()) {
         throw std::runtime_error("Winding does not have turns description");
     }
@@ -169,7 +169,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(CoilWr
     return windingLossesOutput;
 }
 
-std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(WireWrapper wire, double frequency, double temperature) {
+std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(Wire wire, double frequency, double temperature) {
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -193,7 +193,7 @@ std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(WireWrap
 }
 
 
-void WindingSkinEffectLossesModel::set_skin_factor(WireWrapper wire,  double frequency, double temperature, double skinFactor) {
+void WindingSkinEffectLossesModel::set_skin_factor(Wire wire,  double frequency, double temperature, double skinFactor) {
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -209,10 +209,10 @@ void WindingSkinEffectLossesModel::set_skin_factor(WireWrapper wire,  double fre
 
 }
 
-double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const WireWrapper& wire, double frequency, double temperature) {
+double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire& wire, double frequency, double temperature) {
     Wire realWire;
     if (wire.get_type() == WireType::LITZ) {
-        realWire = WireWrapper(WireWrapper::resolve_strand(wire));
+        realWire = Wire(Wire::resolve_strand(wire));
     }
     else {
         realWire = wire;
@@ -230,7 +230,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
             if (!wire.get_strand())
                 throw std::runtime_error("Litz wire is missing strand information");
 
-            auto strand = WireWrapper::resolve_strand(wire);
+            auto strand = Wire::resolve_strand(wire);
             penetrationRatio = pow(std::numbers::pi / 4, 3 / 4) * resolve_dimensional_values(strand.get_conducting_diameter()) / skinDepth * sqrt(resolve_dimensional_values(strand.get_conducting_diameter()) / resolve_dimensional_values(strand.get_outer_diameter().value()));
             break;
         }
@@ -251,13 +251,13 @@ double WindingSkinEffectLossesWojdaModel::calculate_penetration_ratio(const Wire
     return penetrationRatio;
 }
 
-double WindingSkinEffectLossesWojdaModel::calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature) {
+double WindingSkinEffectLossesWojdaModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     auto penetrationRatio = calculate_penetration_ratio(wire, frequency, temperature);
     auto factor = penetrationRatio / 2 * (sinh(penetrationRatio) + sin(penetrationRatio)) / (cosh(penetrationRatio) - cos(penetrationRatio));
     return factor;
 }
 
-double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinFactor;
     auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
 
@@ -274,7 +274,7 @@ double WindingSkinEffectLossesWojdaModel::calculate_turn_losses(WireWrapper wire
 }
 
 
-double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature) {
+double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double wireRadius;
     double wireOuterRadius;
@@ -288,7 +288,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const WireWrapp
         wireOuterRadius = resolve_dimensional_values(wire.get_outer_diameter().value()) / 2;
     }
     else if (wire.get_type() == WireType::LITZ) {
-        auto strand = WireWrapper::resolve_strand(wire);
+        auto strand = Wire::resolve_strand(wire);
         wireRadius = resolve_dimensional_values(strand.get_conducting_diameter()) / 2;
         wireOuterRadius = resolve_dimensional_values(strand.get_outer_diameter().value()) / 2;
     }
@@ -304,7 +304,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const WireWrapp
 }
 
 
-double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinFactor;
     auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
 
@@ -320,7 +320,7 @@ double WindingSkinEffectLossesAlbachModel::calculate_turn_losses(WireWrapper wir
     return turnLosses;
 }
 
-double WindingSkinEffectLossesPayneModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesPayneModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double thinDimension;
     double thickDimension;
@@ -353,7 +353,7 @@ double WindingSkinEffectLossesPayneModel::calculate_turn_losses(WireWrapper wire
 
 
 
-double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const WireWrapper& wire, double frequency, double temperature) {
+double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const Wire& wire, double frequency, double temperature) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double wireHeight;
 
@@ -374,7 +374,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_skin_factor(const WireWra
 }
 
 
-double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinFactor;
     auto optionalSkinFactor = try_get_skin_factor(wire, frequency, temperature);
 
@@ -390,7 +390,7 @@ double WindingSkinEffectLossesFerreiraModel::calculate_turn_losses(WireWrapper w
     return turnLosses;
 }
 
-double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(Wire wire, [[maybe_unused]] double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wire, frequency, temperature);
     double b, a;
 
@@ -419,7 +419,7 @@ double WindingSkinEffectLossesLotfiModel::calculate_turn_losses(WireWrapper wire
 }
 
 
-double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
+double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(Wire wire, double dcLossTurn, double frequency, double temperature, [[maybe_unused]]double currentRms) {
     double bPrima, aPrima;
 
     if (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL) {
@@ -448,7 +448,7 @@ double WindingSkinEffectLossesKutkutModel::calculate_turn_losses(WireWrapper wir
     return turnLosses;
 }
 
-// double get_effective_current_density(Harmonics harmonics, WireWrapper wire, double temperature) {
+// double get_effective_current_density(Harmonics harmonics, Wire wire, double temperature) {
 //     for (size_t i=0; i<harmonics.get_amplitudes(); ++i) {
 //         auto skinDepth = calculate_skin_depth(material, frequency, temperature);
 //     }

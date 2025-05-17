@@ -1,6 +1,5 @@
-#include "constructive_models/BobbinWrapper.h"
+#include "constructive_models/Bobbin.h"
 #include "support/Utils.h"
-#include "support/Settings.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 
@@ -13,18 +12,20 @@
 using json = nlohmann::json;
 #include <typeinfo>
 
+using namespace MAS;
+using namespace OpenMagnetics;
+
 
 SUITE(Bobbin) {
     auto masPath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("MAS/").string();
     double max_error = 0.05;
-    auto settings = OpenMagnetics::Settings::GetInstance();
 
     TEST(Sample_Bobbin) {
         auto wireFilePath = masPath + "samples/magnetic/bobbin/bobbin_E19_5.json";
         std::ifstream json_file(wireFilePath);
         auto bobbinJson = json::parse(json_file);
 
-        OpenMagnetics::BobbinWrapper bobbin(bobbinJson);
+        OpenMagnetics::Bobbin bobbin(bobbinJson);
 
         double expectedColumnThickness = 0.00080;
         double expectedWallThickness = 0.00080;
@@ -34,7 +35,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Filling_Factors_Bobbin_Medium) {
-        auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.009, 0.0275);
+        auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.009, 0.0275);
 
         double expectedValue = 0.715;
 
@@ -42,7 +43,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Filling_Factors_Bobbin_Small) {
-        auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.002, 0.005);
+        auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.002, 0.005);
 
         double expectedValue = 0.53;
 
@@ -50,7 +51,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Filling_Factors_Bobbin_Large) {
-        auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0.019, 0.057);
+        auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.019, 0.057);
 
         double expectedValue = 0.725;
 
@@ -58,7 +59,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Filling_Factors_Bobbin_Outside_Above) {
-        auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(1, 1);
+        auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(1, 1);
 
         double expectedValue = 0.738;
 
@@ -66,7 +67,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Filling_Factors_Bobbin_Outside_Below) {
-        auto fillingFactor = OpenMagnetics::BobbinWrapper::get_filling_factor(0, 0);
+        auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0, 0);
 
         double expectedValue = 0.377;
 
@@ -74,7 +75,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Winding_Window_Dimensions_Medium) {
-        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.012, 0.027);
+        auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.012, 0.027);
 
         double expectedWidthValue = 0.00985;
         double expectedHeightValue = 0.02335;
@@ -86,7 +87,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Winding_Window_Dimensions_Too_Small) {
-        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.001, 0.002);
+        auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.001, 0.002);
 
         double expectedWidthValue = 0.0005;
         double expectedHeightValue = 0.0011;
@@ -98,7 +99,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Winding_Window_Dimensions_Too_Large) {
-        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.1, 0.1);
+        auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.1, 0.1);
 
         double expectedWidthValue = 0.0951;
         double expectedHeightValue = 0.0943;
@@ -110,7 +111,7 @@ SUITE(Bobbin) {
     }
 
     TEST(Get_Winding_Window_Dimensions_Error) {
-        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(0.003325, 0.0108);
+        auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.003325, 0.0108);
 
         double expectedWidthValue =  0.00245;
         double expectedHeightValue = 0.0094;
@@ -124,7 +125,7 @@ SUITE(Bobbin) {
     TEST(Get_Winding_Window_Dimensions_E_51) {
         auto core = OpenMagneticsTesting::get_quick_core("ER 51/10/38", json::parse("[]"), 1, "Dummy");
         auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
-        auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+        auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
 
         auto widthThickness = coreWindingWindow.get_width().value() - windingWindowDimensions[0];
         auto heightThickness = (coreWindingWindow.get_height().value() - windingWindowDimensions[1]) / 2;
@@ -134,14 +135,14 @@ SUITE(Bobbin) {
 
     TEST(Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin) {
         settings->set_use_toroidal_cores(true);
-        auto shapeNames = OpenMagnetics::get_shape_names();
+        auto shapeNames = get_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
                 continue;
             }
             auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
             auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
-            auto windingWindowDimensions = OpenMagnetics::BobbinWrapper::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+            auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
         }
     }
 }

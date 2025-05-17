@@ -58,7 +58,7 @@ WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLosse
     return windingLossesThisElement;
 }
 
-WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput, CoilWrapper coil) {
+WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput, Coil coil) {
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
     auto layers = coil.get_layers_description_conduction();
 
@@ -106,7 +106,7 @@ WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput,
     return windingLossesOutput;
 }
 
-double WindingLosses::calculate_effective_resistance_of_winding(MagneticWrapper magnetic, size_t windingIndex, double frequency, double temperature) {
+double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature) {
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
@@ -116,7 +116,7 @@ double WindingLosses::calculate_effective_resistance_of_winding(MagneticWrapper 
         currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
     }
 
-    auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+    auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
     auto windingLossesPerWinding =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses_per_winding().value();
 
     auto proximityLossesPerharmonic = windingLossesPerWinding[windingIndex].get_proximity_effect_losses()->get_losses_per_harmonic();
@@ -131,7 +131,7 @@ double WindingLosses::calculate_effective_resistance_of_winding(MagneticWrapper 
 }
 
 
-WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, OperatingPoint operatingPoint, double temperature) {
+WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto settings = OpenMagnetics::Settings::GetInstance();
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
@@ -159,7 +159,7 @@ WindingLossesOutput WindingLosses::calculate_losses(MagneticWrapper magnetic, Op
     return windingLossesOutput;
 }
 
-ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(MagneticWrapper magnetic, double temperature, double frequency) {
+ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency) {
     ResistanceMatrixAtFrequency resistanceMatrixAtFrequency;
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
 
@@ -191,7 +191,7 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(MagneticW
                 currentMask.push_back(0);
             }
         }
-        auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
         double totalLossses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
         double effectiveResistance = totalLossses / pow(virtualCurrent, 2);
@@ -212,7 +212,7 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(MagneticW
                     currentMask.push_back(0);
                 }
             }
-            auto operatingPoint = InputsWrapper::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
+            auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, turnsRatios, currentMask);
             double totalLossses =  WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
 
             double mutualResistance = (totalLossses - (resolve_dimensional_values(resistanceMatrix[enabledWindingIndex][enabledWindingIndex]) * pow(virtualCurrent, 2) + resolve_dimensional_values(resistanceMatrix[secondEnabledWindingIndex][secondEnabledWindingIndex]) * pow(virtualCurrent, 2))) / (2 * virtualCurrent * virtualCurrent);
@@ -228,18 +228,18 @@ ResistanceMatrixAtFrequency WindingLosses::calculate_resistance_matrix(MagneticW
     return resistanceMatrixAtFrequency;
 }
 
-double WindingLosses::calculate_losses_per_meter(WireWrapper wire, SignalDescriptor current, double temperature)
+double WindingLosses::calculate_losses_per_meter(Wire wire, SignalDescriptor current, double temperature)
 {
     return WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
 }
 
-double WindingLosses::calculate_effective_resistance_per_meter(const WireWrapper& wire, double effectiveFrequency, double temperature)
+double WindingLosses::calculate_effective_resistance_per_meter(const Wire& wire, double effectiveFrequency, double temperature)
 {
     return WindingOhmicLosses::calculate_effective_resistance_per_meter(wire, effectiveFrequency, temperature);
 }
 
 
-double WindingLosses::calculate_skin_effect_resistance_per_meter(WireWrapper wire, SignalDescriptor current, double temperature)
+double WindingLosses::calculate_skin_effect_resistance_per_meter(Wire wire, SignalDescriptor current, double temperature)
 {
     if (!current.get_processed()->get_rms()) {
         throw std::runtime_error("Current processed is missing field RMS");

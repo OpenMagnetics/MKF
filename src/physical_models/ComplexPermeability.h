@@ -1,7 +1,7 @@
 #pragma once
-#include "Constants.h"
 #include <MAS.hpp>
 
+using namespace MAS;
 
 namespace OpenMagnetics {
 
