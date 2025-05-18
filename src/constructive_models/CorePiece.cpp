@@ -63,25 +63,25 @@ class CorePieceE : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 +
+            roundFloat(dimensions["E"] / 2 +
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 -
+            roundFloat(-dimensions["E"] / 2 -
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
@@ -154,24 +154,24 @@ class CorePieceEtd : public CorePieceE {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
-        lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_minimum_width(roundFloat(dimensions["A"] / 2 - dimensions["E"] / 2));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_width(roundFloat(lateralColumn.get_area() / lateralColumn.get_depth()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -231,27 +231,27 @@ class CorePieceEl : public CorePieceE {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::OBLONG);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F2"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
                           (dimensions["F2"] - dimensions["F"]) *
                               dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 +
+            roundFloat(dimensions["E"] / 2 +
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 -
+            roundFloat(-dimensions["E"] / 2 -
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
@@ -311,25 +311,25 @@ class CorePieceEfd : public CorePieceEl {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::IRREGULAR);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F2"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F2"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 +
+            roundFloat(dimensions["E"] / 2 +
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 -
+            roundFloat(-dimensions["E"] / 2 -
                           (dimensions["A"] - dimensions["E"]) / 4),
             0, 0});
         windingWindows.push_back(lateralColumn);
@@ -448,35 +448,35 @@ class CorePieceEp : public CorePieceE {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
         if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
-            lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 ) -
+            lateralColumn.set_depth(roundFloat(dimensions["C"] - dimensions["E"] / 2 ) -
                               dimensions["K"]);
-            lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
-            lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-            lateralColumn.set_coordinates({0, 0, roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2)});
+            lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+            lateralColumn.set_minimum_width(roundFloat(dimensions["A"] / 2 - dimensions["E"] / 2));
+            lateralColumn.set_width(roundFloat(lateralColumn.get_area() / lateralColumn.get_depth()));
+            lateralColumn.set_height(roundFloat(dimensions["D"]));
+            lateralColumn.set_coordinates({0, 0, roundFloat(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2)});
             windingWindows.push_back(lateralColumn);
         }
         else {
-            lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-            lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+            lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+            lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+            lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+            lateralColumn.set_height(roundFloat(dimensions["D"]));
             lateralColumn.set_coordinates({
-                roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
+                roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
             lateralColumn.set_coordinates({
-                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
+                roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
         }
@@ -549,23 +549,23 @@ class CorePieceLp : public CorePieceEp {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -580,10 +580,10 @@ class CorePieceEpx : public CorePieceEp {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::OBLONG);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]) / 2 + roundFloat<6>(dimensions["K"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]) / 2 + roundFloat(dimensions["K"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2) )+
                           (dimensions["K"] - dimensions["F"] / 2) *
                               dimensions["F"]);
         mainColumn.set_coordinates({0, 0, 0});
@@ -591,29 +591,29 @@ class CorePieceEpx : public CorePieceEp {
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
         if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
-            lateralColumn.set_depth(roundFloat<6>(dimensions["C"] - dimensions["E"] / 2 )-
+            lateralColumn.set_depth(roundFloat(dimensions["C"] - dimensions["E"] / 2 )-
                               dimensions["K"]);
-            lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
-            lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+            lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+            lateralColumn.set_minimum_width(roundFloat(dimensions["A"] / 2 - dimensions["E"] / 2));
+            lateralColumn.set_width(roundFloat(lateralColumn.get_area() / lateralColumn.get_depth()));
+            lateralColumn.set_height(roundFloat(dimensions["D"]));
             lateralColumn.set_coordinates({
                 0, 0,
-                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2 -
+                roundFloat(-dimensions["E"] / 2 - lateralColumn.get_depth() / 2 -
                               (dimensions["K"] - dimensions["F"] / 2) / 2)});
             windingWindows.push_back(lateralColumn);
         }
         else {
-            lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-            lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-            lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-            lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+            lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+            lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+            lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+            lateralColumn.set_height(roundFloat(dimensions["D"]));
             lateralColumn.set_coordinates({
-                roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
+                roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
             lateralColumn.set_coordinates({
-                roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
+                roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0,
                 0});
             windingWindows.push_back(lateralColumn);
         }
@@ -663,23 +663,23 @@ class CorePieceRm : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+        lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -820,24 +820,24 @@ class CorePiecePq : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
         lateralColumn.set_depth(dimensions["C"]);
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_minimum_width(roundFloat<6>(dimensions["A"] / 2 - dimensions["E"] / 2));
-        lateralColumn.set_width(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_depth()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+        lateralColumn.set_minimum_width(roundFloat(dimensions["A"] / 2 - dimensions["E"] / 2));
+        lateralColumn.set_width(roundFloat(lateralColumn.get_area() / lateralColumn.get_depth()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -965,23 +965,23 @@ class CorePiecePm : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+        lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -1111,23 +1111,23 @@ class CorePieceP : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
-        mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_width(roundFloat(dimensions["F"]));
+        mainColumn.set_depth(roundFloat(dimensions["F"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::IRREGULAR);
-        lateralColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
-        lateralColumn.set_area(roundFloat<6>(get_lateral_leg_area()));
-        lateralColumn.set_depth(roundFloat<6>(lateralColumn.get_area() / lateralColumn.get_width()));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
+        lateralColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        lateralColumn.set_area(roundFloat(get_lateral_leg_area()));
+        lateralColumn.set_depth(roundFloat(lateralColumn.get_area() / lateralColumn.get_width()));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_coordinates({
-            roundFloat<6>(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(dimensions["E"] / 2 + lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         lateralColumn.set_coordinates({
-            roundFloat<6>(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
+            roundFloat(-dimensions["E"] / 2 - lateralColumn.get_width() / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -1207,8 +1207,8 @@ class CorePieceU : public CorePiece {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+        if (dimensions.find("E") == dimensions.end() || (roundFloat(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat(dimensions["F"]) == 0)) {
                 windingWindowWidth = dimensions["A"] - dimensions["C"] -
                                      dimensions["H"];
             }
@@ -1242,25 +1242,25 @@ class CorePieceU : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
-            mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        if (dimensions.find("H") == dimensions.end() || (roundFloat(dimensions["H"]) == 0)) {
+            mainColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(dimensions["H"]));
+            mainColumn.set_width(roundFloat(dimensions["H"]));
         }
-        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
+            roundFloat((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -1274,7 +1274,7 @@ class CorePieceU : public CorePiece {
         double q = dimensions["C"];
         double s;
         double p;
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
+        if (dimensions.find("H") == dimensions.end() || (roundFloat(dimensions["H"]) == 0)) {
             s = (dimensions["A"] - dimensions["E"]) / 2;
             p = (dimensions["A"] - dimensions["E"]) / 2;
         }
@@ -1313,8 +1313,8 @@ class CorePieceUr : public CorePiece {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+        if (dimensions.find("E") == dimensions.end() || (roundFloat(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat(dimensions["F"]) == 0)) {
                 windingWindowWidth = dimensions["A"] - dimensions["C"] -
                                      dimensions["H"];
             }
@@ -1346,8 +1346,8 @@ class CorePieceUr : public CorePiece {
         auto familySubtype = *get_shape().get_family_subtype();
 
         double windingWindowWidth;
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+        if (dimensions.find("E") == dimensions.end() || (roundFloat(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat(dimensions["F"]) == 0)) {
                 windingWindowWidth = dimensions["A"] - dimensions["C"] -
                                      dimensions["H"];
             }
@@ -1366,32 +1366,32 @@ class CorePieceUr : public CorePiece {
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::ROUND);
         if (familySubtype == "1" || familySubtype == "2" || familySubtype == "4") {
-            mainColumn.set_width(roundFloat<6>(dimensions["C"]));
-            mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+            mainColumn.set_width(roundFloat(dimensions["C"]));
+            mainColumn.set_depth(roundFloat(dimensions["C"]));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(dimensions["F"]));
-            mainColumn.set_depth(roundFloat<6>(dimensions["F"]));
+            mainColumn.set_width(roundFloat(dimensions["F"]));
+            mainColumn.set_depth(roundFloat(dimensions["F"]));
         }
-        mainColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
+        mainColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         if (familySubtype == "1" || familySubtype == "3") {
             lateralColumn.set_shape(ColumnShape::RECTANGULAR);
-            lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
-            lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-            lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+            lateralColumn.set_width(roundFloat(dimensions["H"]));
+            lateralColumn.set_depth(roundFloat(dimensions["C"]));
+            lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         }
         else {
             lateralColumn.set_shape(ColumnShape::ROUND);
-            lateralColumn.set_width(roundFloat<6>(dimensions["H"]));
-            lateralColumn.set_depth(roundFloat<6>(dimensions["H"]));
-            lateralColumn.set_area(roundFloat<6>(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
+            lateralColumn.set_width(roundFloat(dimensions["H"]));
+            lateralColumn.set_depth(roundFloat(dimensions["H"]));
+            lateralColumn.set_area(roundFloat(std::numbers::pi * pow(mainColumn.get_width() / 2, 2)));
         }
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_coordinates({roundFloat<6>((dimensions["A"] + windingWindowWidth) / 2), 0, 0});
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_coordinates({roundFloat((dimensions["A"] + windingWindowWidth) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -1410,8 +1410,8 @@ class CorePieceUr : public CorePiece {
         double l5;
         double e;
 
-        if (dimensions.find("E") == dimensions.end() || (roundFloat<6>(dimensions["E"]) == 0)) {
-            if (dimensions.find("F") == dimensions.end() || (roundFloat<6>(dimensions["F"]) == 0)) {
+        if (dimensions.find("E") == dimensions.end() || (roundFloat(dimensions["E"]) == 0)) {
+            if (dimensions.find("F") == dimensions.end() || (roundFloat(dimensions["F"]) == 0)) {
                 e = dimensions["A"] - dimensions["C"] -
                     dimensions["H"];
             }
@@ -1500,25 +1500,25 @@ class CorePieceUt : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::LATERAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        if (dimensions.find("H") == dimensions.end() || (roundFloat<6>(dimensions["H"]) == 0)) {
-            mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        if (dimensions.find("H") == dimensions.end() || (roundFloat(dimensions["H"]) == 0)) {
+            mainColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
         }
         else {
-            mainColumn.set_width(roundFloat<6>(dimensions["H"]));
+            mainColumn.set_width(roundFloat(dimensions["H"]));
         }
-        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
         lateralColumn.set_coordinates({
-            roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
+            roundFloat((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }
@@ -1586,9 +1586,9 @@ class CorePieceT : public CorePiece {
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
         mainColumn.set_width(columnWidth);
-        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
         mainColumn.set_height(2 * std::numbers::pi * (dimensions["B"] / 2 + columnWidth / 2));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         set_columns(windingWindows);
@@ -1642,20 +1642,20 @@ class CorePieceC : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::CENTRAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        mainColumn.set_width(roundFloat<6>((dimensions["A"] - dimensions["E"]) / 2));
+        mainColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
 
-        mainColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        mainColumn.set_height(roundFloat<6>(dimensions["D"]));
-        mainColumn.set_area(roundFloat<6>(mainColumn.get_width() * mainColumn.get_depth()));
+        mainColumn.set_depth(roundFloat(dimensions["C"]));
+        mainColumn.set_height(roundFloat(dimensions["D"]));
+        mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
         mainColumn.set_coordinates({0, 0, 0});
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
         lateralColumn.set_width(mainColumn.get_width());
-        lateralColumn.set_depth(roundFloat<6>(dimensions["C"]));
-        lateralColumn.set_height(roundFloat<6>(dimensions["D"]));
-        lateralColumn.set_area(roundFloat<6>(lateralColumn.get_width() * lateralColumn.get_depth()));
-        lateralColumn.set_coordinates({roundFloat<6>((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
+        lateralColumn.set_depth(roundFloat(dimensions["C"]));
+        lateralColumn.set_height(roundFloat(dimensions["D"]));
+        lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
+        lateralColumn.set_coordinates({roundFloat((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }

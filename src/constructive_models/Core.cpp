@@ -112,10 +112,6 @@ double Core::get_effective_volume() {
     return get_processed_description()->get_effective_parameters().get_effective_volume();
 }
 
-double roundFloat(double value, int64_t decimals) {
-    return round(value * pow(10, decimals)) / pow(10, decimals);
-}
-
 double interp(std::vector<std::pair<double, double>> data, double temperature) {
     double result;
 
@@ -150,34 +146,6 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
     return result;
 }
 
-template<int decimals> double roundFloat(double value) {
-    if (value < 0)
-        return floor(value * pow(10, decimals)) / pow(10, decimals);
-    else
-        return ceil(value * pow(10, decimals)) / pow(10, decimals);
-}
-
-CoreShape flatten_dimensions(CoreShape shape) {
-    CoreShape flattenedShape(shape);
-    std::map<std::string, Dimension> dimensions = shape.get_dimensions().value();
-    std::map<std::string, Dimension> flattenedDimensions;
-    for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values(dimension.second);
-        flattenedDimensions[dimension.first] = value;
-    }
-    flattenedShape.set_dimensions(flattenedDimensions);
-    return flattenedShape;
-}
-
-std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions) {
-    std::map<std::string, double> flattenedDimensions;
-    for (auto& dimension : dimensions) {
-        double value = resolve_dimensional_values(dimension.second);
-        flattenedDimensions[dimension.first] = value;
-    }
-    return flattenedDimensions;
-}
-
 std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geometrical_description() {
     std::vector<CoreGeometricalDescriptionElement> geometricalDescription;
     auto numberStacks = *(get_functional_description().get_number_stacks());
@@ -191,7 +159,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
     CoreGeometricalDescriptionElement spacer;
     std::vector<Machining> machining;
     CoreGeometricalDescriptionElement piece;
-    double currentDepth = roundFloat<6>((-corePieceDepth * (numberStacks - 1)) / 2);
+    double currentDepth = roundFloat((-corePieceDepth * (numberStacks - 1)) / 2);
     double spacerThickness = 0;
 
     for (auto& gap : gapping) {
@@ -229,26 +197,26 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
 
                 geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
 
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
+                currentDepth = roundFloat(currentDepth + corePieceDepth);
             }
             break;
         case CoreType::CLOSED_SHAPE:
             piece.set_type(CoreGeometricalDescriptionElementType::CLOSED);
             for (auto i = 0; i < numberStacks; ++i) {
-                double currentHeight = roundFloat<6>(corePieceHeight);
+                double currentHeight = roundFloat(corePieceHeight);
                 std::vector<double> coordinates = {0, currentHeight, currentDepth};
                 piece.set_coordinates(coordinates);
                 piece.set_rotation(std::vector<double>({0, 0, 0}));
                 piece.set_machining(std::nullopt);
                 geometricalDescription.push_back(CoreGeometricalDescriptionElement(piece));
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
+                currentDepth = roundFloat(currentDepth + corePieceDepth);
             }
             break;
         case CoreType::TWO_PIECE_SET:
             topPiece.set_type(CoreGeometricalDescriptionElementType::HALF_SET);
             bottomPiece.set_type(CoreGeometricalDescriptionElementType::HALF_SET);
             for (auto i = 0; i < numberStacks; ++i) {
-                double currentHeight = roundFloat<6>(spacerThickness / 2);
+                double currentHeight = roundFloat(spacerThickness / 2);
                 std::vector<Machining> topHalfMachining;
                 std::vector<double> coordinates = {0, currentHeight, currentDepth};
                 topPiece.set_coordinates(coordinates);
@@ -326,7 +294,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                 bottomPiece.set_coordinates(coordinates);
                 geometricalDescription.push_back(bottomPiece);
 
-                currentDepth = roundFloat<6>(currentDepth + corePieceDepth);
+                currentDepth = roundFloat(currentDepth + corePieceDepth);
             }
 
             if (spacerThickness > 0) {
@@ -339,9 +307,9 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                         auto dimensions = flatten_dimensions(shape_data.get_dimensions().value());
                         double windingWindowWidth;
                         if (dimensions.find("E") == dimensions.end() ||
-                            (roundFloat<6>(dimensions["E"]) == 0)) {
+                            (roundFloat(dimensions["E"]) == 0)) {
                             if (dimensions.find("F") == dimensions.end() ||
-                                (roundFloat<6>(dimensions["F"]) == 0)) {
+                                (roundFloat(dimensions["F"]) == 0)) {
                                 windingWindowWidth = dimensions["A"] -
                                                      dimensions["C"] -
                                                      dimensions["H"];
@@ -366,7 +334,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                                  shape_data.get_family() == CoreShapeFamily::UR ||
                                  shape_data.get_family() == CoreShapeFamily::C) {
                             if (dimensions.find("H") == dimensions.end() ||
-                                (roundFloat<6>(dimensions["H"]) == 0)) {
+                                (roundFloat(dimensions["H"]) == 0)) {
                                 minimum_column_width = (dimensions["A"] - windingWindowWidth) / 2;
                             }
                             else {
@@ -388,12 +356,12 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                         }
                         else if (shape_data.get_family() == CoreShapeFamily::RM) {
                             if (dimensions.find("J") != dimensions.end() &&
-                                (roundFloat<6>(dimensions["J"]) != 0)) {
+                                (roundFloat(dimensions["J"]) != 0)) {
                                 minimum_column_depth =
                                     sqrt(2) * dimensions["J"] - dimensions["A"];
                             }
                             else if (dimensions.find("H") != dimensions.end() &&
-                                     (roundFloat<6>(dimensions["H"]) != 0)) {
+                                     (roundFloat(dimensions["H"]) != 0)) {
                                 minimum_column_depth = dimensions["H"];
                             }
                             else {
@@ -718,17 +686,17 @@ bool Core::distribute_and_process_gap() {
 
         if (numberGaps == numberColumns) {
             if (windingColumn.get_height() > nonResidualGaps[0].get_length()) {
-                centralColumnGapsHeightOffset = roundFloat<6>(nonResidualGaps[0].get_length() / 2);
+                centralColumnGapsHeightOffset = roundFloat(nonResidualGaps[0].get_length() / 2);
             }
             else {
                 centralColumnGapsHeightOffset = 0;
             }
-            distanceClosestNormalSurface = roundFloat<6>(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
+            distanceClosestNormalSurface = roundFloat(windingColumn.get_height() / 2 - nonResidualGaps[0].get_length() / 2);
         }
         else {
-            coreChunkSizePlusGap = roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
-            centralColumnGapsHeightOffset = roundFloat<6>(-coreChunkSizePlusGap * (nonResidualGaps.size() - 1) / 2);
-            distanceClosestNormalSurface = roundFloat<6>(coreChunkSizePlusGap - nonResidualGaps[0].get_length() / 2);
+            coreChunkSizePlusGap = roundFloat(windingColumn.get_height() / (nonResidualGaps.size() + 1));
+            centralColumnGapsHeightOffset = roundFloat(-coreChunkSizePlusGap * (nonResidualGaps.size() - 1) / 2);
+            distanceClosestNormalSurface = roundFloat(coreChunkSizePlusGap - nonResidualGaps[0].get_length() / 2);
         }
 
         for (size_t i = 0; i < nonResidualGaps.size(); ++i) {
@@ -750,12 +718,12 @@ bool Core::distribute_and_process_gap() {
             gap.set_section_dimensions(std::vector<double>({windingColumn.get_width(), windingColumn.get_depth()}));
             newGapping.push_back(gap);
 
-            centralColumnGapsHeightOffset += roundFloat<6>(windingColumn.get_height() / (nonResidualGaps.size() + 1));
+            centralColumnGapsHeightOffset += roundFloat(windingColumn.get_height() / (nonResidualGaps.size() + 1));
             if (i < nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface + coreChunkSizePlusGap);
+                distanceClosestNormalSurface = roundFloat(distanceClosestNormalSurface + coreChunkSizePlusGap);
             }
             else if (i > nonResidualGaps.size() / 2. - 1) {
-                distanceClosestNormalSurface = roundFloat<6>(distanceClosestNormalSurface - coreChunkSizePlusGap);
+                distanceClosestNormalSurface = roundFloat(distanceClosestNormalSurface - coreChunkSizePlusGap);
             }
         }
 
@@ -850,12 +818,12 @@ bool Core::process_gap() {
             gap.set_length(gapping[i].get_length());
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
-            if (roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
+            if (roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
                 return false;
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
-            gap.set_distance_closest_normal_surface(roundFloat<6>(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
+            gap.set_distance_closest_normal_surface(roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[columnIndex].get_area());
             gap.set_section_dimensions(std::vector<double>({columns[columnIndex].get_width(), columns[columnIndex].get_depth()}));

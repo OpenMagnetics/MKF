@@ -1012,6 +1012,34 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
     return false;
 }
 
+double roundFloat(double value, int64_t decimals) {
+    if (value < 0)
+        return floor(value * pow(10, decimals)) / pow(10, decimals);
+    else
+        return ceil(value * pow(10, decimals)) / pow(10, decimals);
+}
+
+CoreShape flatten_dimensions(CoreShape shape) {
+    CoreShape flattenedShape(shape);
+    std::map<std::string, Dimension> dimensions = shape.get_dimensions().value();
+    std::map<std::string, Dimension> flattenedDimensions;
+    for (auto& dimension : dimensions) {
+        double value = resolve_dimensional_values(dimension.second);
+        flattenedDimensions[dimension.first] = value;
+    }
+    flattenedShape.set_dimensions(flattenedDimensions);
+    return flattenedShape;
+}
+
+std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions) {
+    std::map<std::string, double> flattenedDimensions;
+    for (auto& dimension : dimensions) {
+        double value = resolve_dimensional_values(dimension.second);
+        flattenedDimensions[dimension.first] = value;
+    }
+    return flattenedDimensions;
+}
+
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundWindingWinw){
     for (auto& leftDimension : dimensionsByName) {
         std::string leftName = leftDimension.first;
