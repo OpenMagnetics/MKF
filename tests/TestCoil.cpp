@@ -52,9 +52,13 @@ SUITE(CoilWeb) {
         if (coilJson.contains("_sectionAlignment")) {
             coil.set_section_alignment(coilJson["_sectionAlignment"]);
         }
-
         coil.set_bobbin(coilJson["bobbin"]);
         coil.set_functional_description(coilFunctionalDescription);
+
+        CHECK(coil.get_functional_description().size() > 0);
+        to_json(coilJson, coil);
+        CHECK(coilJson["functionalDescription"].size() > 0);
+
         coil.wind();
 
         auto section = coil.get_sections_description().value()[0];

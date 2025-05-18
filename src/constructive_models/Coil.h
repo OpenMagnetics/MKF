@@ -287,7 +287,9 @@ class Coil : public MAS::Coil {
 namespace OpenMagnetics {
 
 void from_json(const json & j, Coil & x);
+void to_json(json & j, const Coil & x);
 void from_json(const json & j, CoilFunctionalDescription & x);
+void to_json(json & j, const CoilFunctionalDescription & x);
 } // namespace OpenMagnetics
 
 
@@ -322,6 +324,25 @@ inline void from_json(const json & j, CoilFunctionalDescription& x) {
     x.set_number_parallels(j.at("numberParallels").get<int64_t>());
     x.set_number_turns(j.at("numberTurns").get<int64_t>());
     x.set_wire(j.at("wire").get<OpenMagnetics::WireDataOrNameUnion>());
+}
+
+inline void to_json(json & j, const Coil & x) {
+    j = json::object();
+    j["bobbin"] = x.get_bobbin();
+    j["functionalDescription"] = x.get_functional_description();
+    j["layersDescription"] = x.get_layers_description();
+    j["sectionsDescription"] = x.get_sections_description();
+    j["turnsDescription"] = x.get_turns_description();
+}
+
+inline void to_json(json & j, const CoilFunctionalDescription & x) {
+    j = json::object();
+    j["connections"] = x.get_connections();
+    j["isolationSide"] = x.get_isolation_side();
+    j["name"] = x.get_name();
+    j["numberParallels"] = x.get_number_parallels();
+    j["numberTurns"] = x.get_number_turns();
+    j["wire"] = x.get_wire();
 }
 } // namespace OpenMagnetics
 
