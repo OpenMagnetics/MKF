@@ -13,7 +13,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 SUITE(MagneticAdviser) {
-    bool plot = true;
+    bool plot = false;
 
     TEST(Test_MagneticAdviser_Filter) {
         clear_databases();

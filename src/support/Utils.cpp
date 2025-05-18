@@ -1013,10 +1013,7 @@ bool check_requirement(DimensionWithTolerance requirement, double value){
 }
 
 double roundFloat(double value, int64_t decimals) {
-    if (value < 0)
-        return floor(value * pow(10, decimals)) / pow(10, decimals);
-    else
-        return ceil(value * pow(10, decimals)) / pow(10, decimals);
+    return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
 CoreShape flatten_dimensions(CoreShape shape) {
