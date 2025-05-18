@@ -211,7 +211,18 @@ target_link_libraries(MKF data::data)
 
 target_link_libraries(MKF nlohmann_json::nlohmann_json matplot)
 
-target_include_directories(MKF PUBLIC "${PROJECT_SOURCE_DIR}/src/")
+target_include_directories(MKF PUBLIC
+     "${PROJECT_SOURCE_DIR}/src/"
+     "${PROJECT_SOURCE_DIR}/src/advisers/"
+     "${PROJECT_SOURCE_DIR}/src/constructive_models/"
+     "${PROJECT_SOURCE_DIR}/src/converter_models/"
+     "${PROJECT_SOURCE_DIR}/src/physical_models/"
+     "${PROJECT_SOURCE_DIR}/src/processors/"
+     "${PROJECT_SOURCE_DIR}/src/support/"
+     )
+
+add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
+target_link_libraries(magnetic_adviser MKF)
 
 if(INCLUDE_MKF_TESTS)
     file(GLOB TESTS_SOURCES "tests/*.cpp" )

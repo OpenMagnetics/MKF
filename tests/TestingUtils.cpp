@@ -1,5 +1,4 @@
 #include "support/Settings.h"
-#include "support/Utils.h"
 #include "TestingUtils.h"
 #include "physical_models/MagnetizingInductance.h"
 #include <UnitTest++.h>

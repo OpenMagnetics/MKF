@@ -112,7 +112,6 @@ std::vector<Bobbin> get_bobbins();
 std::vector<InsulationMaterial> get_insulation_materials();
 std::vector<WireMaterial> get_wire_materials();
 
-template<int decimals> double roundFloat(double value);
 
 bool is_size_power_of_2(std::vector<double> data);
 size_t round_up_size_to_power_of_2(std::vector<double> data);
@@ -124,7 +123,7 @@ std::vector<size_t> get_main_harmonic_indexes(Harmonics harmonics, double windin
 std::vector<size_t> get_operating_point_harmonic_indexes(OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
 std::vector<size_t> get_excitation_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex=std::nullopt);
 
-double roundFloat(double value, int64_t decimals);
+double roundFloat(double value, int64_t decimals = 6);
 double ceilFloat(double value, size_t decimals);
 double floorFloat(double value, size_t decimals);
 

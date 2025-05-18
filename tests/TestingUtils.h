@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Constants.h"
+#include "support/Utils.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Coil.h"
 #include "constructive_models/Magnetic.h"
