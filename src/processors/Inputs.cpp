@@ -960,6 +960,41 @@ SignalDescriptor Inputs::add_offset_to_excitation(SignalDescriptor signalDescrip
     return signalDescriptor;
 }
 
+OperatingPointExcitation Inputs::get_excitation_with_proportional_current(OperatingPointExcitation excitation, double proportion) {
+    if (!excitation.get_current()) {
+        throw std::runtime_error("Excitation is missing current");
+    }
+    if (!excitation.get_current()->get_waveform()) {
+        throw std::runtime_error("Current is missing waveform");
+    }
+    auto current = excitation.get_current().value();
+    auto multipliedWaveform = multiply_waveform(current.get_waveform().value(), proportion);
+    current.set_waveform(multipliedWaveform);
+    auto sampledCurrentWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
+    current.set_harmonics(calculate_harmonics_data(sampledCurrentWaveform, excitation.get_frequency()));
+    current.set_processed(calculate_processed_data(current, sampledCurrentWaveform, true, current.get_processed()));
+
+    excitation.set_current(current);
+    return excitation;
+}
+
+OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(OperatingPointExcitation excitation, double proportion) {
+    if (!excitation.get_voltage()) {
+        throw std::runtime_error("Excitation is missing voltage");
+    }
+    if (!excitation.get_voltage()->get_waveform()) {
+        throw std::runtime_error("voltage is missing waveform");
+    }
+    auto voltage = excitation.get_voltage().value();
+    auto multipliedWaveform = multiply_waveform(voltage.get_waveform().value(), proportion);
+    voltage.set_waveform(multipliedWaveform);
+    auto sampledVoltageWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
+    voltage.set_harmonics(calculate_harmonics_data(sampledVoltageWaveform, excitation.get_frequency()));
+    voltage.set_processed(calculate_processed_data(voltage, sampledVoltageWaveform, true, voltage.get_processed()));
+    excitation.set_voltage(voltage);
+    return excitation;
+}
+
 // OperatingPointExcitation Inputs::reflect_waveforms(OperatingPointExcitation excitation, double ratio) {
 //     OperatingPointExcitation reflectedExcitation;
 //     if (excitation.get_current()) {
