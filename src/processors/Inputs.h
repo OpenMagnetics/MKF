@@ -85,6 +85,9 @@ class Inputs : public MAS::Inputs {
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);
+    static OperatingPointExcitation get_excitation_with_proportional_current(OperatingPointExcitation excitation, double proportion);
+    static OperatingPointExcitation get_excitation_with_proportional_voltage(OperatingPointExcitation excitation, double proportion);
+
     static void make_waveform_size_power_of_two(OperatingPoint* operatingPoint);
 
     static Inputs create_quick_operating_point(double frequency,
