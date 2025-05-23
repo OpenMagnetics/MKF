@@ -1864,8 +1864,8 @@ inline void from_json(const json& j, CorePiece& x) {
     x.set_height(j.at("height").get<double>());
     x.set_width(j.at("width").get<double>());
     x.set_shape(j.at("shape").get<CoreShape>());
-    x.set_winding_window(j.at("winding_window").get<WindingWindowElement>());
-    x.set_partial_effective_parameters(j.at("partial_effective_parameters").get<EffectiveParameters>());
+    x.set_winding_window(j.at("windingWindow").get<WindingWindowElement>());
+    x.set_partial_effective_parameters(j.at("partialEffectiveParameters").get<EffectiveParameters>());
 }
 
 inline void to_json(json& j, const CorePiece& x) {
@@ -1875,8 +1875,8 @@ inline void to_json(json& j, const CorePiece& x) {
     j["height"] = x.get_height();
     j["width"] = x.get_width();
     j["shape"] = x.get_winding_window();
-    j["winding_window"] = x.get_shape();
-    j["partial_effective_parameters"] = x.get_partial_effective_parameters();
+    j["windingWindow"] = x.get_shape();
+    j["partialEffectiveParameters"] = x.get_partial_effective_parameters();
 }
 
 } // namespace OpenMagnetics

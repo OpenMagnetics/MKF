@@ -177,6 +177,9 @@ CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string meth
     std::string methodUpper = method;
     std::transform(methodUpper.begin(), methodUpper.end(), methodUpper.begin(), ::toupper);
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
+        if (volumetricLossesMethodVariant.first != "default") {
+            continue;
+        }
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
             if (std::holds_alternative<CoreLossesMethodData>(volumetricLossesMethod)) {

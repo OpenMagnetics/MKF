@@ -26,8 +26,8 @@ class CorePiece {
     double height;
     double width;
     CoreShape shape;
-    WindingWindowElement winding_window;
-    EffectiveParameters partial_effective_parameters;
+    WindingWindowElement windingWindow;
+    EffectiveParameters partialEffectiveParameters;
 
   public:
     virtual std::tuple<double, double, double> get_shape_constants() = 0;
@@ -65,18 +65,18 @@ class CorePiece {
     /**
      * List of winding windows, all elements in the list must be of the same type
      */
-    const WindingWindowElement& get_winding_window() const { return winding_window; }
-    WindingWindowElement& get_mutable_winding_window() { return winding_window; }
-    void set_winding_window(const WindingWindowElement& value) { this->winding_window = value; }
+    const WindingWindowElement& get_winding_window() const { return windingWindow; }
+    WindingWindowElement& get_mutable_winding_window() { return windingWindow; }
+    void set_winding_window(const WindingWindowElement& value) { this->windingWindow = value; }
 
     const CoreShape get_shape() const { return shape; }
     CoreShape get_mutable_shape() { return shape; }
     void set_shape(CoreShape value) { this->shape = value; }
 
-    const EffectiveParameters& get_partial_effective_parameters() const { return partial_effective_parameters; }
-    EffectiveParameters& get_mutable_partial_effective_parameters() { return partial_effective_parameters; }
+    const EffectiveParameters& get_partial_effective_parameters() const { return partialEffectiveParameters; }
+    EffectiveParameters& get_mutable_partial_effective_parameters() { return partialEffectiveParameters; }
     void set_partial_effective_parameters(const EffectiveParameters& value) {
-        this->partial_effective_parameters = value;
+        this->partialEffectiveParameters = value;
     }
 
     static std::shared_ptr<CorePiece> factory(CoreShape shape, bool process=true);
