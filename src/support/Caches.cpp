@@ -4,7 +4,7 @@
 #include "Constants.h"
 
 std::map<std::string, OpenMagnetics::Magnetic> magneticsCache;
-std::map<double, std::string> magneticEnergyCache;
+std::map<std::string, double> magneticEnergyCache;
 
 
 namespace OpenMagnetics {
@@ -74,13 +74,13 @@ void compute_energy_cache(double temperature, std::optional<double> frequency) {
     magneticEnergyCache.clear();
     for (auto [reference, magnetic] : magneticsCache) {
         double coreMaximumMagneticEnergy = MagneticEnergy().calculate_core_maximum_magnetic_energy(magnetic.get_core(), temperature, frequency);
-        magneticEnergyCache[coreMaximumMagneticEnergy] = reference;
+        magneticEnergyCache[reference] = coreMaximumMagneticEnergy;
     }
 }
 
 std::vector<std::string> filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy) {
-    auto filteredReferences = magneticEnergyCache | std::views::filter([minimumEnergy, maximumEnergy](auto&& p) { return maximumEnergy? p.first >= minimumEnergy && p.first <= maximumEnergy.value() : p.first >= minimumEnergy; })
-                                                  | std::views::values
+    auto filteredReferences = magneticEnergyCache | std::views::filter([minimumEnergy, maximumEnergy](auto&& p) { return maximumEnergy? p.second >= minimumEnergy && p.second <= maximumEnergy.value() : p.second >= minimumEnergy; })
+                                                  | std::views::keys
                                                   | std::ranges::to<std::vector>();
     return filteredReferences;
 }

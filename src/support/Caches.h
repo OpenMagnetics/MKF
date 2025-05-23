@@ -3,7 +3,7 @@
 
 
 extern std::map<std::string, OpenMagnetics::Magnetic> magneticsCache;
-extern std::map<double, std::string> magneticEnergyCache;
+extern std::map<std::string, double> magneticEnergyCache;
 
 using namespace MAS;
 

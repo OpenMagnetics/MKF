@@ -2803,6 +2803,33 @@ SUITE(CoreLossesAssorted) {
         CHECK_CLOSE(calculatedMassCoreLosses, expectedMassLosses,
                     expectedMassLosses * 0.05);
     }
+
+    TEST(Test_Core_Losses_Web_1) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/EQ41_solo3khz.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
+
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+
+        MagnetizingInductance magnetizingInductanceModel(std::string{models["gapReluctance"]});
+
+        OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        double temperature = 25;
+
+        auto coreLossesModel = CoreLossesModel::factory(models);
+        auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+        auto calculatedCoreLosses = coreLosses.get_core_losses();
+        double expectedLosses = 1.18;
+        auto maximumError = 0.15;
+        CHECK_CLOSE(expectedLosses, calculatedCoreLosses, expectedLosses * maximumError);
+    }
 }
 
 SUITE(FrequencyFromCoreLosses) {
