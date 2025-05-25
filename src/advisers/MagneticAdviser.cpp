@@ -60,9 +60,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     MagneticSimulator magneticSimulator;
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
-    double clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
-    coreAdviser.set_average_margin_in_winding_window(clearanceAndCreepageDistance);
-
     std::cout << "Getting core" << std::endl;
     size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
     auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, expectedWoundCores * 10);
@@ -273,7 +270,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
     else {
         for (auto [filter, aux] : scoringPerReferencePerRequirement) {
-            auto normalizedScoring = normalize_scoring(aux, 1, { {"invert", true}, {"log", false} });
+            auto normalizedScoring = OpenMagnetics::normalize_scoring(aux, 1, { {"invert", true}, {"log", false} });
             for (auto [reference, scoring] : normalizedScoring) {
                 scoringPerReference[reference] += scoring;
             }
@@ -302,90 +299,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
         return masMagneticsWithScoring;
     }
-
-
 }
 
-std::map<std::string, double> MagneticAdviser::normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    using pair_type = decltype(scoring)::value_type;
-    double maximumScoring = (*std::max_element(
-        std::begin(scoring), std::end(scoring),
-        [] (const pair_type & p1, const pair_type & p2) {return p1.second < p2.second; }
-    )).second;
-    double minimumScoring = (*std::min_element(
-        std::begin(scoring), std::end(scoring),
-        [] (const pair_type & p1, const pair_type & p2) {return p1.second < p2.second; }
-    )).second;
-    std::map<std::string, double> normalizedScorings;
-
-    for (auto [key, value] : scoring) {
-        double normalizedScoring = 0;
-        if (maximumScoring != minimumScoring) {
-
-            if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    normalizedScoring += weight * (1 - (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                }
-                else {
-                    normalizedScoring += weight * (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    normalizedScoring += weight * (1 - (value - minimumScoring) / (maximumScoring - minimumScoring));
-                }
-                else {
-                    normalizedScoring += weight * (value - minimumScoring) / (maximumScoring - minimumScoring);
-                }
-            }
-        }
-        else {
-            normalizedScoring += 1;
-        }
-        normalizedScorings[key] = normalizedScoring;
-    }
-
-    return normalizedScorings;
-}
-
-
-std::vector<double> MagneticAdviser::normalize_scoring(std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    double maximumScoring = *std::max_element(scoring->begin(), scoring->end());
-    double minimumScoring = *std::min_element(scoring->begin(), scoring->end());
-    std::vector<double> normalizedScorings;
-
-    for (size_t i = 0; i < (*scoring).size(); ++i) {
-        double normalizedScoring = 0;
-        if (maximumScoring != minimumScoring) {
-
-            if (filterConfiguration["log"]){
-                if (filterConfiguration["invert"]) {
-                    normalizedScoring += weight * (1 - (std::log10((*scoring)[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
-                }
-                else {
-                    normalizedScoring += weight * (std::log10((*scoring)[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
-                }
-            }
-            else {
-                if (filterConfiguration["invert"]) {
-                    normalizedScoring += weight * (1 - ((*scoring)[i] - minimumScoring) / (maximumScoring - minimumScoring));
-                }
-                else {
-                    normalizedScoring += weight * ((*scoring)[i] - minimumScoring) / (maximumScoring - minimumScoring);
-                }
-            }
-        }
-        else {
-            normalizedScoring += 1;
-        }
-        normalizedScorings.push_back(normalizedScoring);
-    }
-
-    return normalizedScorings;
-}
-
-void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double>* scoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    auto normalizedScorings = normalize_scoring(scoring, weight, filterConfiguration);
+void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
+    auto normalizedScorings = OpenMagnetics::normalize_scoring(scoring, weight, filterConfiguration);
 
     for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i) {
         (*masMagneticsWithScoring)[i].second += normalizedScorings[i];
@@ -410,7 +327,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
 
         }
         if (masMagneticsWithScoring.size() > 0) {
-            normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::EFFICIENCY], _filterConfiguration[MagneticAdviserFilters::EFFICIENCY]);
+            normalize_scoring(&masMagneticsWithScoring, scorings, weights[MagneticAdviserFilters::EFFICIENCY], _filterConfiguration[MagneticAdviserFilters::EFFICIENCY]);
         }
     }
 
@@ -429,7 +346,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
             add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::COST, scoring);
         }
         if (masMagneticsWithScoring.size() > 0) {
-            normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::COST], _filterConfiguration[MagneticAdviserFilters::COST]);
+            normalize_scoring(&masMagneticsWithScoring, scorings, weights[MagneticAdviserFilters::COST], _filterConfiguration[MagneticAdviserFilters::COST]);
         }
     }
     {
@@ -447,7 +364,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
             add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::DIMENSIONS, scoring);
         }
         if (masMagneticsWithScoring.size() > 0) {
-            normalize_scoring(&masMagneticsWithScoring, &scorings, weights[MagneticAdviserFilters::DIMENSIONS], _filterConfiguration[MagneticAdviserFilters::DIMENSIONS]);
+            normalize_scoring(&masMagneticsWithScoring, scorings, weights[MagneticAdviserFilters::DIMENSIONS], _filterConfiguration[MagneticAdviserFilters::DIMENSIONS]);
         }
     }
     return masMagneticsWithScoring;

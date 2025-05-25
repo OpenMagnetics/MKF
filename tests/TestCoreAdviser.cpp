@@ -88,7 +88,7 @@ SUITE(CoreAdviser) {
             CHECK(masMagnetics[i].second <= bestScoring);
         }
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
         settings->reset();
     }
 
@@ -339,8 +339,8 @@ SUITE(CoreAdviser) {
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 2);
 
         CHECK(masMagnetics.size() == 2);
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "T 18/9.0/7.1 - Kool Mµ Hƒ 40 - Ungapped");
         settings->reset();
     }
 
@@ -434,7 +434,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Distributed gapped 0.79 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Gapped 4.0 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3);
         settings->reset();
     }
@@ -562,7 +562,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 25.4/10/7 - N27 - Gapped 0.5 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 22/6/16 - 3C95 - Gapped 0.24000000000000002 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
         settings->reset();
     }
@@ -594,9 +594,9 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm");
 
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C97 - Gapped 0.365 mm");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
         settings->reset();
     }
 
@@ -642,7 +642,7 @@ SUITE(CoreAdviser) {
         CHECK(masMagnetics.size() == 1);
 
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 100/60/28 - 3C95 - Gapped 2.0 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "U 66/33/27 - Kool Mµ 26 - Ungapped");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
 
         CHECK(masMagnetics[0].first.get_outputs().size() == 2);

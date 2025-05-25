@@ -1772,4 +1772,89 @@ Magnetic magnetic_autocomplete(Magnetic magnetic) {
     return magnetic;
 }
 
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
+    return normalize_scoring(scoring, weight, filterConfiguration["invert"], filterConfiguration["log"]);
+}
+
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log) {
+    using pair_type = decltype(scoring)::value_type;
+    double maximumScoring = (*std::max_element(
+        std::begin(scoring), std::end(scoring),
+        [] (const pair_type & p1, const pair_type & p2) {return p1.second < p2.second; }
+    )).second;
+    double minimumScoring = (*std::min_element(
+        std::begin(scoring), std::end(scoring),
+        [] (const pair_type & p1, const pair_type & p2) {return p1.second < p2.second; }
+    )).second;
+    std::map<std::string, double> normalizedScorings;
+
+    for (auto [key, value] : scoring) {
+        double normalizedScoring = 0;
+        if (maximumScoring != minimumScoring) {
+
+            if (log){
+                if (invert) {
+                    normalizedScoring += weight * (1 - (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
+                }
+                else {
+                    normalizedScoring += weight * (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
+                }
+            }
+            else {
+                if (invert) {
+                    normalizedScoring += weight * (1 - (value - minimumScoring) / (maximumScoring - minimumScoring));
+                }
+                else {
+                    normalizedScoring += weight * (value - minimumScoring) / (maximumScoring - minimumScoring);
+                }
+            }
+        }
+        else {
+            normalizedScoring += 1;
+        }
+        normalizedScorings[key] = normalizedScoring;
+    }
+
+    return normalizedScorings;
+}
+
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
+    return normalize_scoring(scoring, weight, filterConfiguration["invert"], filterConfiguration["log"]);
+}
+
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log) {
+    double maximumScoring = *std::max_element(scoring.begin(), scoring.end());
+    double minimumScoring = *std::min_element(scoring.begin(), scoring.end());
+    std::vector<double> normalizedScorings;
+
+    for (size_t i = 0; i < scoring.size(); ++i) {
+        double normalizedScoring = 0;
+        if (maximumScoring != minimumScoring) {
+
+            if (log){
+                if (invert) {
+                    normalizedScoring += weight * (1 - (std::log10(scoring[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
+                }
+                else {
+                    normalizedScoring += weight * (std::log10(scoring[i]) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
+                }
+            }
+            else {
+                if (invert) {
+                    normalizedScoring += weight * (1 - (scoring[i] - minimumScoring) / (maximumScoring - minimumScoring));
+                }
+                else {
+                    normalizedScoring += weight * (scoring[i] - minimumScoring) / (maximumScoring - minimumScoring);
+                }
+            }
+        }
+        else {
+            normalizedScoring += 1;
+        }
+        normalizedScorings.push_back(normalizedScoring);
+    }
+
+    return normalizedScorings;
+}
+
 } // namespace OpenMagnetics

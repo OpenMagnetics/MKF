@@ -15,23 +15,10 @@ void WireAdviser::logEntry(std::string entry) {
 }
 
 void normalize_scoring(std::vector<std::pair<CoilFunctionalDescription, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
-    double maximumScoring = *std::max_element(newScoring->begin(), newScoring->end());
-    double minimumScoring = *std::min_element(newScoring->begin(), newScoring->end());
+    auto normalizedScorings = OpenMagnetics::normalize_scoring(*newScoring, 1, invert, false);
 
     for (size_t i = 0; i < (*coilsWithScoring).size(); ++i) {
-        auto mas = (*coilsWithScoring)[i].first;
-        auto scoring = (*newScoring)[i];
-        if (maximumScoring != minimumScoring) {
-            if (invert) {
-                (*coilsWithScoring)[i].second += 1 - (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-            }
-            else {
-                (*coilsWithScoring)[i].second += (scoring - minimumScoring) / (maximumScoring - minimumScoring);
-            }
-        }
-        else {
-            (*coilsWithScoring)[i].second += 1;
-        }
+        (*coilsWithScoring)[i].second += normalizedScorings[i];
     }
     sort((*coilsWithScoring).begin(), (*coilsWithScoring).end(), [](std::pair<CoilFunctionalDescription, double>& b1, std::pair<CoilFunctionalDescription, double>& b2) {
         return b1.second > b2.second;

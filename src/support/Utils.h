@@ -161,5 +161,10 @@ std::string fix_filename(std::string filename);
 Mas mas_autocomplete(Mas mas, bool simulate = true);
 Magnetic magnetic_autocomplete(Magnetic magnetic);
 
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log);
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log);
+
 } // namespace OpenMagnetics
 
