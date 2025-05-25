@@ -1,6 +1,11 @@
 #pragma once
-#include "Constants.h"
-#include "Defaults.h"
+#include "advisers/MagneticFilter.h"
+#include "physical_models/CoreLosses.h"
+#include "physical_models/Impedance.h"
+#include "physical_models/MagneticEnergy.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WindingSkinEffectLosses.h"
 #include "constructive_models/Coil.h"
 #include "processors/Outputs.h"
 #include "processors/Inputs.h"
@@ -28,7 +33,6 @@ class CoreAdviser {
         std::string _log;
         bool _uniqueCoreShapes = false;
         std::map<CoreAdviserFilters, double> _weights;
-        double _averageMarginInWindingWindow = 0;
 
         void logEntry(std::string entry);
 
@@ -69,12 +73,6 @@ class CoreAdviser {
         void set_unique_core_shapes(bool value) {
             _uniqueCoreShapes = value;
         }
-        void set_average_margin_in_winding_window(double value) {
-            _averageMarginInWindingWindow = value;
-        }
-        double get_average_margin_in_winding_window() {
-            return _averageMarginInWindingWindow;
-        }
 
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults=1);
@@ -92,7 +90,6 @@ class CoreAdviser {
             std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
-            double* _averageMarginInWindingWindow;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring, bool firstFilter) {
                 if (firstFilter) {
@@ -111,40 +108,57 @@ class CoreAdviser {
             void set_filter_configuration(std::map<CoreAdviserFilters, std::map<std::string, bool>>* filterConfiguration) {
                 _filterConfiguration = filterConfiguration;
             }
-            void set_average_margin_in_winding_window(double* averageMarginInWindingWindow) {
-                _averageMarginInWindingWindow = averageMarginInWindingWindow;
-            }
             MagneticCoreFilter(){
             }
             std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<Mas> unfilteredMasMagnetics, Inputs inputs, double weight=1);
     };
     
     class MagneticCoreFilterAreaProduct : public MagneticCoreFilter {
+        private:
+            MagneticFilterAreaProduct _filter;
+
         public:
+            MagneticCoreFilterAreaProduct(Inputs inputs);
             std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterEnergyStored : public MagneticCoreFilter {
+        private:
+            MagneticFilterEnergyStored _filter;
+
         public:
-            std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, std::map<std::string, std::string> models, double weight=1, bool firstFilter=false);
+            MagneticCoreFilterEnergyStored(std::map<std::string, std::string> models);
+            std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterCost : public MagneticCoreFilter {
+        private:
+            MagneticFilterCost _filter;
+
         public:
+            MagneticCoreFilterCost(Inputs inputs);
             std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterLosses : public MagneticCoreFilter {
+        private:
+            MagneticFilterLosses _filter;
+
         public:
-            std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, std::map<std::string, std::string> models, double weight=1, bool firstFilter=false);
+            MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models);
+            std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterDimensions : public MagneticCoreFilter {
+        private:
+            MagneticFilterDimensions _filter;
         public:
             std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, double weight=1, bool firstFilter=false);
     };
     
     class MagneticCoreFilterMinimumImpedance : public MagneticCoreFilter {
+        private:
+            MagneticFilterMinimumImpedance _filter;
         public:
             std::vector<std::pair<Mas, double>> filter_magnetics(std::vector<std::pair<Mas, double>>* unfilteredMasMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
