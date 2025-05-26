@@ -1189,6 +1189,7 @@ SUITE(CoreAdviser) {
 
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
+
         auto log = coreAdviser.read_log();
         auto scoring = coreAdviser.get_scorings();
         std::map<std::string, std::map<std::string, double>> filteredScoring;

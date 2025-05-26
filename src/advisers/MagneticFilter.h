@@ -41,7 +41,7 @@ class MagneticFilter {
                 { MagneticFilters::MINIMUM_IMPEDANCE,     { {"invert", true}, {"log", true} } },
             };
         MagneticFilter() { };
-        virtual std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs) = 0;
+        virtual std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) = 0;
 
 };
 
@@ -59,7 +59,7 @@ class MagneticFilterAreaProduct : public MagneticFilter {
     public:
         MagneticFilterAreaProduct() {};
         MagneticFilterAreaProduct(Inputs inputs);
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterEnergyStored : public MagneticFilter {
@@ -70,7 +70,7 @@ class MagneticFilterEnergyStored : public MagneticFilter {
     public:
         MagneticFilterEnergyStored() {};
         MagneticFilterEnergyStored(std::map<std::string, std::string> models);
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterCost : public MagneticFilter {
@@ -84,7 +84,7 @@ class MagneticFilterCost : public MagneticFilter {
     public:
         MagneticFilterCost() {};
         MagneticFilterCost(Inputs inputs);
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterLosses : public MagneticFilter {
@@ -99,13 +99,13 @@ class MagneticFilterLosses : public MagneticFilter {
     public:
         MagneticFilterLosses() {};
         MagneticFilterLosses(Inputs inputs, std::map<std::string, std::string> models);
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterDimensions : public MagneticFilter {
     public:
         MagneticFilterDimensions() {};
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterMinimumImpedance : public MagneticFilter {
@@ -113,7 +113,51 @@ class MagneticFilterMinimumImpedance : public MagneticFilter {
         Impedance _impedanceModel;
     public:
         MagneticFilterMinimumImpedance() {};
-        std::pair<bool, double> evaluate_magnetic(Mas* mas, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterAreaNoParallels : public MagneticFilter {
+    private:
+        int _maximumNumberParallels;
+    public:
+        MagneticFilterAreaNoParallels() {};
+        MagneticFilterAreaNoParallels(int maximumNumberParallels);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, Section section);
+};
+
+class MagneticFilterAreaWithParallels : public MagneticFilter {
+    public:
+        MagneticFilterAreaWithParallels() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, Section section, double numberSections, double sectionArea, bool allowNotFit);
+};
+
+class MagneticFilterEffectiveResistance : public MagneticFilter {
+    private:
+        double _maximumCurrent;
+    public:
+        MagneticFilterEffectiveResistance() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, double effectivefrequency, double temperature);
+};
+
+class MagneticFilterProximityFactor : public MagneticFilter {
+    private:
+        double _maximumCurrent;
+    public:
+        MagneticFilterProximityFactor() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, double effectiveSkinDepth, double temperature);
+};
+
+class MagneticFilterSolidInsulationRequirements : public MagneticFilter {
+    private:
+        double _maximumCurrent;
+    public:
+        MagneticFilterSolidInsulationRequirements() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, WireSolidInsulationRequirements wireSolidInsulationRequirements);
 };
 
 } // namespace OpenMagnetics

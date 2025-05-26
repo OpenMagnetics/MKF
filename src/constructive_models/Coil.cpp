@@ -5087,5 +5087,80 @@ std::vector<double> Coil::get_maximum_dimensions() {
 }
 
 
+std::vector<std::vector<size_t>> Coil::get_patterns(Inputs& inputs, CoreType coreType) {
+    auto isolationSidesRequired = inputs.get_isolation_sides_used();
+
+    if (!inputs.get_design_requirements().get_isolation_sides()) {
+        throw std::runtime_error("Missing isolation sides requirement");
+    }
+
+    auto isolationSidesRequirement = inputs.get_design_requirements().get_isolation_sides().value();
+
+    std::vector<std::vector<size_t>> sectionPatterns;
+    for(size_t i = 0; i < tgamma(isolationSidesRequired.size() + 1) / 2; ++i) {
+        std::vector<size_t> sectionPattern;
+        for (auto isolationSide : isolationSidesRequired) {
+            for (size_t windingIndex = 0; windingIndex < inputs.get_mutable_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
+                if (isolationSidesRequirement[windingIndex] == isolationSide) {
+                    sectionPattern.push_back(windingIndex);
+                }
+            }
+        }
+        sectionPatterns.push_back(sectionPattern);
+        if (sectionPatterns.size() > defaults.maximumCoilPattern) {
+            break;
+        }
+
+        std::next_permutation(isolationSidesRequired.begin(), isolationSidesRequired.end());
+    }
+
+    if (coreType == CoreType::TOROIDAL) {
+        // We remove the last combination as in toroids they go around
+        size_t elementsToKeep = std::max(size_t(1), isolationSidesRequired.size() - 1);
+        sectionPatterns = std::vector<std::vector<size_t>>(sectionPatterns.begin(), sectionPatterns.end() - (sectionPatterns.size() - elementsToKeep));
+    }
+
+    return sectionPatterns;
+}
+
+
+std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
+    if (inputs.get_design_requirements().get_turns_ratios().size() == 0 || coreType == CoreType::TOROIDAL) {
+        return {1};  // hardcoded
+    }
+    if (inputs.get_design_requirements().get_leakage_inductance()) {
+        return {2, 1};  // hardcoded        
+    }
+    else{
+        return {1, 2};  // hardcoded        
+    }
+}
+
+std::pair<std::vector<size_t>, size_t> Coil::check_pattern_and_repetitions_integrity(std::vector<size_t> pattern, size_t repetitions) {
+    bool needsMerge = false;
+    for (auto winding : get_functional_description()) {
+        // TODO expand for more than one winding per layer
+        size_t numberPhysicalTurns = winding.get_number_turns() * winding.get_number_parallels();
+        if (numberPhysicalTurns < repetitions) {
+            needsMerge = true;
+        }
+    }
+
+    std::vector<size_t> newPattern;
+    if (needsMerge) {
+        for (size_t repetition = 1; repetition <= repetitions; ++repetition) {
+            for (auto windingIndex : pattern) {
+                auto winding = get_functional_description()[windingIndex];
+                size_t numberPhysicalTurns = winding.get_number_turns() * winding.get_number_parallels();
+                if (numberPhysicalTurns >= repetition) {
+                    newPattern.push_back(windingIndex);
+                }
+            }
+        }
+        return {newPattern, 1};
+    }
+    return {pattern, repetitions};
+}
+
 } // namespace OpenMagnetics
  

@@ -168,6 +168,9 @@ class Inputs : public MAS::Inputs {
     double get_maximum_voltage_rms(size_t windingIndex);
     double get_maximum_current_peak(size_t windingIndex);
     double get_maximum_current_rms(size_t windingIndex);
+    double get_maximum_current_effective_frequency(size_t windingIndex);
+    SignalDescriptor get_current_with_effective_maximum(size_t windingIndex = 0);
+    std::vector<IsolationSide> get_isolation_sides_used();
 
 };
 void from_json(const json& j, Inputs& x);

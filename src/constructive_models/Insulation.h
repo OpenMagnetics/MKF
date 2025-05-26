@@ -461,6 +461,8 @@ class InsulationCoordinator {
     InsulationCoordinationOutput calculate_insulation_coordination(Inputs& inputs);
     std::optional<CoilSectionInterface> calculate_coil_section_interface_layers(Inputs& inputs, Wire leftWire, Wire rightWire, InsulationMaterial insulationMaterial);
     static bool can_fully_insulated_wire_be_used(Inputs& inputs);
+    static std::vector<std::vector<WireSolidInsulationRequirements>> get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions);
+    static bool needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions);
 
     InsulationCoordinator() {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());

@@ -8,35 +8,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-class WireSolidInsulationRequirements {
-    public:
-    WireSolidInsulationRequirements() = default;
-    virtual ~WireSolidInsulationRequirements() = default;
-
-    private:
-    std::optional<int64_t> _minimumNumberLayers;
-    std::optional<int64_t> _maximumNumberLayers;
-    std::optional<int64_t> _minimumGrade;
-    std::optional<int64_t> _maximumGrade;
-    double minimumBreakdownVoltage = 0;
-
-    public:
-    std::optional<int64_t> get_minimum_number_layers() const { return _minimumNumberLayers; }
-    void set_minimum_number_layers(std::optional<int64_t> value) { this->_minimumNumberLayers = value; }
-
-    std::optional<int64_t> get_minimum_grade() const { return _minimumGrade; }
-    void set_minimum_grade(std::optional<int64_t> value) { this->_minimumGrade = value; }
-
-    std::optional<int64_t> get_maximum_number_layers() const { return _maximumNumberLayers; }
-    void set_maximum_number_layers(std::optional<int64_t> value) { this->_maximumNumberLayers = value; }
-
-    std::optional<int64_t> get_maximum_grade() const { return _maximumGrade; }
-    void set_maximum_grade(std::optional<int64_t> value) { this->_maximumGrade = value; }
-
-    double get_minimum_breakdown_voltage() const { return minimumBreakdownVoltage; }
-    void set_minimum_breakdown_voltage(const double & value) { this->minimumBreakdownVoltage = value; }
-};
-
 void from_json(const json & j, WireSolidInsulationRequirements & x);
 void to_json(json & j, const WireSolidInsulationRequirements & x);
 
@@ -124,10 +95,6 @@ class WireAdviser {
                                                                                                 Section section,
                                                                                                 double numberSections,
                                                                                                 bool allowNotFit);
-
-        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_skin_depth_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
-                                                                                                  SignalDescriptor current,
-                                                                                                  double temperature);
 
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_effective_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
