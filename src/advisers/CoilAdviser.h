@@ -21,7 +21,6 @@ class CoilAdviser : public WireAdviser {
         std::vector<Mas> get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults=1);
         std::vector<Section> get_advised_sections(Mas mas, std::vector<size_t> pattern, size_t repetitions);
         std::vector<Mas> get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference);
-        std::vector<std::vector<WireSolidInsulationRequirements>> get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions);
         void set_allow_margin_tape(bool value) {
             _allowMarginTape = value;
         }

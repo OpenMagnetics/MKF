@@ -2713,6 +2713,25 @@ double Inputs::get_maximum_current_effective_frequency() {
     return maximumCurrentEffectiveFrequency;
 }
 
+double Inputs::get_maximum_current_effective_frequency(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumCurrentEffectiveFrequency = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+        if (!excitation.get_current()) 
+            throw std::invalid_argument("Missing current in excitation");
+        if (!excitation.get_current()->get_processed()) 
+            throw std::invalid_argument("Current has not been processed");
+        maximumCurrentEffectiveFrequency = std::max(maximumCurrentEffectiveFrequency, excitation.get_current()->get_processed()->get_effective_frequency().value());
+    }
+    return maximumCurrentEffectiveFrequency;
+}
+
 double Inputs::get_maximum_frequency() {
     if (get_operating_points().size() == 0)
         throw std::invalid_argument("There are no operating points");
@@ -2898,6 +2917,61 @@ double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation e
     }
 
     return magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
+}
+
+SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex) {
+    SignalDescriptor maximumCurrent;
+    double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < get_operating_points().size(); ++operatingPointIndex) {
+        if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
+            throw std::runtime_error("Current is missing");
+        }
+        if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
+            throw std::runtime_error("Current is not processed");
+        }
+        if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
+            auto current = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
+            if (current.get_waveform()) {
+                auto processed = calculate_processed_data(current.get_waveform().value());
+                current.set_processed(processed);
+                get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+            }
+            else {
+                throw std::runtime_error("Current is not processed");
+            }
+        }
+        double effectiveFrequency = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency().value();
+        double rms = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value();
+
+        auto currentRmsTimesRootSquaredEffectiveFrequency = rms * sqrt(effectiveFrequency);
+        if (currentRmsTimesRootSquaredEffectiveFrequency > maximumCurrentRmsTimesRootSquaredEffectiveFrequency) {
+            maximumCurrentRmsTimesRootSquaredEffectiveFrequency = currentRmsTimesRootSquaredEffectiveFrequency;
+            maximumCurrent = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
+        }
+    }
+
+    return maximumCurrent;
+}
+
+std::vector<IsolationSide> Inputs::get_isolation_sides_used() {
+    if (!get_design_requirements().get_isolation_sides()) {
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        for (size_t windingIndex = 1; windingIndex < get_design_requirements().get_turns_ratios().size() + 1; ++windingIndex) {
+            // isolationSides.push_back(IsolationSide::SECONDARY);
+            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
+        get_mutable_design_requirements().set_isolation_sides(isolationSides);
+    }
+
+    std::vector<IsolationSide> isolationSidesUsed;
+    std::vector<IsolationSide> isolationSidesFromRequirements = get_design_requirements().get_isolation_sides().value();
+    for (auto isolationSide : isolationSidesFromRequirements) {
+        if (std::find(isolationSidesUsed.begin(), isolationSidesUsed.end(), isolationSide) == isolationSidesUsed.end()) {
+            isolationSidesUsed.push_back(isolationSide);
+        }
+    }
+
+    return isolationSidesUsed;
 }
 
 } // namespace OpenMagnetics

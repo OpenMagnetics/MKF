@@ -1,3 +1,4 @@
+#include "advisers/MagneticFilter.h"
 #include "advisers/WireAdviser.h"
 #include "constructive_models/Wire.h"
 #include "constructive_models/Coil.h"
@@ -31,34 +32,17 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     std::vector<double> newScoring;
 
     std::list<size_t> listOfIndexesToErase;
+
+    auto filter = MagneticFilterAreaNoParallels(_maximumNumberParallels);
+
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, section);
 
-        if (wire.get_type() == WireType::FOIL && (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() > _maximumNumberParallels) {
-            listOfIndexesToErase.push_back(coilIndex);
-            continue;
-        }
-
-        if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
-            if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1]) {
-                double scoring = 0;
-                newScoring.push_back(scoring);
-            }
-            else {
-                listOfIndexesToErase.push_back(coilIndex);
-            }
+        if (valid) {
+            newScoring.push_back(scoring);
         }
         else {
-            double wireAngle = wound_distance_to_angle(wire.get_maximum_outer_height(), wire.get_maximum_outer_width());
-
-            if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wireAngle < section.get_dimensions()[1]) {
-                double scoring = 0;
-                newScoring.push_back(scoring);
-            }
-            else {
-                listOfIndexesToErase.push_back(coilIndex);
-            }
-
+            listOfIndexesToErase.push_back(coilIndex);
         }
     }
 
@@ -97,31 +81,14 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
         sectionArea = std::numbers::pi * pow(section.get_dimensions()[0], 2) * section.get_dimensions()[1] / 360;
     }
 
+    auto filter = MagneticFilterAreaWithParallels();
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
-        if (!Coil::resolve_wire((*unfilteredCoils)[coilIndex].first).get_conducting_area()) {
-            throw std::runtime_error("Conducting area is missing");
-        }
-        auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, section, numberSections, sectionArea, allowNotFit);
 
-        neededOuterAreaNoCompact *= (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns() / numberSections;
-
-        if (neededOuterAreaNoCompact < sectionArea) {
-            // double scoring = (section.get_dimensions()[0] * section.get_dimensions()[1]) - neededOuterAreaNoCompact;
-            double scoring = 1;
+        if (valid) {
             newScoring.push_back(scoring);
-        }
-        else if (allowNotFit) {
-            double extra = (neededOuterAreaNoCompact - sectionArea) / sectionArea;
-            if (extra < 0.5) {
-                double scoring = extra;
-                newScoring.push_back(scoring);
-            }
-            else {
-                listOfIndexesToErase.push_back(coilIndex);
-            }
         }
         else {
             listOfIndexesToErase.push_back(coilIndex);
@@ -148,42 +115,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>>  WireAdviser::filter_b
     return filteredCoilsWithScoring;
 }
 
-std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_skin_depth_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
-                                                                                                      SignalDescriptor current,
-                                                                                                      double temperature) {
-    std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
-    std::vector<double> newScoring;
-
-    std::list<size_t> listOfIndexesToErase;
-    for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
-
-        double effective_resistance_per_meter = WindingLosses::calculate_skin_effect_resistance_per_meter(wire, current, temperature);
-
-        double scoring = effective_resistance_per_meter;
-        newScoring.push_back(scoring);
-    }
-
-    for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
-        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
-            listOfIndexesToErase.pop_front();
-        }
-        else {
-            filteredCoilsWithScoring.push_back((*unfilteredCoils)[i]);
-        }
-    }
-    // (*unfilteredCoils).clear();
-
-    if (filteredCoilsWithScoring.size() != newScoring.size()) {
-        throw std::runtime_error("Something wrong happened while filtering, size of unfilteredCoils: " + std::to_string(filteredCoilsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
-    }
-
-    if (filteredCoilsWithScoring.size() > 0) {
-        normalize_scoring(&filteredCoilsWithScoring, &newScoring);
-    }
-    return filteredCoilsWithScoring;
-}
-
 std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by_effective_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                       SignalDescriptor current,
                                                                                                       double temperature) {
@@ -195,14 +126,18 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     }
     auto currentEffectiveFrequency = current.get_processed()->get_effective_frequency().value();
 
+    auto filter = MagneticFilterEffectiveResistance();
+
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, currentEffectiveFrequency, temperature);
 
-        double effective_resistance_per_meter = WindingLosses::calculate_effective_resistance_per_meter(wire, currentEffectiveFrequency, temperature);
-
-        double scoring = effective_resistance_per_meter;
-        newScoring.push_back(scoring);
+        if (valid) {
+            newScoring.push_back(scoring);
+        }
+        else {
+            listOfIndexesToErase.push_back(coilIndex);
+        }
     }
 
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
@@ -236,20 +171,18 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     }
     auto currentEffectiveFrequency = current.get_processed()->get_effective_frequency().value();
 
-    double effectiveSkinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", currentEffectiveFrequency, temperature);
+    auto filter = MagneticFilterProximityFactor();
 
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, currentEffectiveFrequency, temperature);
 
-        if (!wire.get_number_conductors()) {
-            wire.set_number_conductors(1);
+        if (valid) {
+            newScoring.push_back(scoring);
         }
-        double proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow(wire.get_number_conductors().value() * (*unfilteredCoils)[coilIndex].first.get_number_parallels() * (*unfilteredCoils)[coilIndex].first.get_number_turns(), 2);
-        // proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow((*unfilteredCoils)[coilIndex].first.get_number_parallels() / (std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height())), 2);
-
-        double scoring = proximityFactor;
-        newScoring.push_back(scoring);
+        else {
+            listOfIndexesToErase.push_back(coilIndex);
+        }
     }
 
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
@@ -276,70 +209,13 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::filter_by
     std::vector<std::pair<CoilFunctionalDescription, double>> filteredCoilsWithScoring;
     std::vector<double> newScoring;
 
+    auto filter = MagneticFilterSolidInsulationRequirements();
+
     std::list<size_t> listOfIndexesToErase;
     for (size_t coilIndex = 0; coilIndex < (*unfilteredCoils).size(); ++coilIndex){  
-        auto wire = Coil::resolve_wire((*unfilteredCoils)[coilIndex].first);
-        bool isValid = true;
+        auto [valid, scoring] = filter.evaluate_magnetic((*unfilteredCoils)[coilIndex].first, wireSolidInsulationRequirements);
 
-        if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
-            newScoring.push_back(0);
-            continue;
-        }
-
-        if (!wire.resolve_coating()) {
-            listOfIndexesToErase.push_back(coilIndex);
-            continue;
-        }
-
-        auto coating = wire.resolve_coating().value();
-
-        if (wire.get_type() == WireType::LITZ) {
-            auto strand = wire.resolve_strand();
-            coating = Wire::resolve_coating(strand).value();
-        }
-
-        if (!coating.get_breakdown_voltage()) {
-            throw std::runtime_error("Wire " + wire.get_name().value() + " is missing breakdown voltage");
-        }
-
-
-        if (coating.get_breakdown_voltage().value() < wireSolidInsulationRequirements.get_minimum_breakdown_voltage()) {
-            isValid = false;
-        }
-
-        if (wireSolidInsulationRequirements.get_minimum_grade() && coating.get_grade()) {
-            if (coating.get_grade().value() < wireSolidInsulationRequirements.get_minimum_grade().value()) {
-                isValid = false;
-            }
-        }
-        else if (wireSolidInsulationRequirements.get_minimum_number_layers() && coating.get_number_layers()) {
-            if (coating.get_number_layers().value() < wireSolidInsulationRequirements.get_minimum_number_layers().value()) {
-                isValid = false;
-            }
-        }
-        else if (wireSolidInsulationRequirements.get_minimum_number_layers() || wireSolidInsulationRequirements.get_minimum_grade()) {
-            isValid = false;
-        }
-        
-        if (wireSolidInsulationRequirements.get_maximum_grade() && coating.get_grade()) {
-            if (coating.get_grade().value() > wireSolidInsulationRequirements.get_maximum_grade().value()) {
-                isValid = false;
-            }
-        }
-        else if (wireSolidInsulationRequirements.get_maximum_number_layers() && coating.get_number_layers()) {
-            if (coating.get_number_layers().value() > wireSolidInsulationRequirements.get_maximum_number_layers().value()) {
-                isValid = false;
-            }
-        }
-        else if (wireSolidInsulationRequirements.get_maximum_number_layers() || wireSolidInsulationRequirements.get_maximum_grade()) {
-            isValid = false;
-        }
-
-        if (isValid) {
-            double scoring = 0;
-            if (wireSolidInsulationRequirements.get_minimum_breakdown_voltage() > 0) {
-                scoring = wireSolidInsulationRequirements.get_minimum_breakdown_voltage() - coating.get_breakdown_voltage().value();
-            }
+        if (valid) {
             newScoring.push_back(scoring);
         }
         else {

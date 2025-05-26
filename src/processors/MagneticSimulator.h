@@ -3,8 +3,6 @@
 #include "physical_models/CoreLosses.h"
 #include "physical_models/CoreTemperature.h"
 #include "physical_models/WindingLosses.h"
-#include "advisers/CoreAdviser.h"
-#include "advisers/CoilAdviser.h"
 #include "support/Utils.h"
 #include "constructive_models/Mas.h"
 #include <MAS.hpp>

@@ -1670,4 +1670,180 @@ double InsulationIEC60335Model::calculate_creepage_distance(Inputs& inputs, bool
     return roundFloat(creepageDistance, 5);
 }
 
+bool InsulationCoordinator::needs_margin(std::vector<WireSolidInsulationRequirements> combinationSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
+    for(size_t index = 0; index < pattern.size(); ++index) {
+        size_t leftIndex = pattern[index];
+        size_t rightIndex;
+        if (leftIndex == pattern.size() - 1) {
+            if (repetitions == 0) {
+                break;
+            }
+            else {
+                rightIndex = pattern[0];
+            }
+        }
+        else {
+            rightIndex = pattern[leftIndex + 1];
+        }
+        int64_t numberLayers = 0;
+        int64_t numberGrades = 0;
+        if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade()) {
+            numberGrades += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_grade().value();
+        }
+        if (combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers()) {
+            numberLayers += combinationSolidInsulationRequirementsForWires[leftIndex].get_minimum_number_layers().value();
+        }
+        if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade()) {
+            numberGrades += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_grade().value();
+        }
+        if (combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers()) {
+            numberLayers += combinationSolidInsulationRequirementsForWires[rightIndex].get_minimum_number_layers().value();
+        }
+
+        if (numberLayers < 3 && numberGrades < 4) {
+            return true;
+        }
+    }
+    return false;
+}
+
+WireSolidInsulationRequirements get_requirements_for_functional() {
+    WireSolidInsulationRequirements wireSolidInsulationRequirements;
+    wireSolidInsulationRequirements.set_minimum_grade(1);
+    wireSolidInsulationRequirements.set_minimum_number_layers(1);
+    wireSolidInsulationRequirements.set_minimum_breakdown_voltage(0);
+    return wireSolidInsulationRequirements;
+}
+
+WireSolidInsulationRequirements get_requirements_for_basic(double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+    WireSolidInsulationRequirements wireSolidInsulationRequirements;
+    if (canFullyInsulatedWireBeUsed) {
+        wireSolidInsulationRequirements.set_minimum_grade(3);
+    }
+    wireSolidInsulationRequirements.set_minimum_number_layers(1);
+    wireSolidInsulationRequirements.set_minimum_breakdown_voltage(withstandVoltage);
+    return wireSolidInsulationRequirements;
+}
+
+WireSolidInsulationRequirements get_requirements_for_reinforced(double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
+    WireSolidInsulationRequirements wireSolidInsulationRequirements;
+    if (canFullyInsulatedWireBeUsed) {
+        wireSolidInsulationRequirements.set_minimum_grade(3);
+    }
+    wireSolidInsulationRequirements.set_minimum_number_layers(3);
+    wireSolidInsulationRequirements.set_minimum_breakdown_voltage(withstandVoltage);
+    return wireSolidInsulationRequirements;
+}
+
+std::vector<std::vector<WireSolidInsulationRequirements>> remove_combination_that_need_margin(std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires, std::vector<size_t> pattern, size_t repetitions) {
+    std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWiresWithoutMargin;
+    for (auto combinationSolidInsulationRequirementsForWires : combinationsSolidInsulationRequirementsForWires) {
+        bool needsMargin = InsulationCoordinator::needs_margin(combinationSolidInsulationRequirementsForWires, pattern, repetitions);
+        if (!needsMargin) {
+            combinationsSolidInsulationRequirementsForWiresWithoutMargin.push_back(combinationSolidInsulationRequirementsForWires);
+        }
+    }
+    return combinationsSolidInsulationRequirementsForWiresWithoutMargin;
+}
+
+std::vector<std::vector<WireSolidInsulationRequirements>> InsulationCoordinator::get_solid_insulation_requirements_for_wires(Inputs& inputs, std::vector<size_t> pattern, size_t repetitions) {
+
+    auto isolationSidesRequired = inputs.get_isolation_sides_used();
+    auto withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+    size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
+    std::vector<std::vector<WireSolidInsulationRequirements>> combinationsSolidInsulationRequirementsForWires;
+
+    if (!inputs.get_design_requirements().get_insulation()) {
+        std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+        for(size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            solidInsulationForWires.push_back(get_requirements_for_functional());
+        }
+        combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+    }
+    else {
+
+        auto insulationType = inputs.get_insulation_type();
+        bool canFullyInsulatedWireBeUsed = InsulationCoordinator::can_fully_insulated_wire_be_used(inputs);
+        auto isolationSidePerWinding = inputs.get_design_requirements().get_isolation_sides().value();
+        bool allowMarginTape = settings->get_coil_allow_margin_tape();
+
+        // If we don't want margin tape we have to increase to insulation type to DOUBLE:
+        if ((insulationType == InsulationType::BASIC || insulationType == InsulationType::SUPPLEMENTARY)) {
+            if (!allowMarginTape) {
+                insulationType = InsulationType::DOUBLE;
+            }
+        }
+
+        // Unless we cannot use margin tape, we always add the option of the wires not complying with anything
+        if (allowMarginTape) {
+            std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+            for(size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                solidInsulationForWires.push_back(get_requirements_for_functional());
+            }
+            combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+        }
+
+        if (insulationType != InsulationType::FUNCTIONAL) {
+
+            if ((insulationType == InsulationType::REINFORCED || insulationType == InsulationType::DOUBLE)) {
+                // Reinforced or single winding inductors must have all the isolation needed in one later or coating
+                for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
+                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                    for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                        if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
+                            solidInsulationForWires.push_back(get_requirements_for_functional());
+                        }
+                        else {
+                            solidInsulationForWires.push_back(get_requirements_for_reinforced(withstandVoltage, canFullyInsulatedWireBeUsed));
+                        }
+                    }
+                    combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                }
+            }
+
+            if (insulationType != InsulationType::REINFORCED) {
+                // If insulation is Double, we need to get the withstand voltage for basic, not double
+                if (insulationType == InsulationType::DOUBLE) {
+                    auto insulation = inputs.get_mutable_design_requirements().get_insulation().value();
+                    insulation.set_insulation_type(InsulationType::BASIC);
+                    inputs.get_mutable_design_requirements().set_insulation(insulation);
+                    withstandVoltage = InsulationCoordinator().calculate_withstand_voltage(inputs);
+                }
+
+                if (insulationType == InsulationType::DOUBLE || isolationSidesRequired.size() == 1) {
+                    // Additionally, Double can be composed of several steps or parts, as long as each reachs Basic and Supplementary insulation.
+
+                    std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                    for (size_t i = 0; i < isolationSidePerWinding.size(); ++i) {
+                        solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                    }
+                    combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                }
+
+                if (isolationSidesRequired.size() > 1) {
+                    for (auto isolationSideToRemoveInsulation : isolationSidesRequired) {
+                        std::vector<WireSolidInsulationRequirements> solidInsulationForWires;
+                        for (auto isolationSidePerWinding : isolationSidePerWinding) {
+                            if (isolationSidePerWinding == isolationSideToRemoveInsulation) {
+                                solidInsulationForWires.push_back(get_requirements_for_functional());
+                            }
+                            else {
+                                solidInsulationForWires.push_back(get_requirements_for_basic(withstandVoltage, canFullyInsulatedWireBeUsed));
+                            }
+                        }
+                        combinationsSolidInsulationRequirementsForWires.push_back(solidInsulationForWires);
+                    }
+                }
+            }
+        } 
+
+        if (!allowMarginTape) {
+            combinationsSolidInsulationRequirementsForWires = remove_combination_that_need_margin(combinationsSolidInsulationRequirementsForWires, pattern, repetitions);
+        }
+    }
+
+    return combinationsSolidInsulationRequirementsForWires;
+}
+
+
 } // namespace OpenMagnetics

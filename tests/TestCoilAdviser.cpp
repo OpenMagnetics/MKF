@@ -39,7 +39,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::PRIMARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(2UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
         CHECK(withstandVoltageForWires[0][0].get_minimum_breakdown_voltage() == 0);
@@ -68,7 +68,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(1UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -94,7 +94,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -138,7 +138,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -182,7 +182,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -227,7 +227,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::PRIMARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(2UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
         CHECK(withstandVoltageForWires[0][0].get_minimum_breakdown_voltage() == 0);
@@ -257,7 +257,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(1UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -283,7 +283,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -329,7 +329,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -375,7 +375,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(3UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 
@@ -421,7 +421,7 @@ SUITE(SolidInsulationRequirements) {
         inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
 
         CoilAdviser coilAdviser;
-        auto withstandVoltageForWires = coilAdviser.get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
+        auto withstandVoltageForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, {0, 1}, 1);
         CHECK_EQUAL(6UL, withstandVoltageForWires.size());
         CHECK_EQUAL(2UL, withstandVoltageForWires[0].size());
 

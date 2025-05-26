@@ -1,6 +1,7 @@
 #include "advisers/MagneticFilter.h"
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/MagneticEnergy.h"
+#include "physical_models/WindingLosses.h"
 
 #include <cfloat>
 #include <cmath>
@@ -74,9 +75,8 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     }
 }
 
-std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = mas->get_magnetic();
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
     double bobbinFillingFactor;
     if (core.get_winding_windows().size() == 0)
@@ -178,9 +178,8 @@ MagneticFilterEnergyStored::MagneticFilterEnergyStored(std::map<std::string, std
     _magneticEnergy = MagneticEnergy(models);
 }
 
-std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = Magnetic(mas->get_magnetic());
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
     double requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(*inputs));
     MagnetizingInductanceOutput magnetizingInductanceOutput;
@@ -190,13 +189,12 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Mas* mas, 
     double totalStorableMagneticEnergy = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
-        totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic.get_core(), operatingPoint));
+        totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic->get_core(), operatingPoint));
 
         if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
-            magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
-            magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
-            magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
-            mas->get_mutable_outputs()[operatingPointIndex].set_magnetizing_inductance(magnetizingInductanceOutput);
+            // magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
+            // magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
+            // magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
         }
         else {
             valid = false;
@@ -231,11 +229,10 @@ MagneticFilterCost::MagneticFilterCost(Inputs inputs) {
     }
 }
 
-std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = Magnetic(mas->get_magnetic());
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
-    double primaryNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    double primaryNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     double estimatedNeededWindingArea = primaryNumberTurns * _estimatedParallels * _estimatedWireTotalArea * (inputs->get_design_requirements().get_turns_ratios().size() + 1);
     WindingWindowElement windingWindow;
 
@@ -335,14 +332,13 @@ MagneticFilterLosses::MagneticFilterLosses(Inputs inputs, std::map<std::string, 
     _models = models;
 }
 
-std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = Magnetic(mas->get_magnetic());
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
     std::string shapeName = core.get_shape_name();
     if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
         auto bobbin = Bobbin::create_quick_bobbin(core);
-        magnetic.get_mutable_coil().set_bobbin(bobbin);
+        magnetic->get_mutable_coil().set_bobbin(bobbin);
         auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
 
         if (windingWindows[0].get_width()) {
@@ -355,7 +351,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
         }
     }
 
-    auto currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     NumberTurns numberTurns(currentNumberTurns);
     std::vector<double> totalLossesPerOperatingPoint;
     std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
@@ -371,7 +367,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
 
     size_t iteration = 10;
 
-    Coil coil = magnetic.get_coil();
+    Coil coil = magnetic->get_coil();
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
@@ -421,7 +417,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
             }
 
             if (coreLosses < 0) {
-                throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value());
+                throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
             }
 
             if (!coil.get_turns_description()) {
@@ -434,7 +430,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
                 ohmicLosses = windingLossesOutput.get_winding_losses();
                 newTotalLosses = coreLosses + ohmicLosses;
                 if (ohmicLosses < 0) {
-                    throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value() + " ohmicLosses: " + std::to_string(ohmicLosses));
+                    throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value() + " ohmicLosses: " + std::to_string(ohmicLosses));
                 }
             }
             else {
@@ -456,7 +452,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
 
 
         if (coreLosses < DBL_MAX && coreLosses > 0) {
-            magnetic.set_coil(coil);
+            magnetic->set_coil(coil);
 
             currentTotalLosses = newTotalLosses;
             totalLossesPerOperatingPoint.push_back(currentTotalLosses);
@@ -476,34 +472,26 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Mas* mas, Inputs
             meanTotalLosses += totalLossesPerOperatingPoint[operatingPointIndex];
         }
         if (meanTotalLosses > DBL_MAX / 2) {
-            throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic.get_manufacturer_info().value().get_reference().value());
+            throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
         }
         meanTotalLosses /= inputs->get_operating_points().size();
 
-        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            mas->get_mutable_outputs()[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
-            mas->get_mutable_outputs()[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
-        }
         valid = meanTotalLosses < _maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
     }
 
     return {valid, meanTotalLosses};
 }
 
-
-std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = Magnetic(mas->get_magnetic());
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
     double volume = core.get_width() * core.get_height() * core.get_depth();
 
     return {true, volume};
 }
 
-
-std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Mas* mas, Inputs* inputs) {
-    Magnetic magnetic = Magnetic(mas->get_magnetic());
-    auto core = magnetic.get_core();
+std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
 
     double primaryCurrentRms = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
@@ -513,7 +501,7 @@ std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Mas* m
     std::string shapeName = core.get_shape_name();
     if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
         auto bobbin = Bobbin::create_quick_bobbin(core);
-        magnetic.get_mutable_coil().set_bobbin(bobbin);
+        magnetic->get_mutable_coil().set_bobbin(bobbin);
         auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
 
         if (windingWindows[0].get_width()) {
@@ -526,10 +514,10 @@ std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Mas* m
         }
     }
 
-    auto currentNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
     NumberTurns numberTurns(currentNumberTurns);
 
-    Coil coil = magnetic.get_coil();
+    Coil coil = magnetic->get_coil();
 
     double conductingArea = primaryCurrentRms / defaults.maximumCurrentDensity;
     auto wire = Wire::get_wire_for_conducting_area(conductingArea, defaults.ambientTemperature, false);
@@ -541,7 +529,7 @@ std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Mas* m
     }
 
     auto minimumImpedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
-    auto windingWindowArea = magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_area();
+    auto windingWindowArea = magnetic->get_mutable_coil().resolve_bobbin().get_winding_window_area();
 
     bool validDesign = true;
     bool validMaterial = true;
@@ -603,9 +591,262 @@ std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Mas* m
 
     bool valid = coil.are_sections_and_layers_fitting() && coil.get_turns_description();
     
-    mas->get_mutable_magnetic().set_coil(std::move(coil));
+    magnetic->set_coil(std::move(coil));
 
     return {valid, totalImpedanceExtra};
+}
+
+MagneticFilterAreaNoParallels::MagneticFilterAreaNoParallels(int maximumNumberParallels) {
+    _maximumNumberParallels = maximumNumberParallels;
+}
+
+std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    for (auto winding : magnetic->get_coil().get_functional_description()) {
+        auto section = magnetic->get_mutable_coil().get_sections_by_winding(winding.get_name())[0];
+        auto [auxValid, auxScoring] = evaluate_magnetic(winding, section);
+        valid &= auxValid;
+        scoring += auxScoring;
+    }
+    scoring /= magnetic->get_coil().get_functional_description().size();
+
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterAreaNoParallels::evaluate_magnetic(CoilFunctionalDescription winding, Section section) {
+    auto wire = Coil::resolve_wire(winding);
+
+    if (wire.get_type() == WireType::FOIL && winding.get_number_parallels() * winding.get_number_turns() > _maximumNumberParallels) {
+        return {false, 0.0};
+    }
+
+    if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
+        if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1]) {
+            return {true, 0.0};
+        }
+        else {
+            return {false, 0.0};
+        }
+    }
+    else {
+        double wireAngle = wound_distance_to_angle(wire.get_maximum_outer_height(), wire.get_maximum_outer_width());
+
+        if (wire.get_maximum_outer_width() < section.get_dimensions()[0] && wireAngle < section.get_dimensions()[1]) {
+            return {true, 0.0};
+        }
+        else {
+            return {false, 0.0};
+        }
+    }
+}
+
+
+std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    for (auto winding : magnetic->get_coil().get_functional_description()) {
+        auto sections = magnetic->get_mutable_coil().get_sections_by_winding(winding.get_name());
+        auto section = sections[0];
+        double sectionArea;
+        if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
+            sectionArea = section.get_dimensions()[0] * section.get_dimensions()[1];
+        }
+        else {
+            sectionArea = std::numbers::pi * pow(section.get_dimensions()[0], 2) * section.get_dimensions()[1] / 360;
+        }
+        auto [auxValid, auxScoring] = evaluate_magnetic(winding, section, sections.size(), sectionArea, false);
+        valid &= auxValid;
+        scoring += auxScoring;
+    }
+    scoring /= magnetic->get_coil().get_functional_description().size();
+
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(CoilFunctionalDescription winding, Section section, double numberSections, double sectionArea, bool allowNotFit) {
+    auto wire = Coil::resolve_wire(winding);
+    if (!Coil::resolve_wire(winding).get_conducting_area()) {
+        throw std::runtime_error("Conducting area is missing");
+    }
+    auto neededOuterAreaNoCompact = wire.get_maximum_outer_width() * wire.get_maximum_outer_height();
+
+    neededOuterAreaNoCompact *= winding.get_number_parallels() * winding.get_number_turns() / numberSections;
+
+    if (neededOuterAreaNoCompact < sectionArea) {
+        // double scoring = (section.get_dimensions()[0] * section.get_dimensions()[1]) - neededOuterAreaNoCompact;
+        return {true, 1.0};
+    }
+    else if (allowNotFit) {
+        double extra = (neededOuterAreaNoCompact - sectionArea) / sectionArea;
+        if (extra < 0.5) {
+            return {true, extra};
+        }
+        else {
+            return {false, 0.0};
+        }
+    }
+    else {
+        return {false, 0.0};
+    }
+}
+
+std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    for (size_t windingIndex = 0; windingIndex < magnetic->get_coil().get_functional_description().size(); ++windingIndex) {
+        auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
+        auto maximumEffectiveFrequency = inputs->get_maximum_current_effective_frequency(windingIndex);
+        auto temperature = inputs->get_maximum_temperature();
+        auto [auxValid, auxScoring] = evaluate_magnetic(winding, maximumEffectiveFrequency, temperature);
+        valid &= auxValid;
+        scoring += auxScoring;
+    }
+    scoring /= magnetic->get_coil().get_functional_description().size();
+
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterEffectiveResistance::evaluate_magnetic(CoilFunctionalDescription winding, double effectivefrequency, double temperature) {
+    auto wire = Coil::resolve_wire(winding);
+
+    double effectiveResistancePerMeter = WindingLosses::calculate_effective_resistance_per_meter(wire, effectivefrequency, temperature);
+
+    double valid = true;
+    // double valid = effectiveResistancePerMeter < defaults.maximumEffectiveCurrentDensity;
+
+    return {valid, effectiveResistancePerMeter};
+}
+
+std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    for (size_t windingIndex = 0; windingIndex < magnetic->get_coil().get_functional_description().size(); ++windingIndex) {
+        auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
+        auto maximumEffectiveFrequency = inputs->get_maximum_current_effective_frequency(windingIndex);
+        auto temperature = inputs->get_maximum_temperature();
+        double effectiveSkinDepth = WindingSkinEffectLosses::calculate_skin_depth("copper", maximumEffectiveFrequency, temperature);
+        auto [auxValid, auxScoring] = evaluate_magnetic(winding, effectiveSkinDepth, temperature);
+        valid &= auxValid;
+        scoring += auxScoring;
+    }
+    scoring /= magnetic->get_coil().get_functional_description().size();
+
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(CoilFunctionalDescription winding, double effectiveSkinDepth, double temperature) {
+    auto wire = Coil::resolve_wire(winding);
+
+    if (!wire.get_number_conductors()) {
+        wire.set_number_conductors(1);
+    }
+    double proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow(wire.get_number_conductors().value() * winding.get_number_parallels() * winding.get_number_turns(), 2);
+    // proximityFactor = wire.get_minimum_conducting_dimension() / effectiveSkinDepth * pow(winding.get_number_parallels() / (std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height())), 2);
+
+    double valid = true;
+    // double valid = effectiveResistancePerMeter < defaults.maximumEffectiveCurrentDensity;
+
+    return {valid, proximityFactor};
+}
+
+std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = false;
+    double scoring = 0;
+    auto core = magnetic->get_core();
+    auto coreType = core.get_functional_description().get_type();
+    auto patterns = Coil::get_patterns(*inputs, coreType);
+    auto repetitions = Coil::get_repetitions(*inputs, coreType);
+
+    for (auto repetition : repetitions) {
+        for (auto pattern : patterns) {
+            auto aux = magnetic->get_mutable_coil().check_pattern_and_repetitions_integrity(pattern, repetition);
+            pattern = aux.first;
+            repetition = aux.second;
+            auto combinationsSolidInsulationRequirementsForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(*inputs, pattern, repetition);
+            for(size_t insulationIndex = 0; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
+                auto solidInsulationRequirementsForWires = combinationsSolidInsulationRequirementsForWires[insulationIndex];
+                bool combinationValid = true;
+                double combinationScoring = 0;
+                for (size_t windingIndex = 0; windingIndex < magnetic->get_coil().get_functional_description().size(); ++windingIndex) {
+                    auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
+                    auto [auxValid, auxScoring] = evaluate_magnetic(winding, solidInsulationRequirementsForWires[windingIndex]);
+                    combinationValid &= auxValid;
+                    combinationScoring += auxScoring;
+                }
+
+                valid |= combinationValid;
+                if (valid) {
+                    scoring = std::max(scoring, combinationScoring);
+                    return {valid, scoring};
+                }
+            }
+        }
+    }
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magnetic(CoilFunctionalDescription winding, WireSolidInsulationRequirements wireSolidInsulationRequirements) {
+    auto wire = Coil::resolve_wire(winding);
+
+    if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
+        return {true, 0.0};
+    }
+
+    if (!wire.resolve_coating()) {
+        return {false, 0.0};
+    }
+
+    auto coating = wire.resolve_coating().value();
+
+    if (wire.get_type() == WireType::LITZ) {
+        auto strand = wire.resolve_strand();
+        coating = Wire::resolve_coating(strand).value();
+    }
+
+    if (!coating.get_breakdown_voltage()) {
+        throw std::runtime_error("Wire " + wire.get_name().value() + " is missing breakdown voltage");
+    }
+
+    if (coating.get_breakdown_voltage().value() < wireSolidInsulationRequirements.get_minimum_breakdown_voltage()) {
+        return {false, 0.0};
+    }
+
+    if (wireSolidInsulationRequirements.get_minimum_grade() && coating.get_grade()) {
+        if (coating.get_grade().value() < wireSolidInsulationRequirements.get_minimum_grade().value()) {
+            return {false, 0.0};
+        }
+    }
+    else if (wireSolidInsulationRequirements.get_minimum_number_layers() && coating.get_number_layers()) {
+        if (coating.get_number_layers().value() < wireSolidInsulationRequirements.get_minimum_number_layers().value()) {
+            return {false, 0.0};
+        }
+    }
+    else if (wireSolidInsulationRequirements.get_minimum_number_layers() || wireSolidInsulationRequirements.get_minimum_grade()) {
+        return {false, 0.0};
+    }
+    
+    if (wireSolidInsulationRequirements.get_maximum_grade() && coating.get_grade()) {
+        if (coating.get_grade().value() > wireSolidInsulationRequirements.get_maximum_grade().value()) {
+            return {false, 0.0};
+        }
+    }
+    else if (wireSolidInsulationRequirements.get_maximum_number_layers() && coating.get_number_layers()) {
+        if (coating.get_number_layers().value() > wireSolidInsulationRequirements.get_maximum_number_layers().value()) {
+            return {false, 0.0};
+        }
+    }
+    else if (wireSolidInsulationRequirements.get_maximum_number_layers() || wireSolidInsulationRequirements.get_maximum_grade()) {
+        return {false, 0.0};
+    }
+
+    double scoring = 0;
+    if (wireSolidInsulationRequirements.get_minimum_breakdown_voltage() > 0) {
+        scoring = wireSolidInsulationRequirements.get_minimum_breakdown_voltage() - coating.get_breakdown_voltage().value();
+    }
+
+    return {true, scoring};
 }
 
 

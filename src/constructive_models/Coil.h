@@ -282,6 +282,11 @@ class Coil : public MAS::Coil {
 
         std::vector<double> get_turns_ratios();
         std::vector<double> get_maximum_dimensions();
+
+        static std::vector<std::vector<size_t>> get_patterns(Inputs& inputs, CoreType coreType);
+        static std::vector<size_t> get_repetitions(Inputs& inputs, CoreType coreType);
+        std::pair<std::vector<size_t>, size_t> check_pattern_and_repetitions_integrity(std::vector<size_t> pattern, size_t repetitions);
+
 };
 }
 namespace OpenMagnetics {
