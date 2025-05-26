@@ -2,12 +2,67 @@
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/MagneticEnergy.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/Impedance.h"
 
 #include <cfloat>
 #include <cmath>
 
 
 namespace OpenMagnetics {
+
+
+std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterName, std::optional<Inputs> inputs) {
+    switch(filterName) {
+        case MagneticFilters::AREA_PRODUCT:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter AREA_PRODUCT");
+            }
+            return std::make_shared<MagneticFilterAreaProduct>(inputs.value());
+        case MagneticFilters::ENERGY_STORED:
+            return std::make_shared<MagneticFilterEnergyStored>();
+        case MagneticFilters::ESTIMATED_COST:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter ESTIMATED_COST");
+            }
+            return std::make_shared<MagneticFilterEstimatedCost>(inputs.value());
+        case MagneticFilters::COST:
+            return std::make_shared<MagneticFilterCost>();
+        case MagneticFilters::CORE_AND_DC_LOSSES:
+            return std::make_shared<MagneticFilterCoreAndDcLosses>();
+        case MagneticFilters::LOSSES:
+            return std::make_shared<MagneticFilterLosses>();
+        case MagneticFilters::DIMENSIONS:
+            return std::make_shared<MagneticFilterDimensions>();
+        case MagneticFilters::CORE_MINIMUM_IMPEDANCE:
+            return std::make_shared<MagneticFilterCoreMinimumImpedance>();
+        case MagneticFilters::AREA_NO_PARALLELS:
+            return std::make_shared<MagneticFilterAreaNoParallels>();
+        case MagneticFilters::AREA_WITH_PARALLELS:
+            return std::make_shared<MagneticFilterAreaWithParallels>();
+        case MagneticFilters::EFFECTIVE_RESISTANCE:
+            return std::make_shared<MagneticFilterEffectiveResistance>();
+        case MagneticFilters::PROXIMITY_FACTOR:
+            return std::make_shared<MagneticFilterProximityFactor>();
+        case MagneticFilters::SOLID_INSULATION_REQUIREMENTS:
+            return std::make_shared<MagneticFilterSolidInsulationRequirements>();
+        case MagneticFilters::TURNS_RATIOS:
+            return std::make_shared<MagneticFilterTurnsRatios>();
+        case MagneticFilters::MAXIMUM_DIMENSIONS:
+            return std::make_shared<MagneticFilterMaximumDimensions>();
+        case MagneticFilters::SATURATION:
+            return std::make_shared<MagneticFilterSaturation>();
+        case MagneticFilters::DC_CURRENT_DENSITY:
+            return std::make_shared<MagneticFilterDcCurrentDensity>();
+        case MagneticFilters::EFFECTIVE_CURRENT_DENSITY:
+            return std::make_shared<MagneticFilterEffectiveCurrentDensity>();
+        case MagneticFilters::IMPEDANCE:
+            return std::make_shared<MagneticFilterImpedance>();
+        case MagneticFilters::MAGNETIZING_INDUCTANCE:
+            return std::make_shared<MagneticFilterMagnetizingInductance>();
+        default:
+            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE}");
+    }
+}
 
 MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     double magneticFluxDensityReference = 0.18;
@@ -205,7 +260,7 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
     return {valid, totalStorableMagneticEnergy};
 }
 
-MagneticFilterCost::MagneticFilterCost(Inputs inputs) {
+MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
     double primaryCurrentRms = 0;
     double frequency = 0;
     double temperature = 0;
@@ -229,7 +284,7 @@ MagneticFilterCost::MagneticFilterCost(Inputs inputs) {
     }
 }
 
-std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
     double primaryNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
@@ -292,8 +347,18 @@ std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic
     return {valid, manufacturabilityRelativeCost};
 }
 
+std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    std::vector<Wire> wires = magnetic->get_mutable_coil().get_wires();
+    auto wireRelativeCosts = 0;
+    for (auto wire : wires) {
+        wireRelativeCosts += wire.get_relative_cost();
+    }
+    auto numberLayers = magnetic->get_mutable_coil().get_layers_description()->size();
+    double scoring = numberLayers + wireRelativeCosts;
+    return {true, scoring};
+}
 
-MagneticFilterLosses::MagneticFilterLosses(Inputs inputs, std::map<std::string, std::string> models) {
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
     bool largeWaveform = false;
 
     std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
@@ -332,7 +397,7 @@ MagneticFilterLosses::MagneticFilterLosses(Inputs inputs, std::map<std::string, 
     _models = models;
 }
 
-std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
     std::string shapeName = core.get_shape_name();
@@ -482,15 +547,45 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
     return {valid, meanTotalLosses};
 }
 
+MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> models) {
+    _models = models;
+}
+
+std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    double scoring = 0;
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature).get_winding_losses();
+        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic).get_core_losses();
+        scoring += windingLosses + coreLosses;
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {true, scoring};
+}
+
 std::pair<bool, double> MagneticFilterDimensions::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
-    double volume = core.get_width() * core.get_height() * core.get_depth();
+    auto depth = core.get_depth();
+
+    if (magnetic->get_coil().get_layers_description()) {
+        auto coilDepth = magnetic->get_mutable_core().get_columns()[0].get_depth();
+        auto layers = magnetic->get_coil().get_layers_description().value();
+        for (auto layer : layers) {
+            coilDepth += layer.get_dimensions()[0] * 2;
+        }
+        depth = std::max(depth, coilDepth);
+    }
+
+    double volume = core.get_width() * core.get_height() * depth;
 
     return {true, volume};
 }
 
-std::pair<bool, double> MagneticFilterMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
     double primaryCurrentRms = 0;
@@ -848,6 +943,156 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
 
     return {true, scoring};
 }
+
+std::pair<bool, double> MagneticFilterTurnsRatios::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    if (inputs->get_design_requirements().get_turns_ratios().size() > 0) {
+        auto magneticTurnsRatios = magnetic->get_turns_ratios();
+        if (magneticTurnsRatios.size() != inputs->get_design_requirements().get_turns_ratios().size()) {
+            return {false, 0.0};
+        }
+        for (size_t i = 0; i < inputs->get_design_requirements().get_turns_ratios().size(); ++i) {
+            auto turnsRatioRequirement = inputs->get_design_requirements().get_turns_ratios()[i];
+            // TODO: Try all combinations of turns ratios, not just the default order
+            if (!check_requirement(turnsRatioRequirement, magneticTurnsRatios[i])) {
+                return {false, 0.0};
+            }
+        }
+    }
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterMaximumDimensions::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    if (inputs->get_design_requirements().get_maximum_dimensions()) {
+        auto maximumDimensions = inputs->get_design_requirements().get_maximum_dimensions().value();
+        auto magneticDimensions = magnetic->get_maximum_dimensions();
+        scoring = sqrt(pow(maximumDimensions.get_width().value() - magneticDimensions[0], 2) + pow(maximumDimensions.get_height().value() - magneticDimensions[1], 2)+ pow(maximumDimensions.get_depth().value() - magneticDimensions[2], 2));
+        if (!magnetic->fits(maximumDimensions, true)) {
+            valid = false;
+        }
+    }
+    return {valid, scoring};
+}
+
+std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
+        auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(magnetic->get_core(), magnetic->get_coil(), &operatingPoint).second;
+        auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
+
+        auto magneticFluxDensitySaturation = magnetic->get_mutable_core().get_magnetic_flux_density_saturation(operatingPoint.get_conditions().get_ambient_temperature());
+        scoring += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
+        if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
+            return {false, 0.0};
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {valid, scoring};
+}
+
+
+std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
+            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+            if (!excitation.get_current()) {
+                throw std::runtime_error("Current is missing in excitation");
+            }
+            auto current = excitation.get_current().value();
+            auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
+            auto dcCurrentDensity = wire.calculate_dc_current_density(current);
+
+            scoring += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
+            if (dcCurrentDensity > defaults.maximumCurrentDensity) {
+                return {false, 0.0};
+            }
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {valid, scoring};
+}
+
+
+std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
+            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+            if (!excitation.get_current()) {
+                throw std::runtime_error("Current is missing in excitation");
+            }
+            auto current = excitation.get_current().value();
+            auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
+            auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
+
+            scoring += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
+            if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
+                return {false, 0.0};
+            }
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {valid, scoring};
+}
+
+
+std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    if (inputs->get_design_requirements().get_minimum_impedance()) {
+        auto impedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
+        for (auto impedanceAtFrequency : impedanceRequirement) {
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, impedanceAtFrequency.get_frequency());
+            scoring += fabs(impedanceAtFrequency.get_impedance().get_magnitude() - abs(impedance));
+
+            if (impedanceAtFrequency.get_impedance().get_magnitude() > abs(impedance)) {
+                valid = false;
+            }
+        }
+        scoring /= impedanceRequirement.size();
+    }
+
+    return {valid, scoring};
+}
+
+
+std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+        double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
+        scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
+        if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
+            valid = false;
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {valid, scoring};
+}
+
 
 
 } // namespace OpenMagnetics

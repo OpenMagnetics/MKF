@@ -165,6 +165,8 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log);
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log);
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, OpenMagnetics::MagneticFilterOperation filterConfiguration);
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, OpenMagnetics::MagneticFilterOperation filterConfiguration);
 
 } // namespace OpenMagnetics
 

@@ -5,6 +5,7 @@
 #include "TestingUtils.h"
 #include "processors/Sweeper.h"
 #include "physical_models/Impedance.h"
+#include "Definitions.h"
 
 #include <UnitTest++.h>
 #include <vector>
@@ -1926,10 +1927,29 @@ SUITE(MagneticAdviser) {
 
 }
 SUITE(CatalogAdviser) {
+    std::string file_path = __FILE__;
     bool plot = true;
 
     TEST(Test_CatalogAdviser_Found) { 
         srand (time(NULL));
+
+        {
+            std::string file_path = __FILE__;
+            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+
+            std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
+            if(!file.is_open())
+                throw std::runtime_error("Failed to open " + external_core_materials_path);
+            using Iterator = std::istreambuf_iterator<char>;
+            std::string external_core_materials(Iterator{file}, Iterator{});
+
+            clear_databases();
+            load_core_materials();
+
+            auto allCoreMaterials = coreMaterialDatabase;
+
+            load_core_materials(external_core_materials);
+        }
 
         std::vector<double> turnsRatios;
 
@@ -2001,7 +2021,6 @@ SUITE(CatalogAdviser) {
 
 
         std::vector<OpenMagnetics::Magnetic> catalog;
-        std::string file_path = __FILE__;
         auto inventory_path = file_path.substr(0, file_path.rfind("/")).append("/testData/cmcs.ndjson");
 
         std::ifstream ndjsonFile(inventory_path);
@@ -2064,6 +2083,23 @@ SUITE(CatalogAdviser) {
 
     TEST(Test_CatalogAdviser_Not_Found) {
         srand (time(NULL));
+        {
+            std::string file_path = __FILE__;
+            auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/testData/core_materials.ndjson");
+
+            std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
+            if(!file.is_open())
+                throw std::runtime_error("Failed to open " + external_core_materials_path);
+            using Iterator = std::istreambuf_iterator<char>;
+            std::string external_core_materials(Iterator{file}, Iterator{});
+
+            clear_databases();
+            load_core_materials();
+
+            auto allCoreMaterials = coreMaterialDatabase;
+
+            load_core_materials(external_core_materials);
+        }
 
         std::vector<double> turnsRatios;
 

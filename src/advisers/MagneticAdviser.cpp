@@ -127,105 +127,79 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     std::map<std::string, std::map<std::string, double>> scoringPerReferencePerRequirement;
     std::map<std::string, double> scoringPerReference;
     std::vector<Magnetic> catalogMagneticsWithSameTurnsRatio;
+    MagneticFilterTurnsRatios _magneticFilterTurnsRatios;
+    MagneticFilterMaximumDimensions _magneticFilterMaximumDimensions;
+    MagneticFilterSaturation _magneticFilterSaturation;
+    MagneticFilterDcCurrentDensity _magneticFilterDcCurrentDensity;
+    MagneticFilterEffectiveCurrentDensity _magneticFilterEffectiveCurrentDensity;
+    MagneticFilterImpedance _magneticFilterImpedance;
+    MagneticFilterMagnetizingInductance _magneticFilterMagnetizingInductance;
 
     for (size_t magneticIndex = 0; magneticIndex < catalogMagnetics.size(); ++magneticIndex) {
         auto magnetic = catalogMagnetics[magneticIndex];
-        bool validMagnetic = true;
         std::string reference = magnetic.get_manufacturer_info().value().get_reference().value();
         scoringPerReference[reference] = 0;
 
-        if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
-            auto magneticTurnsRatios = magnetic.get_turns_ratios();
-            if (magneticTurnsRatios.size() != inputs.get_design_requirements().get_turns_ratios().size()) {
+        // Turns ratios
+        {
+            auto [valid, scoring] = _magneticFilterTurnsRatios.evaluate_magnetic(&magnetic, &inputs);
+            if (!valid)
                 continue;
-            }
-            for (size_t i = 0; i < inputs.get_design_requirements().get_turns_ratios().size(); ++i) {
-                auto turnsRatioRequirement = inputs.get_design_requirements().get_turns_ratios()[i];
-                // TODO: Try all combinations of turns ratios, not just the default order
-                if (!check_requirement(turnsRatioRequirement, magneticTurnsRatios[i])) {
-                    validMagnetic = false;
-                    break;
-                }
-            }
         }
+
         catalogMagneticsWithSameTurnsRatio.push_back(magnetic);
 
-        if (inputs.get_design_requirements().get_maximum_dimensions()) {
-            auto maximumDimensions = inputs.get_design_requirements().get_maximum_dimensions().value();
-            auto magneticDimensions = magnetic.get_maximum_dimensions();
-            scoringPerReferencePerRequirement["maximumDimensions"][reference] = sqrt(pow(maximumDimensions.get_width().value() - magneticDimensions[0], 2) + pow(maximumDimensions.get_height().value() - magneticDimensions[1], 2)+ pow(maximumDimensions.get_depth().value() - magneticDimensions[2], 2));
-            if (!magnetic.fits(maximumDimensions, true)) {
-                validMagnetic = false;
-            }
+        // Maximum dimensions
+        {
+            auto [valid, scoring] = _magneticFilterMaximumDimensions.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["maximumDimensions"][reference] = scoring;
+            if (!valid)
+                continue;
         }
 
         // Saturation
         {
-            auto operatingPoint = inputs.get_operating_points()[0];
-            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
-            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
-            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-
-            auto magneticFluxDensitySaturation = magnetic.get_mutable_core().get_magnetic_flux_density_saturation(operatingPoint.get_conditions().get_ambient_temperature());
-            scoringPerReferencePerRequirement["saturation"][reference] += fabs(magneticFluxDensitySaturation - magneticFluxDensityPeak);
-            if (magneticFluxDensityPeak > magneticFluxDensitySaturation) {
-                validMagnetic = false;
-            }
+            auto [valid, scoring] = _magneticFilterSaturation.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["saturation"][reference] = scoring;
+            if (!valid)
+                continue;
         }
 
-        // Effective and DC Current Density
+        // DC Current Density
         {
-            auto operatingPoint = inputs.get_operating_points()[0];
-            for (size_t windingIndex = 0; windingIndex < magnetic.get_mutable_coil().get_functional_description().size(); ++windingIndex) {
-                auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-                if (!excitation.get_current()) {
-                    throw std::runtime_error("Current is missing in excitation");
-                }
-                auto current = excitation.get_current().value();
-                auto wire = magnetic.get_mutable_coil().resolve_wire(windingIndex);
-                auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
-                auto dcCurrentDensity = wire.calculate_dc_current_density(current);
-
-                scoringPerReferencePerRequirement["effectiveCurrentDensity"][reference] += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
-                if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
-                    validMagnetic = false;
-                }
-
-                scoringPerReferencePerRequirement["dcCurrentDensity"][reference] += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
-                if (dcCurrentDensity > defaults.maximumCurrentDensity) {
-                    validMagnetic = false;
-                }
-            }
-
+            auto [valid, scoring] = _magneticFilterDcCurrentDensity.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["dcCurrentDensity"][reference] = scoring;
+            if (!valid)
+                continue;
         }
+
+        // Effective Current Density
+        {
+            auto [valid, scoring] = _magneticFilterEffectiveCurrentDensity.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["effectiveCurrentDensity"][reference] = scoring;
+            if (!valid)
+                continue;
+        }
+
         // if (inputs.get_design_requirements().get_maximum_weight()) {
             // Nice to have in the future
         // }
-        if (inputs.get_design_requirements().get_minimum_impedance()) {
-            auto impedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
-            scoringPerReferencePerRequirement["impedance"][reference] = 0;
-            for (auto impedanceAtFrequency : impedanceRequirement) {
-                auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, impedanceAtFrequency.get_frequency());
-                scoringPerReferencePerRequirement["impedance"][reference] += fabs(impedanceAtFrequency.get_impedance().get_magnitude() - abs(impedance));
 
-                if (impedanceAtFrequency.get_impedance().get_magnitude() > abs(impedance)) {
-                    validMagnetic = false;
-                }
-            }
+
+        // Impedance
+        {
+            auto [valid, scoring] = _magneticFilterImpedance.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["impedance"][reference] = scoring;
+            if (!valid)
+                continue;
         }
 
+        // Magnetizing Inductance
         {
-            scoringPerReferencePerRequirement["magnetizingInductance"][reference] = 0;
-            for (auto operatingPoint : inputs.get_operating_points()) {
-                OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
-                auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil(), &operatingPoint);
-                double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
-                scoringPerReferencePerRequirement["magnetizingInductance"][reference] += fabs(resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
-                if (!check_requirement(inputs.get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
-                    validMagnetic = false;
-                    // break;
-                }
-            }
+            auto [valid, scoring] = _magneticFilterMagnetizingInductance.evaluate_magnetic(&magnetic, &inputs);
+            scoringPerReferencePerRequirement["magnetizingInductance"][reference] = scoring;
+            if (!valid)
+                continue;
         }
 
 
@@ -238,14 +212,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         // if (inputs.get_design_requirements().get_insulation()) {
             // Nice to have in the future
         // }
-        if (validMagnetic){
-            // std::cout << "magnetic.get_manufacturer_info().value().get_reference().value(): " << magnetic.get_manufacturer_info().value().get_reference().value() << std::endl;
-            Mas mas;
-            mas.set_magnetic(magnetic);
-            mas.set_inputs(inputs);
-            mas = magneticSimulator.simulate(mas, true);
-            validMagnetics.push_back(mas);
-        }
+
+        Mas mas;
+        mas.set_magnetic(magnetic);
+        mas.set_inputs(inputs);
+        mas = magneticSimulator.simulate(mas, true);
+        validMagnetics.push_back(mas);
     }
 
     std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
@@ -315,13 +287,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
     for (auto mas : masMagnetics) {
         masMagneticsWithScoring.push_back({mas, 0.0});
     }
+
+
+    MagneticFilterLosses _magneticFilterLosses;
+    MagneticFilterCost _magneticFilterCost;
+    MagneticFilterDimensions _magneticFilterDimensions;
+
     {
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            double scoring = 0;
-            for (auto output : mas.get_outputs()) {
-                scoring += output.get_core_losses().value().get_core_losses() + output.get_winding_losses().value().get_winding_losses();
-            }
+            auto [valid, scoring] = _magneticFilterLosses.evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
+
             scorings.push_back(scoring);
             add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::EFFICIENCY, scoring);
 
@@ -334,13 +310,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
     {
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            std::vector<Wire> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
-            auto wireRelativeCosts = 0;
-            for (auto wire : wires) {
-                wireRelativeCosts += wire.get_relative_cost();
-            }
-            auto numberLayers = mas.get_mutable_magnetic().get_mutable_coil().get_layers_description()->size();
-            double scoring = numberLayers + wireRelativeCosts;
+            auto [valid, scoring] = _magneticFilterCost.evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
 
             scorings.push_back(scoring);
             add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::COST, scoring);
@@ -352,13 +322,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
     {
         std::vector<double> scorings;
         for (auto mas : masMagnetics) {
-            std::vector<Wire> wires = mas.get_mutable_magnetic().get_mutable_coil().get_wires();
-            auto layers = mas.get_mutable_magnetic().get_mutable_coil().get_layers_description().value();
-            auto coilDepth = 0.0;
-            for (auto layer : layers) {
-                coilDepth += layer.get_dimensions()[0];
-            }
-            double scoring = coilDepth;
+            auto [valid, scoring] = _magneticFilterDimensions.evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
 
             scorings.push_back(scoring);
             add_scoring(mas.get_magnetic().get_manufacturer_info().value().get_reference().value(), MagneticAdviser::MagneticAdviserFilters::DIMENSIONS, scoring);

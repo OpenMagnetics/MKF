@@ -498,7 +498,7 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 1);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 14/3.5/5 - 3C97 - Gapped 0.27999999999999997 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "P 11/7 - 3C95 - Gapped 0.19799999999999998 mm");
         CHECK(masMagnetics[0].first.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1);
         settings->reset();
     }
@@ -594,9 +594,9 @@ SUITE(CoreAdviser) {
 
         CHECK(masMagnetics.size() == 2);
 
-        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm");
+        CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
 
-        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "PQ 26/20 - 3C95 - Gapped 0.365 mm");
+        CHECK(masMagnetics[1].first.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm");
         settings->reset();
     }
 

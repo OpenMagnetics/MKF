@@ -97,4 +97,127 @@ inline void to_json(json & j, const Curve2D & x) {
     j["title"] = x.get_title();
 }
 
+enum class MagneticFilters : int {
+    AREA_PRODUCT,
+    ENERGY_STORED,
+    ESTIMATED_COST,
+    COST,
+    CORE_AND_DC_LOSSES,
+    LOSSES,
+    DIMENSIONS,
+    CORE_MINIMUM_IMPEDANCE,
+    AREA_NO_PARALLELS,
+    AREA_WITH_PARALLELS,
+    EFFECTIVE_RESISTANCE,
+    PROXIMITY_FACTOR,
+    SOLID_INSULATION_REQUIREMENTS,
+    TURNS_RATIOS,
+    MAXIMUM_DIMENSIONS,
+    SATURATION,
+    DC_CURRENT_DENSITY,
+    EFFECTIVE_CURRENT_DENSITY,
+    IMPEDANCE,
+    MAGNETIZING_INDUCTANCE
+};
+
+class MagneticFilterOperation {
+    public:
+    MagneticFilterOperation(MagneticFilters filter, bool invert, bool log, double weight) : filter(filter), invert(invert), log(log), weight(weight) {};
+    MagneticFilterOperation() {};
+    virtual ~MagneticFilterOperation() = default;
+
+    private:
+    MagneticFilters filter;
+    bool invert = true;
+    bool log = false;
+    double weight = 1;
+
+    public:
+
+    MagneticFilters get_filter() const { return filter; }
+    void set_filter(const MagneticFilters & value) { this->filter = value; }
+
+    bool get_invert() const { return invert; }
+    void set_invert(const bool & value) { this->invert = value; }
+
+    bool get_log() const { return log; }
+    void set_log(const bool & value) { this->log = value; }
+
+    double get_weight() const { return weight; }
+    void set_weight(const double & value) { this->weight = value; }
+};
+
+
+void from_json(const json & j, MagneticFilters & x);
+void to_json(json & j, const MagneticFilters & x);
+void from_json(const json& j, MagneticFilterOperation& x);
+void to_json(json& j, const MagneticFilterOperation& x);
+
+
+inline void from_json(const json & j, MagneticFilters & x) {
+    if (j == "Area Product") x = MagneticFilters::AREA_PRODUCT;
+    else if (j == "Energy Stored") x = MagneticFilters::ENERGY_STORED;
+    else if (j == "Cost") x = MagneticFilters::COST;
+    else if (j == "Estimated Cost") x = MagneticFilters::ESTIMATED_COST;
+    else if (j == "Core And DC Losses") x = MagneticFilters::CORE_AND_DC_LOSSES;
+    else if (j == "Losses") x = MagneticFilters::LOSSES;
+    else if (j == "Dimensions") x = MagneticFilters::DIMENSIONS;
+    else if (j == "Core Minimum Impedance") x = MagneticFilters::CORE_MINIMUM_IMPEDANCE;
+    else if (j == "Area No Parallels") x = MagneticFilters::AREA_NO_PARALLELS;
+    else if (j == "Area With Parallels") x = MagneticFilters::AREA_WITH_PARALLELS;
+    else if (j == "Effective Resistance") x = MagneticFilters::EFFECTIVE_RESISTANCE;
+    else if (j == "Proximity Factor") x = MagneticFilters::PROXIMITY_FACTOR;
+    else if (j == "Solid Insulation Requirements") x = MagneticFilters::SOLID_INSULATION_REQUIREMENTS;
+    else if (j == "Turns Ratios") x = MagneticFilters::TURNS_RATIOS;
+    else if (j == "Maximum Dimensions") x = MagneticFilters::MAXIMUM_DIMENSIONS;
+    else if (j == "Saturation") x = MagneticFilters::SATURATION;
+    else if (j == "Dc Current Density") x = MagneticFilters::DC_CURRENT_DENSITY;
+    else if (j == "Effective Current Density") x = MagneticFilters::EFFECTIVE_CURRENT_DENSITY;
+    else if (j == "Impedance") x = MagneticFilters::IMPEDANCE;
+    else if (j == "Magnetizing Inductance") x = MagneticFilters::MAGNETIZING_INDUCTANCE;
+    else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
+}
+
+inline void to_json(json & j, const MagneticFilters & x) {
+    switch (x) {
+        case MagneticFilters::AREA_PRODUCT: j = "Area Product"; break;
+        case MagneticFilters::ENERGY_STORED: j = "Energy Stored"; break;
+        case MagneticFilters::COST: j = "Cost"; break;
+        case MagneticFilters::ESTIMATED_COST: j = "Estimated Cost"; break;
+        case MagneticFilters::CORE_AND_DC_LOSSES: j = "Core And DC Losses"; break;
+        case MagneticFilters::LOSSES: j = "Losses"; break;
+        case MagneticFilters::DIMENSIONS: j = "Dimensions"; break;
+        case MagneticFilters::CORE_MINIMUM_IMPEDANCE: j = "Core Minimum Impedance"; break;
+        case MagneticFilters::AREA_NO_PARALLELS: j = "Area No Parallels"; break;
+        case MagneticFilters::AREA_WITH_PARALLELS: j = "Area With Parallels"; break;
+        case MagneticFilters::EFFECTIVE_RESISTANCE: j = "Effective Resistance"; break;
+        case MagneticFilters::PROXIMITY_FACTOR: j = "Proximity Factor"; break;
+        case MagneticFilters::SOLID_INSULATION_REQUIREMENTS: j = "Solid Insulation Requirements"; break;
+        case MagneticFilters::TURNS_RATIOS: j = "Turns Ratios"; break;
+        case MagneticFilters::MAXIMUM_DIMENSIONS: j = "Maximum Dimensions"; break;
+        case MagneticFilters::SATURATION: j = "Saturation"; break;
+        case MagneticFilters::DC_CURRENT_DENSITY: j = "Dc Current Density"; break;
+        case MagneticFilters::EFFECTIVE_CURRENT_DENSITY: j = "Effective Current Density"; break;
+        case MagneticFilters::IMPEDANCE: j = "Impedance"; break;
+        case MagneticFilters::MAGNETIZING_INDUCTANCE: j = "Magnetizing Inductance"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+inline void from_json(const json& j, MagneticFilterOperation& x) {
+    x.set_filter(j.at("filter").get<MagneticFilters>());
+    x.set_invert(j.at("invert").get<bool>());
+    x.set_log(j.at("log").get<bool>());
+    x.set_weight(j.at("weight").get<double>());
+}
+
+inline void to_json(json& j, const MagneticFilterOperation& x) {
+    j = json::object();
+    j["filter"] = x.get_filter();
+    j["invert"] = x.get_invert();
+    j["log"] = x.get_log();
+    j["weight"] = x.get_weight();
+}
+
+
 }

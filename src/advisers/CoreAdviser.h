@@ -137,7 +137,7 @@ class CoreAdviser {
     
     class MagneticCoreFilterCost : public MagneticCoreFilter {
         private:
-            MagneticFilterCost _filter;
+            MagneticFilterEstimatedCost _filter;
 
         public:
             MagneticCoreFilterCost(Inputs inputs);
@@ -146,7 +146,7 @@ class CoreAdviser {
     
     class MagneticCoreFilterLosses : public MagneticCoreFilter {
         private:
-            MagneticFilterLosses _filter;
+            MagneticFilterCoreAndDcLosses _filter;
 
         public:
             MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models);
@@ -162,7 +162,7 @@ class CoreAdviser {
     
     class MagneticCoreFilterMinimumImpedance : public MagneticCoreFilter {
         private:
-            MagneticFilterMinimumImpedance _filter;
+            MagneticFilterCoreMinimumImpedance _filter;
         public:
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
