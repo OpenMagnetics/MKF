@@ -1776,6 +1776,10 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
     return normalize_scoring(scoring, weight, filterConfiguration["invert"], filterConfiguration["log"]);
 }
 
+std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, OpenMagnetics::MagneticFilterOperation filterConfiguration) {
+    return normalize_scoring(scoring, weight, filterConfiguration.get_invert(), filterConfiguration.get_log());
+}
+
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log) {
     using pair_type = decltype(scoring)::value_type;
     double maximumScoring = (*std::max_element(
@@ -1820,6 +1824,10 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
 
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
     return normalize_scoring(scoring, weight, filterConfiguration["invert"], filterConfiguration["log"]);
+}
+
+std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, OpenMagnetics::MagneticFilterOperation filterConfiguration) {
+    return normalize_scoring(scoring, weight, filterConfiguration.get_invert(), filterConfiguration.get_log());
 }
 
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log) {

@@ -180,7 +180,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterEnergySt
 }
 
 CoreAdviser::MagneticCoreFilterCost::MagneticCoreFilterCost(Inputs inputs) {
-    _filter = MagneticFilterCost(inputs);
+    _filter = MagneticFilterEstimatedCost(inputs);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -239,7 +239,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
 }
 
 CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models) {
-    _filter = MagneticFilterLosses(inputs, models);
+    _filter = MagneticFilterCoreAndDcLosses(inputs, models);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {

@@ -1,8 +1,10 @@
 #pragma once
 #include "support/Utils.h"
+#include "advisers/MagneticFilter.h"
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
 #include "constructive_models/Mas.h"
+#include "Definitions.h"
 #include <MAS.hpp>
 
 using namespace MAS;
@@ -26,6 +28,20 @@ class MagneticAdviser{
                 { MagneticAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", false} } },
             };
         std::map<MagneticAdviserFilters, std::map<std::string, double>> _scorings;
+        std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
+        std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
+            MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
+            MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
+            MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, 1.0),
+        };
+
+        MagneticAdviser() {
+            for (auto filterConfiguration : _defaultCustomMagneticFilterFlow) {
+                MagneticFilters filterEnum = filterConfiguration.get_filter();
+                std::shared_ptr<MagneticFilter> filter = MagneticFilter::factory(filterEnum);
+                _filters[filterEnum] = filter;
+            }
+        }
 
         void add_scoring(std::string name, MagneticAdviser::MagneticAdviserFilters filter, double scoring) {
             if (scoring != -1) {
