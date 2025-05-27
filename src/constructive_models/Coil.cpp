@@ -2127,9 +2127,13 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 currentSectionAngle -= marginAngle0 + marginAngle1;
             }
 
+
             // if (currentSectionRadialHeight > windingWindowRadialHeight) {
             //     return false;
             // }
+            if (currentSectionAngle < 0) {
+                return false;
+            }
 
             partialWinding.set_parallels_proportion(sectionParallelsProportion);
             section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
@@ -2155,6 +2159,14 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                                          );
             }
 
+
+            if (section.get_dimensions()[1] < 0) {
+                throw std::runtime_error("Something wrong happened in section dimensions 1: " + std::to_string(section.get_dimensions()[1]) +
+                                         " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
+                                         " currentSectionAngle: " + std::to_string(currentSectionAngle)
+                                         );
+            }
+            
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 double ringArea = std::numbers::pi * pow(windingWindowRadialHeight - currentSectionCenterRadialHeight, 2) - std::numbers::pi * pow(windingWindowRadialHeight - (currentSectionCenterRadialHeight + currentSectionRadialHeight), 2);
 
@@ -2226,6 +2238,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
             }
         }
     }
+
 
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
