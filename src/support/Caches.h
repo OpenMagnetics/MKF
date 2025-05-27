@@ -14,6 +14,7 @@ std::vector<std::string> get_magnetic_cache_references();
 std::vector<OpenMagnetics::Magnetic> get_magnetics_from_cache(std::optional<std::vector<std::string>> references);
 void autocomplete_magnetics_in_cache();
 OpenMagnetics::Magnetic read_magnetic_from_cache(std::string reference);
+OpenMagnetics::Magnetic evict_magnetic_from_cache(std::string reference);
 void load_magnetic_in_cache(std::string reference, OpenMagnetics::Magnetic magnetic);
 void remove_magnetic_from_cache(std::string reference);
 void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);

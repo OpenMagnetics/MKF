@@ -44,6 +44,16 @@ OpenMagnetics::Magnetic read_magnetic_from_cache(std::string reference) {
     }
 }
 
+OpenMagnetics::Magnetic evict_magnetic_from_cache(std::string reference) {
+    if (magneticsCache.contains(reference)) {
+        auto magnetic = std::move(magneticsCache[reference]);
+        magneticsCache.erase(reference);
+        return magnetic;
+    } else {
+        throw std::runtime_error("No magnetic found with reference: " + reference);
+    }
+}
+
 void autocomplete_magnetics_in_cache() {
     for (auto [reference, magnetic] : magneticsCache) {
         magneticsCache[reference] = magnetic_autocomplete(magnetic);
