@@ -59,6 +59,29 @@ class Magnetic : public MAS::Magnetic {
 
 };
 
+bool operator==(Magnetic lhs, Magnetic rhs);
+
+inline bool operator==(Magnetic lhs, Magnetic rhs) {
+    bool isEqual = lhs.get_reference() == rhs.get_reference() && 
+                   lhs.get_mutable_core().get_shape_name() == rhs.get_mutable_core().get_shape_name() && 
+                   lhs.get_mutable_core().get_material_name() == rhs.get_mutable_core().get_material_name() && 
+                   lhs.get_mutable_core().get_number_stacks() == rhs.get_mutable_core().get_number_stacks() && 
+                   lhs.get_coil().get_functional_description().size() == rhs.get_coil().get_functional_description().size();
+    if (isEqual) {
+        for (size_t i = 0; i < lhs.get_coil().get_functional_description().size(); ++i) {
+            auto lhsWinding = lhs.get_coil().get_functional_description()[i];
+            auto rhsWinding = rhs.get_coil().get_functional_description()[i];
+            auto lhsWire = lhsWinding.resolve_wire();
+            auto rhsWire = rhsWinding.resolve_wire();
+            isEqual &= lhsWinding.get_number_turns() == rhsWinding.get_number_turns() &&
+                       lhsWinding.get_number_parallels() == rhsWinding.get_number_parallels() &&
+                       lhsWire.get_type() == rhsWire.get_type();
+        }
+    }
+
+    return isEqual;
+}
+
 void from_json(const json & j, Magnetic & x);
 void to_json(json & j, const Magnetic & x);
 

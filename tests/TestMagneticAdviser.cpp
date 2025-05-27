@@ -83,8 +83,8 @@ SUITE(MagneticAdviser) {
                 // }
                 {
                     auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(masMagnetic.get_mutable_magnetic(), 10000, 400e6, 1000);
-                    std::cout << impedanceSweep.get_x_points().size() << std::endl;
-                    std::cout << impedanceSweep.get_y_points().size() << std::endl;
+                    // std::cout << impedanceSweep.get_x_points().size() << std::endl;
+                    // std::cout << impedanceSweep.get_y_points().size() << std::endl;
 
                     auto outFile = outputFilePath;
 
@@ -2057,12 +2057,6 @@ SUITE(CatalogAdviser) {
             auto operatingPoint = inputs.get_operating_points()[0];
             MagnetizingInductance magnetizingInductanceObj;
             auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(masMagnetic.get_mutable_magnetic().get_core(), masMagnetic.get_mutable_magnetic().get_coil(), &operatingPoint).second;
-            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-
-            auto magneticFluxDensitySaturation = masMagnetic.get_mutable_magnetic().get_mutable_core().get_magnetic_flux_density_saturation();
-            std::cout << "magneticFluxDensityPeak: " << magneticFluxDensityPeak << std::endl;
-            std::cout << "magneticFluxDensitySaturation: " << magneticFluxDensitySaturation << std::endl;
-
 
             OpenMagneticsTesting::check_turns_description(masMagnetic.get_mutable_magnetic().get_coil());
             if (plot) {
@@ -2290,30 +2284,11 @@ SUITE(CatalogAdviser) {
             auto coil = magnetic.get_mutable_coil();
             auto operatingPoint = masMagnetic.get_inputs().get_operating_points()[0];
 
-            auto magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(100, false);
-
-            MagnetizingInductance magnetizingInductanceObj;
-            auto magneticFluxDensity = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
-
-            auto magneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-
-            std::cout << "name: " << masMagnetic.get_magnetic().get_manufacturer_info().value().get_reference().value() << std::endl;
-            std::cout << "magneticFluxDensitySaturation: " << magneticFluxDensitySaturation << std::endl;
-            std::cout << "magneticFluxDensityPeak: " << magneticFluxDensityPeak << std::endl;
-            std::cout << "scoringSecond: " << masMagneticWithScoring.second << std::endl;
-
-
             for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
                 auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
                 if (!excitation.get_current()) {
                     throw std::runtime_error("Current is missing in excitation");
                 }
-                auto current = excitation.get_current().value();
-                auto wire = magnetic.get_mutable_coil().resolve_wire(windingIndex);
-                auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
-                std::cout << "effectiveCurrentDensity: " << effectiveCurrentDensity << std::endl;
-                auto dcCurrentDensity = wire.calculate_dc_current_density(current);
-                std::cout << "dcCurrentDensity: " << dcCurrentDensity << std::endl;
             }
             OpenMagneticsTesting::check_turns_description(magnetic.get_coil());
             if (plot) {

@@ -4468,8 +4468,8 @@ Wire Coil::resolve_wire(size_t windingIndex) {
     return resolve_wire(get_functional_description()[windingIndex]);
 }
 
-Wire Coil::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
-    auto wireOrString = coilFunctionalDescription.get_wire();
+Wire CoilFunctionalDescription::resolve_wire() {
+    auto wireOrString = get_wire();
     Wire wire;
     if (std::holds_alternative<std::string>(wireOrString)) {
         try {
@@ -4489,6 +4489,10 @@ Wire Coil::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
         wire = std::get<OpenMagnetics::Wire>(wireOrString);
     }
     return wire;
+}
+
+Wire Coil::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
+    return coilFunctionalDescription.resolve_wire();
 }
 
 WireType Coil::get_wire_type(CoilFunctionalDescription coilFunctionalDescription) {

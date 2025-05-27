@@ -6,7 +6,7 @@
 
 #include <cfloat>
 #include <cmath>
-
+#include <algorithm>
 
 namespace OpenMagnetics {
 
@@ -1014,8 +1014,6 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
             auto dcCurrentDensity = wire.calculate_dc_current_density(current);
 
             scoring += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
-            std::cout << "dcCurrentDensity: " << dcCurrentDensity << std::endl;
-            std::cout << "defaults.maximumCurrentDensity: " << defaults.maximumCurrentDensity << std::endl;
             if (dcCurrentDensity > defaults.maximumCurrentDensity) {
                 return {false, 0.0};
             }
@@ -1043,8 +1041,6 @@ std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic
             auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
 
             scoring += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
-            std::cout << "effectiveCurrentDensity: " << effectiveCurrentDensity << std::endl;
-            std::cout << "defaults.maximumEffectiveCurrentDensity: " << defaults.maximumEffectiveCurrentDensity << std::endl;
             if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
                 return {false, 0.0};
             }

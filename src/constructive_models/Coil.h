@@ -48,6 +48,7 @@ class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
         CoilFunctionalDescription() = default;
         virtual ~CoilFunctionalDescription() = default;
 
+        Wire resolve_wire();
 };
 
 class Coil : public MAS::Coil {

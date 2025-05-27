@@ -123,6 +123,7 @@ enum class MagneticFilters : int {
 class MagneticFilterOperation {
     public:
     MagneticFilterOperation(MagneticFilters filter, bool invert, bool log, double weight) : filter(filter), invert(invert), log(log), weight(weight) {};
+    MagneticFilterOperation(MagneticFilters filter, bool invert, bool log, bool strictlyRequired, double weight) : filter(filter), invert(invert), log(log), strictlyRequired(strictlyRequired), weight(weight) {};
     MagneticFilterOperation() {};
     virtual ~MagneticFilterOperation() = default;
 
@@ -130,6 +131,7 @@ class MagneticFilterOperation {
     MagneticFilters filter = MagneticFilters::DIMENSIONS;
     bool invert = true;
     bool log = false;
+    bool strictlyRequired = false;
     double weight = 1;
 
     public:
@@ -142,6 +144,9 @@ class MagneticFilterOperation {
 
     bool get_log() const { return log; }
     void set_log(const bool & value) { this->log = value; }
+
+    bool get_strictly_required() const { return strictlyRequired; }
+    void set_strictly_required(const bool & value) { this->strictlyRequired = value; }
 
     double get_weight() const { return weight; }
     void set_weight(const double & value) { this->weight = value; }
@@ -208,6 +213,7 @@ inline void from_json(const json& j, MagneticFilterOperation& x) {
     x.set_filter(j.at("filter").get<MagneticFilters>());
     x.set_invert(j.at("invert").get<bool>());
     x.set_log(j.at("log").get<bool>());
+    x.set_strictly_required(j.at("strictlyRequired").get<bool>());
     x.set_weight(j.at("weight").get<double>());
 }
 
@@ -216,6 +222,7 @@ inline void to_json(json& j, const MagneticFilterOperation& x) {
     j["filter"] = x.get_filter();
     j["invert"] = x.get_invert();
     j["log"] = x.get_log();
+    j["strictlyRequired"] = x.get_strictly_required();
     j["weight"] = x.get_weight();
 }
 
