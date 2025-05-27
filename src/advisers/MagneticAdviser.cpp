@@ -18,24 +18,25 @@ void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
-    load_filter_flow(_defaultCustomMagneticFilterFlow);
-    std::map<MagneticFilters, double> weights;
-    for (auto filter : _defaultCustomMagneticFilterFlow) {
-        weights[filter.get_filter()] = 1.0;
+    std::vector<MagneticFilterOperation> customMagneticFilterFlow{
+        MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
+        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
+        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, 1.0),
     };
-
-    return get_advised_magnetic(inputs, weights, maximumNumberResults);
+    return get_advised_magnetic(inputs, customMagneticFilterFlow, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults) {
-
     std::vector<MagneticFilterOperation> customMagneticFilterFlow{
         MagneticFilterOperation(MagneticFilters::COST, true, true, weights[MagneticFilters::COST]),
         MagneticFilterOperation(MagneticFilters::LOSSES, true, true, weights[MagneticFilters::LOSSES]),
         MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, weights[MagneticFilters::DIMENSIONS]),
     };
-    load_filter_flow(customMagneticFilterFlow);
+    return get_advised_magnetic(inputs, customMagneticFilterFlow, maximumNumberResults);
+}
 
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
+    load_filter_flow(filterFlow);
     bool filterMode = bool(inputs.get_design_requirements().get_minimum_impedance());
     std::vector<Mas> masData;
 
@@ -56,19 +57,31 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     settings->set_coil_include_additional_coordinates(false);
 
     std::map<CoreAdviser::CoreAdviserFilters, double> coreWeights;
-    coreWeights[CoreAdviser::CoreAdviserFilters::COST] = weights[MagneticFilters::COST];
-    coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = weights[MagneticFilters::DIMENSIONS];
+    for (auto flowStep : filterFlow) {
+        if (flowStep.get_filter() == MagneticFilters::COST) {
+            coreWeights[CoreAdviser::CoreAdviserFilters::COST] = flowStep.get_weight();
+        }
+        if (flowStep.get_filter() == MagneticFilters::DIMENSIONS) {
+            coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = flowStep.get_weight();
+        }
+        if (flowStep.get_filter() == MagneticFilters::LOSSES) {
+            if (filterMode) {
+                coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = flowStep.get_weight();
+            }
+            else {
+                coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = flowStep.get_weight();
+            }
+        }
+    }
 
     if (filterMode) {
         coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
         coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 0;
-        coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = weights[MagneticFilters::LOSSES];
         coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
     }
     else {
         coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
         coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
-        coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = weights[MagneticFilters::LOSSES];
         coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 0;
     }
 
@@ -136,7 +149,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
 
-    auto masMagneticsWithScoring = score_magnetics(masData, weights);
+    auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
     sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
         return b1.second > b2.second;
@@ -151,7 +164,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, size_t maximumNumberResults, bool strict) {
-    load_filter_flow(_defaultCatalogMagneticFilterFlow);
+    return get_advised_magnetic(inputs, catalogMagnetics, _defaultCatalogMagneticFilterFlow, maximumNumberResults, strict);
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+    load_filter_flow(filterFlow);
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
@@ -245,13 +262,12 @@ void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* mas
     }
 }
 
-std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::map<MagneticFilters, double> weights) {
-    _weights = weights;
+std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow) {
     std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
     for (auto mas : masMagnetics) {
         masMagneticsWithScoring.push_back({mas, 0.0});
     }
-    for (auto filterConfiguration : _defaultCustomMagneticFilterFlow) {
+    for (auto filterConfiguration : filterFlow) {
         MagneticFilters filterEnum = filterConfiguration.get_filter();
         
         std::vector<double> scorings;
