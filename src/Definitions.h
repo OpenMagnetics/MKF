@@ -127,7 +127,7 @@ class MagneticFilterOperation {
     virtual ~MagneticFilterOperation() = default;
 
     private:
-    MagneticFilters filter;
+    MagneticFilters filter = MagneticFilters::DIMENSIONS;
     bool invert = true;
     bool log = false;
     double weight = 1;

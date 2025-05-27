@@ -128,8 +128,13 @@ namespace OpenMagnetics {
         coil.delimit_and_compact();
         coil.set_strict(true);
 
-        auto sections = coil.get_sections_description().value();
-        return sections;
+        if (coil.get_sections_description()) {
+            auto sections = coil.get_sections_description().value();
+            return sections;
+        }
+        else {
+            return {};
+        }
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
@@ -159,6 +164,9 @@ namespace OpenMagnetics {
         coil.wind_by_sections(sectionProportions, pattern, repetitions);
 
         auto sections = get_advised_sections(mas, pattern, repetitions);
+        if (sections.size() == 0) {
+            return {};
+        }
         coil.set_sections_description(sections);
 
         for (auto section : sections) {
