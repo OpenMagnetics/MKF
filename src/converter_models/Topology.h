@@ -16,94 +16,32 @@ public:
     ~Topology() = default;
 };
 
-class Flyback : public Topology {
+class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
+    double resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance = std::nullopt, std::optional<std::vector<double>> turnsRatios = std::nullopt, double efficiency = 0.85);
+    FlybackModes resolve_mode(std::optional<double> currentRippleRatio = std::nullopt);
+};
 
-    enum class Modes : int {
-        ContinuousConductionMode,
-        DiscontinuousConductionMode,
-        QuasiResonantMode,
-        BoundaryModeOperation,
-    };
 
-    class FlybackOperatingPoint {
-    private:
-        std::vector<double> outputVoltages;
-        std::vector<double> outputCurrents;
-        std::optional<double> switchingFrequency;
-        std::optional<Flyback::Modes> mode;
-        double ambientTemperature;
-
-    public:
-        FlybackOperatingPoint() = default;
-        ~FlybackOperatingPoint() = default;
-
-        const std::vector<double> & get_output_voltages() const { return outputVoltages; }
-        std::vector<double> & get_mutable_output_voltages() { return outputVoltages; }
-        void set_output_voltages(const std::vector<double> & value) { this->outputVoltages = value; }
-        
-        const std::vector<double> & get_output_currents() const { return outputCurrents; }
-        std::vector<double> & get_mutable_output_currents() { return outputCurrents; }
-        void set_output_currents(const std::vector<double> & value) { this->outputCurrents = value; }
-    
-        std::optional<double> get_switching_frequency() const { return switchingFrequency; }
-        void set_switching_frequency(std::optional<double> value) { this->switchingFrequency = value; }
-
-        std::optional<Flyback::Modes> get_mode() const { return mode; }
-        void set_mode(std::optional<Flyback::Modes> value) { this->mode = value; }
-    
-        const double & get_ambient_temperature() const { return ambientTemperature; }
-        double & get_mutable_ambient_temperature() { return ambientTemperature; }
-        void set_ambient_temperature(const double & value) { this->ambientTemperature = value; }
-
-        double resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance = std::nullopt, std::optional<std::vector<double>> turnsRatios = std::nullopt, double efficiency = 0.85);
-        Flyback::Modes resolve_mode(std::optional<double> currentRippleRatio = std::nullopt);
-    };
-
+class Flyback : public MAS::Flyback {
 private:
-
-    DimensionWithTolerance inputVoltage;
-    double diodeVoltageDrop;
     std::optional<double> maximumDrainSourceVoltage = 600;
+    std::vector<OpenMagnetics::FlybackOperatingPoint> operatingPoints;
     std::optional<double> maximumDutyCycle = 0.5;
-    double currentRippleRatio;
-    std::vector<FlybackOperatingPoint> operatingPoints;
     double efficiency = 1;
+
+public:
+    const std::vector<OpenMagnetics::FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
+    std::vector<OpenMagnetics::FlybackOperatingPoint> & get_mutable_operating_points() { return operatingPoints; }
+    void set_operating_points(const std::vector<OpenMagnetics::FlybackOperatingPoint> & value) { this->operatingPoints = value; }
+
 
 protected:
 public:
     bool _assertErrors = false;
 
-    Flyback() = default;
-    ~Flyback() = default;
-
     Flyback(const json& j);
-
-    const DimensionWithTolerance & get_input_voltage() const { return inputVoltage; }
-    DimensionWithTolerance & get_mutable_input_voltage() { return inputVoltage; }
-    void set_input_voltage(const DimensionWithTolerance & value) { this->inputVoltage = value; }
-    
-    const double & get_diode_voltage_drop() const { return diodeVoltageDrop; }
-    double & get_mutable_diode_voltage_drop() { return diodeVoltageDrop; }
-    void set_diode_voltage_drop(const double & value) { this->diodeVoltageDrop = value; }
-
-    std::optional<double> get_maximum_duty_cycle() const { return maximumDutyCycle; }
-    void set_maximum_duty_cycle(std::optional<double> value) { this->maximumDutyCycle = value; }
-
-    std::optional<double> get_maximum_drain_source_voltage() const { return maximumDrainSourceVoltage; }
-    void set_maximum_drain_source_voltage(std::optional<double> value) { this->maximumDrainSourceVoltage = value; }
-
-    const double & get_current_ripple_ratio() const { return currentRippleRatio; }
-    double & get_mutable_current_ripple_ratio() { return currentRippleRatio; }
-    void set_current_ripple_ratio(const double & value) { this->currentRippleRatio = value; }
-
-    const std::vector<FlybackOperatingPoint> & get_operating_points() const { return operatingPoints; }
-    std::vector<FlybackOperatingPoint> & get_mutable_operating_points() { return operatingPoints; }
-    void set_operating_points(const std::vector<FlybackOperatingPoint> & value) { this->operatingPoints = value; }
-    
-    const double & get_efficiency() const { return efficiency; }
-    double & get_mutable_efficiency() { return efficiency; }
-    void set_efficiency(const double & value) { this->efficiency = value; }
+    Flyback() {};
 
     bool run_checks(bool assert = false);
 
@@ -111,7 +49,7 @@ public:
     Inputs process();
     Inputs process(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
+    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
     static double get_total_input_power(double outputCurrent, double outputVoltage, double efficiency, double diodeVoltageDrop);
     static double get_minimum_output_reflected_voltage(double maximumDrainSourceVoltage, double maximumInputVoltage, double safetyMargin=0.85);
@@ -155,18 +93,18 @@ public:
 };
 
 
-void from_json(const json & j, Flyback::FlybackOperatingPoint & x);
-void to_json(json & j, const Flyback::FlybackOperatingPoint & x);
+void from_json(const json & j, FlybackOperatingPoint & x);
+void to_json(json & j, const FlybackOperatingPoint & x);
 
-inline void from_json(const json & j, Flyback::FlybackOperatingPoint& x) {
+inline void from_json(const json & j, FlybackOperatingPoint& x) {
     x.set_output_voltages(j.at("outputVoltages").get<std::vector<double>>());
     x.set_output_currents(j.at("outputCurrents").get<std::vector<double>>());
     x.set_switching_frequency(get_stack_optional<double>(j, "switchingFrequency"));
-    x.set_mode(get_stack_optional<Flyback::Modes>(j, "mode"));
+    x.set_mode(get_stack_optional<FlybackModes>(j, "mode"));
     x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
 }
 
-inline void to_json(json & j, const Flyback::FlybackOperatingPoint & x) {
+inline void to_json(json & j, const FlybackOperatingPoint & x) {
     j = json::object();
     j["outputVoltages"] = x.get_output_voltages();
     j["outputCurrents"] = x.get_output_currents();
@@ -184,7 +122,7 @@ inline void from_json(const json & j, Flyback& x) {
     x.set_maximum_drain_source_voltage(get_stack_optional<double>(j, "maximumDrainSourceVoltage"));
     x.set_maximum_duty_cycle(get_stack_optional<double>(j, "maximumDutyCycle"));
     x.set_current_ripple_ratio(j.at("currentRippleRatio").get<double>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<Flyback::FlybackOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<FlybackOperatingPoint>>());
     x.set_efficiency(j.at("efficiency").get<double>());
 }
 
@@ -209,7 +147,7 @@ inline void from_json(const json & j, AdvancedFlyback& x) {
     x.set_desired_dead_time(get_stack_optional<std::vector<double>>(j, "desiredDeadTime"));
     x.set_desired_duty_cycle(j.at("desiredDutyCycle").get<std::vector<std::vector<double>>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<AdvancedFlyback::FlybackOperatingPoint>>());
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<FlybackOperatingPoint>>());
     x.set_efficiency(j.at("efficiency").get<double>());
     x.set_current_ripple_ratio(std::numeric_limits<double>::quiet_NaN());
 }
