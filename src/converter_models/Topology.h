@@ -41,7 +41,11 @@ public:
     bool _assertErrors = false;
 
     Flyback(const json& j);
-    Flyback() {};
+    Flyback() {
+        maximumDrainSourceVoltage = 600;
+        maximumDutyCycle = 0.5;
+        efficiency = 1;
+    };
 
     bool run_checks(bool assert = false);
 

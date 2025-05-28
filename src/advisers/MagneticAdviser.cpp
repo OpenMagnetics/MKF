@@ -148,7 +148,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
-
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
     sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
