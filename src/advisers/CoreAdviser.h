@@ -131,7 +131,7 @@ class CoreAdviser {
             MagneticFilterEnergyStored _filter;
 
         public:
-            MagneticCoreFilterEnergyStored(std::map<std::string, std::string> models);
+            MagneticCoreFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models);
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     

@@ -48,10 +48,12 @@ class MagneticFilterEnergyStored : public MagneticFilter {
     private:
         std::map<std::string, std::string> _models;
         MagneticEnergy _magneticEnergy;
+        double _requiredMagneticEnergy;
 
     public:
         MagneticFilterEnergyStored() {};
-        MagneticFilterEnergyStored(std::map<std::string, std::string> models);
+        MagneticFilterEnergyStored(Inputs inputs);
+        MagneticFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
