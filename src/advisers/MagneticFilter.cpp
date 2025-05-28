@@ -19,7 +19,10 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             }
             return std::make_shared<MagneticFilterAreaProduct>(inputs.value());
         case MagneticFilters::ENERGY_STORED:
-            return std::make_shared<MagneticFilterEnergyStored>();
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter ENERGY_STORED");
+            }
+            return std::make_shared<MagneticFilterEnergyStored>(inputs.value());
         case MagneticFilters::ESTIMATED_COST:
             if (!inputs) {
                 throw std::runtime_error("Inputs needed for filter ESTIMATED_COST");
@@ -228,25 +231,27 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
     return {valid, scoring};
 }
 
-MagneticFilterEnergyStored::MagneticFilterEnergyStored(std::map<std::string, std::string> models) {
+MagneticFilterEnergyStored::MagneticFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models) {
     _models = models;
     _magneticEnergy = MagneticEnergy(models);
+    _requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(inputs));
+}
+
+MagneticFilterEnergyStored::MagneticFilterEnergyStored(Inputs inputs) {
+    _requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(inputs));
 }
 
 std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
-    double requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(*inputs));
     MagnetizingInductanceOutput magnetizingInductanceOutput;
-
-
     bool valid = true;
     double totalStorableMagneticEnergy = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
         totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic->get_core(), operatingPoint));
 
-        if (totalStorableMagneticEnergy >= requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
+        if (totalStorableMagneticEnergy >= _requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
             // magnetizingInductanceOutput.set_maximum_magnetic_energy_core(totalStorableMagneticEnergy);
             // magnetizingInductanceOutput.set_method_used(_models["gapReluctance"]);
             // magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);

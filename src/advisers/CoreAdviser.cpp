@@ -120,8 +120,8 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterAreaProd
     return filteredMagneticsWithScoring;
 }
 
-CoreAdviser::MagneticCoreFilterEnergyStored::MagneticCoreFilterEnergyStored(std::map<std::string, std::string> models) {
-    _filter = MagneticFilterEnergyStored(models);
+CoreAdviser::MagneticCoreFilterEnergyStored::MagneticCoreFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models) {
+    _filter = MagneticFilterEnergyStored(inputs, models);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterEnergyStored::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -769,7 +769,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::apply_filters(std::vector<std::
     }
 
     MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
-    MagneticCoreFilterEnergyStored filterEnergyStored(_models);
+    MagneticCoreFilterEnergyStored filterEnergyStored(inputs, _models);
     MagneticCoreFilterCost filterCost(inputs);
     MagneticCoreFilterLosses filterLosses(inputs, _models);
     MagneticCoreFilterDimensions filterDimensions;
