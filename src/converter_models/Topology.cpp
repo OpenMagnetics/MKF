@@ -39,7 +39,7 @@ namespace OpenMagnetics {
     }
 
 
-    Flyback::Modes Flyback::FlybackOperatingPoint::resolve_mode(std::optional<double> currentRippleRatio) {
+    FlybackModes FlybackOperatingPoint::resolve_mode(std::optional<double> currentRippleRatio) {
         if (get_mode()) {
             return get_mode().value();
         }
@@ -47,11 +47,11 @@ namespace OpenMagnetics {
             if (!currentRippleRatio) {
                 throw std::runtime_error("Either current ripple ratio or mode is needed for the Flyback OperatingPoint Mode");
             }
-            auto mode = currentRippleRatio.value() < 1? Flyback::Modes::ContinuousConductionMode : Flyback::Modes::DiscontinuousConductionMode;
+            auto mode = currentRippleRatio.value() < 1? FlybackModes::CONTINUOUS_CONDUCTION_MODE : FlybackModes::DISCONTINUOUS_CONDUCTION_MODE;
             return mode;
         }
     }
-    double Flyback::FlybackOperatingPoint::resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance, std::optional<std::vector<double>> turnsRatios, double efficiency) {
+    double FlybackOperatingPoint::resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance, std::optional<std::vector<double>> turnsRatios, double efficiency) {
         if (get_switching_frequency()) {
             return get_switching_frequency().value();
         }
@@ -61,13 +61,13 @@ namespace OpenMagnetics {
             }
             auto mode = get_mode().value();
             switch (mode) {
-                case Flyback::Modes::ContinuousConductionMode: {
+                case FlybackModes::CONTINUOUS_CONDUCTION_MODE: {
                     throw std::runtime_error("Switching Frequency is needed for CCM");
                 }
-                case Flyback::Modes::DiscontinuousConductionMode: {
+                case FlybackModes::DISCONTINUOUS_CONDUCTION_MODE: {
                     throw std::runtime_error("Switching Frequency is needed for DCM");
                 }
-                case Flyback::Modes::QuasiResonantMode: {
+                case FlybackModes::QUASI_RESONANT_MODE: {
                     if (!inductance) {
                         throw std::runtime_error("Inductance in missing for switching frequency calculation");
                     }
@@ -82,12 +82,12 @@ namespace OpenMagnetics {
                         totalOutputVoltageReflectedPrimaryMinusDiode += outputVoltage * turnsRatio;
                     }
                     
-                    double totalOutputPower = get_total_input_power(get_output_currents(), get_output_voltages(), 1, 0);
+                    double totalOutputPower = Flyback::get_total_input_power(get_output_currents(), get_output_voltages(), 1, 0);
 
                     double switchingFrequency = calculate_QRM_frequency(inductance.value(), totalOutputPower, totalOutputVoltageReflectedPrimaryMinusDiode / turnsRatios.value()[0], inputVoltage, turnsRatios.value()[0], diodeVoltageDrop, efficiency);
                     return switchingFrequency;
                 }
-                case Flyback::Modes::BoundaryModeOperation: {
+                case FlybackModes::BOUNDARY_MODE_OPERATION: {
                     if (!inductance) {
                         throw std::runtime_error("Inductance in missing for switching frequency calculation");
                     }
@@ -115,7 +115,7 @@ namespace OpenMagnetics {
         }
     }
 
-    OperatingPoint Flyback::processOperatingPointsForInputVoltage(double inputVoltage, Flyback::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<Flyback::Modes> customMode, std::optional<double> customDutyCycle, std::optional<double> customDeadTime) {
+    OperatingPoint Flyback::processOperatingPointsForInputVoltage(double inputVoltage, FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode, std::optional<double> customDutyCycle, std::optional<double> customDeadTime) {
 
         OperatingPoint operatingPoint;
         double switchingFrequency = outputOperatingPoint.resolve_switching_frequency(inputVoltage, get_diode_voltage_drop(), inductance, turnsRatios, get_efficiency());
@@ -168,16 +168,16 @@ namespace OpenMagnetics {
         double primaryCurrentOffset = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
         primaryCurrentOffset = std::max(0.0, primaryCurrentOffset);
 
-        Flyback::Modes mode;
+        FlybackModes mode;
         if (customMode) {
             mode = customMode.value();
         }
         else {
             if (primaryCurrentOffset > 0) {
-                mode = Flyback::Modes::ContinuousConductionMode;
+                mode = FlybackModes::CONTINUOUS_CONDUCTION_MODE;
             }
             else {
-                mode = Flyback::Modes::DiscontinuousConductionMode;
+                mode = FlybackModes::DISCONTINUOUS_CONDUCTION_MODE;
             }
         }
 
@@ -203,14 +203,14 @@ namespace OpenMagnetics {
             voltageProcessed.set_offset(0);
             voltageProcessed.set_dead_time(deadTime);
             switch (mode) {
-                case Flyback::Modes::ContinuousConductionMode: {
+                case FlybackModes::CONTINUOUS_CONDUCTION_MODE: {
                     voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
                     break;
                 }
-                case Flyback::Modes::QuasiResonantMode:
-                case Flyback::Modes::BoundaryModeOperation:
-                case Flyback::Modes::DiscontinuousConductionMode: {
+                case FlybackModes::QUASI_RESONANT_MODE:
+                case FlybackModes::BOUNDARY_MODE_OPERATION:
+                case FlybackModes::DISCONTINUOUS_CONDUCTION_MODE: {
                     voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     voltageProcessed.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
                     break;
@@ -273,16 +273,16 @@ namespace OpenMagnetics {
             voltageProcessed.set_dead_time(deadTime);
 
             switch (mode) {
-                case Flyback::Modes::ContinuousConductionMode: {
+                case FlybackModes::CONTINUOUS_CONDUCTION_MODE: {
                     voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     voltageProcessed.set_label(WaveformLabel::SECONDARY_RECTANGULAR);
                     currentProcessed.set_label(WaveformLabel::FLYBACK_SECONDARY);
                     break;
                 }
-                case Flyback::Modes::QuasiResonantMode:
-                case Flyback::Modes::BoundaryModeOperation:
-                case Flyback::Modes::DiscontinuousConductionMode: {
+                case FlybackModes::QUASI_RESONANT_MODE:
+                case FlybackModes::BOUNDARY_MODE_OPERATION:
+                case FlybackModes::DISCONTINUOUS_CONDUCTION_MODE: {
                     voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, secondaryVoltagePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
                     currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME, secondaryCurrentPeaktoPeak, switchingFrequency, dutyCycle, secondaryCurrentOffset, deadTime);
                     voltageProcessed.set_label(WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME);

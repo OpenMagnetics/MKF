@@ -39,7 +39,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -101,7 +101,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -163,7 +163,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -225,7 +225,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -287,7 +287,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -343,7 +343,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -393,7 +393,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -456,7 +456,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        AdvancedFlyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::AdvancedFlyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -510,7 +510,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        AdvancedFlyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::AdvancedFlyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -558,11 +558,11 @@ SUITE(Topology) {
             json flybackOperatingPointJson;
             flybackOperatingPointJson["outputVoltages"] = {5, 12};
             flybackOperatingPointJson["outputCurrents"] = {10, 2};
-            flybackOperatingPointJson["mode"] = Flyback::Modes::BoundaryModeOperation;
+            flybackOperatingPointJson["mode"] = MAS::FlybackModes::BOUNDARY_MODE_OPERATION;
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         std::vector<int64_t> numberTurns = {80, 8, 6};
@@ -663,11 +663,11 @@ SUITE(Topology) {
             json flybackOperatingPointJson;
             flybackOperatingPointJson["outputVoltages"] = {5, 12};
             flybackOperatingPointJson["outputCurrents"] = {10, 2};
-            flybackOperatingPointJson["mode"] = Flyback::Modes::QuasiResonantMode;
+            flybackOperatingPointJson["mode"] = MAS::FlybackModes::QUASI_RESONANT_MODE;
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         std::vector<int64_t> numberTurns = {80, 8, 6};
@@ -773,7 +773,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        AdvancedFlyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::AdvancedFlyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();
@@ -824,7 +824,7 @@ SUITE(Topology) {
             flybackOperatingPointJson["ambientTemperature"] = 42;
             flybackInputsJson["operatingPoints"].push_back(flybackOperatingPointJson);
         }
-        Flyback flybackInputs(flybackInputsJson);
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
         flybackInputs._assertErrors = true;
 
         auto inputs = flybackInputs.process();

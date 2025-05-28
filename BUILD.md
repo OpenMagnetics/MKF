@@ -66,6 +66,9 @@ quicktype -l C# -s schema ../MAS/schemas/MAS.json -S ../MAS/schemas/magnetic.jso
 
 quicktype -l TypeScript -s schema ../MAS/schemas/MAS.json -S ../MAS/schemas/magnetic.json -S ../MAS/schemas/magnetic/core.json -S ../MAS/schemas/magnetic/coil.json -S ../MAS/schemas/utils.json -S ../MAS/schemas/magnetic/core/gap.json -S ../MAS/schemas/magnetic/core/shape.json -S ../MAS/schemas/magnetic/core/material.json -S ../MAS/schemas/magnetic/insulation/material.json -S ../MAS/schemas/magnetic/insulation/wireCoating.json -S ../MAS/schemas/magnetic/bobbin.json -S ../MAS/schemas/magnetic/core/piece.json -S ../MAS/schemas/magnetic/core/spacer.json -S ../MAS/schemas/magnetic/wire/basicWire.json -S ../MAS/schemas/magnetic/wire/round.json -S ../MAS/schemas/magnetic/wire/rectangular.json -S ../MAS/schemas/magnetic/wire/foil.json -S ../MAS/schemas/magnetic/wire/planar.json -S ../MAS/schemas/magnetic/wire/litz.json -S ../MAS/schemas/magnetic/wire/material.json -S ../MAS/schemas/magnetic/wire.json -S ../MAS/schemas/utils.json -S ../MAS/schemas/magnetic/insulation/wireCoating.json -S ../MAS/schemas/magnetic/insulation/material.json -S ../MAS/schemas/inputs.json -S ../MAS/schemas/inputs/designRequirements.json -S ../MAS/schemas/inputs/operatingPoint.json -S ../MAS/schemas/inputs/operatingConditions.json -S ../MAS/schemas/inputs/operatingPointExcitation.json -S ../MAS/schemas/outputs.json -S ../MAS/schemas/outputs/coreLossesOutput.json -o MAS/MAS.ts --nice-property-names --acronym-style camel --converters all-objects --prefer-types
 
+quicktype -l c++ -s schema ../schemas/flyback.json -S ../MAS/schemas/utils.json -o MAS/Flyback.hpp --namespace OpenMagnetics::Topologies --source-style single-source --type-style pascal-
+case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
+
 
 valgrind --tool=callgrind ./MKF_tests [test]
 kcachegrind
