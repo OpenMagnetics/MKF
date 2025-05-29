@@ -15,21 +15,30 @@ void clear_magnetic_cache() {
 }
 
 std::vector<std::string> get_magnetic_cache_references() {
-    auto filteredReferences = magneticsCache | std::views::keys
-                                             | std::ranges::to<std::vector>();
+    std::vector<std::string> filteredReferences;
+    for (auto [reference, magnetic] : magneticsCache) {
+        filteredReferences.push_back(reference);
+    }
+
     return filteredReferences;
 }
 
 std::vector<OpenMagnetics::Magnetic> get_magnetics_from_cache(std::optional<std::vector<std::string>> references) {
+    std::vector<OpenMagnetics::Magnetic> filteredMagnetics;
     if (references) {
-        return magneticsCache | std::views::filter([references](auto&& p) { return std::find(references.value().begin(), references.value().end(), p.first) != references.value().end();})
-                              | std::views::values
-                              | std::ranges::to<std::vector>();
+        for (auto [reference, magnetic] : magneticsCache) {
+            auto referencesAux = references.value();
+            if (std::find(referencesAux.begin(), referencesAux.end(), reference) != referencesAux.end()) {
+                filteredMagnetics.push_back(magnetic);
+            }
+        }
     }
     else {
-        return magneticsCache | std::views::values
-                              | std::ranges::to<std::vector>();
+        for (auto [reference, magnetic] : magneticsCache) {
+            filteredMagnetics.push_back(magnetic);
+        }
     }
+    return filteredMagnetics;
 }
 
 void load_magnetic_in_cache(std::string reference, OpenMagnetics::Magnetic magnetic) {
@@ -89,9 +98,13 @@ void compute_energy_cache(double temperature, std::optional<double> frequency) {
 }
 
 std::vector<std::string> filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy) {
-    auto filteredReferences = magneticEnergyCache | std::views::filter([minimumEnergy, maximumEnergy](auto&& p) { return maximumEnergy? p.second >= minimumEnergy && p.second <= maximumEnergy.value() : p.second >= minimumEnergy; })
-                                                  | std::views::keys
-                                                  | std::ranges::to<std::vector>();
+    std::vector<std::string> filteredReferences;
+    for (auto [reference, energy] : magneticEnergyCache) {
+        if (maximumEnergy? energy >= minimumEnergy && energy <= maximumEnergy.value() : energy >= minimumEnergy) {
+            filteredReferences.push_back(reference);
+        }
+    }
+
     return filteredReferences;
 }
 
