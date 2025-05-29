@@ -1605,6 +1605,7 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
             auto excitation = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
 
             auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            magnetizingCurrent = standardize_signal_descriptor(magnetizingCurrent, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
 
             if (excitation.get_voltage()) {
                 if (excitation.get_voltage().value().get_processed()) {
