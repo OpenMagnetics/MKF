@@ -158,8 +158,8 @@ double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
-Mas mas_autocomplete(Mas mas, bool simulate = true);
-Magnetic magnetic_autocomplete(Magnetic magnetic);
+Mas mas_autocomplete(Mas mas, bool simulate = true, json configuration = {});
+Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration = {});
 
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, double weight, bool invert, bool log);

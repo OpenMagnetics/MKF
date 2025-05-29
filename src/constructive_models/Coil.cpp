@@ -961,7 +961,7 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
             double remainingSlots = slots - slotIndex;
             double remainingTurnsBeforeThisParallel = numberTurns * remainingParallelsProportion[parallelIndex];
-            double numberTurnsToAddToCurrentParallel = ceil(remainingTurnsBeforeThisParallel / remainingSlots * slotRelativeProportion);
+            double numberTurnsToAddToCurrentParallel = ceil(roundFloat(remainingTurnsBeforeThisParallel / remainingSlots * slotRelativeProportion, 10));
             // double numberTurnsToAddToCurrentParallel = ceil(numberTurns * totalParallelsProportion[parallelIndex] / slots);
             double remainingTurnsAfterThisParallel = remainingTurnsBeforeThisParallel - numberTurnsToAddToCurrentParallel;
             double remainingSlotsAfterThisOne = remainingSlots - 1;
@@ -5178,6 +5178,18 @@ std::pair<std::vector<size_t>, size_t> Coil::check_pattern_and_repetitions_integ
     }
     return {pattern, repetitions};
 }
+
+bool Coil::is_edge_wound_coil() {
+    auto wires = get_wires();
+    for (auto wire : wires) {
+        if (wire.get_type() != WireType::RECTANGULAR) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 
 } // namespace OpenMagnetics
  

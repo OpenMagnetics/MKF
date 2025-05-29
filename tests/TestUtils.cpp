@@ -1,3 +1,4 @@
+#include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include "json.hpp"
@@ -525,6 +526,145 @@ SUITE(Utils) {
         CHECK(autocompletedMagnetic.get_coil().get_sections_description());
         CHECK(autocompletedMagnetic.get_coil().get_layers_description());
         CHECK(autocompletedMagnetic.get_coil().get_turns_description());
+
+    }
+
+    TEST(Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound) {
+        auto settings = Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(false);
+        auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
+        OpenMagnetics::Coil coil;
+        {
+            OpenMagnetics::CoilFunctionalDescription winding;
+            winding.set_name("");
+            winding.set_number_turns(12);
+            winding.set_number_parallels(1);
+            OpenMagnetics::Wire wire;
+            wire.set_nominal_value_conducting_width(0.0048);
+            wire.set_nominal_value_conducting_height(0.00076);
+            wire.set_nominal_value_outer_width(0.0049);
+            wire.set_nominal_value_outer_height(0.0007676);
+            wire.set_number_conductors(1);
+            wire.set_material("copper");
+            wire.set_type(WireType::RECTANGULAR);
+            winding.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(winding);
+        }
+        {
+            OpenMagnetics::CoilFunctionalDescription winding;
+            winding.set_name("");
+            winding.set_number_turns(1);
+            winding.set_number_parallels(12);
+            OpenMagnetics::Wire wire;
+            wire.set_nominal_value_conducting_width(0.0038);
+            wire.set_nominal_value_conducting_height(0.00076);
+            wire.set_nominal_value_outer_width(0.0039);
+            wire.set_nominal_value_outer_height(0.0007676);
+            wire.set_number_conductors(1);
+            wire.set_material("copper");
+            wire.set_type(WireType::RECTANGULAR);
+            winding.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(winding);
+        }
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto autocompletedMagnetic = magnetic_autocomplete(magnetic);
+
+        CHECK(autocompletedMagnetic.get_core().get_geometrical_description());
+        CHECK(autocompletedMagnetic.get_core().get_processed_description());
+        CHECK(std::holds_alternative<CoreShape>(autocompletedMagnetic.get_core().get_functional_description().get_shape()));
+        CHECK(std::holds_alternative<CoreMaterial>(autocompletedMagnetic.get_core().get_functional_description().get_material()));
+        CHECK(std::holds_alternative<OpenMagnetics::Bobbin>(autocompletedMagnetic.get_coil().get_bobbin()));
+        CHECK(autocompletedMagnetic.get_mutable_coil().resolve_bobbin().get_processed_description());
+        CHECK(autocompletedMagnetic.get_coil().get_sections_description());
+        CHECK(autocompletedMagnetic.get_coil().get_layers_description());
+        CHECK(autocompletedMagnetic.get_coil().get_turns_description());
+
+
+        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outFile = outputFilePath;
+        outFile.append("Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+
+        painter.paint_core(autocompletedMagnetic);
+        painter.paint_coil_turns(autocompletedMagnetic);
+        painter.export_svg();
+
+    }
+
+    TEST(Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound_Configured) {
+        auto settings = Settings::GetInstance();
+        settings->set_use_only_cores_in_stock(false);
+        auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
+        OpenMagnetics::Coil coil;
+        {
+            OpenMagnetics::CoilFunctionalDescription winding;
+            winding.set_name("");
+            winding.set_number_turns(12);
+            winding.set_number_parallels(1);
+            OpenMagnetics::Wire wire;
+            wire.set_nominal_value_conducting_width(0.0048);
+            wire.set_nominal_value_conducting_height(0.00056);
+            wire.set_nominal_value_outer_width(0.0049);
+            wire.set_nominal_value_outer_height(0.0005676);
+            wire.set_number_conductors(1);
+            wire.set_material("copper");
+            wire.set_type(WireType::RECTANGULAR);
+            winding.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(winding);
+        }
+        {
+            OpenMagnetics::CoilFunctionalDescription winding;
+            winding.set_name("");
+            winding.set_number_turns(1);
+            winding.set_number_parallels(12);
+            OpenMagnetics::Wire wire;
+            wire.set_nominal_value_conducting_width(0.0038);
+            wire.set_nominal_value_conducting_height(0.00056);
+            wire.set_nominal_value_outer_width(0.0039);
+            wire.set_nominal_value_outer_height(0.0005676);
+            wire.set_number_conductors(1);
+            wire.set_material("copper");
+            wire.set_type(WireType::RECTANGULAR);
+            winding.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(winding);
+        }
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        json configuration;
+
+        configuration["windingOrientation"] = "contiguous";
+        configuration["sectionAlignment"] = "spread";
+        configuration["interleavingPattern"] = std::vector<size_t>{0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+        configuration["turnsAlignment"] = "spread";
+
+        auto autocompletedMagnetic = magnetic_autocomplete(magnetic, configuration);
+
+        CHECK(autocompletedMagnetic.get_core().get_geometrical_description());
+        CHECK(autocompletedMagnetic.get_core().get_processed_description());
+        CHECK(std::holds_alternative<CoreShape>(autocompletedMagnetic.get_core().get_functional_description().get_shape()));
+        CHECK(std::holds_alternative<CoreMaterial>(autocompletedMagnetic.get_core().get_functional_description().get_material()));
+        CHECK(std::holds_alternative<OpenMagnetics::Bobbin>(autocompletedMagnetic.get_coil().get_bobbin()));
+        CHECK(autocompletedMagnetic.get_mutable_coil().resolve_bobbin().get_processed_description());
+        CHECK(autocompletedMagnetic.get_coil().get_sections_description());
+        CHECK(autocompletedMagnetic.get_coil().get_layers_description());
+        CHECK(autocompletedMagnetic.get_coil().get_turns_description());
+
+
+        auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+        auto outFile = outputFilePath;
+        outFile.append("Test_Mas_Autocomplete_Only_Magnetic_Edge_Wound_Configured.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+
+        painter.paint_core(autocompletedMagnetic);
+        painter.paint_coil_turns(autocompletedMagnetic);
+        painter.export_svg();
 
     }
 

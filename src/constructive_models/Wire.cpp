@@ -1490,6 +1490,9 @@ namespace OpenMagnetics {
     InsulationMaterial Wire::resolve_coating_insulation_material(Wire wire) {
         auto coating = resolve_coating(wire);
 
+        if (!coating) {
+            throw std::runtime_error("Coating is missing");
+        }
         if (!coating->get_material())
         {
             if (coating->get_type().value() == InsulationWireCoatingType::ENAMELLED) {

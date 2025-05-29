@@ -288,6 +288,8 @@ class Coil : public MAS::Coil {
         static std::vector<size_t> get_repetitions(Inputs& inputs, CoreType coreType);
         std::pair<std::vector<size_t>, size_t> check_pattern_and_repetitions_integrity(std::vector<size_t> pattern, size_t repetitions);
 
+        bool is_edge_wound_coil();
+
 };
 }
 namespace OpenMagnetics {
