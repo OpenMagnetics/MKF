@@ -1535,7 +1535,7 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
     return excitationOfThisWinding;
 }
 
-Mas mas_autocomplete(Mas mas, bool simulate) {
+Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
     //Inputs
     size_t numberWindings = mas.get_inputs().get_design_requirements().get_turns_ratios().size() + 1;
@@ -1593,7 +1593,7 @@ Mas mas_autocomplete(Mas mas, bool simulate) {
         }
     }
 
-    auto magnetic = magnetic_autocomplete(mas.get_magnetic());
+    auto magnetic = magnetic_autocomplete(mas.get_magnetic(), configuration);
     mas.set_magnetic(magnetic);
 
     // Magnetizing current
@@ -1633,7 +1633,7 @@ Mas mas_autocomplete(Mas mas, bool simulate) {
     return mas;
 }
 
-Magnetic magnetic_autocomplete(Magnetic magnetic) {
+Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
     // Core
     auto shape = magnetic.get_mutable_core().resolve_shape();
 
@@ -1713,6 +1713,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic) {
             }
         }
 
+        wire.set_coating(insulationWireCoating);
         auto insulationWireCoatingMaterial = wire.resolve_coating_insulation_material();
         insulationWireCoating.set_material(insulationWireCoatingMaterial);
         wire.set_coating(insulationWireCoating);
@@ -1725,7 +1726,19 @@ Magnetic magnetic_autocomplete(Magnetic magnetic) {
         magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
     }
 
-    Bobbin bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    Bobbin bobbin;
+
+    if (std::holds_alternative<std::string>(magnetic.get_mutable_coil().get_bobbin())) {
+        if (std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "Basic") {
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
+        }
+        else if (std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "Dummy" || std::get<std::string>(magnetic.get_mutable_coil().get_bobbin()) == "None") {
+            bobbin = Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
+        }
+        else {
+            bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+        }
+    }
 
     if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
         if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && magnetic.get_wire(0).get_type() != WireType::RECTANGULAR && magnetic.get_wire(0).get_type() != WireType::PLANAR) {
@@ -1738,26 +1751,80 @@ Magnetic magnetic_autocomplete(Magnetic magnetic) {
     }
 
     if (!bobbin.get_processed_description()->get_mutable_winding_windows()[0].get_sections_orientation()) {
-        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::CENTERED);
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
+        auto processedDescription = bobbin.get_processed_description().value();
+        if (configuration.contains("windingOrientation")) {
+            WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+            to_json(configuration["windingOrientation"], windingOrientation);
+            processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(windingOrientation);
         }
         else {
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
-            bobbin.get_processed_description()->get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+            if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+                if (magnetic.get_mutable_coil().is_edge_wound_coil()) {
+                    processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+                }
+                else {
+                    processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::OVERLAPPING);
+                }
+            }
+            else {
+                processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(WindingOrientation::CONTIGUOUS);
+            }
         }
+
+        if (configuration.contains("sectionAlignment")) {
+            CoilAlignment coilAlignment = CoilAlignment::SPREAD;
+            to_json(configuration["sectionAlignment"], coilAlignment);
+            processedDescription.get_mutable_winding_windows()[0].set_sections_alignment(coilAlignment);
+        }
+        else {
+            if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+                if (magnetic.get_mutable_coil().is_edge_wound_coil()) {
+                    processedDescription.get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
+                }
+                else {
+                    processedDescription.get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::CENTERED);
+                }
+            }
+            else {
+                processedDescription.get_mutable_winding_windows()[0].set_sections_alignment(CoilAlignment::SPREAD);
+            }
+        }
+
+        bobbin.set_processed_description(processedDescription);
     }
     magnetic.get_mutable_coil().set_bobbin(bobbin);
 
     if (!magnetic.get_mutable_coil().get_turns_description()) {
-        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
+        if (configuration.contains("interleavingLevel")) {
+            uint8_t interleavingLevel = configuration["interleavingLevel"];
+            magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
+        }
+        if (configuration.contains("layersOrientation")) {
+            WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
+            to_json(configuration["layersOrientation"], layersOrientation);
+            magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+        }
+        if (configuration.contains("turnsAlignment")) {
+            CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+            to_json(configuration["turnsAlignment"], turnsAlignment);
+            magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
         }
         else {
-            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
+            if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+                magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
+            }
+            else {
+                magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
+            }
         }
 
-        magnetic.get_mutable_coil().wind();
+        if (configuration.contains("interleavingPattern")) {
+            std::vector<size_t> pattern = configuration["interleavingPattern"];
+            magnetic.get_mutable_coil().wind(pattern);
+        }
+        else {
+            magnetic.get_mutable_coil().wind();
+        }
     }
 
     if (magnetic.get_mutable_coil().get_layers_description()) {
