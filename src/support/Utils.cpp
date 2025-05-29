@@ -1599,13 +1599,13 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
     // Magnetizing current
 
     MagnetizingInductance magnetizingInductanceObj;
-    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
-            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_mutable_magnetic().get_mutable_core(), mas.get_mutable_magnetic().get_mutable_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
-            auto excitation = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex];
+            auto operatingPoint = mas.get_inputs().get_operating_points()[operatingPointIndex];
+            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+            auto excitation = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
 
             auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
-            magnetizingCurrent = standardize_signal_descriptor(magnetizingCurrent, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
 
             if (excitation.get_voltage()) {
                 if (excitation.get_voltage().value().get_processed()) {
@@ -1629,6 +1629,20 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
     if (simulate) {
         // Outputs
         mas = MagneticSimulator().simulate(mas.get_inputs(), mas.get_magnetic());
+    }
+
+
+    // Because Simulation may remove some processed data, and we are in no rush here
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
+        double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
+        mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+            auto excitation = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            auto processed = Inputs::calculate_processed_data(magnetizingCurrent.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency(), true);
+            magnetizingCurrent.set_processed(processed);
+            mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
+        }
     }
 
     return mas;
