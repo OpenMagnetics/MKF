@@ -1538,8 +1538,8 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
     auto magnetic = magnetic_autocomplete(mas.get_magnetic(), configuration);
-    auto inputs = inputs_autocomplete(mas.get_inputs(), mas.get_magnetic(), configuration);
     mas.set_magnetic(magnetic);
+    auto inputs = inputs_autocomplete(mas.get_inputs(), mas.get_magnetic(), configuration);
     mas.set_inputs(inputs);
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
