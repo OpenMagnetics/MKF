@@ -801,7 +801,6 @@ SUITE(Topology) {
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
     }
 
-
     TEST(Test_Flyback_Bug_Web1) {
         json flybackInputsJson;
         json inputVoltage;
