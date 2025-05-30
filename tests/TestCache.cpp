@@ -18,7 +18,7 @@ SUITE(Cache) {
         auto magnetic = mas.get_magnetic();
 
         magneticsCache.load_magnetic("A", magnetic);
-        CHECK(magneticsCache.get_cache_size() == 1);
+        CHECK(magneticsCache.get_size() == 1);
         CHECK(magneticsCache.get_energy_cache_size() == 0);
     }
 
@@ -37,7 +37,7 @@ SUITE(Cache) {
             auto magnetic = mas.get_magnetic();
             magneticsCache.load_magnetic("A with different gap", magnetic);
         }
-        CHECK(magneticsCache.get_cache_size() == 2);
+        CHECK(magneticsCache.get_size() == 2);
 
         magneticsCache.autocomplete_magnetics();
 

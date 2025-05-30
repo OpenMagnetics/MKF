@@ -14,7 +14,7 @@ public:
     Cache() = default;
     ~Cache() = default;
 	void clear_cache();
-	size_t get_cache_size();
+	size_t get_size();
 	size_t get_energy_cache_size();
 	std::vector<std::string> get_references();
 	std::vector<OpenMagnetics::Magnetic> get_magnetics(std::optional<std::vector<std::string>> references);

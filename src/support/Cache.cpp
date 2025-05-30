@@ -11,7 +11,7 @@ void Cache::clear_cache() {
     _magneticEnergyCache.clear();
 }
 
-size_t Cache::get_cache_size(){
+size_t Cache::get_size(){
     return _magneticsCache.size();
 }
 size_t Cache::get_energy_cache_size(){
