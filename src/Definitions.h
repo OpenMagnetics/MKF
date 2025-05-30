@@ -226,5 +226,52 @@ inline void to_json(json& j, const MagneticFilterOperation& x) {
     j["weight"] = x.get_weight();
 }
 
+double resolve_dimensional_values(MAS::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
+inline double resolve_dimensional_values(MAS::Dimension dimensionValue, DimensionalValues preferredValue) {
+    double doubleValue = 0;
+    if (std::holds_alternative<MAS::DimensionWithTolerance>(dimensionValue)) {
+        switch (preferredValue) {
+            case DimensionalValues::MAXIMUM:
+                if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case DimensionalValues::NOMINAL:
+                if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
+                         std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue =
+                        (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().value() +
+                         std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
+                        2;
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                break;
+            case DimensionalValues::MINIMUM:
+                if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_minimum().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_nominal().value();
+                else if (std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
+                    doubleValue = std::get<MAS::DimensionWithTolerance>(dimensionValue).get_maximum().value();
+                break;
+            default:
+                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
+        }
+    }
+    else if (std::holds_alternative<double>(dimensionValue)) {
+        doubleValue = std::get<double>(dimensionValue);
+    }
+    else {
+        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
+    }
+    return doubleValue;
+}
 
 }

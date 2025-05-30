@@ -47,6 +47,12 @@ class Mas : public MAS::Mas {
 };
 
 
+bool operator==(Mas lhs, Mas rhs);
+
+inline bool operator==(Mas lhs, Mas rhs) {
+    return lhs.get_magnetic() == rhs.get_magnetic() && lhs.get_inputs() == rhs.get_inputs();
+}
+
 void from_json(const json & j, Mas & x);
 void to_json(json & j, const Mas & x);
 void to_file(std::filesystem::path filepath, const Mas & x);
