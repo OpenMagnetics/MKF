@@ -11,6 +11,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "Definitions.h"
 using json = nlohmann::json;
 
 using namespace MAS;
@@ -193,6 +194,26 @@ inline void to_file(std::filesystem::path filepath, const Inputs & x) {
     std::ofstream myfile;
     myfile.open(filepath);
     myfile << masJson;
+}
+
+
+bool operator==(Inputs lhs, Inputs rhs);
+
+inline bool operator==(Inputs lhs, Inputs rhs) {
+    // TODO: Add more comparisond
+    bool isEqual = resolve_dimensional_values(lhs.get_design_requirements().get_magnetizing_inductance()) == resolve_dimensional_values(rhs.get_design_requirements().get_magnetizing_inductance()) &&
+                   lhs.get_operating_points().size() == rhs.get_operating_points().size();
+
+    if (isEqual) {
+        for (size_t i = 0; i < lhs.get_design_requirements().get_turns_ratios().size(); ++i) {
+            isEqual &= resolve_dimensional_values(lhs.get_design_requirements().get_turns_ratios()[i]) == resolve_dimensional_values(rhs.get_design_requirements().get_turns_ratios()[i]);
+        }
+        for (size_t i = 0; i < lhs.get_operating_points().size(); ++i) {
+            isEqual &= lhs.get_operating_points()[i].get_excitations_per_winding().size() == rhs.get_operating_points()[i].get_excitations_per_winding().size();
+        }
+    }
+
+    return isEqual;
 }
 
 } // namespace OpenMagnetics

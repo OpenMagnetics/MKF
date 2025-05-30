@@ -929,53 +929,6 @@ CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter) {
     return closestShape;
 }
 
-double resolve_dimensional_values(Dimension dimensionValue, DimensionalValues preferredValue) {
-    double doubleValue = 0;
-    if (std::holds_alternative<DimensionWithTolerance>(dimensionValue)) {
-        switch (preferredValue) {
-            case DimensionalValues::MAXIMUM:
-                if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case DimensionalValues::NOMINAL:
-                if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value() &&
-                         std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue =
-                        (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value() +
-                         std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value()) /
-                        2;
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                break;
-            case DimensionalValues::MINIMUM:
-                if (std::get<DimensionWithTolerance>(dimensionValue).get_minimum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_minimum().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_nominal().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_nominal().value();
-                else if (std::get<DimensionWithTolerance>(dimensionValue).get_maximum().has_value())
-                    doubleValue = std::get<DimensionWithTolerance>(dimensionValue).get_maximum().value();
-                break;
-            default:
-                throw std::runtime_error("Unknown type of dimension, options are {MAXIMUM, NOMINAL, MINIMUM}");
-        }
-    }
-    else if (std::holds_alternative<double>(dimensionValue)) {
-        doubleValue = std::get<double>(dimensionValue);
-    }
-    else {
-        throw std::runtime_error("Unknown variant in dimensionValue, holding variant");
-    }
-    return doubleValue;
-}
-
 bool check_requirement(DimensionWithTolerance requirement, double value){
     if (requirement.get_minimum() && requirement.get_maximum()) {
         if (requirement.get_maximum().value() < requirement.get_minimum().value()) {

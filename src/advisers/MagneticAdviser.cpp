@@ -167,15 +167,30 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+    std::vector<Mas> catalogMagneticsWithInputs;
+    for (auto magnetic : catalogMagnetics) {
+        Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        catalogMagneticsWithInputs.push_back(mas);
+    }
+
+    return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
+
+}
+
+std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     load_filter_flow(filterFlow);
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
     // std::map<std::string, std::map<MagneticFilters, double>> scoringPerReferencePerRequirement;
     std::map<std::string, double> scoringPerReference;
-    std::vector<Magnetic> catalogMagneticsWithStriclyRequirementsPassed;
+    std::vector<Mas> catalogMasWithStriclyRequirementsPassed;
 
-    for (auto magnetic : catalogMagnetics) {
+    for (auto mas : catalogMagneticsWithInputs) {
+        auto inputs = mas.get_inputs();
+        auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
         for (auto filterConfiguration : _defaultCatalogMagneticFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
@@ -184,11 +199,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             add_scoring(magnetic.get_reference(), filterEnum, scoring);
             if (strict) {
                 if (valid && filterConfiguration.get_strictly_required()) {
-                    catalogMagneticsWithStriclyRequirementsPassed.push_back(magnetic);
+                    catalogMasWithStriclyRequirementsPassed.push_back(mas);
                 }
                 if (!valid && filterConfiguration.get_strictly_required()) {
-                    if (std::find(catalogMagneticsWithStriclyRequirementsPassed.begin(), catalogMagneticsWithStriclyRequirementsPassed.end(), magnetic) != catalogMagneticsWithStriclyRequirementsPassed.end()) {
-                        catalogMagneticsWithStriclyRequirementsPassed.erase(std::remove(catalogMagneticsWithStriclyRequirementsPassed.begin(), catalogMagneticsWithStriclyRequirementsPassed.end(), magnetic), catalogMagneticsWithStriclyRequirementsPassed.end());
+                    if (std::find(catalogMasWithStriclyRequirementsPassed.begin(), catalogMasWithStriclyRequirementsPassed.end(), mas) != catalogMasWithStriclyRequirementsPassed.end()) {
+                        catalogMasWithStriclyRequirementsPassed.erase(std::remove(catalogMasWithStriclyRequirementsPassed.begin(), catalogMasWithStriclyRequirementsPassed.end(), mas), catalogMasWithStriclyRequirementsPassed.end());
                     }
                 }
                 validMagnetic &= valid;
@@ -238,8 +253,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
     }
     else {
-        if (catalogMagneticsWithStriclyRequirementsPassed.size() > 0) {
-            return get_advised_magnetic(inputs, catalogMagneticsWithStriclyRequirementsPassed, maximumNumberResults, false);
+        if (catalogMasWithStriclyRequirementsPassed.size() > 0) {
+            return get_advised_magnetic(catalogMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
         }
         return {};
     }
