@@ -1565,7 +1565,7 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
     return mas;
 }
 
-Inputs inputs_autocomplete(Inputs inputs, Magnetic magnetic, json configuration) {
+Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json configuration) {
     //Inputs
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
     if (!inputs.get_design_requirements().get_isolation_sides()) {
@@ -1628,7 +1628,13 @@ Inputs inputs_autocomplete(Inputs inputs, Magnetic magnetic, json configuration)
     for (size_t operatingPointIndex = 0; operatingPointIndex <  inputs.get_operating_points().size(); operatingPointIndex++) {
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
             auto operatingPoint = inputs.get_operating_points()[operatingPointIndex];
-            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+            double magnetizingInductance = 0;
+            if (magnetic) {
+                magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(magnetic->get_core(), magnetic->get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+            }
+            else {
+                magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
+            }
             auto excitation = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
 
             auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
@@ -1645,8 +1651,14 @@ Inputs inputs_autocomplete(Inputs inputs, Magnetic magnetic, json configuration)
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
 
             if (windingIndex == 0 && numberWindings == 2 && inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().size() == 1) {
-                auto turnRatio = magnetic.get_turns_ratios()[0];
-                auto secondaryExcitation = calculate_reflected_secondary(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatio);
+                double turnRatioPrimary = 0;
+                if (magnetic) {
+                    turnRatioPrimary = magnetic->get_turns_ratios()[0];
+                }
+                else {
+                    turnRatioPrimary = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_turns_ratios()[0]);
+                }
+                auto secondaryExcitation = calculate_reflected_secondary(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatioPrimary);
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().push_back(secondaryExcitation);
             }
         }
