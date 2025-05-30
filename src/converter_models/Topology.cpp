@@ -374,11 +374,7 @@ namespace OpenMagnetics {
         return true;
     }
 
-    Inputs Flyback::process() {
-        Flyback::run_checks(_assertErrors);
-
-        Inputs inputs;
-
+    DesignRequirements Flyback::process_design_requirements() {
         double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
         double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
 
@@ -444,25 +440,6 @@ namespace OpenMagnetics {
             maximumNeededInductance = std::max(maximumNeededInductance, neededInductance);
         }
 
-
-        inputs.get_mutable_operating_points().clear();
-        std::vector<double> inputVoltages;
-        std::vector<std::string> inputVoltagesNames;
-
-
-        if (get_input_voltage().get_nominal()) {
-            inputVoltages.push_back(get_input_voltage().get_nominal().value());
-            inputVoltagesNames.push_back("Nom.");
-        }
-        if (get_input_voltage().get_minimum()) {
-            inputVoltages.push_back(get_input_voltage().get_minimum().value());
-            inputVoltagesNames.push_back("Min.");
-        }
-        if (get_input_voltage().get_maximum()) {
-            inputVoltages.push_back(get_input_voltage().get_maximum().value());
-            inputVoltagesNames.push_back("Max.");
-        }
-
         DesignRequirements designRequirements;
         designRequirements.get_mutable_turns_ratios().clear();
         for (auto turnsRatio : turnsRatios) {
@@ -479,36 +456,66 @@ namespace OpenMagnetics {
         }
         designRequirements.set_isolation_sides(isolationSides);
         designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
+        return designRequirements;
+    }
 
-        inputs.set_design_requirements(designRequirements);
+    std::vector<OperatingPoint> Flyback::process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance) {
+        std::vector<OperatingPoint> operatingPoints;
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
 
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
                 auto mode = get_mutable_operating_points()[flybackOperatingPointIndex].resolve_mode(get_current_ripple_ratio());
-                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, maximumNeededInductance, mode);
+                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[flybackOperatingPointIndex], turnsRatios, magnetizingInductance, mode);
 
                 std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
                 if (get_operating_points().size() > 1) {
                     name += " with op. point " + std::to_string(flybackOperatingPointIndex);
                 }
                 operatingPoint.set_name(name);
-                inputs.get_mutable_operating_points().push_back(operatingPoint);
+                operatingPoints.push_back(operatingPoint);
             }
         }
+        return operatingPoints;
+    }
 
-        for (auto operatingPoint : inputs.get_mutable_operating_points()) {
-            auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
-            auto primarycurrentProcessed = primaryExcitation.get_current()->get_processed().value();
+    Inputs Flyback::process() {
+        Flyback::run_checks(_assertErrors);
+
+        Inputs inputs;
+        auto designRequirements = process_design_requirements();
+        std::vector<double> turnsRatios;
+        for (auto turnsRatio : designRequirements.get_turns_ratios()) {
+            turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
         }
+        auto desiredMagnetizingInductance = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
+        auto operatingPoints = process_operating_points(turnsRatios, desiredMagnetizingInductance);
+
+        inputs.set_design_requirements(designRequirements);
+        inputs.set_operating_points(operatingPoints);
 
         return inputs;
     }
 
-    Inputs Flyback::process(Magnetic magnetic) {
+    std::vector<OperatingPoint> Flyback::process_operating_points(Magnetic magnetic) {
         Flyback::run_checks(_assertErrors);
 
-        Inputs inputs;
+        std::vector<OperatingPoint> operatingPoints;
 
         if (!get_maximum_drain_source_voltage() && !get_maximum_duty_cycle()) {
             throw std::invalid_argument("Missing both maximum duty cycle and maximum drain source voltage");
@@ -517,7 +524,6 @@ namespace OpenMagnetics {
         double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
         std::vector<double> turnsRatios = magnetic.get_turns_ratios();
 
-        inputs.get_mutable_operating_points().clear();
         std::vector<double> inputVoltages;
         std::vector<std::string> inputVoltagesNames;
 
@@ -535,26 +541,6 @@ namespace OpenMagnetics {
             inputVoltagesNames.push_back("Max.");
         }
 
-        DesignRequirements designRequirements;
-        designRequirements.get_mutable_turns_ratios().clear();
-        for (auto turnsRatio : turnsRatios) {
-            DimensionWithTolerance turnsRatioWithTolerance;
-            turnsRatioWithTolerance.set_nominal(roundFloat(turnsRatio, 2));
-            designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
-        }
-        DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(magnetizingInductance, 10));
-        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
-        std::vector<IsolationSide> isolationSides;
-        for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
-            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
-        }
-        designRequirements.set_isolation_sides(isolationSides);
-        designRequirements.set_topology(Topologies::FLYBACK_CONVERTER);
-
-
-        inputs.set_design_requirements(designRequirements);
-
         for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
             auto inputVoltage = inputVoltages[inputVoltageIndex];
             for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
@@ -566,16 +552,11 @@ namespace OpenMagnetics {
                     name += " with op. point " + std::to_string(flybackOperatingPointIndex);
                 }
                 operatingPoint.set_name(name);
-                inputs.get_mutable_operating_points().push_back(operatingPoint);
+                operatingPoints.push_back(operatingPoint);
             }
         }
 
-        for (auto operatingPoint : inputs.get_mutable_operating_points()) {
-            auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
-            auto primarycurrentProcessed = primaryExcitation.get_current()->get_processed().value();
-        }
-
-        return inputs;
+        return operatingPoints;
     }
 
     Inputs AdvancedFlyback::process() {
@@ -648,11 +629,6 @@ namespace OpenMagnetics {
                 operatingPoint.set_name(name);
                 inputs.get_mutable_operating_points().push_back(operatingPoint);
             }
-        }
-
-        for (auto operatingPoint : inputs.get_mutable_operating_points()) {
-            auto primaryExcitation = operatingPoint.get_excitations_per_winding()[0];
-            auto primarycurrentProcessed = primaryExcitation.get_current()->get_processed().value();
         }
 
         return inputs;
