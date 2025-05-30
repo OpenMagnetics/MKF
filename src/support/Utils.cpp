@@ -1537,101 +1537,18 @@ OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation 
 
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
-    //Inputs
-    size_t numberWindings = mas.get_inputs().get_design_requirements().get_turns_ratios().size() + 1;
-    if (!mas.get_inputs().get_design_requirements().get_isolation_sides()) {
-        for (size_t i = 0; i < numberWindings; i++) {
-            std::vector<IsolationSide> isolationSides;
-            isolationSides.push_back(get_isolation_side_from_index(i));
-            mas.get_mutable_inputs().get_mutable_design_requirements().set_isolation_sides(isolationSides);
-        }
-    }
-    else {
-        std::vector<IsolationSide> isolationSides;
-        std::vector<IsolationSide> currentIsolationSides = mas.get_inputs().get_design_requirements().get_isolation_sides().value();
-        for (size_t i = 0; i < numberWindings; i++) {
-            if (currentIsolationSides.size() <= i) {
-                isolationSides.push_back(get_isolation_side_from_index(i));
-            }
-            else {
-                isolationSides.push_back(currentIsolationSides[i]);
-            }
-        }
-        mas.get_mutable_inputs().get_mutable_design_requirements().set_isolation_sides(isolationSides);
-    }
-
-    auto [result, resultDescription] = mas.get_mutable_inputs().check_integrity();
-
-    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_mutable_inputs().get_mutable_operating_points().size(); operatingPointIndex++) {
-        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
-            if (mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current()) {
-                auto current = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value();
-                if (!current.get_waveform() ||
-                    !current.get_processed()) {
-                    current = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                }
-                if (!current.get_harmonics()) {
-                    auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = Inputs::calculate_harmonics_data(sampledCurrentWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    current.set_harmonics(harmonics);
-                }
-                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
-            }
-            if (mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage()) {
-                auto voltage = mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value();
-                if (!voltage.get_waveform() ||
-                    !voltage.get_processed()) {
-                    voltage = standardize_signal_descriptor(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value(),  mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                }
-                if (!voltage.get_harmonics()) {
-                    auto sampledvoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    auto harmonics = Inputs::calculate_harmonics_data(sampledvoltageWaveform, mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
-                    voltage.set_harmonics(harmonics);
-                }
-                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(voltage);
-            }
-        }
-    }
-
     auto magnetic = magnetic_autocomplete(mas.get_magnetic(), configuration);
+    auto inputs = inputs_autocomplete(mas.get_inputs(), mas.get_magnetic(), configuration);
     mas.set_magnetic(magnetic);
-
-    // Magnetizing current
-
-    MagnetizingInductance magnetizingInductanceObj;
-    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
-        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
-            auto operatingPoint = mas.get_inputs().get_operating_points()[operatingPointIndex];
-            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
-            auto excitation = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
-
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
-
-            if (excitation.get_voltage()) {
-                if (excitation.get_voltage().value().get_processed()) {
-                    if (excitation.get_voltage().value().get_processed().value().get_duty_cycle()) {
-                        auto processed = magnetizingCurrent.get_processed().value();
-                        processed.set_duty_cycle(excitation.get_voltage().value().get_processed().value().get_duty_cycle().value());
-                        magnetizingCurrent.set_processed(processed);
-                    }
-                }
-            }
-            mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
-
-            if (windingIndex == 0 && numberWindings == 2 && mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().size() == 1) {
-                auto turnRatio = mas.get_mutable_magnetic().get_turns_ratios()[0];
-                auto secondaryExcitation = calculate_reflected_secondary(mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatio);
-                mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().push_back(secondaryExcitation);
-            }
-        }
-    }
+    mas.set_inputs(inputs);
+    size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
 
     if (simulate) {
         // Outputs
         mas = MagneticSimulator().simulate(mas.get_inputs(), mas.get_magnetic());
     }
 
-
+    MagnetizingInductance magnetizingInductanceObj;
     // Because Simulation may remove some processed data, and we are in no rush here
     for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
         double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
@@ -1646,6 +1563,96 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
     }
 
     return mas;
+}
+
+Inputs inputs_autocomplete(Inputs inputs, Magnetic magnetic, json configuration) {
+    //Inputs
+    size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
+    if (!inputs.get_design_requirements().get_isolation_sides()) {
+        for (size_t i = 0; i < numberWindings; i++) {
+            std::vector<IsolationSide> isolationSides;
+            isolationSides.push_back(get_isolation_side_from_index(i));
+            inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+        }
+    }
+    else {
+        std::vector<IsolationSide> isolationSides;
+        std::vector<IsolationSide> currentIsolationSides = inputs.get_design_requirements().get_isolation_sides().value();
+        for (size_t i = 0; i < numberWindings; i++) {
+            if (currentIsolationSides.size() <= i) {
+                isolationSides.push_back(get_isolation_side_from_index(i));
+            }
+            else {
+                isolationSides.push_back(currentIsolationSides[i]);
+            }
+        }
+        inputs.get_mutable_design_requirements().set_isolation_sides(isolationSides);
+    }
+
+    auto [result, resultDescription] = inputs.check_integrity();
+
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  inputs.get_mutable_operating_points().size(); operatingPointIndex++) {
+        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+            if (inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current()) {
+                auto current = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value();
+                if (!current.get_waveform() ||
+                    !current.get_processed()) {
+                    current = standardize_signal_descriptor(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_current().value(),  inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                }
+                if (!current.get_harmonics()) {
+                    auto sampledCurrentWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledCurrentWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    current.set_harmonics(harmonics);
+                }
+                inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+            }
+            if (inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage()) {
+                auto voltage = inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value();
+                if (!voltage.get_waveform() ||
+                    !voltage.get_processed()) {
+                    voltage = standardize_signal_descriptor(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_voltage().value(),  inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                }
+                if (!voltage.get_harmonics()) {
+                    auto sampledvoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    auto harmonics = Inputs::calculate_harmonics_data(sampledvoltageWaveform, inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].get_frequency());
+                    voltage.set_harmonics(harmonics);
+                }
+                inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_voltage(voltage);
+            }
+        }
+    }
+
+    // Magnetizing current
+
+    MagnetizingInductance magnetizingInductanceObj;
+    for (size_t operatingPointIndex = 0; operatingPointIndex <  inputs.get_operating_points().size(); operatingPointIndex++) {
+        for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
+            auto operatingPoint = inputs.get_operating_points()[operatingPointIndex];
+            double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+            auto excitation = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
+
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+
+            if (excitation.get_voltage()) {
+                if (excitation.get_voltage().value().get_processed()) {
+                    if (excitation.get_voltage().value().get_processed().value().get_duty_cycle()) {
+                        auto processed = magnetizingCurrent.get_processed().value();
+                        processed.set_duty_cycle(excitation.get_voltage().value().get_processed().value().get_duty_cycle().value());
+                        magnetizingCurrent.set_processed(processed);
+                    }
+                }
+            }
+            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
+
+            if (windingIndex == 0 && numberWindings == 2 && inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().size() == 1) {
+                auto turnRatio = magnetic.get_turns_ratios()[0];
+                auto secondaryExcitation = calculate_reflected_secondary(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatio);
+                inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().push_back(secondaryExcitation);
+            }
+        }
+    }
+
+    return inputs;
 }
 
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {

@@ -26,8 +26,8 @@ SUITE(Mas) {
 
         CHECK(!mas.get_magnetic().get_core().get_processed_description());
 
-        auto magnetic = OpenMagnetics::Mas::expand_magnetic(mas.get_magnetic());
-        auto inputs = OpenMagnetics::Mas::expand_inputs(magnetic, mas.get_inputs());
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
         CHECK(magnetic.get_core().get_processed_description());
 
     }

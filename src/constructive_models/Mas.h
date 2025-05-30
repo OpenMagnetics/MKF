@@ -41,8 +41,8 @@ class Mas : public MAS::Mas {
         std::vector<Outputs> & get_mutable_outputs() { return outputs; }
         void set_outputs(const std::vector<Outputs> & value) { this->outputs = value; }
 
-        static Magnetic expand_magnetic(Magnetic magnetic);
-        static Inputs expand_inputs(Magnetic magnetic, Inputs inputs);
+        // static Magnetic expand_magnetic(Magnetic magnetic);
+        // static Inputs expand_inputs(Magnetic magnetic, Inputs inputs);
 
 };
 
