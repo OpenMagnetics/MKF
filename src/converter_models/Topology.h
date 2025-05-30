@@ -51,7 +51,9 @@ public:
 
     // According to Worked Example (7), pages 135-144 — Designing the Flyback Transformer of Switching Power Supplies A - Z (Second Edition) by Sanjaya Maniktala
     Inputs process();
-    Inputs process(Magnetic magnetic);
+    DesignRequirements process_design_requirements();
+    std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
+    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
     OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, OpenMagnetics::FlybackOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, std::optional<FlybackModes> customMode=std::nullopt, std::optional<double> customDutyCycle=std::nullopt, std::optional<double> customDeadTime=std::nullopt);
     static double get_total_input_power(std::vector<double> outputCurrents, std::vector<double> outputVoltages, double efficiency, double diodeVoltageDrop);
@@ -77,7 +79,6 @@ public:
     AdvancedFlyback(const json& j);
 
     Inputs process();
-    Inputs process(Magnetic magnetic);
 
     const double & get_desired_inductance() const { return desiredInductance; }
     double & get_mutable_desired_inductance() { return desiredInductance; }
