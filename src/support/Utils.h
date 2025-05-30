@@ -158,7 +158,7 @@ double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
-Inputs inputs_autocomplete(Inputs inputs, Magnetic magnetic, json configuration = {});
+Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic = std::nullopt, json configuration = {});
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration = {});
 Mas mas_autocomplete(Mas mas, bool simulate = true, json configuration = {});
 
