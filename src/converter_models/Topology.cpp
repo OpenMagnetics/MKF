@@ -386,6 +386,9 @@ namespace OpenMagnetics {
 
         if (get_maximum_duty_cycle()) {
             double maximumDutyCycle = get_maximum_duty_cycle().value();
+            if (maximumDutyCycle > 1 || maximumDutyCycle < 0) {
+                throw std::invalid_argument("maximumDutyCycle must be between 0 and 1");
+            }
             for (size_t flybackOperatingPointIndex = 0; flybackOperatingPointIndex < get_operating_points().size(); ++flybackOperatingPointIndex) {
                 auto flybackOperatingPoint = get_operating_points()[flybackOperatingPointIndex];
 

@@ -38,6 +38,8 @@ OpenMagnetics::Defaults defaults = OpenMagnetics::Defaults();
 OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
 
+OpenMagnetics::Cache magneticsCache;
+
 bool _addInternalData = true;
 
 namespace OpenMagnetics {
