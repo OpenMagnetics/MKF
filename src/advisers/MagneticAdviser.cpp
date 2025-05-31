@@ -184,21 +184,27 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
-    // std::map<std::string, std::map<MagneticFilters, double>> scoringPerReferencePerRequirement;
     std::map<std::string, double> scoringPerReference;
     std::vector<Mas> catalogMasWithStriclyRequirementsPassed;
+    bool noStrictlyRequiredFilters = true;
+    for (auto filterConfiguration : filterFlow) {
+        if (filterConfiguration.get_strictly_required()) {
+            noStrictlyRequiredFilters = false;
+            break;
+        }
+    }
 
     for (auto mas : catalogMagneticsWithInputs) {
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
-        for (auto filterConfiguration : _defaultCatalogMagneticFilterFlow) {
+        for (auto filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
         
             auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs);
             add_scoring(magnetic.get_reference(), filterEnum, scoring);
             if (strict) {
-                if (valid && filterConfiguration.get_strictly_required()) {
+                if ((valid && filterConfiguration.get_strictly_required()) || (!valid && noStrictlyRequiredFilters)) {
                     catalogMasWithStriclyRequirementsPassed.push_back(mas);
                 }
                 if (!valid && filterConfiguration.get_strictly_required()) {
@@ -245,6 +251,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         }
 
         for (auto [mas, scoring] : masMagneticsWithScoring) {
+
             mas = magneticSimulator.simulate(mas, true);
             masMagneticsWithScoring.push_back({mas, scoring});
         }
