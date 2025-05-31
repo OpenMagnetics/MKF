@@ -66,7 +66,7 @@ extern std::map<std::string, double> maxWireConductingDimensions;
 extern std::map<std::string, int64_t> minLitzWireNumberConductors;
 extern std::map<std::string, int64_t> maxLitzWireNumberConductors;
 
-extern OpenMagnetics::Cache magneticsCache;
+extern OpenMagnetics::MagneticsCache magneticsCache;
 
 using namespace MAS;
 
