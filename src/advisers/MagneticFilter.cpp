@@ -1019,9 +1019,6 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
             auto dcCurrentDensity = wire.calculate_dc_current_density(current);
 
             scoring += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
-    std::cout << "dcCurrentDensity: " << dcCurrentDensity << std::endl;
-    std::cout << "defaults.maximumCurrentDensity: " << defaults.maximumCurrentDensity << std::endl;
-
             if (dcCurrentDensity > defaults.maximumCurrentDensity) {
                 return {false, 0.0};
             }

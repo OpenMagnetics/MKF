@@ -17,19 +17,19 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         Outputs output;
-        std::cout << "Simulating magnetizing_inductance" << std::endl;
+        // std::cout << "Simulating magnetizing_inductance" << std::endl;
         output.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
-        std::cout << "Simulating core_losses" << std::endl;
+        // std::cout << "Simulating core_losses" << std::endl;
         output.set_core_losses(calculate_core_losses(operatingPoint, magnetic));
-        std::cout << "Simulating winding_losses" << std::endl;
+        // std::cout << "Simulating winding_losses" << std::endl;
         output.set_winding_losses(calculate_winding_losses(operatingPoint, magnetic, operatingPoint.get_conditions().get_ambient_temperature()));
         if (!fastMode) {
             if (magnetic.get_coil().get_functional_description().size() > 1) {
-                std::cout << "Simulating leakage inductance" << std::endl;
+                // std::cout << "Simulating leakage inductance" << std::endl;
                 output.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
             }
         }
-        std::cout << "Simulation complete" << std::endl;
+        // std::cout << "Simulation complete" << std::endl;
 
         outputs.push_back(output);
         simulatedOperatingPoints.push_back(operatingPoint);
