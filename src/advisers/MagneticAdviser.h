@@ -32,9 +32,12 @@ class MagneticAdviser{
             MagneticFilterOperation(MagneticFilters::IMPEDANCE, true, false, 1.0),
             MagneticFilterOperation(MagneticFilters::MAGNETIZING_INDUCTANCE, true, false, 1.0),
         };
-
+        bool _simulateResults = true;
 
         MagneticAdviser() {
+        }
+        MagneticAdviser(bool simulateResults) {
+            _simulateResults = simulateResults;
         }
 
         void add_scoring(std::string name, MagneticFilters filter, double scoring) {

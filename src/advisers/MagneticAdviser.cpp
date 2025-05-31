@@ -250,13 +250,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
         }
 
-        std::vector<std::pair<Mas, double>> masMagneticsWithScoringSimulated;
-        for (auto [mas, scoring] : masMagneticsWithScoring) {
-            mas = magneticSimulator.simulate(mas, true);
-            masMagneticsWithScoringSimulated.push_back({mas, scoring});
-        }
+        if (_simulateResults) {
+            std::vector<std::pair<Mas, double>> masMagneticsWithScoringSimulated;
+            for (auto [mas, scoring] : masMagneticsWithScoring) {
+                mas = magneticSimulator.simulate(mas, true);
+                masMagneticsWithScoringSimulated.push_back({mas, scoring});
+            }
 
-        return masMagneticsWithScoringSimulated;
+            return masMagneticsWithScoringSimulated;
+        }
+        else {
+            return masMagneticsWithScoring;
+        }
 
     }
     else {
