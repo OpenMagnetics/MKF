@@ -56,6 +56,8 @@ inline bool operator==(Mas lhs, Mas rhs) {
 void from_json(const json & j, Mas & x);
 void to_json(json & j, const Mas & x);
 void to_file(std::filesystem::path filepath, const Mas & x);
+void from_json(const json& j, std::vector<Mas>& v);
+void to_json(json& j, const std::vector<Mas>& v);
 
 inline void from_json(const json & j, Mas& x) {
     x.set_inputs(j.at("inputs").get<Inputs>());
@@ -76,5 +78,26 @@ inline void to_file(std::filesystem::path filepath, const Mas & x) {
     std::ofstream myfile;
     myfile.open(filepath);
     myfile << masJson;
+}
+
+inline void from_json(const json& j, std::vector<Mas>& v) {
+    for (auto e : j) {
+        Mas x;
+        x.set_inputs(e.at("inputs").get<Inputs>());
+        x.set_magnetic(e.at("magnetic").get<Magnetic>());
+        x.set_outputs(e.at("outputs").get<std::vector<Outputs>>());
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<Mas>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        e["inputs"] = x.get_inputs();
+        e["magnetic"] = x.get_magnetic();
+        e["outputs"] = x.get_outputs();
+        j.push_back(e);
+    }
 }
 } // namespace OpenMagnetics
