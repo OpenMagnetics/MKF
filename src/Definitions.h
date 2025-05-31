@@ -157,6 +157,8 @@ void from_json(const json & j, MagneticFilters & x);
 void to_json(json & j, const MagneticFilters & x);
 void from_json(const json& j, MagneticFilterOperation& x);
 void to_json(json& j, const MagneticFilterOperation& x);
+void from_json(const json& j, std::vector<MagneticFilterOperation>& v);
+void to_json(json& j, const std::vector<MagneticFilterOperation>& v);
 
 
 inline void from_json(const json & j, MagneticFilters & x) {
@@ -224,6 +226,32 @@ inline void to_json(json& j, const MagneticFilterOperation& x) {
     j["log"] = x.get_log();
     j["strictlyRequired"] = x.get_strictly_required();
     j["weight"] = x.get_weight();
+}
+
+inline void from_json(const json& j, std::vector<MagneticFilterOperation>& v) {
+    for (auto e : j) {
+        MagneticFilterOperation x(
+            e.at("filter").get<MagneticFilters>(),
+            e.at("invert").get<bool>(),
+            e.at("log").get<bool>(),
+            e.at("strictlyRequired").get<bool>(),
+            e.at("weight").get<double>()
+        );
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<MagneticFilterOperation>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        e["filter"] = x.get_filter();
+        e["invert"] = x.get_invert();
+        e["log"] = x.get_log();
+        e["strictlyRequired"] = x.get_strictly_required();
+        e["weight"] = x.get_weight();
+        j.push_back(e);
+    }
 }
 
 double resolve_dimensional_values(MAS::Dimension dimensionValue, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
