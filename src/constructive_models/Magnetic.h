@@ -84,6 +84,8 @@ inline bool operator==(Magnetic lhs, Magnetic rhs) {
 
 void from_json(const json & j, Magnetic & x);
 void to_json(json & j, const Magnetic & x);
+void from_json(const json& j, std::vector<Magnetic>& v);
+void to_json(json& j, const std::vector<Magnetic>& v);
 
 inline void from_json(const json & j, Magnetic& x) {
     x.set_coil(j.at("coil").get<Coil>());
@@ -102,4 +104,28 @@ inline void to_json(json & j, const Magnetic & x) {
     j["rotation"] = x.get_rotation();
 }
 
+inline void from_json(const json& j, std::vector<Magnetic>& v) {
+    for (auto e : j) {
+        Magnetic x;
+        x.set_coil(e.at("coil").get<Coil>());
+        x.set_core(e.at("core").get<Core>());
+        x.set_distributors_info(get_stack_optional<std::vector<DistributorInfo>>(e, "distributorsInfo"));
+        x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(e, "manufacturerInfo"));
+        x.set_rotation(get_stack_optional<std::vector<double>>(e, "rotation"));
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<Magnetic>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        e["coil"] = x.get_coil();
+        e["core"] = x.get_core();
+        e["distributorsInfo"] = x.get_distributors_info();
+        e["manufacturerInfo"] = x.get_manufacturer_info();
+        e["rotation"] = x.get_rotation();
+        j.push_back(e);
+    }
+}
 } // namespace OpenMagnetics
