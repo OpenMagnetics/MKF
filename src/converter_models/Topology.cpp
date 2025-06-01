@@ -451,7 +451,7 @@ namespace OpenMagnetics {
             designRequirements.get_mutable_turns_ratios().push_back(turnsRatioWithTolerance);
         }
         DimensionWithTolerance inductanceWithTolerance;
-        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
+        inductanceWithTolerance.set_minimum(roundFloat(maximumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
         for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
