@@ -46,6 +46,10 @@ void MagneticsCache::compute_energy_cache(double temperature, std::optional<doub
     }
 }
 
+std::pair<std::string, double> MagneticsCache::get_maximum_magnetic_energy_in_cache() {
+    return *std::max_element(_magneticEnergyCache.begin(), _magneticEnergyCache.end(), [](const std::pair<std::string, double>& p1, const std::pair<std::string, double>& p2) {return p1.second < p2.second; });
+}
+
 std::vector<std::string> MagneticsCache::filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy) {
     std::vector<std::string> filteredReferences;
     for (auto [reference, energy] : _magneticEnergyCache) {
