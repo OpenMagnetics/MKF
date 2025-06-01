@@ -90,6 +90,8 @@ public:
     void clear();
     void autocomplete_magnetics();
     size_t energy_cache_size();
+    std::map<std::string, double> read_energy_cache();
+    double read_energy_cache(std::string reference);
     std::pair<std::string, double> get_maximum_magnetic_energy_in_cache();
     void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);
     void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt);
@@ -102,6 +104,8 @@ private:
 public:
     void autocomplete_mas();
     size_t energy_cache_size();
+    std::map<std::string, double> read_energy_cache();
+    double read_energy_cache(std::string reference);
     std::pair<std::string, double> get_maximum_magnetic_energy_in_cache();
     void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);
     void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt);
