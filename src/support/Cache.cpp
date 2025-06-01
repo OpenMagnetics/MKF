@@ -100,4 +100,8 @@ std::vector<std::string> MasCache::filter_magnetics_by_energy(double minimumEner
     return filteredReferences;
 }
 
+std::pair<std::string, double> MasCache::get_maximum_magnetic_energy_in_cache() {
+    return *std::max_element(_magneticEnergyCache.begin(), _magneticEnergyCache.end(), [](const std::pair<std::string, double>& p1, const std::pair<std::string, double>& p2) {return p1.second < p2.second; });
+}
+
 } // namespace OpenMagnetics
