@@ -93,8 +93,8 @@ public:
     std::map<std::string, double> read_energy_cache();
     double read_energy_cache(std::string reference);
     std::pair<std::string, double> get_maximum_magnetic_energy_in_cache();
-    void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);
-    void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt);
+    void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt, bool saturationProportion = true);
+    void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);
     std::vector<std::string> filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy = std::nullopt);
 };
 
@@ -107,8 +107,8 @@ public:
     std::map<std::string, double> read_energy_cache();
     double read_energy_cache(std::string reference);
     std::pair<std::string, double> get_maximum_magnetic_energy_in_cache();
-    void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt);
-    void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt);
+    void compute_energy_cache(std::optional<OperatingPoint> operatingPoint = std::nullopt, bool saturationProportion = true);
+    void compute_energy_cache(double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);
     std::vector<std::string> filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy = std::nullopt);
 };
 
