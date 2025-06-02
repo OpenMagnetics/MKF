@@ -56,7 +56,7 @@ class MagneticAdviser{
         void normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
         void normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double> scoring, MagneticFilterOperation filterConfiguration);
         static void preview_magnetic(Mas mas);
-        void load_filter_flow(std::vector<MagneticFilterOperation> flow);
+        void load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs = std::nullopt);
         std::map<std::string, std::map<MagneticFilters, double>> get_scorings();
 };
 

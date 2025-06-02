@@ -8,12 +8,12 @@
 
 namespace OpenMagnetics {
 
-void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow) {
+void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs) {
     _filters.clear();
     _loadedFilterFlow = flow;
     for (auto filterConfiguration : flow) {
         MagneticFilters filterEnum = filterConfiguration.get_filter();
-        _filters[filterEnum] = MagneticFilter::factory(filterEnum);
+        _filters[filterEnum] = MagneticFilter::factory(filterEnum, inputs);
     }
 }
 
@@ -36,7 +36,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
-    load_filter_flow(filterFlow);
+    load_filter_flow(filterFlow, inputs);
     bool filterMode = bool(inputs.get_design_requirements().get_minimum_impedance());
     std::vector<Mas> masData;
 
@@ -180,7 +180,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
-    load_filter_flow(filterFlow);
+    load_filter_flow(filterFlow, catalogMagneticsWithInputs[0].get_inputs());
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;
 
