@@ -121,7 +121,6 @@ SUITE(CircuitSimulatorExporterSimba) {
         CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
-
 }
 
 SUITE(CircuitSimulatorExporterNgspice) {
@@ -152,10 +151,7 @@ SUITE(CircuitSimulatorExporterNgspice) {
         CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, 10000, 100, cirFile);
         CHECK(std::filesystem::exists(cirFile));
     }
-    
-
 }
-
 
 SUITE(CircuitSimulatorExporterLtspice) {
     double max_error = 0.01;
@@ -413,7 +409,6 @@ SUITE(CircuitSimulatorExporterLtspice) {
         CHECK_CLOSE(effectiveResistanceThisWinding_0, dcResistancePerWinding[0], effectiveResistanceThisWinding_0 * max_error);
         CHECK_CLOSE(effectiveResistanceThisWinding_1, dcResistancePerWinding[1], effectiveResistanceThisWinding_1 * max_error);
     }
-
 }
 
 SUITE(CircuitSimulationReader) {
@@ -1198,5 +1193,4 @@ SUITE(CircuitSimulationReader) {
 
         CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
     }
-
 }

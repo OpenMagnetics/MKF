@@ -115,7 +115,7 @@ void CircuitSimulatorExporter::core_ladder_func(double *p, double *x, int m, int
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_ladder(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 10;
 
-    const size_t numberElements = 100;
+    const size_t numberElements = 20;
     const size_t numberElementsPlusOne = 101;
     size_t loopIterations = 5;
     double startingFrequency = 0.1;
@@ -189,7 +189,7 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
 std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic) {
     const size_t numberUnknowns = 6;
 
-    const size_t numberElements = 100;
+    const size_t numberElements = 20;
     const size_t numberElementsPlusOne = 101;
     size_t loopIterations = 5;
     double startingFrequency = 0.1;
@@ -261,7 +261,7 @@ std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coeffici
 
 std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_winding_analytical(Magnetic magnetic, double temperature) {
     const size_t numberUnknowns = 4;
-    const size_t numberElements = 100;
+    const size_t numberElements = 20;
 
     double startingFrequency = 0.1;
     double endingFrequency = 1000000;
