@@ -125,7 +125,7 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
     double skinLosses = std::accumulate(skinLossesPerharmonic.begin(), skinLossesPerharmonic.end(), 0.0);
     double lossesThisWinding = windingLossesPerWinding[windingIndex].get_ohmic_losses()->get_losses() + proximityLosses + skinLosses;
 
-    double effectiveResistance = lossesThisWinding / pow(currentMask[windingIndex], 2);
+    double effectiveResistance = lossesThisWinding / pow(operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_rms().value(), 2);
 
     return effectiveResistance;
 }
