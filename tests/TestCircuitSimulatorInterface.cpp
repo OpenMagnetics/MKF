@@ -1,5 +1,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "TestingUtils.h"
+#include "physical_models/WindingLosses.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "processors/Sweeper.h"
 #include "support/Painter.h"
 #include <UnitTest++.h>
@@ -9,6 +11,7 @@ using namespace OpenMagnetics;
 
 
 SUITE(CircuitSimulatorExporterSimba) {
+    double max_error = 0.01;
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_CircuitSimulatorExporter_Simba_Only_Magnetic) {
@@ -35,7 +38,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Only_Magnetic.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -63,7 +66,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -76,7 +79,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ur.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -89,7 +92,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -102,7 +105,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Toroidal_Core.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -115,7 +118,7 @@ SUITE(CircuitSimulatorExporterSimba) {
         jsimbaFile.append("./Test_CircuitSimulatorExporter_Simba_Json_Ep_Core.jsimba");
 
         std::filesystem::remove(jsimbaFile);
-        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, jsimbaFile, flyback_jsimba_path);
+        CircuitSimulatorExporter().export_magnetic_as_subcircuit(magnetic, 10000, 100, jsimbaFile, flyback_jsimba_path);
         CHECK(std::filesystem::exists(jsimbaFile));
     }
 
@@ -146,7 +149,7 @@ SUITE(CircuitSimulatorExporterNgspice) {
         cirFile.append("./Test_CircuitSimulatorExporter_Ngspice_Only_Magnetic.cir");
 
         std::filesystem::remove(cirFile);
-        CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile);
+        CircuitSimulatorExporter(CircuitSimulatorExporterModels::NGSPICE).export_magnetic_as_subcircuit(magnetic, 10000, 100, cirFile);
         CHECK(std::filesystem::exists(cirFile));
     }
     
@@ -155,6 +158,7 @@ SUITE(CircuitSimulatorExporterNgspice) {
 
 
 SUITE(CircuitSimulatorExporterLtspice) {
+    double max_error = 0.01;
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
 
     TEST(Test_CircuitSimulatorExporter_Ltspice_Only_Magnetic_Analytical) {
@@ -178,7 +182,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         auto cirFile = outputFilePath;
         cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
         std::filesystem::remove(cirFile);
-        CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile, std::nullopt, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+        CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, 100, cirFile, std::nullopt, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
         CHECK(std::filesystem::exists(cirFile));
 
         auto asyFile = outputFilePath;
@@ -209,7 +213,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         auto cirFile = outputFilePath;
         cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
         std::filesystem::remove(cirFile);
-        CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, cirFile);
+        CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).export_magnetic_as_subcircuit(magnetic, 10000, 100, cirFile);
         CHECK(std::filesystem::exists(cirFile));
 
         auto asyFile = outputFilePath;
@@ -237,7 +241,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
+        auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, 42, CircuitSimulatorExporterCurveFittingModes::ANALYTICAL);
 
         size_t numberElements = 100;
         size_t windingIndex = 0;
@@ -284,7 +288,7 @@ SUITE(CircuitSimulatorExporterLtspice) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, CircuitSimulatorExporterCurveFittingModes::LADDER);
+        auto coefficientsPerWinding = CircuitSimulatorExporter(CircuitSimulatorExporterModels::LTSPICE).calculate_ac_resistance_coefficients_per_winding(magnetic, 42, CircuitSimulatorExporterCurveFittingModes::LADDER);
 
         size_t numberElements = 100;
         size_t windingIndex = 0;
@@ -390,6 +394,24 @@ SUITE(CircuitSimulatorExporterLtspice) {
         std::cout << "errorAverage: " << errorAverage << std::endl;
 
         CHECK(0.2 > errorAverage);
+    }
+
+    TEST(Test_CircuitSimulatorExporter_Ltspice_Web_0) {
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_dc_resistance_ltspice.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto magnetic = mas.get_magnetic();
+
+        auto cirFile = outputFilePath;
+        cirFile.append("./Custom_component_made_with_OpenMagnetic.cir");
+        std::filesystem::remove(cirFile);
+        auto effectiveResistanceThisWinding_0 = WindingLosses::calculate_effective_resistance_of_winding(magnetic, 0, 0.1, 100);
+        auto effectiveResistanceThisWinding_1 = WindingLosses::calculate_effective_resistance_of_winding(magnetic, 1, 0.1, 100);
+        auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), 100);
+        CHECK_CLOSE(effectiveResistanceThisWinding_0, dcResistancePerWinding[0], effectiveResistanceThisWinding_0 * max_error);
+        CHECK_CLOSE(effectiveResistanceThisWinding_1, dcResistancePerWinding[1], effectiveResistanceThisWinding_1 * max_error);
     }
 
 }
