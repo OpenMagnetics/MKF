@@ -82,12 +82,13 @@ class MagneticFilterCoreAndDcLosses : public MagneticFilter {
         MagnetizingInductance _magnetizingInductance;
         WindingOhmicLosses _windingOhmicLosses;
         std::map<std::string, std::string> _models;
-        std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz;
-        std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary;
+        std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
+        std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
         double _maximumPowerMean = 0;
-
     public:
-        MagneticFilterCoreAndDcLosses() {};
+
+        MagneticFilterCoreAndDcLosses();
+        MagneticFilterCoreAndDcLosses(Inputs inputs);
         MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };

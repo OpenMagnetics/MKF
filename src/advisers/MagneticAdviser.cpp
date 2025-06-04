@@ -176,10 +176,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     return get_advised_magnetic(catalogMagneticsWithInputs, filterFlow, maximumNumberResults, strict);
-
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
+
     load_filter_flow(filterFlow, catalogMagneticsWithInputs[0].get_inputs());
     std::vector<Mas> validMas;
     MagneticSimulator magneticSimulator;

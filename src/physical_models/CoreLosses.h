@@ -502,7 +502,6 @@ class CoreLosses {
     public:
 
     CoreLosses() {
-        auto settings = Settings::GetInstance();
         for (auto modelName : settings->get_core_losses_model_names()) {
             _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
         }
@@ -510,7 +509,6 @@ class CoreLosses {
     virtual ~CoreLosses() = default;
 
     void set_core_losses_model_name(CoreLossesModels model) {
-        auto settings = Settings::GetInstance();
         settings->set_core_losses_preferred_model_name(model);
         _coreLossesModels.clear();
         for (auto modelName : settings->get_core_losses_model_names()) {

@@ -1,6 +1,6 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticEnergy.h"
-#include "Defaults.h"
+#include "support/Utils.h"
 
 #include <cmath>
 #include <filesystem>
@@ -539,7 +539,6 @@ std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels model
                                  "EFFECTIVE_LENGTH, MUEHLETHALER, STENGLEIN, BALAKRISHNAN, CLASSIC}");
 }
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory() {
-    auto defaults = Defaults();
     return factory(defaults.reluctanceModelDefault);
 }
 } // namespace OpenMagnetics

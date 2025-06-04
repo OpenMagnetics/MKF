@@ -31,7 +31,14 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
         case MagneticFilters::COST:
             return std::make_shared<MagneticFilterCost>();
         case MagneticFilters::CORE_AND_DC_LOSSES:
-            return std::make_shared<MagneticFilterCoreAndDcLosses>();
+            {
+
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES");
+            }
+
+            return std::make_shared<MagneticFilterCoreAndDcLosses>(inputs.value());
+            }
         case MagneticFilters::LOSSES:
             return std::make_shared<MagneticFilterLosses>();
         case MagneticFilters::DIMENSIONS:
@@ -363,6 +370,29 @@ std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic
     return {true, scoring};
 }
 
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs) {
+    std::map<std::string, std::string> models;
+    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    MagneticFilterCoreAndDcLosses(inputs, models);
+}
+
+MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
+    std::map<std::string, std::string> models;
+    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+
+    _maximumPowerMean = 0;
+
+    _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+
+    _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
+    _windingOhmicLosses = WindingOhmicLosses();
+    _models = models;
+}
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
     bool largeWaveform = false;
 
@@ -394,6 +424,7 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std:
     }
 
     _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
+
     _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
