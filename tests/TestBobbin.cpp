@@ -145,4 +145,21 @@ SUITE(Bobbin) {
             auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
         }
     }
+
+    TEST(Create_Bobbin_With_Thickness) {
+        settings->set_use_toroidal_cores(true);
+        auto shapeNames = get_shape_names();
+        for (auto shapeName : shapeNames) {
+            if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
+                continue;
+            }
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+            auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
+            double wallThickness = coreWindingWindow.get_height().value() * 0.1;
+            double columnThickness = coreWindingWindow.get_width().value() * 0.1;
+            auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, wallThickness, columnThickness);
+            CHECK_CLOSE(wallThickness, bobbin.get_processed_description().value().get_wall_thickness(), max_error * wallThickness);
+            CHECK_CLOSE(columnThickness, bobbin.get_processed_description().value().get_column_thickness(), max_error * columnThickness);
+        }
+    }
 }
