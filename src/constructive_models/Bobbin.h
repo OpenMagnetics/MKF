@@ -66,6 +66,8 @@ class Bobbin : public MAS::Bobbin {
     CoilAlignment get_winding_window_sections_alignment(size_t windingWindowIndex = 0);
     static Bobbin create_quick_bobbin(double windingWindowHeight, double windingWindowWidth);
     static Bobbin create_quick_bobbin(Core core, bool nullDimensions = false);
+    static Bobbin create_quick_bobbin(Core core, double thickness);
+    static Bobbin create_quick_bobbin(Core core, double wallThickness, double columnThickness);
     bool check_if_fits(double dimension, bool isHorizontalOrRadial = true, size_t windingWindowIndex = 0);
     void set_winding_orientation(WindingOrientation windingOrientation, size_t windingWindowIndex = 0);
     std::optional<WindingOrientation> get_winding_orientation(size_t windingWindowIndex = 0);

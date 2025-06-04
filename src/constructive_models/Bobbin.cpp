@@ -451,7 +451,46 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
 
     auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
 
-    auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
+    WindingWindowShape bobbinWindingWindowShape;
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        bobbinWindingWindowShape = WindingWindowShape::ROUND;
+    }
+    else {
+        bobbinWindingWindowShape = WindingWindowShape::RECTANGULAR;
+    }
+
+    CoreBobbinProcessedDescription coreBobbinProcessedDescription;
+    WindingWindowElement windingWindowElement;
+
+    double bobbinColumnThickness = 0;
+    double bobbinWallThickness = 0;
+
+    if (!nullDimensions && bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+
+        std::vector<double> bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+        bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
+        bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
+        if (bobbinWallThickness <= 0) {
+            throw std::runtime_error("bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
+        }
+    }
+    return create_quick_bobbin(core, bobbinWallThickness, bobbinColumnThickness);
+}
+
+Bobbin Bobbin::create_quick_bobbin(Core core, double thickness) {
+    return create_quick_bobbin(core, thickness, thickness);
+}
+
+Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double columnThickness) {
+    if (!core.get_processed_description()) {
+        throw std::runtime_error("Core has not been processed yet");
+    }
+
+    if (core.get_processed_description()->get_winding_windows().size() > 1) {
+        throw std::runtime_error("More than one winding window not supported yet");
+    }
+
+    auto coreWindingWindow = core.get_processed_description()->get_winding_windows()[0];
 
     WindingWindowShape bobbinWindingWindowShape;
     if (core.get_shape_family() == CoreShapeFamily::T) {
@@ -463,7 +502,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
 
     std::vector<double> bobbinWindingWindowDimensions;
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        bobbinWindingWindowDimensions = {coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value()};
+        bobbinWindingWindowDimensions = {std::max(0.0, coreWindingWindow.get_width().value() - columnThickness), std::max(0.0, coreWindingWindow.get_height().value() - wallThickness * 2)};
     }
     else {
         bobbinWindingWindowDimensions = {coreWindingWindow.get_radial_height().value(), coreWindingWindow.get_angle().value()};
@@ -472,19 +511,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
     CoreBobbinProcessedDescription coreBobbinProcessedDescription;
     WindingWindowElement windingWindowElement;
 
-    double bobbinColumnThickness = 0;
-    double bobbinWallThickness = 0;
-
-    if (!nullDimensions && bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-
-        bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
-        bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
-        bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
-        if (bobbinWallThickness <= 0) {
-            throw std::runtime_error("bobbinWallThickness cannot be negative or 0: " + std::to_string(bobbinWallThickness));
-        }
-    }
-
+    auto coreCentralColumn = core.get_processed_description()->get_columns()[0];
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         if ((bobbinWindingWindowDimensions[0] < 0) || (bobbinWindingWindowDimensions[0] > 1) || (bobbinWindingWindowDimensions[1] < 0) || (bobbinWindingWindowDimensions[1] > 1)) {
             windingWindowElement.set_width(coreWindingWindow.get_width().value());
@@ -497,9 +524,9 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
             windingWindowElement.set_width(bobbinWindingWindowDimensions[0]);
             windingWindowElement.set_height(bobbinWindingWindowDimensions[1]);
             windingWindowElement.set_area(bobbinWindingWindowDimensions[0] * bobbinWindingWindowDimensions[1]);
-            windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + bobbinColumnThickness + bobbinWindingWindowDimensions[0] / 2, 0, 0}));
-            coreBobbinProcessedDescription.set_wall_thickness(bobbinWallThickness);
-            coreBobbinProcessedDescription.set_column_thickness(bobbinColumnThickness);
+            windingWindowElement.set_coordinates(std::vector<double>({coreCentralColumn.get_width() / 2 + columnThickness + bobbinWindingWindowDimensions[0] / 2, 0, 0}));
+            coreBobbinProcessedDescription.set_wall_thickness(wallThickness);
+            coreBobbinProcessedDescription.set_column_thickness(columnThickness);
         }
     }
     else {
@@ -514,8 +541,8 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions) {
     windingWindowElement.set_shape(bobbinWindingWindowShape);
     coreBobbinProcessedDescription.set_winding_windows(std::vector<WindingWindowElement>({windingWindowElement}));
     coreBobbinProcessedDescription.set_column_shape(coreCentralColumn.get_shape());
-    coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + bobbinColumnThickness);
-    coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + bobbinColumnThickness);
+    coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + columnThickness);
+    coreBobbinProcessedDescription.set_column_width(coreCentralColumn.get_width() / 2 + columnThickness);
     coreBobbinProcessedDescription.set_coordinates(std::vector<double>({0, 0, 0}));
 
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
