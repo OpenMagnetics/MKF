@@ -86,7 +86,7 @@ CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter);
 
 void clear_loaded_cores();
 void clear_databases();
-void load_cores();
+void load_cores(std::optional<std::string> fileToLoad=std::nullopt);
 void load_core_materials(std::optional<std::string> fileToLoad=std::nullopt);
 void load_core_shapes(bool withAliases=true, std::optional<std::string> fileToLoad=std::nullopt);
 void load_wires(std::optional<std::string> fileToLoad=std::nullopt);

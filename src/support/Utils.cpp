@@ -44,15 +44,21 @@ bool _addInternalData = true;
 
 namespace OpenMagnetics {
 
-void load_cores() {
+void load_cores(std::optional<std::string> fileToLoad) {
     bool includeToroidalCores = settings->get_use_toroidal_cores();
     bool includeConcentricCores = settings->get_use_concentric_cores();
     bool useOnlyCoresInStock = settings->get_use_only_cores_in_stock();
 
     auto fs = cmrc::data::get_filesystem();
     if (useOnlyCoresInStock && fs.exists("MAS/data/cores_stock.ndjson")) {
-        auto data = fs.open("MAS/data/cores_stock.ndjson");
-        std::string database = std::string(data.begin(), data.end());
+        std::string database;
+        if (fileToLoad) {
+            database = fileToLoad.value();
+        }
+        else {
+            auto data = fs.open("MAS/data/cores_stock.ndjson");
+            database = std::string(data.begin(), data.end());
+        }
         std::string delimiter = "\n";
         size_t pos = 0;
         std::string token;
@@ -72,8 +78,14 @@ void load_cores() {
         }
     }
     else {
-        auto data = fs.open("MAS/data/cores.ndjson");
-        std::string database = std::string(data.begin(), data.end());
+        std::string database;
+        if (fileToLoad) {
+            database = fileToLoad.value();
+        }
+        else {
+            auto data = fs.open("MAS/data/cores.ndjson");
+            database = std::string(data.begin(), data.end());
+        }
         std::string delimiter = "\n";
 
         if (database.back() == delimiter.back()) {
