@@ -1153,4 +1153,17 @@ SUITE(MagneticSimulator) {
 
         MagneticAdviser::preview_magnetic(mas);
     }
+
+    TEST(Test_Simulator_Web_3) {
+
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bug_partialWinding_missing.json");
+        std::cout << "Mierda 0" << std::endl;
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto simulator = MagneticSimulator();
+        mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
+
+        MagneticAdviser::preview_magnetic(mas);
+    }
 }

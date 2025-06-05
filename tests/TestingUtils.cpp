@@ -798,6 +798,10 @@ OpenMagnetics::Mas mas_loader(std::string path) {
     auto inputsJson = masJson["inputs"];
     auto magneticJson = masJson["magnetic"];
     auto outputsJson = masJson["outputs"];
+    for (auto layerJson : magneticJson["coil"]["layersDescription"]) {
+        auto layer = MAS::Layer(layerJson);
+    }
+    auto coil = OpenMagnetics::Coil(magneticJson["coil"]);
     auto magnetic = OpenMagnetics::Magnetic(magneticJson);
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {
