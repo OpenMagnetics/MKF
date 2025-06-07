@@ -85,4 +85,46 @@ class Core : public MAS::MagneticCore {
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
 };
+
+
+void from_json(const json& j, std::vector<BhCycleElement>& v);
+void to_json(json& j, const std::vector<BhCycleElement>& v);
+void from_json(const json& j, std::vector<VolumetricLossesPoint>& v);
+void to_json(json& j, const std::vector<VolumetricLossesPoint>& v);
+void from_json(const json& j, std::vector<Permeability>& v);
+void to_json(json& j, const std::vector<Permeability>& v);
+
+inline void from_json(const json& j, std::vector<BhCycleElement>& v) {
+    for (auto e : j) {
+        BhCycleElement x(e);
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<BhCycleElement>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        to_json(e, x);
+        j.push_back(e);
+    }
+}
+
+inline void from_json(const json& j, std::vector<VolumetricLossesPoint>& v) {
+    for (auto e : j) {
+        VolumetricLossesPoint x(e);
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<VolumetricLossesPoint>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        to_json(e, x);
+        j.push_back(e);
+    }
+}
+
+
 } // namespace OpenMagnetics

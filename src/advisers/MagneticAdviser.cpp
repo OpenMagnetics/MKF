@@ -96,9 +96,15 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
     size_t requestedCores = expectedWoundCores;
     std::vector<std::string> evaluatedCores;
+    size_t previouslyObtainedCores = SIZE_MAX;
     while (coresWound < expectedWoundCores) {
         requestedCores *= 10;
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores);
+
+        if (previouslyObtainedCores == masMagneticsWithCore.size()) {
+            break;
+        }
+        previouslyObtainedCores = masMagneticsWithCore.size();
         
         for (auto& [mas, coreScoring] : masMagneticsWithCore) {
             if (std::find(evaluatedCores.begin(), evaluatedCores.end(), mas.get_magnetic().get_core().get_name().value()) != evaluatedCores.end()) {

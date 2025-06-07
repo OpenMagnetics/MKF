@@ -3166,3 +3166,32 @@ SUITE(MagneticFluxDensityFromCoreLosses) {
         CHECK_CLOSE(magneticFluxDensity.get_processed().value().get_peak().value(), magneticFluxDensityFromCoreLossesPeak, magneticFluxDensityFromCoreLossesPeak * maxError);
     }
 }
+
+SUITE(SteinmetzCoefficientsCalculation) {
+    double maxError = 0.5;
+    TEST(Calculate_Steinmetz_Coefficients) {
+        load_core_materials();
+
+        std::string file_path = __FILE__;
+        auto external_core_materials_path = file_path.substr(0, file_path.rfind("/")).append("/../MAS/data/advanced_core_materials.ndjson");
+
+        std::ifstream file(external_core_materials_path, std::ios_base::binary | std::ios_base::in);
+        if(!file.is_open())
+            throw std::runtime_error("Failed to open " + external_core_materials_path);
+        using Iterator = std::istreambuf_iterator<char>;
+        std::string advanced_core_materials(Iterator{file}, Iterator{});
+
+        load_advanced_core_materials(advanced_core_materials);
+
+        for (auto [name, material] : coreMaterialDatabase) {
+            auto data = OpenMagnetics::CoreLossesModel::get_volumetric_losses_data(material);
+            if (data.size() > 0) {
+                auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{0, 100000}, {100000, 500000}, {500000, 100000000}});
+                double maximumError = *std::max_element(errorPerRange.begin(), errorPerRange.end());
+
+                CHECK(maximumError < maxError);
+            }
+        }
+
+    }
+}

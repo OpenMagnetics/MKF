@@ -20,6 +20,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include "levmar.h"
 
 std::map<std::string, tk::spline> lossFactorInterps;
 
@@ -172,7 +173,25 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
                                  "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR}");
 }
 
-CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string method) {
+std::vector<VolumetricLossesPoint> CoreLossesModel::get_volumetric_losses_data(CoreMaterial materialData) {
+    auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+
+    for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
+        if (volumetricLossesMethodVariant.first != "default") {
+            continue;
+        }
+        auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
+        for (auto& volumetricLossesMethod : volumetricLossesMethods) {
+            if (std::holds_alternative<std::vector<VolumetricLossesPoint>>(volumetricLossesMethod)) {
+                return std::get<std::vector<VolumetricLossesPoint>>(volumetricLossesMethod);
+            }
+        }
+    }
+    return std::vector<VolumetricLossesPoint>();
+}
+
+
+CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData, std::string method) {
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
     std::string methodUpper = method;
     std::transform(methodUpper.begin(), methodUpper.end(), methodUpper.begin(), ::toupper);
@@ -208,7 +227,7 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
 
     auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
 
-    auto steinmetzData = get_method_data(materialData, "steinmetz");
+    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "steinmetz");
     auto ranges = steinmetzData.get_ranges().value();
     double minimumMaterialFrequency = 100000000;
     double minimumMaterialFrequencyIndex = -1;
@@ -246,6 +265,241 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
 
     throw std::runtime_error("Error getting Steinmetz coefficients");
 }
+
+
+double steinmetz_equation_with_temperature_and_log(double x[], double frequency, double magneticFluxDensityAcPeak, double temperature) {
+    double temperatureCoefficient = x[3] - x[4] * temperature + x[5] * pow(temperature, 2);
+    if (temperatureCoefficient < 0) {
+        return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2];
+    }
+    else {
+        return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2] + log10(temperatureCoefficient);
+    }
+}
+
+double steinmetz_equation_and_log(double x[], double frequency, double magneticFluxDensityAcPeak) {
+    return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2];
+}
+
+double steinmetz_equation_with_temperature(double x[], double frequency, double magneticFluxDensityAcPeak, double temperature) {
+    if (pow(10, x[0]) < 0) {
+            return DBL_MAX;
+    }
+    if (pow(10, x[1]) < 1) {
+            return DBL_MAX;
+    }
+    if (pow(10, x[2]) < 2) {
+            return DBL_MAX;
+    }
+
+    return x[0] * pow(frequency, x[1]) * pow(magneticFluxDensityAcPeak, x[2]) * (x[3] - x[4] * temperature + x[5] * pow(temperature, 2));
+}
+
+double steinmetz_equation(double x[], double frequency, double magneticFluxDensityAcPeak) {
+    // for(int i=0; i<10; ++i) {
+    //     if (x[i] < 0) {
+    //         return 0;
+    //     }
+    // }
+
+    return x[0] * pow(frequency, x[1]) * pow(magneticFluxDensityAcPeak, x[2]);
+}
+
+void steinmetz_equation_func(double *p, double *x, int m, int n, void *data) {
+    double* volumetricLosses = static_cast <double*> (data);
+
+    for(int i=0; i<n; ++i) {
+        auto frequency = volumetricLosses[2 * i];
+        auto magneticFluxDensityAcPeak = volumetricLosses[2 * i + 1];
+        x[i]=steinmetz_equation_and_log(p, frequency, magneticFluxDensityAcPeak);
+    }
+
+    // x[0] = pow(10, x[0]);
+}
+
+void steinmetz_equation_with_temperature_func(double *p, double *x, int m, int n, void *data) {
+    double* volumetricLosses = static_cast <double*> (data);
+
+    for(int i=0; i<n; ++i) {
+        auto frequency = volumetricLosses[3 * i];
+        auto magneticFluxDensityAcPeak = volumetricLosses[3 * i + 1];
+        auto temperature = volumetricLosses[3 * i + 2];
+        x[i]=steinmetz_equation_with_temperature_and_log(p, frequency, magneticFluxDensityAcPeak, temperature);
+    }
+
+    // x[0] = pow(10, x[0]);
+}
+
+std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>> CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(std::vector<VolumetricLossesPoint> volumetricLosses, std::vector<std::pair<double, double>> ranges) {
+    std::vector<double> bestErrorPerRange;
+    std::vector<SteinmetzCoreLossesMethodRangeDatum> steinmetzCoefficientsPerRange;
+
+    double opts[LM_OPTS_SZ], info[LM_INFO_SZ];
+
+    double lmInitMu = 1e-03;
+    double lmStopThresh = 1e-25;
+    double lmDiffDelta = 1e-19;
+
+    opts[0]= lmInitMu;
+    opts[1]= lmStopThresh;
+    opts[2]= lmStopThresh;
+    opts[3]= lmStopThresh;
+    opts[4]= lmDiffDelta;
+
+    size_t loopIterations = 6;
+
+    std::vector<double> distinctTemperatures;
+    for (size_t index = 0; index < volumetricLosses.size(); ++index) {
+        auto temperature = volumetricLosses[index].get_temperature();
+        if (std::find(distinctTemperatures.begin(), distinctTemperatures.end(), temperature) == distinctTemperatures.end()) {
+            distinctTemperatures.push_back(temperature);
+        }
+    }
+    size_t numberInputs = distinctTemperatures.size() > 1? 3 : 2;
+
+    size_t numberUnknowns = numberInputs == 3? 6 : 3;
+
+    std::vector<std::vector<VolumetricLossesPoint>> volumetricLossesChunks;
+
+    if (ranges.size() > 1) {
+        for (auto range : ranges) {
+            volumetricLossesChunks.push_back(std::vector<VolumetricLossesPoint>());
+        }
+        for (auto volumetricLoss : volumetricLosses) {
+            auto frequency = volumetricLoss.get_magnetic_flux_density().get_frequency();
+            for (size_t chunkIndex = 0; chunkIndex < ranges.size(); ++chunkIndex) {
+                if (ranges[chunkIndex].first * 0.8 <= frequency && frequency <= ranges[chunkIndex].second * 1.2) {
+                    volumetricLossesChunks[chunkIndex].push_back(volumetricLoss);
+                }
+            }
+        }
+    }
+    else {
+        volumetricLossesChunks = {volumetricLosses};
+    }
+
+    // We remove empty or too small chunks
+    bool continueCleaning = true;
+    while (continueCleaning) {
+        continueCleaning = false;        
+        for (size_t chunkIndex = 0; chunkIndex < volumetricLossesChunks.size(); ++chunkIndex) {
+            auto volumetricLossesChunk = volumetricLossesChunks[chunkIndex];
+
+            if (volumetricLossesChunk.size() <= numberUnknowns) {
+                if (chunkIndex == 0 && volumetricLossesChunks.size() == 1) {
+                    if (volumetricLossesChunks[0].size() > 3) {
+                        numberInputs = 2;
+                        numberUnknowns = 3;
+                        break;
+                    }
+                    else {
+                        throw std::runtime_error("Too few points");
+                    }
+                }
+                else if (chunkIndex == 0) {
+                    for (auto volumetricLosses : volumetricLossesChunk) {
+                        volumetricLossesChunks[1].push_back(volumetricLosses);
+                        ranges[1] = {ranges[0].first, ranges[1].second};
+                    }
+                    ranges.erase(ranges.begin() + chunkIndex);
+                    volumetricLossesChunks.erase(volumetricLossesChunks.begin() + chunkIndex);
+                    continueCleaning = true;        
+                    break;
+                }
+                else {
+                    for (auto volumetricLosses : volumetricLossesChunk) {
+                        volumetricLossesChunks[chunkIndex - 1].push_back(volumetricLosses);
+                        ranges[chunkIndex - 1] = {ranges[chunkIndex - 1].first, ranges[chunkIndex].second};
+                    }
+                    ranges.erase(ranges.begin() + chunkIndex);
+                    volumetricLossesChunks.erase(volumetricLossesChunks.begin() + chunkIndex);
+                    continueCleaning = true;        
+                    break;
+                }
+            }
+        }
+    }
+
+    for (size_t chunkIndex = 0; chunkIndex < volumetricLossesChunks.size(); ++chunkIndex) {
+        double bestError = DBL_MAX;
+        double initialState = 10;
+        std::vector<double> bestCoefficients;
+        auto volumetricLossesChunk = volumetricLossesChunks[chunkIndex];
+        for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
+            size_t numberElements = volumetricLossesChunk.size();
+
+            double volumetricLossesArray[numberElements];
+
+            for (size_t index = 0; index < numberElements; ++index) {
+                volumetricLossesArray[index] = log10(volumetricLossesChunk[index].get_value());
+                auto temperature = volumetricLossesChunk[index].get_temperature();
+                if (std::find(distinctTemperatures.begin(), distinctTemperatures.end(), temperature) == distinctTemperatures.end()) {
+                    distinctTemperatures.push_back(temperature);
+                }
+            }
+
+            double coefficients[numberUnknowns];
+            for (size_t index = 0; index < numberUnknowns; ++index) {
+                coefficients[index] = initialState;
+            }
+
+            double volumetricLossesInputs[numberElements * numberInputs];
+            for (size_t index = 0; index < numberElements; ++index) {
+                volumetricLossesInputs[numberInputs * index] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_frequency());
+                volumetricLossesInputs[numberInputs * index + 1] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_magnetic_flux_density()->get_processed()->get_peak().value());
+                if (numberInputs == 3) {
+                    volumetricLossesInputs[numberInputs * index + 2] = volumetricLossesChunk[index].get_temperature();
+                }
+            }
+
+            dlevmar_dif(numberInputs == 3? steinmetz_equation_with_temperature_func : steinmetz_equation_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&volumetricLossesInputs));
+
+            double errorAverage = 0;
+            for (size_t index = 0; index < numberElements; ++index) {
+                auto frequency = volumetricLossesInputs[numberInputs * index];
+                auto magneticFluxDensityAcPeak = volumetricLossesInputs[numberInputs * index + 1];
+                double modeledVolumetricLosses = 0;
+                if (numberInputs == 3) {
+                    auto temperature = volumetricLossesInputs[numberInputs * index + 2];
+                    modeledVolumetricLosses = steinmetz_equation_with_temperature_and_log(coefficients, frequency, magneticFluxDensityAcPeak, temperature);
+                }
+                else {
+                    modeledVolumetricLosses = steinmetz_equation_and_log(coefficients, frequency, magneticFluxDensityAcPeak);
+                }
+                double error = fabs(pow(10, volumetricLossesArray[index]) - pow(10, modeledVolumetricLosses)) / pow(10, volumetricLossesArray[index]);
+                errorAverage += error;
+            }
+
+
+            errorAverage /= numberElements;
+            initialState /= 10;
+
+            if (errorAverage < bestError) {
+                bestError = errorAverage;
+                bestCoefficients.clear();
+                for (auto coefficient : coefficients) {
+                    bestCoefficients.push_back(coefficient);
+                }
+                bestCoefficients[0] = pow(10, bestCoefficients[0]); 
+            }
+        }
+        SteinmetzCoreLossesMethodRangeDatum steinmetzCoreLossesMethodRangeDatum;
+        steinmetzCoreLossesMethodRangeDatum.set_k(bestCoefficients[0]);
+        steinmetzCoreLossesMethodRangeDatum.set_alpha(bestCoefficients[1]);
+        steinmetzCoreLossesMethodRangeDatum.set_beta(bestCoefficients[2]);
+        if (numberInputs == 3) {
+            steinmetzCoreLossesMethodRangeDatum.set_ct0(bestCoefficients[3]);
+            steinmetzCoreLossesMethodRangeDatum.set_ct1(bestCoefficients[4]);
+            steinmetzCoreLossesMethodRangeDatum.set_ct2(bestCoefficients[5]);
+        }
+        steinmetzCoreLossesMethodRangeDatum.set_minimum_frequency(ranges[chunkIndex].first);
+        steinmetzCoreLossesMethodRangeDatum.set_maximum_frequency(ranges[chunkIndex].second);
+        steinmetzCoefficientsPerRange.push_back(steinmetzCoreLossesMethodRangeDatum);
+        bestErrorPerRange.push_back(bestError);
+    }
+
+    return {steinmetzCoefficientsPerRange, bestErrorPerRange};
+};
 
 CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(Core core,
                                                   OperatingPointExcitation excitation,
@@ -711,7 +965,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core 
     std::map<std::string, double> roshenParameters;
     auto materialData =  core.resolve_material();
 
-    auto roshenData = get_method_data(materialData, "roshen");
+    auto roshenData = CoreLossesModel::get_method_data(materialData, "roshen");
 
     roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
     roshenParameters["remanence"] = core.get_remanence(temperature);
@@ -986,7 +1240,7 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
     double volumetricLosses = -1;
 
     if (coreMaterial.get_manufacturer_info().get_name() == "Micrometals") {
-        auto micrometalsData = get_method_data(coreMaterial, "micrometals");
+        auto micrometalsData = CoreLossesModel::get_method_data(coreMaterial, "micrometals");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -995,7 +1249,7 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
     }
 
     else if (coreMaterial.get_manufacturer_info().get_name() == "Magnetics") {
-        auto magneticsData = get_method_data(coreMaterial, "magnetics");
+        auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "magnetics");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
@@ -1173,7 +1427,7 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
 
     if (!lossFactorInterps.contains(coreMaterial.get_name())) {
 
-        auto lossFactorData = get_method_data(coreMaterial, "loss_factor");
+        auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "loss_factor");
         auto lossFactorPoints = lossFactorData.get_factors().value();
 
         int n = lossFactorPoints.size();
@@ -1210,7 +1464,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     double volumetricLosses = coreLosses / effectiveVolume;
 
     if (materialData.get_manufacturer_info().get_name() == "Micrometals") {
-        auto micrometalsData = get_method_data(materialData, "micrometals");
+        auto micrometalsData = CoreLossesModel::get_method_data(materialData, "micrometals");
         double a = micrometalsData.get_a().value();
         double b = micrometalsData.get_b().value();
         double c = micrometalsData.get_c().value();
@@ -1222,7 +1476,7 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     }
 
     if (materialData.get_manufacturer_info().get_name() == "Magnetics") {
-        auto magneticsData = get_method_data(materialData, "magnetics");
+        auto magneticsData = CoreLossesModel::get_method_data(materialData, "magnetics");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
