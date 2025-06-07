@@ -88,6 +88,7 @@ void clear_loaded_cores();
 void clear_databases();
 void load_cores(std::optional<std::string> fileToLoad=std::nullopt);
 void load_core_materials(std::optional<std::string> fileToLoad=std::nullopt);
+void load_advanced_core_materials(std::string fileToLoad);
 void load_core_shapes(bool withAliases=true, std::optional<std::string> fileToLoad=std::nullopt);
 void load_wires(std::optional<std::string> fileToLoad=std::nullopt);
 void load_bobbins();

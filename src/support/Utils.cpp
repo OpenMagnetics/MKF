@@ -17,6 +17,7 @@
 #include <cmrc/cmrc.hpp>
 #include "support/Utils.h"
 #include "support/Settings.h"
+#include <typeinfo>
 
 CMRC_DECLARE(data);
 
@@ -159,6 +160,43 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
             coreMaterialDatabase[jf["name"]] = coreMaterial;
             database.erase(0, pos + delimiter.length());
         }
+    }
+}
+
+void load_advanced_core_materials(std::string fileToLoad) {
+    std::string database = fileToLoad;
+
+    std::string delimiter = "\n";
+    size_t pos = 0;
+    std::string token;
+    if (database.back() != delimiter.back()) {
+        database += delimiter;
+    }
+    while ((pos = database.find(delimiter)) != std::string::npos) {
+        token = database.substr(0, pos);
+        json jf = json::parse(token);
+
+        if (coreMaterialDatabase.count(jf["name"])) {
+            auto material = coreMaterialDatabase[jf["name"]];
+            if (jf.contains("bhCycle")) {
+                std::vector<BhCycleElement> bhCycle;
+                from_json(jf["bhCycle"], bhCycle);
+                material.set_bh_cycle(bhCycle);
+            }
+            if (jf.contains("volumetricLosses")) {
+                std::vector<VolumetricLossesPoint> volumetricLosses;
+                from_json(jf["volumetricLosses"]["default"][0], volumetricLosses);
+                material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
+            }
+            if (jf.contains("permeability")) {
+                if (jf["permeability"].contains("amplitude")) {
+                    Permeability amplitudePermeability(jf["permeability"]["amplitude"]);
+                    material.get_mutable_permeability().set_amplitude(amplitudePermeability);
+                }
+            }
+            coreMaterialDatabase[jf["name"]] = material;
+        }
+        database.erase(0, pos + delimiter.length());
     }
 }
 

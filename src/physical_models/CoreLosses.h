@@ -67,6 +67,8 @@ class CoreLossesModel {
         CoreMaterialDataOrNameUnion material,
         double frequency);
     bool is_steinmetz_datum_loaded() { return _steinmetzDatumSet; }
+    static CoreLossesMethodData get_method_data(CoreMaterial materialData, std::string method);
+    static std::vector<VolumetricLossesPoint> get_volumetric_losses_data(CoreMaterial materialData);
     SteinmetzCoreLossesMethodRangeDatum get_steinmetz_datum() { return _steinmetzDatum; }
     void set_steinmetz_datum(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum) {
         _steinmetzDatumSet = true;
@@ -207,6 +209,9 @@ class CoreLossesSteinmetzModel : public CoreLossesModel {
                                           SignalDescriptor magneticFluxDensity,
                                           double temperature,
                                           double coreLosses);
+
+    static std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>> calculate_steinmetz_coefficients(std::vector<VolumetricLossesPoint> volumetricLosses, std::vector<std::pair<double, double>> ranges);
+
     SignalDescriptor get_magnetic_flux_density_from_core_losses(Core core,
                                                                         double frequency,
                                                                         double temperature,
