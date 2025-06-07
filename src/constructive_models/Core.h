@@ -93,6 +93,8 @@ void from_json(const json& j, std::vector<VolumetricLossesPoint>& v);
 void to_json(json& j, const std::vector<VolumetricLossesPoint>& v);
 void from_json(const json& j, std::vector<Permeability>& v);
 void to_json(json& j, const std::vector<Permeability>& v);
+void from_json(const json& j, std::vector<SteinmetzCoreLossesMethodRangeDatum>& v);
+void to_json(json& j, const std::vector<SteinmetzCoreLossesMethodRangeDatum>& v);
 
 inline void from_json(const json& j, std::vector<BhCycleElement>& v) {
     for (auto e : j) {
@@ -118,6 +120,22 @@ inline void from_json(const json& j, std::vector<VolumetricLossesPoint>& v) {
 }
 
 inline void to_json(json& j, const std::vector<VolumetricLossesPoint>& v) {
+    j = json::array();
+    for (auto x : v) {
+        json e;
+        to_json(e, x);
+        j.push_back(e);
+    }
+}
+
+inline void from_json(const json& j, std::vector<SteinmetzCoreLossesMethodRangeDatum>& v) {
+    for (auto e : j) {
+        SteinmetzCoreLossesMethodRangeDatum x(e);
+        v.push_back(x);
+    }
+}
+
+inline void to_json(json& j, const std::vector<SteinmetzCoreLossesMethodRangeDatum>& v) {
     j = json::array();
     for (auto x : v) {
         json e;
