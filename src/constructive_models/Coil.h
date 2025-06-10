@@ -144,6 +144,7 @@ class Coil : public MAS::Coil {
         bool wind_by_round_turns();
         bool wind_toroidal_additional_turns();
         bool calculate_insulation(bool simpleMode = false);
+        bool calculate_custom_thickness_insulation(double thickness);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
         bool delimit_and_compact_rectangular_window();
