@@ -61,10 +61,11 @@ std::vector<std::string> MagneticsCache::filter_magnetics_by_energy(double minim
     return filteredReferences;
 }
 
-std::map<std::string, double> MagneticsCache::read_energy_cache() {
+std::map<std::string, double> MagneticsCache::read_magnetic_energy_cache() {
     return _magneticEnergyCache;
 }
-double MagneticsCache::read_energy_cache(std::string reference) {
+
+double MagneticsCache::read_magnetic_energy_cache(std::string reference) {
     if (_magneticEnergyCache.contains(reference)) {
         return _magneticEnergyCache[reference];
     } else {
@@ -115,10 +116,10 @@ std::pair<std::string, double> MasCache::get_maximum_magnetic_energy_in_cache() 
     return *std::max_element(_magneticEnergyCache.begin(), _magneticEnergyCache.end(), [](const std::pair<std::string, double>& p1, const std::pair<std::string, double>& p2) {return p1.second < p2.second; });
 }
 
-std::map<std::string, double> MasCache::read_energy_cache() {
+std::map<std::string, double> MasCache::read_magnetic_energy_cache() {
     return _magneticEnergyCache;
 }
-double MasCache::read_energy_cache(std::string reference) {
+double MasCache::read_magnetic_energy_cache(std::string reference) {
     if (_magneticEnergyCache.contains(reference)) {
         return _magneticEnergyCache[reference];
     } else {
