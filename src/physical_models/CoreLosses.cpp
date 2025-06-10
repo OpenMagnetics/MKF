@@ -428,7 +428,8 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
         for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
             size_t numberElements = volumetricLossesChunk.size();
 
-            double volumetricLossesArray[numberElements];
+            double* volumetricLossesArray = new double[numberElements];
+            // double volumetricLossesArray[numberElements];
 
             for (size_t index = 0; index < numberElements; ++index) {
                 volumetricLossesArray[index] = log10(volumetricLossesChunk[index].get_value());
@@ -438,12 +439,14 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 }
             }
 
-            double coefficients[numberUnknowns];
+            double* coefficients = new double[numberUnknowns];
+            // double coefficients[numberUnknowns];
             for (size_t index = 0; index < numberUnknowns; ++index) {
                 coefficients[index] = initialState;
             }
 
-            double volumetricLossesInputs[numberElements * numberInputs];
+            double* volumetricLossesInputs = new double[numberElements * numberInputs];
+            // double volumetricLossesInputs[numberElements * numberInputs];
             for (size_t index = 0; index < numberElements; ++index) {
                 volumetricLossesInputs[numberInputs * index] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_frequency());
                 volumetricLossesInputs[numberInputs * index + 1] = log10(volumetricLossesChunk[index].get_magnetic_flux_density().get_magnetic_flux_density()->get_processed()->get_peak().value());
@@ -477,11 +480,15 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
             if (errorAverage < bestError) {
                 bestError = errorAverage;
                 bestCoefficients.clear();
-                for (auto coefficient : coefficients) {
-                    bestCoefficients.push_back(coefficient);
+                for (size_t index = 0; index < numberUnknowns; ++index) {
+                    bestCoefficients.push_back(coefficients[index]);
                 }
                 bestCoefficients[0] = pow(10, bestCoefficients[0]); 
             }
+
+            delete[] volumetricLossesArray;
+            delete[] coefficients;
+            delete[] volumetricLossesInputs;
         }
         SteinmetzCoreLossesMethodRangeDatum steinmetzCoreLossesMethodRangeDatum;
         steinmetzCoreLossesMethodRangeDatum.set_k(bestCoefficients[0]);
