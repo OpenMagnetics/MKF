@@ -993,6 +993,121 @@ void Coil::set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector
     _insulationLayers = insulationLayers;
 }
 
+bool Coil::calculate_custom_thickness_insulation(double thickness) {
+    // Insulation layers just for mechanical reasons, one layer between sections at least
+    auto wirePerWinding = get_wires();
+
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto layersOrientation = _layersOrientation;
+
+    // TODO: Properly think about insulation layers with weird windings
+    auto windingOrientation = get_winding_orientation();
+
+    if (windingOrientation == WindingOrientation::CONTIGUOUS && _layersOrientation == WindingOrientation::OVERLAPPING) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::CONTIGUOUS;
+        }
+    }
+    if (windingOrientation == WindingOrientation::OVERLAPPING && _layersOrientation == WindingOrientation::CONTIGUOUS) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::OVERLAPPING;
+        }
+    }
+
+    for (size_t leftTopWindingIndex = 0; leftTopWindingIndex < get_functional_description().size(); ++leftTopWindingIndex) {
+        for (size_t rightBottomWindingIndex = 0; rightBottomWindingIndex < get_functional_description().size(); ++rightBottomWindingIndex) {
+            if (leftTopWindingIndex == rightBottomWindingIndex) {
+                continue;
+            }
+            auto wireLeftTopWinding = wirePerWinding[leftTopWindingIndex];
+            auto wireRightBottomWinding = wirePerWinding[rightBottomWindingIndex];
+            auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
+
+            CoilSectionInterface coilSectionInterface;
+            coilSectionInterface.set_number_layers_insulation(1);
+            InsulationMaterial defaultInsulationMaterial = find_insulation_material_by_name(defaults.defaultInsulationMaterial);
+            coilSectionInterface.set_solid_insulation_thickness(defaultInsulationMaterial.get_thinner_tape_thickness());
+            coilSectionInterface.set_total_margin_tape_distance(0);
+            coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
+
+            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
+
+            Layer layer;
+            layer.set_partial_windings(std::vector<PartialWinding>{});
+            // layer.set_section(section.get_name());
+            layer.set_type(ElectricalType::INSULATION);
+            layer.set_name("temp");
+            layer.set_orientation(layersOrientation);
+            layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
+
+            if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+                layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                double windingWindowHeight = windingWindows[0].get_height().value();
+                double windingWindowWidth = windingWindows[0].get_width().value();
+                if (layersOrientation == WindingOrientation::OVERLAPPING) {
+                    layer.set_dimensions(std::vector<double>{thickness, windingWindowHeight});
+                }
+                else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
+                    layer.set_dimensions(std::vector<double>{windingWindowWidth, thickness});
+                }
+            }
+            else {
+                layer.set_coordinate_system(CoordinateSystem::POLAR);
+                double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+                double windingWindowAngle = windingWindows[0].get_angle().value();
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    layer.set_dimensions(std::vector<double>{thickness, windingWindowAngle});
+                }
+                else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+                    double tapeThicknessInAngle = wound_distance_to_angle(thickness, windingWindowRadialHeight);
+                    layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+                }
+            }
+            // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+            layer.set_filling_factor(1);
+            _insulationLayers[windingsMapKey].push_back(layer);
+
+            Section section;
+            section.set_name("temp");
+            section.set_partial_windings(std::vector<PartialWinding>{});
+            section.set_layers_orientation(layersOrientation);
+            section.set_type(ElectricalType::INSULATION);
+
+            if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+                section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                double windingWindowHeight = windingWindows[0].get_height().value();
+                double windingWindowWidth = windingWindows[0].get_width().value();
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_dimensions(std::vector<double>{thickness, windingWindowHeight});
+                }
+                else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+                    section.set_dimensions(std::vector<double>{windingWindowWidth, thickness});
+                }
+            }
+            else {
+                section.set_coordinate_system(CoordinateSystem::POLAR);
+                double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+                double windingWindowAngle = windingWindows[0].get_angle().value();
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_dimensions(std::vector<double>{thickness, windingWindowAngle});
+                }
+                else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+                    double tapeThicknessInAngle = wound_distance_to_angle(thickness, windingWindowRadialHeight);
+                    section.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+                }
+            }
+            // section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
+            section.set_filling_factor(1);
+            _insulationSections[windingsMapKey] = section;
+        }
+    }
+    return true;
+}
+
 bool Coil::calculate_mechanical_insulation() {
     // Insulation layers just for mechanical reasons, one layer between sections at least
     auto wirePerWinding = get_wires();
