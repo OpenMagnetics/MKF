@@ -678,8 +678,7 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
     double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
     double magneticFluxDensityPeakToPeak = Inputs::get_magnetic_flux_density_peak_to_peak(excitation, frequency);
-    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) -
-                                       magneticFluxDensity.get_processed().value().get_offset();
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
 
     magneticFluxDensity = Inputs::standardize_waveform(magneticFluxDensity, frequency);
     auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value().get_data();
@@ -1241,7 +1240,8 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
     double mainHarmonicMagneticFluxDensityPeak = magneticFluxDensity.get_processed().value().get_peak().value();
-    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed().value().get_peak().value() - magneticFluxDensity.get_processed().value().get_offset();
+
+    double magneticFluxDensityAcPeak = Inputs::get_magnetic_flux_density_peak(excitation, frequency) - magneticFluxDensity.get_processed().value().get_offset();
 
     CoreLossesOutput result;
     double volumetricLosses = -1;
