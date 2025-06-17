@@ -115,12 +115,8 @@ double InitialPermeability::has_magnetic_field_dc_bias_dependency(CoreMaterial c
     }
 }
 
-std::map<std::string, std::string> InitialPermeability::get_initial_permeability_equations(CoreMaterial coreMaterial) {
+std::map<std::string, std::string> InitialPermeability::get_initial_permeability_equations(PermeabilityPoint permeabilityPoint) {
     std::map<std::string, std::string> equations;
-
-    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
-    double initialPermeabilityValue = permeabilityPoint.get_value();
 
     if (permeabilityPoint.get_modifiers()) {
         InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
