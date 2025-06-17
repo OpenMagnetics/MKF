@@ -1827,7 +1827,8 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
                                                                                   double magnetizingInductance,
                                                                                   double temperature,
                                                                                   std::vector<double> turnsRatios,
-                                                                                  std::vector<double> currentPeakMask) {
+                                                                                  std::vector<double> currentPeakMask,
+                                                                                  double currentOffset) {
 
     OperatingPoint operatingPoint;
     OperatingConditions conditions;
@@ -1844,7 +1845,7 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
         processed.set_label(WaveformLabel::SINUSOIDAL);
         processed.set_peak_to_peak(2 * currentPeakMask[0]);
         processed.set_duty_cycle(0.5);
-        processed.set_offset(0);
+        processed.set_offset(currentOffset);
         current.set_processed(processed);
         current = standardize_waveform(current, frequency);
         calculate_basic_processed_data(current.get_waveform().value());

@@ -35,6 +35,102 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     return Curve2D(frequencies, impedances, title);
 }
 
+Curve2D Sweeper::sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
+
+    auto magnetizingInductanceModel = MagnetizingInductance();
+    auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
+    auto staticMagnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    double virtualCurrentRms = 1;
+    std::vector<double> currentMask = {virtualCurrentRms * sqrt(2)};
+    for (auto turnsRatio : turnsRatios) {
+        currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
+    }
+
+    std::vector<double> magnetizingInductances;
+    for (auto frequency : frequencies) {
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, staticMagnetizingInductance, temperature, turnsRatios, currentMask);
+        double magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+        magnetizingInductances.push_back(magnetizingInductance);
+    }
+
+    return Curve2D(frequencies, magnetizingInductances, title);
+}
+
+Curve2D Sweeper::sweep_magnetizing_inductance_over_temperature(Magnetic magnetic, double start, double stop, size_t numberElements, double frequency, std::string mode, std::string title) {
+    std::vector<double> temperatures;
+    if (mode == "linear") {
+        temperatures = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        temperatures = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
+
+    auto magnetizingInductanceModel = MagnetizingInductance();
+    auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
+    auto staticMagnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    double virtualCurrentRms = 1;
+    std::vector<double> currentMask = {virtualCurrentRms * sqrt(2)};
+    for (auto turnsRatio : turnsRatios) {
+        currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
+    }
+
+    std::vector<double> magnetizingInductances;
+    for (auto temperature : temperatures) {
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, staticMagnetizingInductance, temperature, turnsRatios, currentMask);
+        double magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+        magnetizingInductances.push_back(magnetizingInductance);
+    }
+
+    return Curve2D(temperatures, magnetizingInductances, title);
+}
+
+Curve2D Sweeper::sweep_magnetizing_inductance_over_dc_bias(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    std::vector<double> currentOffsets;
+    if (mode == "linear") {
+        currentOffsets = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        currentOffsets = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
+
+    auto magnetizingInductanceModel = MagnetizingInductance();
+
+    Coil inductorCoil;
+    inductorCoil.set_functional_description({magnetic.get_coil().get_functional_description()[0]});
+    auto turnsRatios = inductorCoil.get_turns_ratios();
+    auto staticMagnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), inductorCoil).get_magnetizing_inductance());
+    double virtualCurrentRms = 1;
+    std::vector<double> currentMask = {virtualCurrentRms * sqrt(2)};
+    for (auto turnsRatio : turnsRatios) {
+        currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
+    }
+
+    std::vector<double> magnetizingInductances;
+    for (auto currentOffset : currentOffsets) {
+        auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, temperature, turnsRatios, currentMask, currentOffset);
+        double magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), inductorCoil, &operatingPoint).get_magnetizing_inductance());
+        magnetizingInductances.push_back(magnetizingInductance);
+    }
+
+    return Curve2D(currentOffsets, magnetizingInductances, title);
+}
+
 Curve2D Sweeper::sweep_winding_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {
