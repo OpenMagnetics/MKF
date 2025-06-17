@@ -115,6 +115,70 @@ double InitialPermeability::has_magnetic_field_dc_bias_dependency(CoreMaterial c
     }
 }
 
+std::map<std::string, std::string> InitialPermeability::get_initial_permeability_equations(CoreMaterial coreMaterial) {
+    std::map<std::string, std::string> equations;
+
+    auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+    auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
+    double initialPermeabilityValue = permeabilityPoint.get_value();
+
+    if (permeabilityPoint.get_modifiers()) {
+        InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
+        if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MAGNETICS) {
+            auto temperatureFactor = modifiers.get_temperature_factor();
+            if (temperatureFactor) {
+                equations["temperatureFactor"] = "1 + (a + b*T + c*T^2 + d*T^3 + e*T^4)";
+            }
+
+            auto frequencyFactor = modifiers.get_frequency_factor();
+            if (frequencyFactor) {
+                equations["frequencyFactor"] = "1 + (a + b*f + c*f^2 + d*f^3 + e*f^4)";
+            }
+
+            auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
+            if (magneticFieldDcBiasFactor) {
+                equations["magneticFieldDcBiasFactor"] = "0.01 / (a + b*(H^c))";
+            }
+        }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MICROMETALS) {
+
+            auto frequencyFactor = modifiers.get_frequency_factor();
+            if (frequencyFactor) {
+                equations["frequencyFactor"] = "(1.0 / (a + b * f^c) + d) / mu_ini";
+            }
+
+            auto temperatureFactor = modifiers.get_temperature_factor();
+            if (temperatureFactor) {
+                if (temperatureFactor->get_b()) {
+                    equations["temperatureFactor"] = "1 + (a + c * T + e * T^2) / (1 + b * T + d * T^2) * 0.01";
+                }
+                else {
+                    equations["temperatureFactor"] = "1 + (a * (T - 20) * 0.0001) * 0.01";
+                }
+            }
+
+            auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
+            if (magneticFieldDcBiasFactor) {
+                equations["magneticFieldDcBiasFactor"] = "(1.0 / (a + b * H^c) + d) * 0.01";
+            }
+
+            auto magneticFluxDensityFactor = modifiers.get_magnetic_flux_density_factor();
+            if (magneticFluxDensityFactor) {
+                equations["magneticFluxDensityFactor"] = "(1.0 / (1.0 / (a + b * B^c) + 1.0 / (d * B^e) + 1.0 / f)) * 0.01";
+            }
+        }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::FAIR_RITE) {
+            auto temperatureFactor = modifiers.get_temperature_factor();
+            if (temperatureFactor) {
+                equations["temperatureFactor"] = "(1 + a * T * 0.01)";
+            }
+
+        }
+    }
+    return equations;
+
+}
+
 double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMaterial,
                                                              std::optional<double> temperature,
                                                              std::optional<double> magneticFieldDcBias,

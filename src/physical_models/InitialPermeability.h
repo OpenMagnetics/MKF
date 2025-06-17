@@ -50,6 +50,7 @@ class InitialPermeability {
         static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(CoreMaterial coreMaterial);
         static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
         static std::vector<PermeabilityPoint> get_only_magnetic_field_dc_bias_dependent_points(CoreMaterial coreMaterial);
+        static std::map<std::string, std::string> get_initial_permeability_equations(CoreMaterial coreMaterial);
         static double get_initial_permeability_formula(CoreMaterial coreMaterial,
                                                        std::optional<double> temperature,
                                                        std::optional<double> magneticFieldDcBias,
