@@ -119,7 +119,8 @@ class Inputs : public MAS::Inputs {
                                                                               double magnetizingInductance,
                                                                               double temperature,
                                                                               std::vector<double> turnsRatios,
-                                                                              std::vector<double> currentPeakMask);
+                                                                              std::vector<double> currentPeakMask,
+                                                                              double currentOffset = 0);
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
     static Waveform create_waveform(Processed processed, double frequency);
