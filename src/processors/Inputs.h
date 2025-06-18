@@ -130,6 +130,9 @@ class Inputs : public MAS::Inputs {
 
     static Waveform calculate_derivative_waveform(Waveform waveform);
     static Waveform calculate_integral_waveform(Waveform waveform, bool subtractAverage=false);
+    static double calculate_waveform_average(Waveform waveform) ;
+    static Waveform multiply_waveform(Waveform waveform, double scalarValue);
+    static Waveform sum_waveform(Waveform waveform, double scalarValue);
 
     static double try_guess_duty_cycle(Waveform waveform, WaveformLabel label=WaveformLabel::CUSTOM);
     static double calculate_instantaneous_power(OperatingPointExcitation excitation);

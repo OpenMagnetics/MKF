@@ -1,4 +1,5 @@
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/AmplitudePermeability.h"
 
 #include "support/Utils.h"
 
@@ -706,12 +707,14 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
         bool hasTemperatureRequirement = temperature.has_value();
         bool hasFrequencyRequirement = frequency.has_value();
         bool hasMagneticFieldDcBiasRequirement = magneticFieldDcBias.has_value();
+        bool hasMagneticFluxDensityRequirement = magneticFluxDensity.has_value();
         bool hasTemperatureDependency = has_temperature_dependency(coreMaterial);
         bool hasFrequencyDependency = has_frequency_dependency(coreMaterial);
         bool hasMagneticFieldDcBiasDependency = has_magnetic_field_dc_bias_dependency(coreMaterial);
         double temperatureFactor = 1;
         double frequencyFactor = 1;
         double magneticFieldDcBiasFactor = 1;
+        double saturationFactor = 1;
 
         if (hasTemperatureDependency) {
             initialPermeabilityValueReference = get_initial_permeability_temperature_dependent(coreMaterial, Defaults().ambientTemperature);
@@ -740,12 +743,39 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
         }
 
         if (hasMagneticFieldDcBiasDependency && hasMagneticFieldDcBiasRequirement) {
-
             double initialPermeabilityValueMagneticFieldDcBiasDependent = get_initial_permeability_magnetic_field_dc_bias_dependent(coreMaterial, magneticFieldDcBias.value());
             magneticFieldDcBiasFactor = initialPermeabilityValueMagneticFieldDcBiasDependent / initialPermeabilityValueReference;
         }
 
-        initialPermeabilityValue = initialPermeabilityValueReference * temperatureFactor * frequencyFactor * magneticFieldDcBiasFactor;
+        // Add variation due to saturation
+        if (!hasMagneticFieldDcBiasDependency && (hasMagneticFieldDcBiasRequirement || hasMagneticFluxDensityRequirement)) {
+            double amplitudePermeability = 1;
+            double auxTemperatude = defaults.ambientTemperature;
+            if (temperature) {
+                auxTemperatude = temperature.value();
+            }
+            if(hasMagneticFieldDcBiasRequirement) {
+                if (magneticFieldDcBias.value() <= 0) {
+                    amplitudePermeability = initialPermeabilityValueReference;
+                }
+                else {
+                    amplitudePermeability = AmplitudePermeability::get_amplitude_permeability(coreMaterial, std::nullopt, magneticFieldDcBias.value(), auxTemperatude);        
+                }
+            }
+            else {
+                if (magneticFluxDensity.value() <= 0) {
+                    amplitudePermeability = initialPermeabilityValueReference;
+                }
+                else {
+                    amplitudePermeability = AmplitudePermeability::get_amplitude_permeability(coreMaterial, magneticFluxDensity.value(), std::nullopt, auxTemperatude);        
+                }
+            }
+            if (amplitudePermeability < initialPermeabilityValueReference) {
+                saturationFactor = amplitudePermeability / initialPermeabilityValueReference;
+            }
+        }
+
+        initialPermeabilityValue = initialPermeabilityValueReference * temperatureFactor * frequencyFactor * magneticFieldDcBiasFactor * saturationFactor;
     }
 
     if (coreMaterial.get_curie_temperature() && temperature) {

@@ -72,11 +72,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
     double currentInitialPermeability;
-    double modifiedInitialPermeability;
-    size_t timeout = 10;
 
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
-    double totalReluctance;
+    double currentTotalReluctance;
+    double modifiedTotalReluctance = 0;
     double modifiedMagnetizingInductance = 5e-3;
     double currentMagnetizingInductance;
 
@@ -117,23 +116,26 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         }
     }
 
-    modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
-
     MagnetizingInductanceOutput magnetizingInductanceOutput;
+    currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
+    magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+    modifiedTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
+    modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / modifiedTotalReluctance;
 
+    size_t externalTimeout = 1;
     do {
         currentMagnetizingInductance = modifiedMagnetizingInductance;
+        size_t internalTimeout = 1;
 
         do {
-            currentInitialPermeability = modifiedInitialPermeability;
-            magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
-            totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
-            modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / totalReluctance;
+            currentTotalReluctance = modifiedTotalReluctance;
+            modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / currentTotalReluctance;
 
 
             if (operatingPoint) {
                 if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
                     OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
+
                     if (numberWindings == 1 && excitation.get_current()) {
                         Inputs::set_current_as_magnetizing_current(operatingPoint);
                     }
@@ -174,7 +176,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                     }
 
-                    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
+                    auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), currentTotalReluctance, numberTurnsPrimary);
                     auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
                     result.second = magneticFluxDensity;
                     auto magneticFieldStrength = OpenMagnetics::MagneticField::calculate_magnetic_field_strength(magneticFluxDensity, currentInitialPermeability);
@@ -190,34 +192,42 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         }
                     }
 
-                    modifiedInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                    currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
+
+                    magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+                    modifiedTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
+                    modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / modifiedTotalReluctance;
                 }
             }
 
-            timeout--;
-            if (timeout == 0) {
+            internalTimeout--;
+            if (internalTimeout == 0) {
                 break;
             }
-        } while (fabs(currentInitialPermeability - modifiedInitialPermeability) >= 1);
+        } while (fabs(currentTotalReluctance - modifiedTotalReluctance) / modifiedTotalReluctance >= 0.1);
 
-    } while (fabs(currentMagnetizingInductance - modifiedMagnetizingInductance) / modifiedMagnetizingInductance >= 0.01);
+        externalTimeout--;
+        if (externalTimeout == 0) {
+            break;
+        }
+    } while (fabs(currentMagnetizingInductance - modifiedMagnetizingInductance) / modifiedMagnetizingInductance >= 0.1);
 
     if (operatingPoint) {
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
             OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
             if (!excitation.get_voltage()) {
-                operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, currentMagnetizingInductance));
+                operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, modifiedMagnetizingInductance));
             }
         }
     }
 
     auto settings = Settings::GetInstance();
     if (settings->get_magnetizing_inductance_include_air_inductance()) {
-        currentMagnetizingInductance += calculate_air_inductance(numberTurnsPrimary, core);
+        modifiedMagnetizingInductance += calculate_air_inductance(numberTurnsPrimary, core);
     }
 
     DimensionWithTolerance magnetizingInductanceWithTolerance;
-    magnetizingInductanceWithTolerance.set_nominal(currentMagnetizingInductance);
+    magnetizingInductanceWithTolerance.set_nominal(modifiedMagnetizingInductance);
     magnetizingInductanceOutput.set_magnetizing_inductance(magnetizingInductanceWithTolerance);
 
     result.first = magnetizingInductanceOutput;
