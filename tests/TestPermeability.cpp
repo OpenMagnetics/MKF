@@ -1,5 +1,7 @@
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/AmplitudePermeability.h"
+#include "support/Painter.h"
 #include "support/Utils.h"
 #include "json.hpp"
 
@@ -16,6 +18,21 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 SUITE(InitialPermeability) {
+    TEST(Test_Initial_Permeability_3C97) {
+        InitialPermeability initialPermeability;
+        std::string materialName = "3C97";
+        auto materialData = materialName;
+        double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
+        CHECK(initialPermeabilityValue == 3341.5);
+        {
+            double magneticFieldDcBias = 60;
+            double temperature = 25;
+            double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData, temperature, magneticFieldDcBias, std::nullopt);
+            double expected = 2310;
+            CHECK_CLOSE(initialPermeabilityValue, expected, 0.01 * expected);
+        }
+    }
+
     TEST(Test_Initial_Permeability_51) {
         InitialPermeability initialPermeability;
         std::string materialName = "51";
@@ -378,5 +395,22 @@ SUITE(ComplexPermeability) {
         auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 1000000);
         CHECK(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
         CHECK(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+    }
+}
+
+SUITE(AmplitudePermeability) {
+    auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+    TEST(Test_BH_Loop_3C97) {
+        std::string materialName = "3C97";
+        auto curves = OpenMagnetics::BHLoopRoshenModel().get_hysteresis_loop(materialName, 25, 0.2, std::nullopt);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_BH_Loop_3C97_Upper.svg");
+
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_curve(curves.first);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
     }
 }

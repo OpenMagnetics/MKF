@@ -384,7 +384,7 @@ SUITE(Sweeper) {
         settings->reset();
     }
 
-    TEST(Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Many_Turns) {
+    TEST(Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder) {
         std::vector<int64_t> numberTurns = {12, 8, 6};
         std::vector<int64_t> numberParallels = {1, 2, 6};
         std::vector<double> turnsRatios = {16, 13};
@@ -434,7 +434,67 @@ SUITE(Sweeper) {
 
         auto outFile = outputFilePath;
 
-        outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Many_Turns.svg");
+        outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Powder.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_curve(impedanceSweep, false);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+
+        settings->reset();
+    }
+
+    TEST(Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite) {
+        std::vector<int64_t> numberTurns = {12, 8, 6};
+        std::vector<int64_t> numberParallels = {1, 2, 6};
+        std::vector<double> turnsRatios = {16, 13};
+        std::string shapeName = "ER 28";
+        uint8_t interleavingLevel = 1;
+        auto windingOrientation = WindingOrientation::OVERLAPPING;
+        auto layersOrientation = WindingOrientation::OVERLAPPING;
+        auto turnsAlignment = CoilAlignment::SPREAD;
+        auto sectionsAlignment = CoilAlignment::CENTERED;
+
+        std::vector<OpenMagnetics::Wire> wires;
+        {
+            OpenMagnetics::Wire wire = find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::Wire wire = find_wire_by_name("Round T21A01TXXX-1");
+            wires.push_back(wire);
+        }
+        {
+            OpenMagnetics::Wire wire = find_wire_by_name("Round 0.25 - FIW 6");
+            wires.push_back(wire);
+        }
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         interleavingLevel,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         true);
+
+        coil.wind({0, 1, 2}, 1);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "3C95";
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto impedanceSweep = Sweeper().sweep_magnetizing_inductance_over_dc_bias(magnetic, 0, 260, 100);
+
+        auto outFile = outputFilePath;
+
+        outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, false, true);
         painter.paint_curve(impedanceSweep, false);

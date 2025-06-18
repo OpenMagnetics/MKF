@@ -89,7 +89,7 @@ void ifft(std::vector<std::complex<double>>& x)
     }
 }
 
-double calculate_waveform_average(Waveform waveform) {
+double Inputs::calculate_waveform_average(Waveform waveform) {
     double integration = 0;
     double period = waveform.get_time()->back() - waveform.get_time()->front();
     for (size_t i = 0; i < waveform.get_data().size() - 1; ++i)
@@ -100,7 +100,7 @@ double calculate_waveform_average(Waveform waveform) {
     return integration / period;
 }
 
-Waveform multiply_waveform(Waveform waveform, double scalarValue){
+Waveform Inputs::multiply_waveform(Waveform waveform, double scalarValue){
     Waveform scaledWaveform = waveform;
     scaledWaveform.get_mutable_data().clear();
     for (auto& datum : waveform.get_data()) {
@@ -109,7 +109,7 @@ Waveform multiply_waveform(Waveform waveform, double scalarValue){
     return scaledWaveform;
 }
 
-Waveform sum_waveform(Waveform waveform, double scalarValue){
+Waveform Inputs::sum_waveform(Waveform waveform, double scalarValue){
     Waveform scaledWaveform = waveform;
     scaledWaveform.get_mutable_data().clear();
     for (auto& datum : waveform.get_data()) {
