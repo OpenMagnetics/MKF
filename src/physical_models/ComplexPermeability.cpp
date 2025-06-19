@@ -14,6 +14,10 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(std::str
     return get_complex_permeability(coreMaterial, frequency);
 }
 
+ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from_frequency_dependent_initial_permeability(std::string coreMaterialName) {
+    CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
+    return calculate_complex_permeability_from_frequency_dependent_initial_permeability(coreMaterial);
+}
 ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from_frequency_dependent_initial_permeability(CoreMaterial coreMaterial) {
     double frequencyFor67Point78Drop = InitialPermeability::calculate_frequency_for_initial_permeability_drop(coreMaterial, 0.6778);
     double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial);
