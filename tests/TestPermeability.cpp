@@ -11,6 +11,7 @@
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
+#include <random>
 using json = nlohmann::json;
 #include <typeinfo>
 
@@ -334,11 +335,31 @@ SUITE(InitialPermeability) {
         std::string materialName = "Nanoperm 80000";
         auto materialData = find_core_material_by_name(materialName);
         double manufacturerTolerance = 0.05;
+        std::uniform_real_distribution<double> unif(0, 1);
+        std::default_random_engine re;
         for (size_t i = 0; i < 1000; ++i)
         {
-            double percentageDrop = std::rand() % 1;
+            double percentageDrop = unif(re);
             double frequencyForDrop = initialPermeability.calculate_frequency_for_initial_permeability_drop(materialData, percentageDrop);
             double expectedInitialPermeability = 80000 * (1 - percentageDrop);
+            double initialPermeabilityValueWithFrequencyDrop = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequencyForDrop);
+            CHECK_CLOSE(initialPermeabilityValueWithFrequencyDrop, expectedInitialPermeability, manufacturerTolerance * 80000);
+        }
+    }
+
+    TEST(Test_Frequency_For_Initial_Permeability_Drop_XFlux_60) {
+        srand (time(NULL));
+        InitialPermeability initialPermeability;
+        std::string materialName = "XFlux 60";
+        auto materialData = find_core_material_by_name(materialName);
+        double manufacturerTolerance = 0.05;
+        std::uniform_real_distribution<double> unif(0, 1);
+        std::default_random_engine re;
+        for (size_t i = 0; i < 20; ++i)
+        {
+            double percentageDrop = unif(re);
+            double frequencyForDrop = initialPermeability.calculate_frequency_for_initial_permeability_drop(materialData, percentageDrop);
+            double expectedInitialPermeability = 60 * (1 - percentageDrop);
             double initialPermeabilityValueWithFrequencyDrop = initialPermeability.get_initial_permeability(materialData, std::nullopt, std::nullopt, frequencyForDrop);
             CHECK_CLOSE(initialPermeabilityValueWithFrequencyDrop, expectedInitialPermeability, manufacturerTolerance * expectedInitialPermeability);
         }
@@ -395,6 +416,51 @@ SUITE(ComplexPermeability) {
         auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 1000000);
         CHECK(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
         CHECK(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+    }
+
+    TEST(Test_Complex_Permeability_XFlux_60) {
+        ComplexPermeability complexPermeability;
+        std::string materialName = "XFlux 60";
+        auto materialData = materialName;
+        auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
+        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 1000000);
+        CHECK(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
+        CHECK(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+
+        auto complexPermeabilityValues = complexPermeability.calculate_complex_permeability_from_frequency_dependent_initial_permeability(materialData);
+        auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
+        {
+            OpenMagnetics::Curve2D curve;
+            for (auto point : std::get<std::vector<PermeabilityPoint>>(complexPermeabilityValues.get_real())) {
+                curve.get_mutable_x_points().push_back(point.get_frequency().value());
+                curve.get_mutable_y_points().push_back(point.get_value());
+            }
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_Complex_Permeability_XFlux_60_Real.svg");
+
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, false, true);
+            painter.paint_curve(curve, true);
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+        }
+        {
+            OpenMagnetics::Curve2D curve;
+            for (auto point : std::get<std::vector<PermeabilityPoint>>(complexPermeabilityValues.get_imaginary())) {
+                curve.get_mutable_x_points().push_back(point.get_frequency().value());
+                curve.get_mutable_y_points().push_back(point.get_value());
+            }
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_Complex_Permeability_XFlux_60_Imaginary.svg");
+
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, false, true);
+            painter.paint_curve(curve, true);
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+        }
     }
 }
 

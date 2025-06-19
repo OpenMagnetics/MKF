@@ -32,6 +32,7 @@ struct Defaults {
     const double harmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
     const double measurementFrequency = 10000;
+    const double maximumFrequency = 100e6;
     const double magneticFieldMirroringDimension = 1;
     const double maximumCoilPattern = 6;
     const WindingOrientation defaultRoundWindowSectionsOrientation = WindingOrientation::CONTIGUOUS;

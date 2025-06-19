@@ -61,6 +61,16 @@ double InitialPermeability::get_initial_permeability(std::string coreMaterialNam
 double InitialPermeability::has_frequency_dependency(CoreMaterial coreMaterial) {
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
     if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
+        auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
+        if (permeabilityPoint.get_modifiers()) {
+            InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
+            if (modifiers.get_frequency_factor()) {
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
         return false;
     }
     else {
@@ -446,25 +456,71 @@ std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(Co
     return get_only_frequency_dependent_indexes(permeabilityPoints);
 }
 
+
+std::vector<PermeabilityPoint> InitialPermeability::sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint) {
+    std::vector<PermeabilityPoint> frequencyPoints;
+    InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
+    auto frequencies = logarithmic_spaced_array(defaults.measurementFrequency, defaults.maximumFrequency, 100);
+    for (auto frequency : frequencies) {
+        double initialPermeabilityValue = 1;
+        if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MAGNETICS) {
+            double permeabilityVariationDueToFrequency =
+                modifiers.get_frequency_factor()->get_a() + modifiers.get_frequency_factor()->get_b() * (frequency) +
+                modifiers.get_frequency_factor()->get_c() * pow(frequency, 2) + modifiers.get_frequency_factor()->get_d() * pow(frequency, 3) +
+                modifiers.get_frequency_factor()->get_e().value() * pow(frequency, 4);
+            initialPermeabilityValue = permeabilityPoint.get_value() * (1 + permeabilityVariationDueToFrequency);
+        }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::MICROMETALS) {
+            double a = modifiers.get_frequency_factor()->get_a();
+            double b = modifiers.get_frequency_factor()->get_b();
+            double c = modifiers.get_frequency_factor()->get_c();
+            double d = modifiers.get_frequency_factor()->get_d();
+            double f = frequency;
+            initialPermeabilityValue = 1.0 / (a + b * pow(f, c)) + d;
+        }
+
+        PermeabilityPoint point;
+        point.set_frequency(frequency);
+        point.set_value(initialPermeabilityValue);
+        frequencyPoints.push_back(point);
+    }
+
+    return frequencyPoints;
+}
+
+
 std::vector<PermeabilityPoint> InitialPermeability::get_only_frequency_dependent_points(CoreMaterial coreMaterial) {
     std::vector<PermeabilityPoint> frequencyPoints;
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
-    double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
-    double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
-    for (auto point : permeabilityPoints) {
-        if (point.get_temperature()) {
-            if (point.get_temperature().value() != defaultTemperature) {
-                continue;
+
+    if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
+        auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
+        if (permeabilityPoint.get_modifiers()) {
+            InitialPermeabilitModifier modifiers = (*permeabilityPoint.get_modifiers())["default"];
+            if (modifiers.get_frequency_factor()) {
+                frequencyPoints = sample_initial_permeability_by_frequency_modifier(permeabilityPoint);
             }
         }
-        if (point.get_magnetic_field_dc_bias()) {
-            if (point.get_magnetic_field_dc_bias().value() > minimumMagneticFieldDcBias) {
-                continue;
-            }
-        }
-        frequencyPoints.push_back(point);
     }
+    else {
+        auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+        double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
+        double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
+        for (auto point : permeabilityPoints) {
+            if (point.get_temperature()) {
+                if (point.get_temperature().value() != defaultTemperature) {
+                    continue;
+                }
+            }
+            if (point.get_magnetic_field_dc_bias()) {
+                if (point.get_magnetic_field_dc_bias().value() > minimumMagneticFieldDcBias) {
+                    continue;
+                }
+            }
+            frequencyPoints.push_back(point);
+        }
+    }
+
     return frequencyPoints;
 }
 
@@ -657,11 +713,21 @@ double InitialPermeability::calculate_frequency_for_initial_permeability_drop(Co
     if (!hasFrequencyDependency) {
         return std::numeric_limits<double>::quiet_NaN();
     }
+    std::vector<PermeabilityPoint> permeabilityPoints;
 
     auto initialPermeabilityData = coreMaterial.get_permeability().get_initial();
-    auto permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+
+    if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
+        auto permeabilityPoint = std::get<PermeabilityPoint>(initialPermeabilityData);
+        permeabilityPoints = sample_initial_permeability_by_frequency_modifier(permeabilityPoint);
+        
+    }
+    else {
+        permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
+    }
     double minimumFrequency = get_minimum_frequency_in_permeability_points(permeabilityPoints);
     double maximumFrequency = get_maximum_frequency_in_permeability_points(permeabilityPoints);
+
     double initialPermeabilityValueReference = get_initial_permeability_frequency_dependent(coreMaterial, minimumFrequency);
     double initialPermeabilityAbsolute = initialPermeabilityValueReference * (1 - percentageDrop);
     double currentFrequency = (maximumFrequency + minimumFrequency) / 2;

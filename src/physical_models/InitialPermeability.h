@@ -40,6 +40,7 @@ class InitialPermeability {
         static double get_initial_permeability_temperature_dependent(CoreMaterial coreMaterial, double temperature);
         static double get_initial_permeability_frequency_dependent(CoreMaterial coreMaterial, double frequency);
         static double get_initial_permeability_magnetic_field_dc_bias_dependent(CoreMaterial coreMaterial, double magneticFieldDcBias);
+        static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
         static double calculate_frequency_for_initial_permeability_drop(CoreMaterial coreMaterial, double percentageDrop, double maximumError = 0.01);
         static std::vector<size_t> get_only_temperature_dependent_indexes(CoreMaterial coreMaterial);
         static std::vector<size_t> get_only_temperature_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
