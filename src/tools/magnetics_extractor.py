@@ -2,9 +2,10 @@ import pandas
 import ndjson
 import pathlib
 import math
+import numpy
 
 
-spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/Curve-Fit-Equation-Tool 11-28-23.xlsx"
+spreadsheet_path = "/mnt/c/Users/Alfon/Downloads/Curve-Fit-Equation-Tool 11-28-23.xlsx"
 
 
 def autocomplete_materials(data, column):
@@ -116,6 +117,14 @@ permeability_vs_temperature_data = autocomplete_materials(data=permeability_vs_t
 permeability_vs_temperature_data = drop_blocks(data=permeability_vs_temperature_data,
                                                column="Material")
 
+bh_cycle_indexes = "Q:X"
+bh_cycle_data = pandas.read_excel(spreadsheet_path, header=headers_row, usecols=bh_cycle_indexes)
+bh_cycle_data = bh_cycle_data.where(pandas.notnull(bh_cycle_data), None)
+bh_cycle_data.columns = bh_cycle_data.columns.str.replace('.\\d', '', regex=True)
+bh_cycle_data = bh_cycle_data.dropna(subset="a")
+bh_cycle_data = autocomplete_materials(data=bh_cycle_data, column="Material")
+bh_cycle_data = drop_blocks(data=bh_cycle_data, column="Material")
+
 oersted_to_ampere_per_meter = 79.5774715459
 permeability_vs_bias_data['b'] = permeability_vs_bias_data.apply(lambda row: row['b'] / math.pow(oersted_to_ampere_per_meter, row['c']), axis=1)
 
@@ -129,6 +138,7 @@ permeability_vs_frequency_data['d'] = permeability_vs_frequency_data.apply(lambd
 permeability_vs_frequency_data['e'] = permeability_vs_frequency_data.apply(lambda row: row['e'] / math.pow(megahertz_to_hertz, 4), axis=1)
 
 materials = []
+advanced_materials = []
 
 
 for row_index, row in permeability_vs_bias_data.iterrows():
@@ -199,6 +209,38 @@ for row_index, row in permeability_vs_bias_data.iterrows():
             "e": permeability_vs_temperature_this_point["e"]
         }
 
+    bh_cycle_this_point = bh_cycle_data[(bh_cycle_data['Material'] == row['Material']) & (bh_cycle_data['Permeability'] == row['Permeability'])]
+    if not bh_cycle_this_point.empty:
+        # assert len(bh_cycle_this_point.index) == 1
+        bh_cycle_this_point = bh_cycle_this_point.iloc[0]
+
+        advanced_materials.append({
+            "name": materials[current_index]["name"],
+            "manufacturerInfo": materials[current_index]["manufacturerInfo"],
+            "permeability": {"amplitude": []},
+            "volumetricLosses": {"default": [[]]},
+            "bhCycle": []
+        })
+
+        a = bh_cycle_this_point["a"]
+        b = bh_cycle_this_point["b"]
+        c = bh_cycle_this_point["c"]
+        d = bh_cycle_this_point["d"]
+        e = bh_cycle_this_point["e"]
+        x = bh_cycle_this_point["x"]
+        prev_B = math.inf
+        for H in numpy.arange(1, 10000, 10):
+            B = ((a + b * H + c * H**2) / (1 + d * H + e * H**2))**x                
+            point = {
+                "magneticFluxDensity": round(float(B), 5),
+                "magneticField": round(float(H) * oersted_to_ampere_per_meter),
+                "temperature": 25
+            }
+            if abs(B - prev_B) / B < 0.001:
+                break
+            prev_B = B
+            advanced_materials[-1]['bhCycle'].append(point)
+
     core_loss_data_this_point = core_losses_density_data[(core_losses_density_data['Material'] == row['Material']) & (core_losses_density_data['Permeability'] == row['Permeability'])]
     if core_loss_data_this_point.empty:
         continue
@@ -213,3 +255,7 @@ for row_index, row in permeability_vs_bias_data.iterrows():
 
 out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/magnetics_materials.ndjson", "w")
 ndjson.dump(materials, out_file, ensure_ascii=False)
+
+
+out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/magnetics_advanced_materials.ndjson", "w")
+ndjson.dump(advanced_materials, out_file, ensure_ascii=False)

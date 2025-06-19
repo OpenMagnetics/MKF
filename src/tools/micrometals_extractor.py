@@ -5,7 +5,7 @@ import numpy
 import math
 
 
-spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/MMCurveFitCoefficientsAll_042924.xlsx"
+spreadsheet_path = "/mnt/c/Users/Alfon/Downloads/mmcurvefitcoefficientsall.xlsx"
 
 
 def autocomplete_materials(data, column):
@@ -78,6 +78,13 @@ permeability_vs_b_peak_data = autocomplete_materials(data=permeability_vs_b_peak
 permeability_vs_b_peak_data = drop_blocks(data=permeability_vs_b_peak_data,
                                           column="PartType")
 
+bh_cycle_indexes = "A,B,C,D,E,X:AB"
+bh_cycle_data = pandas.read_excel(spreadsheet_path, header=headers_row, usecols=bh_cycle_indexes)
+bh_cycle_data.columns = ['Material', 'PartType', 'Init. Perm. (µ)', 'Bsat(G)', 'Density(g/cm³)', 'a', 'b', 'c', 'd', 'e']
+bh_cycle_data = bh_cycle_data.where(pandas.notnull(bh_cycle_data), None)
+bh_cycle_data = autocomplete_materials(data=bh_cycle_data, column="Material")
+bh_cycle_data = drop_blocks(data=bh_cycle_data, column="PartType")
+
 core_losses_density_indexes = "A,B,C,J:M"
 core_losses_density_data = pandas.read_excel(spreadsheet_path, header=headers_row, usecols=core_losses_density_indexes)
 core_losses_density_data = core_losses_density_data.where(pandas.notnull(core_losses_density_data), None)
@@ -123,13 +130,16 @@ permeability_vs_b_peak_data['d'] = permeability_vs_b_peak_data.apply(lambda row:
 
 
 materials = []
-
+advanced_materials = []
+materials_to_ignore = ["SM 14", "SM 90", "SP 14", "SP 26", "SP 40", "SP 60", "SP 75", "SP 90"]
 
 materials_file = open(f"{pathlib.Path(__file__).parent.parent.parent.resolve()}/MAS/data/core_materials.ndjson", "r")
 current_materials = ndjson.load(materials_file)
 
 for row_index, row in permeability_vs_bias_data.iterrows():
     material, family, permeability, variant = get_material_and_variants(row)
+    if material in materials_to_ignore:
+        continue
     material_data = find_material(current_materials, material)
 
     if variant == 'default':
@@ -146,6 +156,8 @@ for row_index, row in permeability_vs_bias_data.iterrows():
 
 for row_index, row in permeability_vs_bias_data.iterrows():
     material, family, permeability, variant = get_material_and_variants(row)
+    if material in materials_to_ignore:
+        continue
     if material == "Mix 1":
         print(material)
         print(family)
@@ -193,6 +205,56 @@ for row_index, row in permeability_vs_bias_data.iterrows():
             "e": permeability_vs_b_peak_this_point["e"],
             "f": permeability_vs_b_peak_this_point["f"]
         }
+
+    bh_cycle_this_point = bh_cycle_data[(bh_cycle_data['Material'] == row['Material']) & (bh_cycle_data['Init. Perm. (µ)'] == row['Init. Perm. (µ)'])]
+    if variant == "default":
+        bh_cycle_this_point = bh_cycle_this_point[bh_cycle_this_point['PartType'].apply(lambda x: "T" in x)]
+    elif variant == "E":
+        bh_cycle_this_point = bh_cycle_this_point[bh_cycle_this_point['PartType'].apply(lambda x: x == "E")]
+    elif variant == "EQ":
+        bh_cycle_this_point = bh_cycle_this_point[bh_cycle_this_point['PartType'].apply(lambda x: x == "EQ")]
+    elif variant == "PQ":
+        bh_cycle_this_point = bh_cycle_this_point[bh_cycle_this_point['PartType'].apply(lambda x: x == "PQ")]
+    else:
+        assert 0
+
+    if not bh_cycle_this_point.empty:
+        assert len(bh_cycle_this_point.index) == 1
+        bh_cycle_this_point = bh_cycle_this_point.iloc[0]
+
+        advanced_materials.append({
+            "name": materials[current_index]["name"],
+            "manufacturerInfo": materials[current_index]["manufacturerInfo"],
+            "permeability": {"amplitude": []},
+            "volumetricLosses": {"default": [[]]},
+            "bhCycle": []
+        })
+
+        a = bh_cycle_this_point["a"]
+        b = bh_cycle_this_point["b"]
+        c = bh_cycle_this_point["c"]
+        d = bh_cycle_this_point["d"]
+        e = bh_cycle_this_point["e"]
+        mu = bh_cycle_this_point["Init. Perm. (µ)"]
+        prev_B = math.inf
+        for H in numpy.arange(1, 10000, 10):
+            B = mu / (1 / (H + a * (H**b)) + 1 / (c * H**d) + 1 / e)                
+            point = {
+                "magneticFluxDensity": round(float(B) / 10000, 5),
+                "magneticField": round(float(H) * oersted_to_ampere_per_meter),
+                "temperature": 25
+            }
+            if abs(B - prev_B) / B < 0.001:
+                break
+            prev_B = B
+            advanced_materials[-1]['bhCycle'].append(point)
+
+        materials[current_index]["saturation"] = [{
+            "magneticFluxDensity": float(B) / 10000,
+            "magneticField": float(H) * oersted_to_ampere_per_meter,
+            "temperature": 25
+        }]
+        materials[current_index]["density"] = bh_cycle_this_point["Density(g/cm³)"] * 1000
 
     permeability_vs_frequency_this_point = permeability_vs_frequency_data[(permeability_vs_frequency_data['Material'] == row['Material']) & (permeability_vs_frequency_data['Init. Perm. (µ)'] == row['Init. Perm. (µ)'])]
     if variant == "default":
@@ -271,6 +333,8 @@ for row_index, row in permeability_vs_bias_data.iterrows():
 
 out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/micrometals_materials.ndjson", "w")
 ndjson.dump(materials, out_file, ensure_ascii=False)
+out_file = open(f"{pathlib.Path(__file__).parent.resolve()}/micrometals_advanced_materials.ndjson", "w")
+ndjson.dump(advanced_materials, out_file, ensure_ascii=False)
 
 
 for micrometals_material in materials:
