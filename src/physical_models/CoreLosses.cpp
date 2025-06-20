@@ -1274,6 +1274,22 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
     return volumetricLosses;
 }
 
+std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetric_losses_equations(CoreMaterial coreMaterial) {
+    std::map<std::string, std::string> equations;
+    if (coreMaterial.get_manufacturer_info().get_name() == "Micrometals") {
+        equations["volumetricCoreLosses"] = "f / (a / B^3 + b / B^2.3 + c / B^1.65) + d * B^2 * f^2";
+    }
+
+    else if (coreMaterial.get_manufacturer_info().get_name() == "Magnetics") {
+        equations["volumetricCoreLosses"] = "a * B^b * f^c";
+    }
+    else {
+        throw std::invalid_argument("No volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
+    }
+
+    return equations;
+}
+
 double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
                                                              double temperature) {

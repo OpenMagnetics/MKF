@@ -153,8 +153,8 @@ class CircuitSimulationReader {
 
     std::vector<std::string> _timeAliases = {"TIME", "Time", "time", "[s]"};
     std::vector<std::string> _magnetizingCurrentAliases = {"MAG", "mag", "Im", "Imag"};
-    std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It", "Id", "Ipri", "I_", "i_"};
-    std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt", "Vout", "Vpri", "V_", "v_"};
+    std::vector<std::string> _currentAliases = {"CURRENT", "CURR", "Current", "Curr", "I", "I(", "current", "curr", "i(", "[A]", "Ip", "Is", "It", "Id", "Ipri", "I_", "i_"};
+    std::vector<std::string> _voltageAliases = {"VOLTAGE", "VOLT", "Voltage", "Volt", "V", "V(", "voltage", "volt", "v(", "[V]", "Vp", "Vs", "Vt", "Vout", "Vpri", "V_", "v_"};
 
   public:
 
