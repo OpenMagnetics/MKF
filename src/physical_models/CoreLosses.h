@@ -452,6 +452,7 @@ class CoreLossesProprietaryModel : public CoreLossesSteinmetzModel {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
     static std::map<std::string, std::string> get_core_volumetric_losses_equations(CoreMaterial coreMaterial);
+    static std::map<std::string, std::string> get_core_volumetric_losses_equations(CoreLossesMethodData coreLossesMethodData);
 
 };
 
