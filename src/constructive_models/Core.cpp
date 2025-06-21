@@ -183,7 +183,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
         }
     }
 
-    piece.set_material(get_functional_description().get_material());
+    piece.set_material(resolve_material().get_name());
     piece.set_shape(std::get<CoreShape>(get_functional_description().get_shape()));
     auto topPiece = piece;
     auto bottomPiece = piece;
@@ -224,20 +224,19 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                 for (auto& operating : machining) {
                     if (operating.get_coordinates()[1] >= 0 &&
                         operating.get_coordinates()[1] < operating.get_length() / 2) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperating);
+                        Machining brokenDownOperation;
+                        brokenDownOperation.set_coordinates(operating.get_coordinates());
+                        brokenDownOperation.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
+                        brokenDownOperation.get_mutable_coordinates()[1] = brokenDownOperation.get_length() / 2;
+                        topHalfMachining.push_back(brokenDownOperation);
                     }
                     else if (operating.get_coordinates()[1] < 0 &&
-                             (operating.get_coordinates()[1] + operating.get_length() / 2) >
-                                 0) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = brokenDownOperating.get_length() / 2;
-                        topHalfMachining.push_back(brokenDownOperating);
+                             roundFloat(operating.get_coordinates()[1] + operating.get_length() / 2, 9) > 0) {
+                        Machining brokenDownOperation;
+                        brokenDownOperation.set_coordinates(operating.get_coordinates());
+                        brokenDownOperation.set_length(operating.get_length() / 2 + operating.get_coordinates()[1]);
+                        brokenDownOperation.get_mutable_coordinates()[1] = brokenDownOperation.get_length() / 2;
+                        topHalfMachining.push_back(brokenDownOperation);
                     }
                     else if (operating.get_coordinates()[1] > 0) {
                         topHalfMachining.push_back(operating);
@@ -254,20 +253,19 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
                 for (auto& operating : machining) {
                     if (operating.get_coordinates()[1] <= 0 &&
                         (-operating.get_coordinates()[1] < operating.get_length() / 2)) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperating);
+                        Machining brokenDownOperation;
+                        brokenDownOperation.set_coordinates(operating.get_coordinates());
+                        brokenDownOperation.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
+                        brokenDownOperation.get_mutable_coordinates()[1] = -brokenDownOperation.get_length() / 2;
+                        bottomHalfMachining.push_back(brokenDownOperation);
                     }
                     else if (operating.get_coordinates()[1] > 0 &&
-                             (operating.get_coordinates()[1] - operating.get_length() / 2) <
-                                 0) {
-                        Machining brokenDownOperating;
-                        brokenDownOperating.set_coordinates(operating.get_coordinates());
-                        brokenDownOperating.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
-                        brokenDownOperating.get_mutable_coordinates()[1] = -brokenDownOperating.get_length() / 2;
-                        bottomHalfMachining.push_back(brokenDownOperating);
+                             roundFloat(operating.get_coordinates()[1] - operating.get_length() / 2, 9) < 0) {
+                        Machining brokenDownOperation;
+                        brokenDownOperation.set_coordinates(operating.get_coordinates());
+                        brokenDownOperation.set_length(operating.get_length() / 2 - operating.get_coordinates()[1]);
+                        brokenDownOperation.get_mutable_coordinates()[1] = -brokenDownOperation.get_length() / 2;
+                        bottomHalfMachining.push_back(brokenDownOperation);
                     }
                     else if (operating.get_coordinates()[1] < 0) {
                         bottomHalfMachining.push_back(operating);
