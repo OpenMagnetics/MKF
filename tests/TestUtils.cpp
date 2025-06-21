@@ -1,6 +1,7 @@
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
+#include "TestingUtils.h"
 #include "json.hpp"
 
 #include <UnitTest++.h>
@@ -672,6 +673,19 @@ SUITE(Utils) {
         painter.paint_coil_turns(autocompletedMagnetic);
         painter.export_svg();
 
+    }
+
+    TEST(Test_Mas_Autocomplete_Web_0) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/geometricalDescriptionDebug.mas");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        auto autocompletedMagnetic = magnetic_autocomplete(magnetic);
+
+        CHECK(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining());
+        CHECK(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining().value()[0].get_length() > 0);
+        CHECK(!autocompletedMagnetic.get_core().get_geometrical_description().value()[1].get_machining());
     }
 
 }
