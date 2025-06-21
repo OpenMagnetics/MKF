@@ -5,7 +5,7 @@ import math
 import numpy
 
 
-spreadsheet_path = "/mnt/c/Users/Alfon/Downloads/Curve-Fit-Equation-Tool 11-28-23.xlsx"
+spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/Curve-Fit-Equation-Tool 11-28-23.xlsx"
 
 
 def autocomplete_materials(data, column):
@@ -229,7 +229,7 @@ for row_index, row in permeability_vs_bias_data.iterrows():
         e = bh_cycle_this_point["e"]
         x = bh_cycle_this_point["x"]
         prev_B = math.inf
-        for H in numpy.arange(1, 10000, 10):
+        for H in numpy.arange(1, 10000, 100):
             B = ((a + b * H + c * H**2) / (1 + d * H + e * H**2))**x                
             point = {
                 "magneticFluxDensity": round(float(B), 5),

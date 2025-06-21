@@ -2455,8 +2455,8 @@ bool Coil::wind_by_rectangular_layers() {
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
-                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR) {
-                        maximumNumberPhysicalTurnsPerLayer = 1;
+                    if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR && settings->get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
+                        maximumNumberPhysicalTurnsPerLayer = 1; 
                     }
                     else {
                         maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);

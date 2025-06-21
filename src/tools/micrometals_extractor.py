@@ -5,7 +5,7 @@ import numpy
 import math
 
 
-spreadsheet_path = "/mnt/c/Users/Alfon/Downloads/mmcurvefitcoefficientsall.xlsx"
+spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/mmcurvefitcoefficientsall.xlsx"
 
 
 def autocomplete_materials(data, column):
@@ -131,7 +131,7 @@ permeability_vs_b_peak_data['d'] = permeability_vs_b_peak_data.apply(lambda row:
 
 materials = []
 advanced_materials = []
-materials_to_ignore = ["SM 14", "SM 90", "SP 14", "SP 26", "SP 40", "SP 60", "SP 75", "SP 90"]
+materials_to_ignore = ["Mix 5", "SM 14", "SM 90", "SP 14", "SP 26", "SP 40", "SP 60", "SP 75", "SP 90"]
 
 materials_file = open(f"{pathlib.Path(__file__).parent.parent.parent.resolve()}/MAS/data/core_materials.ndjson", "r")
 current_materials = ndjson.load(materials_file)
@@ -237,7 +237,7 @@ for row_index, row in permeability_vs_bias_data.iterrows():
         e = bh_cycle_this_point["e"]
         mu = bh_cycle_this_point["Init. Perm. (µ)"]
         prev_B = math.inf
-        for H in numpy.arange(1, 10000, 10):
+        for H in numpy.arange(1, 10000, 100):
             B = mu / (1 / (H + a * (H**b)) + 1 / (c * H**d) + 1 / e)                
             point = {
                 "magneticFluxDensity": round(float(B) / 10000, 5),
