@@ -31,6 +31,7 @@ class Settings
         bool _coilTryRewind = true;
         bool _coilIncludeAdditionalCoordinates = true;
         bool _coilEqualizeMargins = true;
+        bool _coilOnlyOneTurnPerLayerInContiguousRectangular = true;
         size_t _coilMaximumLayersPlanar = 4;
 
         bool _useOnlyCoresInStock = true;
@@ -139,6 +140,9 @@ class Settings
 
         bool get_coil_equalize_margins() const;
         void set_coil_equalize_margins(bool value);
+        
+        bool get_coil_only_one_turn_per_layer_in_contiguous_rectangular() const;
+        void set_coil_only_one_turn_per_layer_in_contiguous_rectangular(bool value);
 
         size_t get_coil_maximum_layers_planar() const;
         void set_coil_maximum_layers_planar(size_t value);
