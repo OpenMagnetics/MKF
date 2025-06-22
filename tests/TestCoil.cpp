@@ -575,6 +575,67 @@ SUITE(CoilWeb) {
 
         }
     }
+    TEST(Test_Coil_Json_9) {
+        std::string coilString = R"({"bobbin": {"distributorsInfo": null, "functionalDescription": null, "manufacturerInfo": null, "name": null, "processedDescription": {"columnDepth": 0.01295, "columnShape": "round", "columnThickness": 0.0, "columnWidth": 0.01295, "coordinates": [0.0, 0.0, 0.0 ], "pins": null, "wallThickness": 0.0, "windingWindows": [{"angle": null, "area": 0.0001596, "coordinates": [0.0196, 0.0, 0.0 ], "height": 0.012, "radialHeight": null, "sectionsAlignment": "centered", "sectionsOrientation": "contiguous", "shape": "rectangular", "width": 0.0133 } ] } }, "functionalDescription": [{"connections": null, "isolationSide": "primary", "name": "Primary", "numberParallels": 3, "numberTurns": 12, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": ["Tefzel ETFE" ], "composition": "Ethylene Tetrafluoroethylene", "dielectricStrength": [{"humidity": null, "temperature": 23.0, "thickness": 2.5e-05, "value": 160000000.0 } ], "manufacturer": "Chemours", "meltingPoint": 220.0, "name": "ETFE", "relativePermittivity": 2.7, "resistivity": [{"temperature": 170.0, "value": 1000000000000000.0 } ], "specificHeat": 1172.0, "temperatureClass": 155.0, "thermalConductivity": 0.24 }, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "bare" }, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00020999999999999998 }, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002 }, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00021020999999999995 }, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002002 }, "standard": null, "standardName": null, "strand": null, "type": "rectangular" } }, {"connections": null, "isolationSide": "secondary", "name": "Secondary", "numberParallels": 3, "numberTurns": 15, "wire": {"coating": {"breakdownVoltage": null, "grade": null, "material": {"aliases": [], "composition": "Polyurethane", "dielectricStrength": [{"humidity": null, "temperature": null, "thickness": 0.0001, "value": 25000000.0 } ], "manufacturer": "MWS Wire", "meltingPoint": null, "name": "Polyurethane 155", "relativePermittivity": 3.7, "resistivity": [{"temperature": null, "value": 1e+16 } ], "specificHeat": null, "temperatureClass": 155.0, "thermalConductivity": null }, "numberLayers": null, "temperatureRating": null, "thickness": null, "thicknessLayers": null, "type": "enamelled" }, "conductingArea": null, "conductingDiameter": null, "conductingHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00020999999999999998 }, "conductingWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002 }, "edgeRadius": null, "manufacturerInfo": null, "material": "copper", "name": null, "numberConductors": 1, "outerDiameter": null, "outerHeight": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.00021020999999999995 }, "outerWidth": {"excludeMaximum": null, "excludeMinimum": null, "maximum": null, "minimum": null, "nominal": 0.002002 }, "standard": null, "standardName": null, "strand": null, "type": "rectangular" } } ], "layersOrientation": "contiguous", "turnsAlignment": "spread" })";
+        auto coilJson = json::parse(coilString);
+        size_t repetitions = 1;
+        double insulationThickness = 0.10 / 1000;
+        std::string proportionPerWindingString = "[]";
+        std::string patternString = "[0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]";
+
+        std::vector<double> proportionPerWinding = json::parse(proportionPerWindingString);
+        std::vector<size_t> pattern = json::parse(patternString);
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::Coil coil;
+
+        if (coilJson.contains("_interleavingLevel")) {
+            coil.set_interleaving_level(coilJson["_interleavingLevel"]);
+        }
+        if (coilJson.contains("_windingOrientation")) {
+            coil.set_winding_orientation(coilJson["_windingOrientation"]);
+        }
+        if (coilJson.contains("_layersOrientation")) {
+            coil.set_layers_orientation(coilJson["_layersOrientation"]);
+        }
+        if (coilJson.contains("_turnsAlignment")) {
+            coil.set_turns_alignment(coilJson["_turnsAlignment"]);
+        }
+        if (coilJson.contains("_sectionAlignment")) {
+            coil.set_section_alignment(coilJson["_sectionAlignment"]);
+        }
+
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+
+        if (insulationThickness > 0) {
+            coil.calculate_custom_thickness_insulation(insulationThickness);
+        }
+        if (proportionPerWinding.size() == coilFunctionalDescription.size()) {
+            if (pattern.size() > 0 && repetitions > 0) {
+                coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+            }
+            else if (repetitions > 0) {
+                coil.wind_by_sections(repetitions);
+            }
+            else {
+                coil.wind_by_sections();
+            }
+        }
+        else {
+            if (pattern.size() > 0 && repetitions > 0) {
+                coil.wind_by_sections(pattern, repetitions);
+            }
+            else if (repetitions > 0) {
+                coil.wind_by_sections(repetitions);
+            }
+            else {
+                coil.wind_by_sections();
+            }
+        }
+
+        json result;
+        to_json(result, coil);
+    }
 }
 
 SUITE(CoilSectionsDescriptionMargins) {

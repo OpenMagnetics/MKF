@@ -1019,9 +1019,9 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
 
     for (size_t leftTopWindingIndex = 0; leftTopWindingIndex < get_functional_description().size(); ++leftTopWindingIndex) {
         for (size_t rightBottomWindingIndex = 0; rightBottomWindingIndex < get_functional_description().size(); ++rightBottomWindingIndex) {
-            if (leftTopWindingIndex == rightBottomWindingIndex) {
-                continue;
-            }
+            // if (leftTopWindingIndex == rightBottomWindingIndex) {
+            //     continue;
+            // }
             auto wireLeftTopWinding = wirePerWinding[leftTopWindingIndex];
             auto wireRightBottomWinding = wirePerWinding[rightBottomWindingIndex];
             auto windingsMapKey = std::pair<size_t, size_t>{leftTopWindingIndex, rightBottomWindingIndex};
