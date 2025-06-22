@@ -840,6 +840,9 @@ CoreMaterial Core::resolve_material() {
 CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(coreMaterial)) {
+        if (std::get<std::string>(coreMaterial) == "dummy" || std::get<std::string>(coreMaterial) == "Dummy") {
+            return CoreMaterial();
+        }
         auto coreMaterialData = find_core_material_by_name(std::get<std::string>(coreMaterial));
         coreMaterial = coreMaterialData;
         return coreMaterialData;
@@ -877,7 +880,8 @@ void Core::process_data() {
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operatings)
     if (_includeMaterialData && std::holds_alternative<std::string>(get_functional_description().get_material()) &&
-        std::get<std::string>(get_functional_description().get_material()) != "dummy") {
+        std::get<std::string>(get_functional_description().get_material()) != "dummy" &&
+        std::get<std::string>(get_functional_description().get_material()) != "Dummy") {
         auto material_data = find_core_material_by_name(
             std::get<std::string>(get_functional_description().get_material()));
         get_mutable_functional_description().set_material(material_data);
