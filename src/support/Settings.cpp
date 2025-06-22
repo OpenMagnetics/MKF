@@ -40,7 +40,7 @@ namespace OpenMagnetics {
         _coilTryRewind = true;
         _coilIncludeAdditionalCoordinates = true;
         _coilEqualizeMargins = true;
-        _coilOnlyOneTurnPerLayerInContiguousRectangular = true;
+        _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
         _coilMaximumLayersPlanar = 4;
 
         _useOnlyCoresInStock = true;
