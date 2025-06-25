@@ -9,7 +9,7 @@
 
 namespace OpenMagnetics {
 
-std::complex<double>  Impedance::calculate_impedance(Magnetic magnetic, double frequency, double temperature) {
+std::complex<double> Impedance::calculate_impedance(Magnetic magnetic, double frequency, double temperature) {
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
     return calculate_impedance(core, coil, frequency, temperature);
@@ -43,6 +43,17 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
     return impedance;
+}
+
+double Impedance::calculate_q_factor(Magnetic magnetic, double frequency, double temperature) {
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    return calculate_q_factor(core, coil, frequency, temperature);
+}
+
+double Impedance::calculate_q_factor(Core core, Coil coil, double frequency, double temperature) {
+    auto impedance = calculate_impedance(core, coil, frequency, temperature);
+    return impedance.imag() / impedance.real();
 }
 
 double Impedance::calculate_self_resonant_frequency(Magnetic magnetic, double temperature) {
