@@ -35,6 +35,29 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     return Curve2D(frequencies, impedances, title);
 }
 
+Curve2D Sweeper::sweep_q_factor_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
+    std::vector<double> frequencies;
+    if (mode == "linear") {
+        frequencies = linear_spaced_array(start, stop, numberElements);
+    }
+    else if (mode == "log") {
+        frequencies = logarithmic_spaced_array(start, stop, numberElements);
+    }
+    else {
+        throw std::runtime_error("Unknown spaced array mode");
+    }
+
+    std::vector<double> qFactors;
+    for (auto frequency : frequencies) {
+        auto qFactor = abs(OpenMagnetics::Impedance().calculate_q_factor(magnetic, frequency));
+        qFactors.push_back(qFactor);
+    }
+
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    return Curve2D(frequencies, qFactors, title);
+}
+
 Curve2D Sweeper::sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     std::vector<double> frequencies;
     if (mode == "linear") {

@@ -60,6 +60,54 @@ SUITE(Sweeper) {
         settings->reset();
     }
 
+    TEST(Test_Sweeper_Q_Factor_Over_Frequency_Many_Turns) {
+        settings->set_coil_wind_even_if_not_fit(true);
+        std::vector<int64_t> numberTurns = {110, 110};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::string shapeName = "T 12.5/7.5/5";
+        std::vector<OpenMagnetics::Wire> wires;
+        auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+        wires.push_back(wire);
+        wires.push_back(wire);
+
+        WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
+        CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
+        
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
+                                                         numberParallels,
+                                                         shapeName,
+                                                         1,
+                                                         windingOrientation,
+                                                         layersOrientation,
+                                                         turnsAlignment,
+                                                         sectionsAlignment,
+                                                         wires,
+                                                         false);
+
+        int64_t numberStacks = 1;
+        std::string coreMaterial = "A07";
+        std::vector<CoreGap> gapping;
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto impedanceSweep = Sweeper().sweep_q_factor_over_frequency(magnetic, 1000, 400000, 1000);
+
+        auto outFile = outputFilePath;
+
+        outFile.append("Test_Sweeper_Q_Factor_Over_Frequency_Many_Turns.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, true);
+        painter.paint_curve(impedanceSweep, true);
+        painter.export_svg();
+        CHECK(std::filesystem::exists(outFile));
+
+        settings->reset();
+    }
+
     TEST(Test_Sweeper_Impedance_Over_Frequency_Few_Turns) {
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {18, 18};

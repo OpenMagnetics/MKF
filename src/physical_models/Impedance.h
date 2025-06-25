@@ -26,6 +26,8 @@ class Impedance {
 
     std::complex<double> calculate_impedance(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
     std::complex<double> calculate_impedance(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
+    double calculate_q_factor(Magnetic magnetic, double frequency, double temperature = Defaults().ambientTemperature);
+    double calculate_q_factor(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Magnetic magnetic, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Core core, Coil coil, double temperature = Defaults().ambientTemperature);
 
