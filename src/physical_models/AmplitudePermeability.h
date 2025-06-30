@@ -22,8 +22,8 @@ class AmplitudePermeability {
     private:
     protected:
     public:
-        static double get_amplitude_permeability(CoreMaterial coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
-        static double get_amplitude_permeability(std::string coreMaterialName, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
+        static std::optional<double> get_amplitude_permeability(CoreMaterial coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
+        static std::optional<double> get_amplitude_permeability(std::string coreMaterialName, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
 
 };
 
