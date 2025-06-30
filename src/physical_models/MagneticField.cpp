@@ -219,7 +219,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     }
 
     if (externalInducedField){
-        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, 0, currentDirectionPerWinding);
+        auto aux = coilMesher.generate_mesh_inducing_coil(magnetic, operatingPoint, settings->get_harmonic_amplitude_threshold(), currentDirectionPerWinding);
         // We only process the harmonic that comes from the external field
         for (auto field : aux) {
             if (field.get_frequency() == externalInducedField.value().get_frequency()) {
