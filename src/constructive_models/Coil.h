@@ -79,6 +79,17 @@ class Coil : public MAS::Coil {
         BobbinDataOrNameUnion bobbin;
         std::vector<CoilFunctionalDescription> functional_description;
 
+        bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        bool wind_by_rectangular_layers();
+        bool wind_by_round_layers();
+        bool wind_by_rectangular_turns();
+        bool wind_by_round_turns();
+        bool wind_toroidal_additional_turns();
+        bool delimit_and_compact_rectangular_window();
+        bool delimit_and_compact_round_window();
+        bool create_default_group(Bobbin bobbin);
+
     public:
 
         Coil(const json& j, size_t interleavingLevel = 1,
@@ -134,21 +145,12 @@ class Coil : public MAS::Coil {
         bool wind_by_sections(std::vector<double> proportionPerWinding);
         bool wind_by_sections(std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
-        bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
-        bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_layers();
-        bool wind_by_rectangular_layers();
-        bool wind_by_round_layers();
         bool wind_by_turns();
-        bool wind_by_rectangular_turns();
-        bool wind_by_round_turns();
-        bool wind_toroidal_additional_turns();
         bool calculate_insulation(bool simpleMode = false);
         bool calculate_custom_thickness_insulation(double thickness);
         bool calculate_mechanical_insulation();
         bool delimit_and_compact();
-        bool delimit_and_compact_rectangular_window();
-        bool delimit_and_compact_round_window();
 
         void log(std::string entry);
         std::string read_log();

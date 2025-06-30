@@ -362,7 +362,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
     std::vector<std::vector<VolumetricLossesPoint>> volumetricLossesChunks;
 
     if (ranges.size() > 1) {
-        for (auto range : ranges) {
+        for (size_t index = 0; index < ranges.size(); ++index) {
             volumetricLossesChunks.push_back(std::vector<VolumetricLossesPoint>());
         }
         for (auto volumetricLoss : volumetricLosses) {
@@ -455,7 +455,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 }
             }
 
-            dlevmar_dif(numberInputs == 3? steinmetz_equation_with_temperature_func : steinmetz_equation_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(&volumetricLossesInputs));
+            dlevmar_dif(numberInputs == 3? steinmetz_equation_with_temperature_func : steinmetz_equation_func, coefficients, volumetricLossesArray, numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs));
 
             double errorAverage = 0;
             for (size_t index = 0; index < numberElements; ++index) {
