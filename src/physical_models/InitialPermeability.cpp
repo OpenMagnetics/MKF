@@ -815,7 +815,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
 
         // Add variation due to saturation
         if (!hasMagneticFieldDcBiasDependency && (hasMagneticFieldDcBiasRequirement || hasMagneticFluxDensityRequirement)) {
-            double amplitudePermeability = 1;
+            double amplitudePermeability = initialPermeabilityValueReference;
             double auxTemperatude = defaults.ambientTemperature;
             if (temperature) {
                 auxTemperatude = temperature.value();
@@ -825,7 +825,10 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                     amplitudePermeability = initialPermeabilityValueReference;
                 }
                 else {
-                    amplitudePermeability = AmplitudePermeability::get_amplitude_permeability(coreMaterial, std::nullopt, magneticFieldDcBias.value(), auxTemperatude);        
+                    auto amplitudePermeabilityResult = AmplitudePermeability::get_amplitude_permeability(coreMaterial, std::nullopt, magneticFieldDcBias.value(), auxTemperatude);        
+                    if (amplitudePermeabilityResult) {
+                        amplitudePermeability = amplitudePermeabilityResult.value();
+                    }
                 }
             }
             else {
@@ -833,7 +836,10 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                     amplitudePermeability = initialPermeabilityValueReference;
                 }
                 else {
-                    amplitudePermeability = AmplitudePermeability::get_amplitude_permeability(coreMaterial, magneticFluxDensity.value(), std::nullopt, auxTemperatude);        
+                    auto amplitudePermeabilityResult = AmplitudePermeability::get_amplitude_permeability(coreMaterial, magneticFluxDensity.value(), std::nullopt, auxTemperatude);        
+                    if (amplitudePermeabilityResult) {
+                        amplitudePermeability = amplitudePermeabilityResult.value();
+                    }
                 }
             }
             if (amplitudePermeability < initialPermeabilityValueReference) {

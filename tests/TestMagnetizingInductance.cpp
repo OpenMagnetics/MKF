@@ -1,3 +1,4 @@
+#include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "constructive_models/Bobbin.h"
 #include "TestingUtils.h"
@@ -1040,4 +1041,67 @@ SUITE(MagnetizingInductance) {
         MagnetizingInductance magnetizingInductance("ZHANG");
         magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
     }
+
+    TEST(Test_Magnetizing_Inductance_Error_Web_2) {
+        settings->reset();
+        clear_databases();
+
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 16;
+        double frequency = 570000;
+        std::string coreShape = "PQ 40/40";
+        std::string coreMaterial = "DMR51W";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0005, 4);
+
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+
+        double expectedValue = 30e-6;
+
+        int numberStacks = 1;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
+                                coreMaterial, core, winding, inputs, 20, numberStacks);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        double magnetizingInductance =
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(core, winding, &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+    }
+
+    TEST(Test_Magnetizing_Inductance_Error_Web_3) {
+        settings->reset();
+        clear_databases();
+
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double numberTurns = 16;
+        double frequency = 570000;
+        std::string coreShape = "PQ 40/40";
+        std::string coreMaterial = "DMR51W";
+        auto gapping = OpenMagneticsTesting::get_distributed_gap(0.0005, 4);
+
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+        double expectedValue = 30e-6;
+        int numberStacks = 1;
+        std::string file_path = __FILE__;
+
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/Error_inductance_with_Csv.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+
+        auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+
+        double magnetizingInductance =
+            magnetizing_inductance.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+
+        CHECK_CLOSE(expectedValue, magnetizingInductance, max_error * expectedValue);
+    }
+
 }
