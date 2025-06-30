@@ -1484,10 +1484,7 @@ std::vector<double> Coil::get_proportion_per_winding_based_on_wires() {
 }
 
 std::pair<double, double> get_section_round_dimensions(std::pair<ElectricalType, std::pair<size_t, double>> sectionWithInsulationScaledWithArea,
-                                                 WindingOrientation windingOrientation, WindingWindowElement windingWindow) {
-
-    double windingWindowRadialHeight = windingWindow.get_radial_height().value();
-    double windingWindowAngle = windingWindow.get_angle().value();
+                                                 WindingOrientation windingOrientation, double windingWindowRadialHeight, double windingWindowAngle) {
 
     auto sectionInfo = sectionWithInsulationScaledWithArea.second;
     auto spaceForSection = sectionInfo.second;
@@ -1695,7 +1692,6 @@ void Coil::equalize_margins(std::vector<std::pair<ElectricalType, std::pair<size
 
 bool Coil::wind_by_sections() {
     auto bobbin = resolve_bobbin();
-    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     std::vector<double> proportionPerWinding;
     auto windingOrientation = get_winding_orientation();
@@ -1734,6 +1730,38 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding) {
     return wind_by_sections(proportionPerWinding, pattern, _interleavingLevel);
 }
 
+bool Coil::create_default_group(Bobbin bobbin) {
+    Group group;
+    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+    group.set_coordinates(windingWindows[0].get_coordinates().value());
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_width().value(), windingWindows[0].get_height().value()});
+        group.set_coordinate_system(CoordinateSystem::CARTESIAN);
+    }
+    else {
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_radial_height().value(), windingWindows[0].get_angle().value()});
+        group.set_coordinate_system(CoordinateSystem::POLAR);
+    }
+    group.set_name("Default group");
+    std::vector<PartialWinding> partialWindings;
+
+    double numberWindings = get_functional_description().size();
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        PartialWinding partialWinding;
+        partialWinding.set_winding(get_name(windingIndex));
+        partialWinding.set_parallels_proportion(std::vector<double>(get_number_parallels(windingIndex), 1));
+        partialWindings.push_back(partialWinding);
+    }
+    group.set_partial_windings(partialWindings);
+    group.set_sections_orientation(get_winding_orientation());
+    group.set_type(CoilGroupType::WOUND);
+    set_groups_description(std::vector<Group>{group});
+
+    return true;
+}
+
 bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     _currentProportionPerWinding = proportionPerWinding;
     _currentPattern = pattern;
@@ -1744,6 +1772,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     }
 
     auto bobbin = resolve_bobbin();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (!bobbin.get_processed_description()) {
         throw std::runtime_error("Bobbin not processed");
     }
@@ -1762,11 +1791,14 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
     bobbin.set_processed_description(bobbinProcessedDescription);
     set_bobbin(bobbin);
 
+    if (!get_groups_description()) {
+        create_default_group(bobbin);
+    }
+
     set_sections_description(std::nullopt);
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);
 
-    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
         return wind_by_rectangular_sections(proportionPerWinding, pattern, repetitions);
     }
@@ -1778,235 +1810,241 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
 bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
-    auto bobbin = resolve_bobbin();
-    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
-    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
 
-    double windingWindowHeight = windingWindows[0].get_height().value();
-    double windingWindowWidth = windingWindows[0].get_width().value();
-    double spaceForSections = 0;
-    auto windingOrientation = get_winding_orientation();
-
-    if (windingOrientation == WindingOrientation::OVERLAPPING) {
-        spaceForSections = windingWindowWidth;
-    }
-    else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-        spaceForSections = windingWindowHeight;
+    if (!get_groups_description()) {
+        throw std::runtime_error("At least default group must be defined at this point.");
     }
 
-    auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
-
-    auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
-
-    double numberWindings = get_functional_description().size();
-    auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
-    auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
-    for (auto orderedSection : orderedSectionsWithInsulation) {
-        if (orderedSection.first == ElectricalType::CONDUCTION) {
-            auto windingIndex = orderedSection.second.first;
-            numberSectionsPerWinding[windingIndex]++;
-        }
-    }
-
-    auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
-   
+    auto groups = get_groups_description().value();
     std::vector<std::vector<double>> remainingParallelsProportion;
 
-    auto wirePerWinding = get_wires();
-    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
-    }
-    double currentSectionCenterWidth = DBL_MAX;
-    double currentSectionCenterHeight = DBL_MAX;
+    for (auto group : groups) {
+        double availableWidth = group.get_dimensions()[0];
+        double availableHeight = group.get_dimensions()[1];
+        double spaceForSections = 0;
+        auto windingOrientation = group.get_sections_orientation();
 
-    apply_margin_tape(orderedSectionsWithInsulation);
-
-    for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-        if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
-            auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
-            auto windingIndex = sectionInfo.first;
-            auto spaceForSection = sectionInfo.second;
-
-            double currentSectionHeight = 0;
-            double currentSectionWidth = 0;
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentSectionWidth = spaceForSection;
-                // currentSectionHeight = windingWindowHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1];
-                currentSectionHeight = windingWindowHeight;
-
-                if (currentSectionCenterWidth == DBL_MAX) {
-                    currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2;
-                }
-                if (currentSectionCenterHeight == DBL_MAX) {
-                    currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1];
-                }
-            }
-            else {
-                currentSectionWidth = windingWindowWidth;
-                currentSectionHeight = spaceForSection;
-                if (currentSectionCenterWidth == DBL_MAX) {
-                    currentSectionCenterWidth = windingWindows[0].get_coordinates().value()[0];
-                }
-                if (currentSectionCenterHeight == DBL_MAX) {
-                    currentSectionCenterHeight = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2;
-                }
-            }
-
-            PartialWinding partialWinding;
-            Section section;
-            partialWinding.set_winding(get_name(windingIndex));
-
-            auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
-                                                                   numberSectionsPerWinding[windingIndex],
-                                                                   get_number_turns(windingIndex),
-                                                                   get_number_parallels(windingIndex),
-                                                                   remainingParallelsProportion[windingIndex],
-                                                                   windByConsecutiveTurns[windingIndex],
-                                                                   std::vector<double>(get_number_parallels(windingIndex), 1));
-
-            std::vector<double> sectionParallelsProportion = parallels_proportions.second;
-            uint64_t physicalTurnsThisSection = parallels_proportions.first;
-
-            partialWinding.set_parallels_proportion(sectionParallelsProportion);
-            section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
-            section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
-            section.set_type(ElectricalType::CONDUCTION);
-            section.set_margin(_marginsPerSection[sectionIndex]);
-            section.set_layers_orientation(_layersOrientation);
-            section.set_coordinate_system(CoordinateSystem::CARTESIAN);
-            
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                section.set_dimensions(std::vector<double>{currentSectionWidth, currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]});
-            }
-            else {
-                section.set_dimensions(std::vector<double>{currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1], currentSectionHeight});
-            }
-
-            if (wirePerWinding[windingIndex].get_type() == WireType::FOIL && !wirePerWinding[windingIndex].get_conducting_height()) {
-                wirePerWinding[windingIndex].cut_foil_wire_to_section(section);
-                get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
-            }
-
-            if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR && !wirePerWinding[windingIndex].get_conducting_width()) {
-                wirePerWinding[windingIndex].cut_planar_wire_to_section(section);
-                get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
-            }
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-
-                if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
-                    std::string wireType = std::string(magic_enum::enum_name(wirePerWinding[windingIndex].get_type()));
-                    return false;
-                    // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                    //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
-                    //                          ", wire type: " + wireType + 
-                    //                          ", wire height: " + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) + 
-                    //                          ", section height: " + std::to_string(currentSectionHeight)
-                    //                          );
-                }
-            }
-            else {
-                if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) > currentSectionWidth) {
-                    return false;
-                    // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
-                    //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
-                    //                          ", wire width:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) + 
-                    //                          ", section width:" + std::to_string(currentSectionWidth)
-                    //                          );
-                }
-            }
-
-            if (section.get_dimensions()[0] < 0) {
-                throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
-                                         " currentSectionWidth: " + std::to_string(currentSectionWidth) +
-                                         " currentSectionHeight: " + std::to_string(currentSectionHeight)
-                                         );
-            }
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                section.set_coordinates(std::vector<double>{currentSectionCenterWidth + currentSectionWidth / 2, currentSectionCenterHeight, 0});
-            }
-            else {
-                section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight - currentSectionHeight / 2, 0});
-            }
-
-            if (section.get_coordinates()[0] < -1) {
-                throw std::runtime_error("Something wrong happened in section coordiantes 0: " + std::to_string(section.get_coordinates()[0]) +
-                                         " currentSectionCenterWidth: " + std::to_string(currentSectionCenterWidth) +
-                                         " windingWindows[0].get_coordinates().value()[0]: " + std::to_string(windingWindows[0].get_coordinates().value()[0]) +
-                                         " windingWindows[0].get_width(): " + std::to_string(bool(windingWindows[0].get_width())) +
-                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) +
-                                         " windingWindowWidth: " + std::to_string(windingWindowWidth) +
-                                         " currentSectionWidth: " + std::to_string(currentSectionWidth) +
-                                         " currentSectionCenterHeight: " + std::to_string(currentSectionCenterHeight)
-                                         );
-            }
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (currentSectionWidth * (currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1])));
-            } 
-            else {
-                section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ((currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]) * currentSectionHeight));
-            }
-            section.set_winding_style(windByConsecutiveTurns[windingIndex]);
-            sectionsDescription.push_back(section);
-
-            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                remainingParallelsProportion[windingIndex][parallelIndex] -= sectionParallelsProportion[parallelIndex];
-            }
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentSectionCenterWidth += currentSectionWidth;
-            }
-            else {
-                currentSectionCenterHeight -= currentSectionHeight;
-            }
-
-            currentSectionPerWinding[windingIndex]++;
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            spaceForSections = availableWidth;
         }
-        else {
-            if (sectionIndex == 0) {
-                throw std::runtime_error("Insulation layers cannot be the first one (for now)");
-            }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            spaceForSections = availableHeight;
+        }
 
-            auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
-            size_t nextWindingIndex;
-            if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
-                nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
+        auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
+
+        auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
+
+        double numberWindings = get_functional_description().size();
+        auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
+        auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
+        for (auto orderedSection : orderedSectionsWithInsulation) {
+            if (orderedSection.first == ElectricalType::CONDUCTION) {
+                auto windingIndex = orderedSection.second.first;
+                numberSectionsPerWinding[windingIndex]++;
+            }
+        }
+
+        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
+       
+
+        auto wirePerWinding = get_wires();
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
+        }
+        double currentSectionCenterWidth = DBL_MAX;
+        double currentSectionCenterHeight = DBL_MAX;
+
+        apply_margin_tape(orderedSectionsWithInsulation);
+
+        for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
+            if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
+                auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
+                auto windingIndex = sectionInfo.first;
+                auto spaceForSection = sectionInfo.second;
+
+                double currentSectionHeight = 0;
+                double currentSectionWidth = 0;
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    currentSectionWidth = spaceForSection;
+                    // currentSectionHeight = availableHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1];
+                    currentSectionHeight = availableHeight;
+
+                    if (currentSectionCenterWidth == DBL_MAX) {
+                        currentSectionCenterWidth = group.get_coordinates()[0] - availableWidth / 2;
+                    }
+                    if (currentSectionCenterHeight == DBL_MAX) {
+                        currentSectionCenterHeight = group.get_coordinates()[1];
+                    }
+                }
+                else {
+                    currentSectionWidth = availableWidth;
+                    currentSectionHeight = spaceForSection;
+                    if (currentSectionCenterWidth == DBL_MAX) {
+                        currentSectionCenterWidth = group.get_coordinates()[0];
+                    }
+                    if (currentSectionCenterHeight == DBL_MAX) {
+                        currentSectionCenterHeight = group.get_coordinates()[1] + availableHeight / 2;
+                    }
+                }
+
+                PartialWinding partialWinding;
+                Section section;
+                partialWinding.set_winding(get_name(windingIndex));
+
+                auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
+                                                                       numberSectionsPerWinding[windingIndex],
+                                                                       get_number_turns(windingIndex),
+                                                                       get_number_parallels(windingIndex),
+                                                                       remainingParallelsProportion[windingIndex],
+                                                                       windByConsecutiveTurns[windingIndex],
+                                                                       std::vector<double>(get_number_parallels(windingIndex), 1));
+
+                std::vector<double> sectionParallelsProportion = parallels_proportions.second;
+                uint64_t physicalTurnsThisSection = parallels_proportions.first;
+
+                partialWinding.set_parallels_proportion(sectionParallelsProportion);
+                section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
+                section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
+                section.set_group(group.get_name());
+                section.set_type(ElectricalType::CONDUCTION);
+                section.set_margin(_marginsPerSection[sectionIndex]);
+                section.set_layers_orientation(_layersOrientation);
+                section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_dimensions(std::vector<double>{currentSectionWidth, currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]});
+                }
+                else {
+                    section.set_dimensions(std::vector<double>{currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1], currentSectionHeight});
+                }
+
+                if (wirePerWinding[windingIndex].get_type() == WireType::FOIL && !wirePerWinding[windingIndex].get_conducting_height()) {
+                    wirePerWinding[windingIndex].cut_foil_wire_to_section(section);
+                    get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
+                }
+
+                if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR && !wirePerWinding[windingIndex].get_conducting_width()) {
+                    wirePerWinding[windingIndex].cut_planar_wire_to_section(section);
+                    get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
+                }
+
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+
+                    if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) > currentSectionHeight) {
+                        std::string wireType = std::string(magic_enum::enum_name(wirePerWinding[windingIndex].get_type()));
+                        return false;
+                        // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
+                        //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                        //                          ", wire type: " + wireType + 
+                        //                          ", wire height: " + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_height())) + 
+                        //                          ", section height: " + std::to_string(currentSectionHeight)
+                        //                          );
+                    }
+                }
+                else {
+                    if ((section.get_margin().value()[0] + section.get_margin().value()[1] + resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) > currentSectionWidth) {
+                        return false;
+                        // throw std::runtime_error("Margin plus a turn cannot larger than winding window" + 
+                        //                          std::string{", margin:"} + std::to_string(section.get_margin().value()[0] + section.get_margin().value()[1]) + 
+                        //                          ", wire width:" + std::to_string(resolve_dimensional_values(wirePerWinding[windingIndex].get_maximum_outer_width())) + 
+                        //                          ", section width:" + std::to_string(currentSectionWidth)
+                        //                          );
+                    }
+                }
+
+                if (section.get_dimensions()[0] < 0) {
+                    throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
+                                             " currentSectionWidth: " + std::to_string(currentSectionWidth) +
+                                             " currentSectionHeight: " + std::to_string(currentSectionHeight)
+                                             );
+                }
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_coordinates(std::vector<double>{currentSectionCenterWidth + currentSectionWidth / 2, currentSectionCenterHeight, 0});
+                }
+                else {
+                    section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight - currentSectionHeight / 2, 0});
+                }
+
+                if (section.get_coordinates()[0] < -1) {
+                    throw std::runtime_error("Something wrong happened in section coordiantes 0: " + std::to_string(section.get_coordinates()[0]) +
+                                             " currentSectionCenterWidth: " + std::to_string(currentSectionCenterWidth) +
+                                             " group.get_coordinates()[0]: " + std::to_string(group.get_coordinates()[0]) +
+                                             " group.get_dimensions()[0]: " + std::to_string(group.get_dimensions()[0]) +
+                                             " availableWidth: " + std::to_string(availableWidth) +
+                                             " currentSectionWidth: " + std::to_string(currentSectionWidth) +
+                                             " currentSectionCenterHeight: " + std::to_string(currentSectionCenterHeight)
+                                             );
+                }
+
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (currentSectionWidth * (currentSectionHeight - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1])));
+                } 
+                else {
+                    section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ((currentSectionWidth - _marginsPerSection[sectionIndex][0] - _marginsPerSection[sectionIndex][1]) * currentSectionHeight));
+                }
+                section.set_winding_style(windByConsecutiveTurns[windingIndex]);
+                sectionsDescription.push_back(section);
+
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    remainingParallelsProportion[windingIndex][parallelIndex] -= sectionParallelsProportion[parallelIndex];
+                }
+
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    currentSectionCenterWidth += currentSectionWidth;
+                }
+                else {
+                    currentSectionCenterHeight -= currentSectionHeight;
+                }
+
+                currentSectionPerWinding[windingIndex]++;
             }
             else {
-                nextWindingIndex = orderedSectionsWithInsulation[0].second.first;
-            }
+                if (sectionIndex == 0) {
+                    throw std::runtime_error("Insulation layers cannot be the first one (for now)");
+                }
 
-            auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
-            if (!_insulationSections.contains(windingsMapKey)) {
+                auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
+                size_t nextWindingIndex;
+                if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
+                    nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
+                }
+                else {
+                    nextWindingIndex = orderedSectionsWithInsulation[0].second.first;
+                }
+
+                auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
+                if (!_insulationSections.contains(windingsMapKey)) {
+                    log(_insulationSectionsLog[windingsMapKey]);
+                    continue;
+                }
+
+                auto insulationSection = _insulationSections[windingsMapKey];
+
+                insulationSection.set_group(group.get_name());
+                insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(nextWindingIndex) + " section " + std::to_string(sectionIndex));
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth + insulationSection.get_dimensions()[0] / 2,
+                                                                          currentSectionCenterHeight,
+                                                                          0});
+                }
+                else {
+                    insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth,
+                                                                          currentSectionCenterHeight - insulationSection.get_dimensions()[1] / 2,
+                                                                          0});
+                }
+
+                sectionsDescription.push_back(insulationSection);
                 log(_insulationSectionsLog[windingsMapKey]);
-                continue;
-            }
 
-            auto insulationSection = _insulationSections[windingsMapKey];
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    currentSectionCenterWidth += insulationSection.get_dimensions()[0];
+                }
+                else {
+                    currentSectionCenterHeight -= insulationSection.get_dimensions()[1];
+                }
 
-            insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(nextWindingIndex) + " section " + std::to_string(sectionIndex));
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth + insulationSection.get_dimensions()[0] / 2,
-                                                                      currentSectionCenterHeight,
-                                                                      0});
             }
-            else {
-                insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth,
-                                                                      currentSectionCenterHeight - insulationSection.get_dimensions()[1] / 2,
-                                                                      0});
-            }
-
-            sectionsDescription.push_back(insulationSection);
-            log(_insulationSectionsLog[windingsMapKey]);
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentSectionCenterWidth += insulationSection.get_dimensions()[0];
-            }
-            else {
-                currentSectionCenterHeight -= insulationSection.get_dimensions()[1];
-            }
-
         }
     }
 
@@ -2093,263 +2131,273 @@ void Coil::remove_insulation_if_margin_is_enough(std::vector<std::pair<size_t, d
 }
 
 bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
-
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
-    auto bobbin = resolve_bobbin();
-    auto bobbinProcessedDescription = bobbin.get_processed_description().value();
-    auto windingWindows = bobbinProcessedDescription.get_winding_windows();
 
-    double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
-    double windingWindowAngle = windingWindows[0].get_angle().value();
-
-    double spaceForSections = 0;
-    auto windingOrientation = get_winding_orientation();
-
-    if (windingOrientation == WindingOrientation::OVERLAPPING) {
-        spaceForSections = windingWindowRadialHeight;
-    }
-    else {
-        spaceForSections = windingWindowAngle;
+    if (!get_groups_description()) {
+        throw std::runtime_error("At least default group must be defined at this point.");
     }
 
-    auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
-
-    if (windingOrientation == WindingOrientation::CONTIGUOUS) {
-        remove_insulation_if_margin_is_enough(orderedSections);
-    }
-    auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
-
-    double numberWindings = get_functional_description().size();
-    auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
-    auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
-    for (auto orderedSection : orderedSectionsWithInsulation) {
-        if (orderedSection.first == ElectricalType::CONDUCTION) {
-            auto windingIndex = orderedSection.second.first;
-            numberSectionsPerWinding[windingIndex]++;
-        }
-    }
-    auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
-   
+    auto groups = get_groups_description().value();
     std::vector<std::vector<double>> remainingParallelsProportion;
-    auto wirePerWinding = get_wires();
-    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
-    }
-    double currentSectionCenterAngle = DBL_MAX;
-    double currentSectionCenterRadialHeight = DBL_MAX;
 
-    apply_margin_tape(orderedSectionsWithInsulation);
-    if (settings->get_coil_equalize_margins()) {
-        equalize_margins(orderedSectionsWithInsulation);
-    }
+    for (auto group : groups) {
 
-    std::vector<double> currentSectionRadialHeights;
-    std::vector<double> currentSectionAngles;
-    std::vector<size_t> windingIndexes;
+        auto bobbin = resolve_bobbin();
+        auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+        auto windingWindows = bobbinProcessedDescription.get_winding_windows();
+        double availableRadialHeight = group.get_dimensions()[0];
+        double availableAngle = group.get_dimensions()[1];
 
-    for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-        if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
-            auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
-            auto windingIndex = sectionInfo.first;
-            auto aux = get_section_round_dimensions(orderedSectionsWithInsulation[sectionIndex], windingOrientation, windingWindows[0]);
-            currentSectionRadialHeights.push_back(aux.first);
-            currentSectionAngles.push_back(aux.second);
-            windingIndexes.push_back(windingIndex);
-        }
-    }
-    
-    // std::vector<double> sectionLengths = get_section_lengths(currentSectionRadialHeights, currentSectionAngles, windingWindowRadialHeight);
+        double spaceForSections = 0;
+        auto windingOrientation = get_winding_orientation();
 
-    std::vector<double> sectionPhysicalTurnsProportions;
-    if (windingOrientation == WindingOrientation::OVERLAPPING) {
-        std::vector<double> sectionAreas = get_section_areas(orderedSectionsWithInsulation, currentSectionAngles, windingWindowRadialHeight);
-        sectionPhysicalTurnsProportions = get_length_proportions(sectionAreas, windingIndexes);
-    }
-    else {
-        sectionPhysicalTurnsProportions = std::vector<double>(orderedSectionsWithInsulation.size(), 1);
-    }
-
-    size_t conductingSectionIndex = 0;
-    for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
-        if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
-            auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
-            auto windingIndex = sectionInfo.first;
-
-            double currentSectionRadialHeight = currentSectionRadialHeights[conductingSectionIndex];
-            double currentSectionAngle = currentSectionAngles[conductingSectionIndex];
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                if (currentSectionCenterRadialHeight == DBL_MAX) {
-                    currentSectionCenterRadialHeight = 0;
-                }
-                if (currentSectionCenterAngle == DBL_MAX) {
-                    currentSectionCenterAngle = 180;
-                }
-            }
-            else {
-                if (currentSectionCenterRadialHeight == DBL_MAX) {
-                    currentSectionCenterRadialHeight = 0;
-                }
-                if (currentSectionCenterAngle == DBL_MAX) {
-                    currentSectionCenterAngle = 0;
-                }
-            }
-            
-            PartialWinding partialWinding;
-            Section section;
-            partialWinding.set_winding(get_name(windingIndex));
-
-            auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
-                                                                   numberSectionsPerWinding[windingIndex],
-                                                                   get_number_turns(windingIndex),
-                                                                   get_number_parallels(windingIndex),
-                                                                   remainingParallelsProportion[windingIndex],
-                                                                   windByConsecutiveTurns[windingIndex],
-                                                                   std::vector<double>(get_number_parallels(windingIndex), 1),
-                                                                   sectionPhysicalTurnsProportions[windingIndex]);
-
-            std::vector<double> sectionParallelsProportion = parallels_proportions.second;
-            uint64_t physicalTurnsThisSection = parallels_proportions.first;
-
-            double marginAngle0 = 0;
-            double marginAngle1 = 0;
-            size_t numberLayers = ULONG_MAX;
-            size_t prevNumberLayers = 0;
-
-            // We correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, windingWindowRadialHeight);
-                numberLayers = aux.first;
-                currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
-            }
-            else {
-                while (numberLayers != prevNumberLayers) {
-                    prevNumberLayers = numberLayers;
-                    double currentSectionAngleMinusMargin = currentSectionAngle - marginAngle0 - marginAngle1;
-                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, windingWindowRadialHeight);
-                    numberLayers = aux.first;
-                    if (_strict) {
-                        currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
-                    }
-                    double lastLayerMaximumRadius = windingWindowRadialHeight - (currentSectionCenterRadialHeight + numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width());
-                    if (lastLayerMaximumRadius < 0) {
-                        break;
-                    }
-                    marginAngle0 = wound_distance_to_angle(_marginsPerSection[sectionIndex][0], lastLayerMaximumRadius);
-                    marginAngle1 = wound_distance_to_angle(_marginsPerSection[sectionIndex][1], lastLayerMaximumRadius);
-                }                
-                currentSectionAngle -= marginAngle0 + marginAngle1;
-            }
-
-
-            // if (currentSectionRadialHeight > windingWindowRadialHeight) {
-            //     return false;
-            // }
-            if (currentSectionAngle < 0) {
-                return false;
-            }
-
-            partialWinding.set_parallels_proportion(sectionParallelsProportion);
-            section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
-            section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
-            section.set_type(ElectricalType::CONDUCTION);
-            section.set_margin(_marginsPerSection[sectionIndex]);
-            section.set_layers_orientation(_layersOrientation);
-            section.set_coordinate_system(CoordinateSystem::POLAR);
-            
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
-                section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2 + _marginsPerSection[sectionIndex][0], currentSectionCenterAngle, 0});
-            }
-            else {
-                section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
-                section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2, currentSectionCenterAngle  + currentSectionAngle / 2 + marginAngle0, 0});
-            }
-
-            if (section.get_dimensions()[0] < 0) {
-                throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
-                                         " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
-                                         " currentSectionAngle: " + std::to_string(currentSectionAngle)
-                                         );
-            }
-
-
-            if (section.get_dimensions()[1] < 0) {
-                throw std::runtime_error("Something wrong happened in section dimensions 1: " + std::to_string(section.get_dimensions()[1]) +
-                                         " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
-                                         " currentSectionAngle: " + std::to_string(currentSectionAngle)
-                                         );
-            }
-            
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                double ringArea = std::numbers::pi * pow(windingWindowRadialHeight - currentSectionCenterRadialHeight, 2) - std::numbers::pi * pow(windingWindowRadialHeight - (currentSectionCenterRadialHeight + currentSectionRadialHeight), 2);
-
-                section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ringArea);
-            } 
-            else {
-                double ringArea = std::numbers::pi * pow(windingWindowRadialHeight - currentSectionCenterRadialHeight, 2) * currentSectionAngle / 360;
-                section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ringArea);
-            }
-            section.set_winding_style(windByConsecutiveTurns[windingIndex]);
-            sectionsDescription.push_back(section);
-
-            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                remainingParallelsProportion[windingIndex][parallelIndex] -= sectionParallelsProportion[parallelIndex];
-            }
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentSectionCenterRadialHeight += currentSectionRadialHeight + _marginsPerSection[sectionIndex][0] + _marginsPerSection[sectionIndex][1];
-            }
-            else {
-                currentSectionCenterAngle += currentSectionAngle + marginAngle0 + marginAngle1;
-            }
-
-            currentSectionPerWinding[windingIndex]++;
-            conductingSectionIndex++;
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            spaceForSections = availableRadialHeight;
         }
         else {
-            if (sectionIndex == 0) {
-                throw std::runtime_error("Insulation layers cannot be the first one (for now)");
+            spaceForSections = availableAngle;
+        }
+
+        auto orderedSections = get_ordered_sections(spaceForSections, proportionPerWinding, pattern, repetitions);
+
+        if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            remove_insulation_if_margin_is_enough(orderedSections);
+        }
+        auto orderedSectionsWithInsulation = add_insulation_to_sections(orderedSections);
+
+        double numberWindings = get_functional_description().size();
+        auto numberSectionsPerWinding = std::vector<size_t>(numberWindings, 0);
+        auto currentSectionPerWinding = std::vector<size_t>(numberWindings, 0);
+        for (auto orderedSection : orderedSectionsWithInsulation) {
+            if (orderedSection.first == ElectricalType::CONDUCTION) {
+                auto windingIndex = orderedSection.second.first;
+                numberSectionsPerWinding[windingIndex]++;
             }
- 
-            auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
-            size_t nextWindingIndex;
-            if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
-                nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
+        }
+        auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
+       
+        auto wirePerWinding = get_wires();
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
+        }
+        double currentSectionCenterAngle = DBL_MAX;
+        double currentSectionCenterRadialHeight = DBL_MAX;
+
+        apply_margin_tape(orderedSectionsWithInsulation);
+        if (settings->get_coil_equalize_margins()) {
+            equalize_margins(orderedSectionsWithInsulation);
+        }
+
+        std::vector<double> currentSectionRadialHeights;
+        std::vector<double> currentSectionAngles;
+        std::vector<size_t> windingIndexes;
+
+        for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
+            if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
+                auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
+                auto windingIndex = sectionInfo.first;
+                auto aux = get_section_round_dimensions(orderedSectionsWithInsulation[sectionIndex], windingOrientation, availableRadialHeight, availableAngle);
+                currentSectionRadialHeights.push_back(aux.first);
+                currentSectionAngles.push_back(aux.second);
+                windingIndexes.push_back(windingIndex);
+            }
+        }
+        
+        // std::vector<double> sectionLengths = get_section_lengths(currentSectionRadialHeights, currentSectionAngles, availableRadialHeight);
+
+        std::vector<double> sectionPhysicalTurnsProportions;
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            std::vector<double> sectionAreas = get_section_areas(orderedSectionsWithInsulation, currentSectionAngles, availableRadialHeight);
+            sectionPhysicalTurnsProportions = get_length_proportions(sectionAreas, windingIndexes);
+        }
+        else {
+            sectionPhysicalTurnsProportions = std::vector<double>(orderedSectionsWithInsulation.size(), 1);
+        }
+
+        size_t conductingSectionIndex = 0;
+        for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
+            if (orderedSectionsWithInsulation[sectionIndex].first == ElectricalType::CONDUCTION) {
+                auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
+                auto windingIndex = sectionInfo.first;
+
+                double currentSectionRadialHeight = currentSectionRadialHeights[conductingSectionIndex];
+                double currentSectionAngle = currentSectionAngles[conductingSectionIndex];
+
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    if (currentSectionCenterRadialHeight == DBL_MAX) {
+                        currentSectionCenterRadialHeight = 0;
+                    }
+                    if (currentSectionCenterAngle == DBL_MAX) {
+                        currentSectionCenterAngle = 180;
+                    }
+                }
+                else {
+                    if (currentSectionCenterRadialHeight == DBL_MAX) {
+                        currentSectionCenterRadialHeight = 0;
+                    }
+                    if (currentSectionCenterAngle == DBL_MAX) {
+                        currentSectionCenterAngle = 0;
+                    }
+                }
+                
+                PartialWinding partialWinding;
+                Section section;
+                partialWinding.set_winding(get_name(windingIndex));
+
+                auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
+                                                                       numberSectionsPerWinding[windingIndex],
+                                                                       get_number_turns(windingIndex),
+                                                                       get_number_parallels(windingIndex),
+                                                                       remainingParallelsProportion[windingIndex],
+                                                                       windByConsecutiveTurns[windingIndex],
+                                                                       std::vector<double>(get_number_parallels(windingIndex), 1),
+                                                                       sectionPhysicalTurnsProportions[windingIndex]);
+
+                std::vector<double> sectionParallelsProportion = parallels_proportions.second;
+                uint64_t physicalTurnsThisSection = parallels_proportions.first;
+
+                double marginAngle0 = 0;
+                double marginAngle1 = 0;
+                size_t numberLayers = ULONG_MAX;
+                size_t prevNumberLayers = 0;
+
+                // We correct the radial height to exactly what we need, so afterwards we can calculate exactly how many turns we need
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                    numberLayers = aux.first;
+                    currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+                }
+                else {
+                    while (numberLayers != prevNumberLayers) {
+                        prevNumberLayers = numberLayers;
+                        double currentSectionAngleMinusMargin = currentSectionAngle - marginAngle0 - marginAngle1;
+                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
+                        numberLayers = aux.first;
+                        if (_strict) {
+                            currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+                        }
+                        double lastLayerMaximumRadius = availableRadialHeight - (currentSectionCenterRadialHeight + numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width());
+                        if (lastLayerMaximumRadius < 0) {
+                            break;
+                        }
+                        marginAngle0 = wound_distance_to_angle(_marginsPerSection[sectionIndex][0], lastLayerMaximumRadius);
+                        marginAngle1 = wound_distance_to_angle(_marginsPerSection[sectionIndex][1], lastLayerMaximumRadius);
+                    }                
+                    currentSectionAngle -= marginAngle0 + marginAngle1;
+                }
+
+
+                // if (currentSectionRadialHeight > availableRadialHeight) {
+                //     return false;
+                // }
+                if (currentSectionAngle < 0) {
+                    return false;
+                }
+
+                partialWinding.set_parallels_proportion(sectionParallelsProportion);
+                section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
+                section.set_partial_windings(std::vector<PartialWinding>{partialWinding});  // TODO: support more than one winding per section?
+                section.set_type(ElectricalType::CONDUCTION);
+                section.set_group(group.get_name());
+                section.set_margin(_marginsPerSection[sectionIndex]);
+                section.set_layers_orientation(_layersOrientation);
+                section.set_coordinate_system(CoordinateSystem::POLAR);
+                
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
+                    section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2 + _marginsPerSection[sectionIndex][0], currentSectionCenterAngle, 0});
+                }
+                else {
+                    section.set_dimensions(std::vector<double>{currentSectionRadialHeight, currentSectionAngle});
+                    section.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + currentSectionRadialHeight / 2, currentSectionCenterAngle  + currentSectionAngle / 2 + marginAngle0, 0});
+                }
+
+                if (section.get_dimensions()[0] < 0) {
+                    throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
+                                             " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
+                                             " currentSectionAngle: " + std::to_string(currentSectionAngle)
+                                             );
+                }
+
+
+                if (section.get_dimensions()[1] < 0) {
+                    throw std::runtime_error("Something wrong happened in section dimensions 1: " + std::to_string(section.get_dimensions()[1]) +
+                                             " currentSectionRadialHeight: " + std::to_string(currentSectionRadialHeight) +
+                                             " currentSectionAngle: " + std::to_string(currentSectionAngle)
+                                             );
+                }
+                
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    double ringArea = std::numbers::pi * pow(availableRadialHeight - currentSectionCenterRadialHeight, 2) - std::numbers::pi * pow(availableRadialHeight - (currentSectionCenterRadialHeight + currentSectionRadialHeight), 2);
+
+                    section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ringArea);
+                } 
+                else {
+                    double ringArea = std::numbers::pi * pow(availableRadialHeight - currentSectionCenterRadialHeight, 2) * currentSectionAngle / 360;
+                    section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / ringArea);
+                }
+                section.set_winding_style(windByConsecutiveTurns[windingIndex]);
+                sectionsDescription.push_back(section);
+
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    remainingParallelsProportion[windingIndex][parallelIndex] -= sectionParallelsProportion[parallelIndex];
+                }
+
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    currentSectionCenterRadialHeight += currentSectionRadialHeight + _marginsPerSection[sectionIndex][0] + _marginsPerSection[sectionIndex][1];
+                }
+                else {
+                    currentSectionCenterAngle += currentSectionAngle + marginAngle0 + marginAngle1;
+                }
+
+                currentSectionPerWinding[windingIndex]++;
+                conductingSectionIndex++;
             }
             else {
-                nextWindingIndex = orderedSectionsWithInsulation[0].second.first;
-            }
+                if (sectionIndex == 0) {
+                    throw std::runtime_error("Insulation layers cannot be the first one (for now)");
+                }
+     
+                auto previousWindingIndex = orderedSectionsWithInsulation[sectionIndex - 1].second.first;
+                size_t nextWindingIndex;
+                if (sectionIndex != (orderedSectionsWithInsulation.size() - 1)) {
+                    nextWindingIndex = orderedSectionsWithInsulation[sectionIndex + 1].second.first;
+                }
+                else {
+                    nextWindingIndex = orderedSectionsWithInsulation[0].second.first;
+                }
 
-            auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
-            if (!_insulationSections.contains(windingsMapKey)) {
+                auto windingsMapKey = std::pair<size_t, size_t>{previousWindingIndex, nextWindingIndex};
+                if (!_insulationSections.contains(windingsMapKey)) {
+                    log(_insulationSectionsLog[windingsMapKey]);
+                    continue;
+                }
+
+                auto insulationSection = _insulationSections[windingsMapKey];
+
+                insulationSection.set_group(group.get_name());
+                insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(previousWindingIndex) + " section " + std::to_string(sectionIndex));
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    insulationSection.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + insulationSection.get_dimensions()[0] / 2,
+                                                                          currentSectionCenterAngle,
+                                                                          0});
+                }
+                else {
+                    insulationSection.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + insulationSection.get_dimensions()[0] / 2,
+                                                                          currentSectionCenterAngle - insulationSection.get_dimensions()[1] / 2,
+                                                                          0});
+                }
+
+                sectionsDescription.push_back(insulationSection);
                 log(_insulationSectionsLog[windingsMapKey]);
-                continue;
-            }
 
-            auto insulationSection = _insulationSections[windingsMapKey];
-
-            insulationSection.set_name("Insulation between " + get_name(previousWindingIndex) + " and " + get_name(previousWindingIndex) + " section " + std::to_string(sectionIndex));
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                insulationSection.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + insulationSection.get_dimensions()[0] / 2,
-                                                                      currentSectionCenterAngle,
-                                                                      0});
-            }
-            else {
-                insulationSection.set_coordinates(std::vector<double>{currentSectionCenterRadialHeight + insulationSection.get_dimensions()[0] / 2,
-                                                                      currentSectionCenterAngle - insulationSection.get_dimensions()[1] / 2,
-                                                                      0});
-            }
-
-            sectionsDescription.push_back(insulationSection);
-            log(_insulationSectionsLog[windingsMapKey]);
-
-            if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentSectionCenterRadialHeight += insulationSection.get_dimensions()[0];
-            }
-            else {
-                currentSectionCenterAngle += insulationSection.get_dimensions()[1];
+                if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                    currentSectionCenterRadialHeight += insulationSection.get_dimensions()[0];
+                }
+                else {
+                    currentSectionCenterAngle += insulationSection.get_dimensions()[1];
+                }
             }
         }
     }

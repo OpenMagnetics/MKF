@@ -418,6 +418,10 @@ SUITE(CoilWeb) {
             }
         }
 
+
+        // std::cout << bool(coil.get_sections_description()) << std::endl;
+        // std::cout << bool(coil.get_layers_description()) << std::endl;
+        // std::cout << bool(coil.get_turns_description()) << std::endl;
         if (!coil.get_turns_description()) {
             throw std::runtime_error("Turns not created");
         }
