@@ -126,6 +126,21 @@ SUITE(InitialPermeability) {
         }
     }
 
+    TEST(Test_Initial_Permeability_NPF_26) {
+        InitialPermeability initialPermeability;
+        std::string materialName = "NPF 26";
+        auto materialData = materialName;
+        double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
+        CHECK(initialPermeabilityValue == 26);
+        {
+            double magneticFieldDcBias = 19090.6;
+            double initialPermeabilityValueWithMagneticFieldDcBias =
+                initialPermeability.get_initial_permeability(materialData, std::nullopt, magneticFieldDcBias, std::nullopt);
+            double expected = 20.814;
+            CHECK_CLOSE(initialPermeabilityValueWithMagneticFieldDcBias, expected, 0.01 * expected);
+        }
+    }
+
     TEST(Test_Initial_Permeability_N88) {
         InitialPermeability initialPermeability;
         std::string materialName = "N88";
