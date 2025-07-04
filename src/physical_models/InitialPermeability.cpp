@@ -174,6 +174,12 @@ std::map<std::string, std::string> InitialPermeability::get_initial_permeability
                 equations["magneticFluxDensityFactor"] = "(1.0 / (1.0 / (a + b * B^c) + 1.0 / (d * B^e) + 1.0 / f)) * 0.01";
             }
         }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
+            auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
+            if (magneticFieldDcBiasFactor) {
+                equations["magneticFieldDcBiasFactor"] = "a / (1 + (H / 79.57747 / b)^c) + d";
+            }
+        }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::FAIR_RITE) {
             auto temperatureFactor = modifiers.get_temperature_factor();
             if (temperatureFactor) {
@@ -287,6 +293,21 @@ double InitialPermeability::get_initial_permeability_formula(CoreMaterial coreMa
 
                 initialPermeabilityValue *= permeabilityVariationDueToMagneticFluxDensity * 0.01;
             }
+        }
+        else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::POCO) {
+            if (magneticFieldDcBias) {
+                auto magneticFieldDcBiasFactor = modifiers.get_magnetic_field_dc_bias_factor();
+                double a = magneticFieldDcBiasFactor->get_a();
+                double b = magneticFieldDcBiasFactor->get_b();
+                double c = magneticFieldDcBiasFactor->get_c();
+                double d = magneticFieldDcBiasFactor->get_d().value();
+                double H = magneticFieldDcBias.value();
+                double permeabilityVariationDueToMagneticFieldDcBias = a / (1 + pow(fabs(H) / 79.57747 / b, c)) + d;
+
+
+                initialPermeabilityValue *= permeabilityVariationDueToMagneticFieldDcBias * 0.01;
+            }
+
         }
         else if ((*modifiers.get_method()) == InitialPermeabilitModifierMethod::FAIR_RITE) {
             auto temperatureFactor = modifiers.get_temperature_factor();
@@ -846,7 +867,6 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
                 saturationFactor = amplitudePermeability / initialPermeabilityValueReference;
             }
         }
-
         initialPermeabilityValue = initialPermeabilityValueReference * temperatureFactor * frequencyFactor * magneticFieldDcBiasFactor * saturationFactor;
     }
 
@@ -857,7 +877,7 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
     }
 
     if (std::isnan(initialPermeabilityValue)) {
-        throw std::runtime_error("Initial Permeability must be a number, not NaN");
+        throw std::runtime_error("get_initial_permeability, Initial Permeability must be a number, not NaN");
     }
 
     return initialPermeabilityValue;
