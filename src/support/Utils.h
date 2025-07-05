@@ -171,6 +171,7 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log);
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, OpenMagnetics::MagneticFilterOperation filterConfiguration);
 std::vector<double> normalize_scoring(std::vector<double> scoring, OpenMagnetics::MagneticFilterOperation filterConfiguration);
+std::string generate_random_string(size_t length = 8);
 
 } // namespace OpenMagnetics
 
