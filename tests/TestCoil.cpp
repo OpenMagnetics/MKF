@@ -643,7 +643,7 @@ SUITE(CoilWeb) {
 }
 
 SUITE(CoilSectionsDescriptionMargins) {
-    bool plot = false;
+    bool plot = true;
     auto settings = Settings::GetInstance();
     TEST(Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered) {
         settings->reset();

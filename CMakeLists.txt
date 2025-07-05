@@ -91,12 +91,17 @@ FetchContent_Declare(spline
     GIT_REPOSITORY https://github.com/AlfVII/spline.git)
 FetchContent_MakeAvailable(spline)
 include_directories("${CMAKE_BINARY_DIR}/_deps/spline-src/src")
-    
+
 FetchContent_Declare(levmar
     GIT_REPOSITORY https://github.com/AlfVII/levmar.git
     GIT_TAG main)
 FetchContent_MakeAvailable(levmar)
 include_directories("${CMAKE_BINARY_DIR}/_deps/levmar-src")
+
+FetchContent_Declare(svg
+    GIT_REPOSITORY https://github.com/AlfVII/svg)
+FetchContent_MakeAvailable(svg)
+include_directories("${CMAKE_BINARY_DIR}/_deps/svg-src/src")
 
 
 if(INCLUDE_MKF_TESTS)

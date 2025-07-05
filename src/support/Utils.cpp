@@ -18,6 +18,8 @@
 #include "support/Utils.h"
 #include "support/Settings.h"
 #include <typeinfo>
+#include <random>
+#include <algorithm>
 
 CMRC_DECLARE(data);
 
@@ -1969,6 +1971,14 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
     }
 
     return normalizedScorings;
+}
+
+std::string generate_random_string(size_t length) {
+    std::mt19937 generator(std::random_device{}());
+    std::string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+    std::shuffle(characters.begin(), characters.end(), generator);
+    return characters.substr(0, length);
 }
 
 } // namespace OpenMagnetics

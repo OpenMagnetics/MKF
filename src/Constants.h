@@ -17,7 +17,7 @@ struct Constants {
     const double quasiStaticFrequencyLimit = 100;
 
     const double spacerProtudingPercentage = 0.2;
-    const double coilPainterScale = 1e6;
+    const double coilPainterScale = 1e5;
     const std::vector<std::string> coilPainterColorsScaleSections = {"#539796",
                                                                      "#0e1919",
                                                                      "#71b1b0",
