@@ -120,17 +120,24 @@ class BasicPainter : public PainterInterface {
             _opacity = opacity;
         }
         void paint_two_piece_set_core(Core core);
+        void paint_toroidal_core(Core core);
         void paint_two_piece_set_bobbin(Magnetic magnetic);
         void paint_two_piece_set_coil_sections(Magnetic magnetic);
+        void paint_toroidal_coil_sections(Magnetic magnetic);
         void paint_two_piece_set_coil_layers(Magnetic magnetic);
+        void paint_toroidal_coil_layers(Magnetic magnetic);
         void paint_two_piece_set_coil_turns(Magnetic magnetic);
+        void paint_toroidal_coil_turns(Magnetic magnetic);
         void paint_two_piece_set_margin(Magnetic magnetic);
+        void paint_toroidal_margin(Magnetic magnetic);
 
         void set_image_size(Wire wire);
+        void set_image_size(Magnetic magnetic);
         void paint_round_wire(double xCoordinate, double yCoordinate, Wire wire);
         void paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire);
-        void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName);
         void paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center);
+        void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group = nullptr, double angle = 0, std::vector<double> center = {0, 0});
+        void paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group = nullptr, double fillAngle=360, double angle = 0, std::vector<double> center = {0, 0});
 
     public:
         SVG::SVG* _root;
@@ -184,8 +191,8 @@ class BasicPainter : public PainterInterface {
 
 class AdvancedPainter : public PainterInterface {
     protected:
-        double _fixedScale = 30000;
-        double _scale = 30000;
+        double _fixedScale = constants.coilPainterScale;
+        double _scale = constants.coilPainterScale;
         double _fontSize = 10;
         double _extraDimension = 1;
         double _offsetForColorBar = 0;
@@ -273,8 +280,13 @@ class Painter{
         std::shared_ptr<PainterInterface> _painter;
 
         static std::shared_ptr<PainterInterface> factory(bool useAdvancedPainter, std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false);
-        Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false, bool useAdvancedPainter = true){
-            _painter = factory(useAdvancedPainter, filepath, addProportionForColorBar, showTicks);
+        Painter(std::filesystem::path filepath, bool addProportionForColorBar = false, bool showTicks = false, bool useAdvancedPainter = false){
+            if (addProportionForColorBar || showTicks) {
+                _painter = factory(true, filepath, addProportionForColorBar, showTicks);
+            }
+            else {
+                _painter = factory(useAdvancedPainter, filepath, addProportionForColorBar, showTicks);
+            }
         };
         virtual ~Painter() = default;
 

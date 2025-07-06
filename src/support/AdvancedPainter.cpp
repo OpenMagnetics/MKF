@@ -433,8 +433,7 @@ std::string AdvancedPainter::export_svg() {
 void AdvancedPainter::export_png() {
     auto outFile = std::string {_filepath.string()};
     outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex("\\\\"), std::string("/"))).string();
-    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex(".svg"), std::string(".png")))
-                  .string();
+    outFile = std::filesystem::path(std::regex_replace(std::string(outFile), std::regex(".svg"), std::string(".png"))).string();
     matplot::save(outFile);
 }
 
@@ -545,7 +544,6 @@ std::vector<double> AdvancedPainter::get_image_size(Magnetic magnetic) {
             break;
     }
 
-
     double showingCoreHeight = processedDescription.get_height() * _extraDimension;
 
     _fontSize = std::max(1.0, 10 * showingCoreHeight / 0.01);
@@ -579,12 +577,6 @@ void AdvancedPainter::set_image_size(Wire wire) {
 
     _fontSize = std::max(1.0, 100 * showingWireWidth / 0.01);
     _fontSize = std::min(100.0, _fontSize);
-
-
-    std::cout << "_scale: " << _scale << std::endl;
-    std::cout << "showingWireWidth: " << showingWireWidth << std::endl;
-    std::cout << "(showingWireWidth / wire.get_maximum_outer_width()): " << (showingWireWidth / wire.get_maximum_outer_width()) << std::endl;
-    std::cout << "margin: " << margin << std::endl;
 
     matplot::gcf()->size(showingWireWidth * _scale, showingWireHeight * _scale);
     matplot::xlim({-showingWireWidth / 2, showingWireWidth / 2});
@@ -1888,6 +1880,9 @@ void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
+            std::cout << "angleProportion: " << angleProportion << std::endl;
+            std::cout << "strokeWidth: " << strokeWidth << std::endl;
+            std::cout << "circlePerimeter: " << circlePerimeter << std::endl;
             
             if (layers[i].get_additional_coordinates()) {
                 circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
