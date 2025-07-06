@@ -1030,7 +1030,7 @@ SUITE(CoilSectionsDescriptionMargins) {
             auto outFile = outputFilePath;
             outFile.append("Test_Add_Margin_Centered_No_Filling_Horizontal_Top_Three_Different_Margins.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, false);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -7024,7 +7024,7 @@ SUITE(CoilTurnsDescriptionToroidalNoCompact) {
 SUITE(CoilTurnsDescriptionToroidal) {
     auto settings = Settings::GetInstance();
     auto outputFilePath = std::filesystem::path {__FILE__}.parent_path().append("..").append("output");
-    bool plot = false;
+    bool plot = true;
 
     TEST(Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Top) {
         clear_databases();
@@ -8088,7 +8088,7 @@ SUITE(CoilTurnsDescriptionToroidal) {
             auto outFile = outputFilePath;
             outFile.append("Test_Wind_Three_Sections_Two_Layer_Toroidal_Overlapping_Rectangular_Wire.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, false);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);

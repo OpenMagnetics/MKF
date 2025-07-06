@@ -5079,7 +5079,7 @@ double Coil::calculate_external_proportion_for_wires_in_toroidal_cores(Core core
 
     auto sectionsOrientation = bobbin.get_winding_window_sections_orientation();
 
-    if (sectionsOrientation == WindingOrientation::OVERLAPPING) {
+    if (maximumAdditionalRadialCoordinate > 0 && sectionsOrientation == WindingOrientation::OVERLAPPING) {
         auto sections = coil.get_sections_by_type(ElectricalType::INSULATION);
         for (auto section : sections){
             maximumAdditionalRadialCoordinate += section.get_dimensions()[0];

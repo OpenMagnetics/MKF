@@ -1365,7 +1365,7 @@ SUITE(CoilPainterToroid) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_T_Core.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile);
+        Painter painter(outFile, false);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -1429,7 +1429,7 @@ SUITE(CoilPainterToroid) {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_turns.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, false);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1444,7 +1444,7 @@ SUITE(CoilPainterToroid) {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_layers.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, false);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1462,7 +1462,7 @@ SUITE(CoilPainterToroid) {
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_T_Core_Contiguous_sections.svg");
             std::filesystem::remove(outFile);
-            Painter painter(outFile);
+            Painter painter(outFile, false, false, false);
             OpenMagnetics::Magnetic magnetic;
             magnetic.set_core(core);
             magnetic.set_coil(coil);
@@ -1485,6 +1485,7 @@ SUITE(CoilPainterToroid) {
         std::string coreShape = "T 80/20/50";
         std::string coreMaterial = "3C97"; 
         settings->set_coil_delimit_and_compact(false);
+        settings->set_painter_draw_spacer(false);
         auto emptyGapping = json::array();
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, WindingOrientation::CONTIGUOUS);
@@ -1499,7 +1500,44 @@ SUITE(CoilPainterToroid) {
         auto outFile = outputFilePath;
         outFile.append("Test_Painter_T_Core_Contiguous_Sections_With_Margin.svg");
         std::filesystem::remove(outFile);
-        Painter painter(outFile);
+        Painter painter(outFile, false, false, false);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        painter.paint_core(magnetic);
+        painter.paint_coil_sections(magnetic);
+        painter.export_svg();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        CHECK(std::filesystem::exists(outFile));
+        settings->reset();
+    }
+
+    TEST(Test_Painter_T_Core_Contiguous_Sections_With_Spacer) {
+        clear_databases();
+        std::vector<int64_t> numberTurns = {2, 2};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 2;
+        int64_t numberStacks = 1;
+        std::string coreShape = "T 80/20/50";
+        std::string coreMaterial = "3C97"; 
+        settings->set_coil_delimit_and_compact(false);
+        settings->set_painter_draw_spacer(true);
+        auto emptyGapping = json::array();
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, WindingOrientation::CONTIGUOUS);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        double margin = 0.001;
+        coil.add_margin_to_section_by_index(0, std::vector<double>{margin, margin});
+        coil.add_margin_to_section_by_index(1, std::vector<double>{margin * 1.5, margin * 0.5});
+        coil.add_margin_to_section_by_index(2, std::vector<double>{margin * 0.5, margin * 3.5});
+        coil.add_margin_to_section_by_index(3, std::vector<double>{margin * 3.5, margin * 3.5});
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_T_Core_Contiguous_Sections_With_Spacer.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile, false, false, false);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
@@ -3454,7 +3492,7 @@ SUITE(CoilPainter) {
         OpenMagnetics::Wire wire;
         wire.set_nominal_value_conducting_height(0.000034);
         wire.set_nominal_value_conducting_width(0.001);
-        wire.set_nominal_value_outer_height(0.000134);
+        wire.set_nominal_value_outer_height(0.000044);
         wire.set_nominal_value_outer_width(0.0011);
         wire.set_material("copper");
         wire.set_type(WireType::RECTANGULAR);
@@ -3481,12 +3519,12 @@ SUITE(CoilPainter) {
         outFile.append("Test_Painter_Planar.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        settings->set_painter_mode(PainterModes::CONTOUR);
-        settings->set_painter_logarithmic_scale(false);
-        settings->set_painter_include_fringing(false);
-        settings->set_painter_maximum_value_colorbar(std::nullopt);
-        settings->set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        // settings->set_painter_mode(PainterModes::CONTOUR);
+        // settings->set_painter_logarithmic_scale(false);
+        // settings->set_painter_include_fringing(false);
+        // settings->set_painter_maximum_value_colorbar(std::nullopt);
+        // settings->set_painter_minimum_value_colorbar(std::nullopt);
+        // painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
