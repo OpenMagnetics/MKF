@@ -2628,6 +2628,8 @@ SUITE(CoilPainter) {
         OpenMagnetics::Wire wire;
         wire.set_nominal_value_outer_height(0.014);
         wire.set_nominal_value_outer_width(0.0002);
+        wire.set_nominal_value_conducting_height(0.014);
+        wire.set_nominal_value_conducting_width(0.0002);
         wire.set_type(WireType::FOIL);
         auto wires = std::vector<OpenMagnetics::Wire>({wire});
 
@@ -3742,8 +3744,8 @@ SUITE(WirePainter) {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
             outFile.append("Test_Wire_Painter_Round_SIW_PEF.svg");
-            std::filesystem::remove(outFile)
-;            Painter painter(outFile);
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
             painter.paint_wire(wire);
             painter.export_svg();
         }
