@@ -2936,6 +2936,216 @@ bool Coil::wind_by_round_layers() {
     return true;
 }
 
+bool Coil::wind_by_planar_layers(std::vector<size_t> stackUp, double borderToWireDistance, double wireToWireDistance) {
+    set_layers_description(std::nullopt);
+
+    auto wirePerWinding = get_wires();
+    std::vector<size_t> numberLayersPerWinding = std::vector<size_t>(0, wirePerWinding.size());
+    std::vector<size_t> totalParallelsProportionPerWinding = std::vector<size_t>(0, wirePerWinding.size());
+
+    for (auto windingIndex : stackUp) {
+        numberLayersPerWinding[windingIndex]++;
+    }
+    // for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+    // }
+
+    // auto remainingParallelsProportionPerWinding = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+    // auto totalParallelsProportionPerWinding = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+
+    // std::vector<Layer> layers;
+    // for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+    //     if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
+
+    //         uint64_t maximumNumberLayersFittingInSection;
+    //         uint64_t maximumNumberPhysicalTurnsPerLayer;
+    //         uint64_t minimumNumberLayerNeeded;
+    //         uint64_t numberLayers;
+    //         uint64_t physicalTurnsInSection = 0;
+    //         double layerWidth = 0;
+    //         double layerHeight = 0;
+    //         auto remainingParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+    //         auto totalParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+    //         if (sections[sectionIndex].get_partial_windings().size() > 1) {
+    //             throw std::runtime_error("More than one winding per layer not supported yet");
+    //         }
+    //         auto partialWinding = sections[sectionIndex].get_partial_windings()[0];  // TODO: Support multiwinding in layers
+    //         auto winding = get_winding_by_name(partialWinding.get_winding());
+    //         auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+
+    //         for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+    //             physicalTurnsInSection += round(remainingParallelsProportionInSection[parallelIndex] * get_number_turns(windingIndex));
+    //         }
+
+
+    //         if (maximumNumberLayersFittingInSection == 0) {
+    //             numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
+    //         }
+    //         else if (maximumNumberPhysicalTurnsPerLayer == 0) {
+    //             numberLayers = maximumNumberLayersFittingInSection;
+    //         }
+    //         else {
+    //             minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
+    //             numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+    //         }
+
+    //         // We cannot have more layers than physical turns
+    //         numberLayers = std::min(numberLayers, physicalTurnsInSection);
+    //         auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
+
+    //         double currentLayerCenterWidth;
+    //         double currentLayerCenterHeight;
+    //         if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerWidth / 2, 9);
+    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
+    //         } else {
+    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0], 9);
+    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
+
+    //             if (turnsAlignment == CoilAlignment::CENTERED || turnsAlignment == CoilAlignment::SPREAD) {
+    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + (numberLayers * layerHeight) / 2 - layerHeight / 2, 9);
+    //             }
+    //             else if (turnsAlignment == CoilAlignment::INNER_OR_TOP) {
+    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
+    //             }
+    //             else if (turnsAlignment == CoilAlignment::OUTER_OR_BOTTOM) {
+    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] - sections[sectionIndex].get_dimensions()[1] / 2 + (numberLayers * layerHeight) - layerHeight / 2, 9);
+    //             }
+    //             else {
+    //                 throw std::invalid_argument("Unknown turns alignment");
+    //             }
+    //         }
+
+    //         WindingStyle windByConsecutiveTurns;
+    //         if (sections[sectionIndex].get_winding_style()) {
+    //             windByConsecutiveTurns = sections[sectionIndex].get_winding_style().value();
+    //         }
+    //         else {
+    //             windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
+    //         }
+
+    //         if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
+    //             windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+    //         }
+
+    //         for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
+    //             Layer layer;
+
+    //             auto parallels_proportions = get_parallels_proportions(layerIndex,
+    //                                                                    numberLayers,
+    //                                                                    get_number_turns(windingIndex),
+    //                                                                    get_number_parallels(windingIndex),
+    //                                                                    remainingParallelsProportionInSection,
+    //                                                                    windByConsecutiveTurns,
+    //                                                                    totalParallelsProportionInSection);
+
+    //             std::vector<double> layerParallelsProportion = parallels_proportions.second;
+
+    //             size_t numberParallelsProportionsToZero = 0;
+    //             for (auto parallelProportion : layerParallelsProportion) {
+    //                 if (parallelProportion == 0) {
+    //                     numberParallelsProportionsToZero++;
+    //                 }
+    //             }
+
+    //             if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
+    //                 throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
+    //             }
+
+    //             uint64_t physicalTurnsThisLayer = parallels_proportions.first;
+
+    //             partialWinding.set_parallels_proportion(layerParallelsProportion);
+    //             layer.set_partial_windings(std::vector<PartialWinding>{partialWinding});
+    //             layer.set_section(sections[sectionIndex].get_name());
+    //             layer.set_type(ElectricalType::CONDUCTION);
+    //             layer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+    //             layer.set_orientation(sections[sectionIndex].get_layers_orientation());
+    //             layer.set_turns_alignment(turnsAlignment);
+    //             layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
+    //             layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+    //             layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+
+    //             layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
+    //             layer.set_winding_style(windByConsecutiveTurns);
+    //             layers.push_back(layer);
+
+    //             for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+    //                 remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
+    //             }
+
+    //             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+    //                 currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
+    //             }
+    //             else {
+    //                 currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
+    //             }
+    //         }
+    //     }
+    //     else {
+    //         if (sectionIndex == 0) {
+    //             throw std::runtime_error("outer insulation layers not implemented");
+    //         }
+
+    //         auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
+    //         auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+    //         Section nextSection;
+    //         if (sectionIndex != (sections.size() - 1)) {
+    //             if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
+    //                 throw std::runtime_error("Previous and next sections must be conductive");
+    //             }
+    //             nextSection = sections[sectionIndex + 1];
+    //         }
+    //         else {
+    //             nextSection = sections[0];
+    //         }
+    //         // auto nextSection = sections[sectionIndex + 1];
+    //         auto nextPartialWinding = nextSection.get_partial_windings()[0];
+    //         auto nextWindingIndex = get_winding_index_by_name(nextPartialWinding.get_winding());
+
+    //         auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
+    //         if (!_insulationLayers.contains(windingsMapKey)) {
+    //             log(_insulationLayersLog[windingsMapKey]);
+    //             continue;
+    //         }
+
+    //         auto insulationLayers = _insulationLayers[windingsMapKey];
+    //         if (insulationLayers.size() == 0) {
+    //             throw std::runtime_error("There must be at least one insulation layer between layers");
+    //         }
+
+    //         double layerWidth = insulationLayers[0].get_dimensions()[0];
+    //         double layerHeight = insulationLayers[0].get_dimensions()[1];
+
+    //         double currentLayerCenterWidth;
+    //         double currentLayerCenterHeight;
+    //         if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerWidth / 2, 9);
+    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
+    //         } else {
+    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0], 9);
+    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
+    //         }
+
+    //         for (size_t layerIndex = 0; layerIndex < insulationLayers.size(); ++layerIndex) {
+    //             auto insulationLayer = insulationLayers[layerIndex];
+    //             insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+    //             insulationLayer.set_section(sections[sectionIndex].get_name());
+    //             insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+    //             insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+    //             layers.push_back(insulationLayer);
+
+    //             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+    //                 currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
+    //             }
+    //             else {
+    //                 currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
+    //             }
+    //         }
+    //     }
+    // }
+    // set_layers_description(layers);
+    // return true;
+}
+
 bool Coil::wind_by_turns() {
     set_turns_description(std::nullopt);
     if (!get_layers_description()) {
