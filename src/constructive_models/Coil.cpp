@@ -1892,7 +1892,7 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 Section section;
                 partialWinding.set_winding(get_name(windingIndex));
 
-                auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
+                auto parallelsProportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
                                                                        numberSectionsPerWinding[windingIndex],
                                                                        get_number_turns(windingIndex),
                                                                        get_number_parallels(windingIndex),
@@ -1900,8 +1900,8 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                                                                        windByConsecutiveTurns[windingIndex],
                                                                        std::vector<double>(get_number_parallels(windingIndex), 1));
 
-                std::vector<double> sectionParallelsProportion = parallels_proportions.second;
-                uint64_t physicalTurnsThisSection = parallels_proportions.first;
+                std::vector<double> sectionParallelsProportion = parallelsProportions.second;
+                uint64_t physicalTurnsThisSection = parallelsProportions.first;
 
                 partialWinding.set_parallels_proportion(sectionParallelsProportion);
                 section.set_name(get_name(windingIndex) +  " section " + std::to_string(currentSectionPerWinding[windingIndex]));
@@ -2245,7 +2245,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 Section section;
                 partialWinding.set_winding(get_name(windingIndex));
 
-                auto parallels_proportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
+                auto parallelsProportions = get_parallels_proportions(currentSectionPerWinding[windingIndex],
                                                                        numberSectionsPerWinding[windingIndex],
                                                                        get_number_turns(windingIndex),
                                                                        get_number_parallels(windingIndex),
@@ -2254,8 +2254,8 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                                                                        std::vector<double>(get_number_parallels(windingIndex), 1),
                                                                        sectionPhysicalTurnsProportions[windingIndex]);
 
-                std::vector<double> sectionParallelsProportion = parallels_proportions.second;
-                uint64_t physicalTurnsThisSection = parallels_proportions.first;
+                std::vector<double> sectionParallelsProportion = parallelsProportions.second;
+                uint64_t physicalTurnsThisSection = parallelsProportions.first;
 
                 double marginAngle0 = 0;
                 double marginAngle1 = 0;
@@ -2568,7 +2568,7 @@ bool Coil::wind_by_rectangular_layers() {
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
-                auto parallels_proportions = get_parallels_proportions(layerIndex,
+                auto parallelsProportions = get_parallels_proportions(layerIndex,
                                                                        numberLayers,
                                                                        get_number_turns(windingIndex),
                                                                        get_number_parallels(windingIndex),
@@ -2576,7 +2576,7 @@ bool Coil::wind_by_rectangular_layers() {
                                                                        windByConsecutiveTurns,
                                                                        totalParallelsProportionInSection);
 
-                std::vector<double> layerParallelsProportion = parallels_proportions.second;
+                std::vector<double> layerParallelsProportion = parallelsProportions.second;
 
                 size_t numberParallelsProportionsToZero = 0;
                 for (auto parallelProportion : layerParallelsProportion) {
@@ -2589,7 +2589,7 @@ bool Coil::wind_by_rectangular_layers() {
                     throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
                 }
 
-                uint64_t physicalTurnsThisLayer = parallels_proportions.first;
+                uint64_t physicalTurnsThisLayer = parallelsProportions.first;
 
                 partialWinding.set_parallels_proportion(layerParallelsProportion);
                 layer.set_partial_windings(std::vector<PartialWinding>{partialWinding});
@@ -2810,7 +2810,7 @@ bool Coil::wind_by_round_layers() {
 
                 // TODO: probably will have to add a factor to have more or less turns per layer than the section average
 
-                auto parallels_proportions = get_parallels_proportions(layerIndex,
+                auto parallelsProportions = get_parallels_proportions(layerIndex,
                                                                        numberLayers,
                                                                        get_number_turns(windingIndex),
                                                                        get_number_parallels(windingIndex),
@@ -2820,7 +2820,7 @@ bool Coil::wind_by_round_layers() {
                                                                        1,
                                                                        layerPhysicalTurns[layerIndex]);
 
-                std::vector<double> layerParallelsProportion = parallels_proportions.second;
+                std::vector<double> layerParallelsProportion = parallelsProportions.second;
 
                 size_t numberParallelsProportionsToZero = 0;
                 for (auto parallelProportion : layerParallelsProportion) {
@@ -2833,7 +2833,7 @@ bool Coil::wind_by_round_layers() {
                     throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
                 }
 
-                uint64_t physicalTurnsThisLayer = parallels_proportions.first;
+                uint64_t physicalTurnsThisLayer = parallelsProportions.first;
                 auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
 
                 partialWinding.set_parallels_proportion(layerParallelsProportion);
@@ -2936,149 +2936,121 @@ bool Coil::wind_by_round_layers() {
     return true;
 }
 
-bool Coil::wind_by_planar_layers(std::vector<size_t> stackUp, double borderToWireDistance, double wireToWireDistance) {
+bool Coil::wind_by_planar_layers(std::vector<size_t> stackUpForThisGroup, double borderToWireDistance, double wireToWireDistance) {
     set_layers_description(std::nullopt);
+    std::vector<Layer> layers;
+
+    auto bobbin = resolve_bobbin();
+    if (!get_groups_description()) {
+        create_default_group(bobbin);
+    }
+
+    if (!get_groups_description()) {
+        throw std::runtime_error("At least default group must be defined at this point.");
+    }
+
+    auto groups = get_groups_description().value();
+    if (groups.size() > 1) {
+        throw std::runtime_error("Only one group supported for now.");
+    }
+    auto group = groups[0];
 
     auto wirePerWinding = get_wires();
     std::vector<size_t> numberLayersPerWinding = std::vector<size_t>(0, wirePerWinding.size());
-    std::vector<size_t> totalParallelsProportionPerWinding = std::vector<size_t>(0, wirePerWinding.size());
+    std::vector<std::vector<double>> totalParallelsProportionPerWinding;
+    std::vector<std::vector<double>> remainingParallelsProportionPerWinding;
+    std::vector<size_t> currentLayerIndexPerwinding = std::vector<size_t>(0, wirePerWinding.size());
 
-    for (auto windingIndex : stackUp) {
+    for (auto windingIndex : stackUpForThisGroup) {
         numberLayersPerWinding[windingIndex]++;
     }
-    // for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-    // }
 
-    // auto remainingParallelsProportionPerWinding = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
-    // auto totalParallelsProportionPerWinding = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+    for (auto winding : group.get_partial_windings()) {
+        totalParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
+        remainingParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
+    }
+    for (auto partialWinding : group.get_partial_windings()) {
+        auto parallelsProportion = partialWinding.get_parallels_proportion();
+        totalParallelsProportionPerWinding.push_back(parallelsProportion);
+        remainingParallelsProportionPerWinding.push_back(parallelsProportion);
+    }
 
-    // std::vector<Layer> layers;
-    // for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-    //     if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
+    std::vector<double> layerWidthPerWinding;
+    std::vector<double> layerHeightPerWinding;
+    std::vector<double> currentLayerCenterWidthPerWinding;
+    std::vector<double> currentLayerCenterHeightPerWinding;
 
-    //         uint64_t maximumNumberLayersFittingInSection;
-    //         uint64_t maximumNumberPhysicalTurnsPerLayer;
-    //         uint64_t minimumNumberLayerNeeded;
-    //         uint64_t numberLayers;
-    //         uint64_t physicalTurnsInSection = 0;
-    //         double layerWidth = 0;
-    //         double layerHeight = 0;
-    //         auto remainingParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
-    //         auto totalParallelsProportionInSection = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
-    //         if (sections[sectionIndex].get_partial_windings().size() > 1) {
-    //             throw std::runtime_error("More than one winding per layer not supported yet");
-    //         }
-    //         auto partialWinding = sections[sectionIndex].get_partial_windings()[0];  // TODO: Support multiwinding in layers
-    //         auto winding = get_winding_by_name(partialWinding.get_winding());
-    //         auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+    for (auto windingIndex : stackUpForThisGroup) {
+        layerWidthPerWinding.push_back(group.get_dimensions()[0] - borderToWireDistance / 2);
+        double layerHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+        layerHeightPerWinding.push_back(layerHeight);
+        currentLayerCenterWidthPerWinding.push_back(roundFloat(group.get_coordinates()[0], 9));
+        currentLayerCenterHeightPerWinding.push_back(roundFloat(group.get_coordinates()[1] + group.get_dimensions()[1] / 2 - layerHeight / 2, 9));
+    }
 
-    //         for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-    //             physicalTurnsInSection += round(remainingParallelsProportionInSection[parallelIndex] * get_number_turns(windingIndex));
-    //         }
+    for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
+        Layer layer;
+        auto windingIndex = stackUpForThisGroup[stackUpIndex];
+        auto remainingParallelsProportionInWinding = group.get_partial_windings()[0].get_parallels_proportion();
+        auto totalParallelsProportionInWinding = group.get_partial_windings()[0].get_parallels_proportion();
+        auto numberLayers = numberLayersPerWinding[windingIndex];
+        auto winding = get_functional_description()[windingIndex];
+        auto layerIndex = currentLayerIndexPerwinding[windingIndex];
+        double layerWidth = layerWidthPerWinding[windingIndex];
+        double layerHeight = layerHeightPerWinding[windingIndex];
+        double currentLayerCenterWidth = currentLayerCenterWidthPerWinding[windingIndex];
+        double currentLayerCenterHeight = currentLayerCenterHeightPerWinding[windingIndex];
 
+        WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
 
-    //         if (maximumNumberLayersFittingInSection == 0) {
-    //             numberLayers = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
-    //         }
-    //         else if (maximumNumberPhysicalTurnsPerLayer == 0) {
-    //             numberLayers = maximumNumberLayersFittingInSection;
-    //         }
-    //         else {
-    //             minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
-    //             numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
-    //         }
+        double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+        double maximumNumberPhysicalTurnsPerLayer = floor(layerWidth / (wireWidth + wireToWireDistance));
+ 
+        auto parallelsProportions = get_parallels_proportions(layerIndex,
+                                                               numberLayers,
+                                                               get_number_turns(windingIndex),
+                                                               get_number_parallels(windingIndex),
+                                                               remainingParallelsProportionInWinding,
+                                                               windByConsecutiveTurns,
+                                                               totalParallelsProportionInWinding);
 
-    //         // We cannot have more layers than physical turns
-    //         numberLayers = std::min(numberLayers, physicalTurnsInSection);
-    //         auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
+        std::vector<double> layerParallelsProportion = parallelsProportions.second;
 
-    //         double currentLayerCenterWidth;
-    //         double currentLayerCenterHeight;
-    //         if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerWidth / 2, 9);
-    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
-    //         } else {
-    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0], 9);
-    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
+        size_t numberParallelsProportionsToZero = 0;
+        for (auto parallelProportion : layerParallelsProportion) {
+            if (parallelProportion == 0) {
+                numberParallelsProportionsToZero++;
+            }
+        }
 
-    //             if (turnsAlignment == CoilAlignment::CENTERED || turnsAlignment == CoilAlignment::SPREAD) {
-    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + (numberLayers * layerHeight) / 2 - layerHeight / 2, 9);
-    //             }
-    //             else if (turnsAlignment == CoilAlignment::INNER_OR_TOP) {
-    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
-    //             }
-    //             else if (turnsAlignment == CoilAlignment::OUTER_OR_BOTTOM) {
-    //                 currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] - sections[sectionIndex].get_dimensions()[1] / 2 + (numberLayers * layerHeight) - layerHeight / 2, 9);
-    //             }
-    //             else {
-    //                 throw std::invalid_argument("Unknown turns alignment");
-    //             }
-    //         }
+        if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
+            throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
+        }
 
-    //         WindingStyle windByConsecutiveTurns;
-    //         if (sections[sectionIndex].get_winding_style()) {
-    //             windByConsecutiveTurns = sections[sectionIndex].get_winding_style().value();
-    //         }
-    //         else {
-    //             windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
-    //         }
+        uint64_t physicalTurnsThisLayer = parallelsProportions.first;
 
-    //         if (sections[sectionIndex].get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS && maximumNumberPhysicalTurnsPerLayer < get_number_parallels(windingIndex)) {
-    //             windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
-    //         }
+        auto partialWinding = group.get_partial_windings()[0];
+        partialWinding.set_parallels_proportion(layerParallelsProportion);
+        layer.set_partial_windings(std::vector<PartialWinding>{partialWinding});
+        // layer.set_section(sections[sectionIndex].get_name());
+        layer.set_type(ElectricalType::CONDUCTION);
+        layer.set_name(winding.get_name() + " layer " + std::to_string(layerIndex));
+        layer.set_orientation(WindingOrientation::CONTIGUOUS);
+        layer.set_turns_alignment(CoilAlignment::SPREAD);
+        layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
+        layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
-    //         for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
-    //             Layer layer;
+        layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
+        layer.set_winding_style(windByConsecutiveTurns);
+        layers.push_back(layer);
 
-    //             auto parallels_proportions = get_parallels_proportions(layerIndex,
-    //                                                                    numberLayers,
-    //                                                                    get_number_turns(windingIndex),
-    //                                                                    get_number_parallels(windingIndex),
-    //                                                                    remainingParallelsProportionInSection,
-    //                                                                    windByConsecutiveTurns,
-    //                                                                    totalParallelsProportionInSection);
+        for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+            remainingParallelsProportionInWinding[parallelIndex] -= layerParallelsProportion[parallelIndex];
+        }
 
-    //             std::vector<double> layerParallelsProportion = parallels_proportions.second;
+        currentLayerCenterHeightPerWinding[windingIndex] = roundFloat(currentLayerCenterHeight - layerHeight, 9);
 
-    //             size_t numberParallelsProportionsToZero = 0;
-    //             for (auto parallelProportion : layerParallelsProportion) {
-    //                 if (parallelProportion == 0) {
-    //                     numberParallelsProportionsToZero++;
-    //                 }
-    //             }
-
-    //             if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
-    //                 throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
-    //             }
-
-    //             uint64_t physicalTurnsThisLayer = parallels_proportions.first;
-
-    //             partialWinding.set_parallels_proportion(layerParallelsProportion);
-    //             layer.set_partial_windings(std::vector<PartialWinding>{partialWinding});
-    //             layer.set_section(sections[sectionIndex].get_name());
-    //             layer.set_type(ElectricalType::CONDUCTION);
-    //             layer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
-    //             layer.set_orientation(sections[sectionIndex].get_layers_orientation());
-    //             layer.set_turns_alignment(turnsAlignment);
-    //             layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
-    //             layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
-    //             layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
-
-    //             layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
-    //             layer.set_winding_style(windByConsecutiveTurns);
-    //             layers.push_back(layer);
-
-    //             for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-    //                 remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
-    //             }
-
-    //             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-    //                 currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
-    //             }
-    //             else {
-    //                 currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
-    //             }
-    //         }
     //     }
     //     else {
     //         if (sectionIndex == 0) {
@@ -3141,9 +3113,9 @@ bool Coil::wind_by_planar_layers(std::vector<size_t> stackUp, double borderToWir
     //             }
     //         }
     //     }
-    // }
-    // set_layers_description(layers);
-    // return true;
+    }
+    set_layers_description(layers);
+    return true;
 }
 
 bool Coil::wind_by_turns() {
