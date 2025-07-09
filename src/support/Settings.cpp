@@ -60,6 +60,7 @@ namespace OpenMagnetics {
         _painterColorBobbin = "0x539796";
         _painterColorCopper = "0xb87333";
         _painterColorInsulation = "0xfff05b";
+        _painterColorFr4 = "0x008000";
         _painterColorMargin = "0xfff05b";
         _painterColorEnamel = "0xc63032";
         _painterColorFEP = "0x252525";
@@ -313,6 +314,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_painter_color_insulation(std::string value) {
         _painterColorInsulation = value;
+    }
+
+    std::string Settings::get_painter_color_fr4() const {
+        return _painterColorFr4;
+    }
+    void Settings::set_painter_color_fr4(std::string value) {
+        _painterColorFr4 = value;
     }
 
     std::string Settings::get_painter_color_margin() const {

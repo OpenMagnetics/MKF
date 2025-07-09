@@ -51,6 +51,7 @@ class Settings
         std::string _painterColorBobbin = "0x539796";
         std::string _painterColorCopper = "0xb87333";
         std::string _painterColorInsulation = "0xfff05b";
+        std::string _painterColorFr4 = "0x008000";
         std::string _painterColorEnamel = "0xc63032";
         std::string _painterColorFEP = "0x252525";
         std::string _painterColorETFE = "0xb42811";
@@ -191,6 +192,9 @@ class Settings
 
         std::string get_painter_color_insulation() const;
         void set_painter_color_insulation(std::string value);
+
+        std::string get_painter_color_fr4() const;
+        void set_painter_color_fr4(std::string value);
 
         std::string get_painter_color_margin() const;
         void set_painter_color_margin(std::string value);

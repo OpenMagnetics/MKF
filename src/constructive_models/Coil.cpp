@@ -492,6 +492,41 @@ WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numb
     return WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
 }
 
+
+uint64_t Coil::get_number_turns(size_t windingIndex) {
+    return get_functional_description()[windingIndex].get_number_turns();
+}
+
+uint64_t Coil::get_number_parallels(size_t windingIndex) {
+    return get_functional_description()[windingIndex].get_number_parallels();
+}
+
+uint64_t Coil::get_number_turns(Section section) {
+    uint64_t physicalTurnsInSection = 0;
+    auto partialWinding = section.get_partial_windings()[0];  // TODO: Support multiwinding in layers
+    auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+
+    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+        physicalTurnsInSection += round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+    }
+    return physicalTurnsInSection;
+}
+
+uint64_t Coil::get_number_turns(Layer layer) {
+    uint64_t physicalTurnsInLayer = 0;
+    auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
+    auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+
+    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+        physicalTurnsInLayer += round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+    }
+    return physicalTurnsInLayer;
+}
+
+std::string Coil::get_name(size_t windingIndex) {
+    return get_functional_description()[windingIndex].get_name();
+}
+
 std::vector<uint64_t> Coil::get_number_turns() {
     std::vector<uint64_t> numberTurns;
     for (auto & winding : get_functional_description()) {
@@ -665,6 +700,20 @@ std::vector<size_t> Coil::get_turns_indexes_by_section(std::string sectionName) 
         }
     }
     return foundTurns;
+}
+
+std::vector<Section> Coil::get_sections_by_group(std::string groupName) {
+    auto sections = get_sections_description().value();
+    std::vector<Section> foundSections;
+    for (auto & section : sections) {
+        if (section.get_group()) {
+            auto sectionSectionGroup = section.get_group().value();
+            if (sectionSectionGroup == groupName) {
+                foundSections.push_back(section);
+            }
+        }
+    }
+    return foundSections;
 }
 
 const std::vector<Section> Coil::get_sections_by_type(ElectricalType electricalType) const {
@@ -1730,7 +1779,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding) {
     return wind_by_sections(proportionPerWinding, pattern, _interleavingLevel);
 }
 
-bool Coil::create_default_group(Bobbin bobbin) {
+bool Coil::create_default_group(Bobbin bobbin, CoilGroupType coilType) {
     Group group;
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -1756,7 +1805,7 @@ bool Coil::create_default_group(Bobbin bobbin) {
     }
     group.set_partial_windings(partialWindings);
     group.set_sections_orientation(get_winding_orientation());
-    group.set_type(CoilGroupType::WOUND);
+    group.set_type(coilType);
     set_groups_description(std::vector<Group>{group});
 
     return true;
@@ -2415,7 +2464,7 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     return true;
 }
 
-bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::optional<double> insulationThickness) {
+bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::optional<double> insulationThickness, double coreToLayerDistance) {
     // In planar coils each section will have only one layer
     set_layers_description(std::nullopt);
     std::vector<Section> sections;
@@ -2426,7 +2475,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
     auto bobbin = resolve_bobbin();
     if (!get_groups_description()) {
-        create_default_group(bobbin);
+        create_default_group(bobbin, CoilGroupType::PLANAR);
     }
 
     if (!get_groups_description()) {
@@ -2467,11 +2516,15 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     std::vector<double> sectionHeightPerWinding;
     double totalSectionHeight = 0;
 
-    for (auto windingIndex : stackUpForThisGroup) {
+    for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
+        auto windingIndex = stackUpForThisGroup[stackUpIndex];
         sectionWidthPerWinding.push_back(group.get_dimensions()[0]);
         double sectionHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
         sectionHeightPerWinding.push_back(sectionHeight);
         totalSectionHeight += sectionHeight;
+        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+            totalSectionHeight += insulationThickness.value();
+        }
     }
     double currentSectionCenterWidth = roundFloat(group.get_coordinates()[0], 9);
     double currentSectionCenterHeight = roundFloat(group.get_coordinates()[1] + totalSectionHeight / 2, 9);
@@ -2484,7 +2537,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         auto numberSections = numberSectionsPerWinding[windingIndex];
         auto winding = get_functional_description()[windingIndex];
         auto sectionIndex = currentSectionIndexPerwinding[windingIndex];
-        double sectionWidth = sectionWidthPerWinding[windingIndex];
+        double sectionWidth = sectionWidthPerWinding[windingIndex] - coreToLayerDistance * 2;
         double sectionHeight = sectionHeightPerWinding[windingIndex];
         currentSectionCenterHeight -= sectionHeight / 2;
 
@@ -3622,7 +3675,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
             auto physicalTurnsInLayer = get_number_turns(layer);
             double currentTurnWidthIncrement = wireWidth + wireToWireDistance;
             double currentTurnHeightIncrement = 0;
-            double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance + wireWidth / 2;
+            double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance;
             double currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
 
             auto alignment = layer.get_turns_alignment().value();
@@ -3634,6 +3687,12 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
             if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+                    double totalWidthNeeded = borderToWireDistance * 2 + numberTurns * wireWidth + (numberTurns - 1) * wireToWireDistance;
+                    if(_strict && totalWidthNeeded > layer.get_dimensions()[0]) {
+                        return false;
+                    }
+
+
                     for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
                         Turn turn;
                         turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
@@ -4445,11 +4504,28 @@ bool Coil::delimit_and_compact() {
     }
 }
 
+CoilGroupType Coil::get_coil_type(size_t groupIndex) {
+    if (!get_groups_description()) {
+        return CoilGroupType::WOUND;
+    }
+    auto groups = get_groups_description().value();
+    if (groupIndex >= groups.size()) {
+        throw std::runtime_error("Non existing group index");
+    }
+    auto group = get_groups_description().value()[groupIndex];
+    return group.get_type();
+}
+
+
 bool Coil::delimit_and_compact_rectangular_window() {
     // Delimit
+        
+    auto groupType = get_coil_type();
+
+
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
-        if (get_turns_description()) {
+        if (get_turns_description() && groupType == CoilGroupType::WOUND) {
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                     auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
@@ -4487,11 +4563,11 @@ bool Coil::delimit_and_compact_rectangular_window() {
                 double currentSectionMaximumHeight = (layersInSection[0].get_coordinates()[1] - sectionCoordinates[1]) + layersInSection[0].get_dimensions()[1] / 2;
                 double currentSectionMinimumHeight = (layersInSection[0].get_coordinates()[1] - sectionCoordinates[1]) - layersInSection[0].get_dimensions()[1] / 2;
 
-                for (auto& turn : layersInSection) {
-                    currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (turn.get_coordinates()[0] - sectionCoordinates[0]) + turn.get_dimensions()[0] / 2);
-                    currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (turn.get_coordinates()[0] - sectionCoordinates[0]) - turn.get_dimensions()[0] / 2);
-                    currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (turn.get_coordinates()[1] - sectionCoordinates[1]) + turn.get_dimensions()[1] / 2);
-                    currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (turn.get_coordinates()[1] - sectionCoordinates[1]) - turn.get_dimensions()[1] / 2);
+                for (auto& layer : layersInSection) {
+                    currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) + layer.get_dimensions()[0] / 2);
+                    currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
+                    currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
+                    currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
                 }
                 sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0] + (currentSectionMaximumWidth + currentSectionMinimumWidth) / 2,
                                                            sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
@@ -4500,10 +4576,35 @@ bool Coil::delimit_and_compact_rectangular_window() {
             }
         }
         set_sections_description(sections);
+
+        auto groups = get_groups_description().value();
+        for (size_t i = 0; i < groups.size(); ++i) {
+            auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
+            if (sectionsInGroup.size() == 0) {
+                throw std::runtime_error("No sections in group: " + groups[i].get_name());
+            }
+            auto groupCoordinates = groups[i].get_coordinates();
+            double currentGroupMaximumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) + sectionsInGroup[0].get_dimensions()[0] / 2;
+            double currentGroupMinimumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) - sectionsInGroup[0].get_dimensions()[0] / 2;
+            double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
+            double currentGroupMinimumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) - sectionsInGroup[0].get_dimensions()[1] / 2;
+
+            for (auto& section : sectionsInGroup) {
+                currentGroupMaximumWidth = std::max(currentGroupMaximumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) + section.get_dimensions()[0] / 2);
+                currentGroupMinimumWidth = std::min(currentGroupMinimumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) - section.get_dimensions()[0] / 2);
+                currentGroupMaximumHeight = std::max(currentGroupMaximumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) + section.get_dimensions()[1] / 2);
+                currentGroupMinimumHeight = std::min(currentGroupMinimumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) - section.get_dimensions()[1] / 2);
+            }
+            groups[i].set_coordinates(std::vector<double>({groupCoordinates[0] + (currentGroupMaximumWidth + currentGroupMinimumWidth) / 2,
+                                                       groupCoordinates[1] + (currentGroupMaximumHeight + currentGroupMinimumHeight) / 2}));
+            groups[i].set_dimensions(std::vector<double>({currentGroupMaximumWidth - currentGroupMinimumWidth,
+                                                   currentGroupMaximumHeight - currentGroupMinimumHeight}));
+        }
+        set_groups_description(groups);
     }
 
      // Compact
-    if (get_sections_description()) {
+    if (get_sections_description() && groupType == CoilGroupType::WOUND) {
         auto sections = get_sections_description().value();
 
         std::vector<std::vector<double>> alignedSectionDimensionsPerSection;

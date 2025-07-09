@@ -8977,22 +8977,27 @@ SUITE(PlanarCoil) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
-        std::vector<int64_t> numberTurns = {13, 13};
+        std::vector<int64_t> numberTurns = {20, 5};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
         std::vector<size_t> stackUp = {0, 1, 0, 1};
         double bobbinHeight = 0.01;
         double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
 
+        std::vector<OpenMagnetics::Wire> wires;
         OpenMagnetics::Wire wire;
-        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_width(0.0008);
         wire.set_nominal_value_conducting_height(0.000076);
         wire.set_number_conductors(1);
         wire.set_material("copper");
         wire.set_type(WireType::RECTANGULAR);
+        wires.push_back(wire);
+        wire.set_nominal_value_conducting_width(0.0032);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wires.push_back(wire);
 
         OpenMagnetics::Coil coil;
         for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
@@ -9001,29 +9006,34 @@ SUITE(PlanarCoil) {
             coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
             coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
             coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
-            coilFunctionalDescription.set_wire(wire);
+            coilFunctionalDescription.set_wire(wires[windingIndex]);
             coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
         }
         coil.set_bobbin(bobbin);
+        coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0005);
+        coil.wind_by_planar_sections(stackUp, 0.0005, 0.0005);
         coil.wind_by_planar_layers();
         coil.wind_by_planar_turns(0.0002, 0.0002);
-        auto turnsDescription = coil.get_turns_description().value();
-        CHECK_EQUAL(turnsDescription.size(), 6);
-        if (plot) {
-            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
-            auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation.svg");
-            std::filesystem::remove(outFile);
-            Painter painter(outFile);
-            OpenMagnetics::Magnetic magnetic;
-            magnetic.set_core(core);
-            magnetic.set_coil(coil);
-            painter.paint_core(magnetic);
-            // painter.paint_coil_sections(magnetic);
-            painter.paint_coil_turns(magnetic);
-            painter.export_svg();
+        coil.delimit_and_compact();
+        CHECK(coil.get_turns_description());
+        if (coil.get_turns_description()) {
+            auto turnsDescription = coil.get_turns_description().value();
+            CHECK_EQUAL(turnsDescription.size(), 25);
+            if (plot) {
+                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                outFile.append("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation.svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile);
+                OpenMagnetics::Magnetic magnetic;
+                magnetic.set_core(core);
+                magnetic.set_coil(coil);
+                painter.paint_core(magnetic);
+                // painter.paint_coil_sections(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+            }
         }
     }
 

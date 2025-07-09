@@ -88,10 +88,10 @@ class Coil : public MAS::Coil {
         bool wind_toroidal_additional_turns();
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
-        bool create_default_group(Bobbin bobbin);
+        bool create_default_group(Bobbin bobbin, CoilGroupType coilType = CoilGroupType::WOUND);
 
     public:
-        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt);
+        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
         bool wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance);
 
@@ -178,47 +178,22 @@ class Coil : public MAS::Coil {
         std::vector<Section> get_sections_description_insulation();
         std::vector<Layer> get_layers_description_insulation();
 
-        uint64_t get_number_turns(size_t windingIndex) {
-            return get_functional_description()[windingIndex].get_number_turns();
-        }
+        std::string get_name(size_t windingIndex);
 
-        uint64_t get_number_parallels(size_t windingIndex) {
-            return get_functional_description()[windingIndex].get_number_parallels();
-        }
-
-        uint64_t get_number_turns(Section section) {
-            uint64_t physicalTurnsInSection = 0;
-            auto partialWinding = section.get_partial_windings()[0];  // TODO: Support multiwinding in layers
-            auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
-
-            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                physicalTurnsInSection += round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
-            }
-            return physicalTurnsInSection;
-        }
-
-        uint64_t get_number_turns(Layer layer) {
-            uint64_t physicalTurnsInLayer = 0;
-            auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
-            auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
-
-            for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                physicalTurnsInLayer += round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
-            }
-            return physicalTurnsInLayer;
-        }
-
-        std::string get_name(size_t windingIndex) {
-            return get_functional_description()[windingIndex].get_name();
-        }
+        CoilGroupType get_coil_type(size_t groupIndex = 0);
 
         std::vector<uint64_t> get_number_turns();
+        uint64_t get_number_turns(size_t windingIndex);
+        uint64_t get_number_turns(Section section);
+        uint64_t get_number_turns(Layer layer);
         void set_number_turns(std::vector<uint64_t> numberTurns);
         std::vector<IsolationSide> get_isolation_sides();
         void set_isolation_sides(std::vector<IsolationSide> isolationSides);
         std::vector<uint64_t> get_number_parallels();
+        uint64_t get_number_parallels(size_t windingIndex);
         void set_number_parallels(std::vector<uint64_t> numberParallels);
 
+        std::vector<Section> get_sections_by_group(std::string groupName);
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
         const Section get_section_by_name(std::string name) const;
         const Turn get_turn_by_name(std::string name) const;

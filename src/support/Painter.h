@@ -153,6 +153,7 @@ class BasicPainter : public PainterInterface {
             _root->style(".spacer").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_spacer()), std::regex("0x"), "#"));
             _root->style(".copper").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_copper()), std::regex("0x"), "#"));
             _root->style(".insulation").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_insulation()), std::regex("0x"), "#"));
+            _root->style(".fr4").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_fr4()), std::regex("0x"), "#"));
             _root->style(".current_density").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_current_density()), std::regex("0x"), "#"));
             _root->style(".text").set_attr("fill", std::regex_replace(std::string(settings->get_painter_color_text()), std::regex("0x"), "#"));
             _root->style(".white").set_attr("fill", "#ffffff");
