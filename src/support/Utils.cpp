@@ -270,7 +270,7 @@ void load_wires(std::optional<std::string> fileToLoad) {
         while ((pos = database.find(delimiter)) != std::string::npos) {
             token = database.substr(0, pos);
             json jf = json::parse(token);
-            Wire wire(jf);
+            OpenMagnetics::Wire wire(jf);
             wireDatabase[jf["name"]] = wire;
             database.erase(0, pos + delimiter.length());
         }

@@ -862,4 +862,15 @@ SUITE(Topology) {
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[2].get_current()->get_processed()->get_offset() == 0);
     }
+
+    TEST(Test_Flyback_Bug_Web2) {
+        json flybackInputsJson = json::parse(R"({"currentRippleRatio": 1, "diodeVoltageDrop": 0.7, "efficiency": 0.85, "inputVoltage": {"minimum": 120.0, "maximum": 375.0}, "operatingPoints": [{"ambientTemperature": 20, "outputCurrents": [2.0], "outputVoltages": [5.0], "mode": "Discontinuous Conduction Mode", "switchingFrequency": 100000.0}], "maximumDrainSourceVoltage": 600.0, "maximumDutyCycle": 0.97})");
+
+        OpenMagnetics::Flyback flybackInputs(flybackInputsJson);
+        flybackInputs._assertErrors = true;
+
+        auto designRequirements = flybackInputs.process_design_requirements();
+        auto turnsRatio = OpenMagnetics::resolve_dimensional_values(designRequirements.get_turns_ratios()[0]);
+        CHECK(turnsRatio < 25);
+    }
 }

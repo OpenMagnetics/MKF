@@ -84,10 +84,6 @@ class WireMagneticStrengthFieldOutput : public WindingWindowMagneticStrengthFiel
 
 
 class Wire : public MAS::Wire {
-    private:
-        std::optional<DimensionWithTolerance> outer_diameter;
-        std::optional<DimensionWithTolerance> outer_width;
-        std::optional<DimensionWithTolerance> outer_height;
     public:
         Wire(MAS::Wire wire) {
             set_type(wire.get_type());
@@ -150,9 +146,6 @@ class Wire : public MAS::Wire {
 
         Wire() = default;
         virtual ~Wire() = default;
-        std::optional<DimensionWithTolerance> get_outer_diameter() const;
-        std::optional<DimensionWithTolerance> get_outer_width() const;
-        std::optional<DimensionWithTolerance> get_outer_height() const;
 
         static WireRound convert_from_wire_to_strand(Wire wire);
         static std::optional<InsulationWireCoating> resolve_coating(const Wire& wire);
@@ -265,55 +258,4 @@ class Wire : public MAS::Wire {
         static Wire get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
 
 };
-} // namespace OpenMagnetics
-
-namespace OpenMagnetics {
-
-    void from_json(const json & j, Wire & x);
-    void to_json(json & j, const Wire & x);
-} // namespace OpenMagnetics
-
-namespace OpenMagnetics {
-
-    inline void from_json(const json & j, Wire& x) {
-        x.set_conducting_diameter(get_stack_optional<DimensionWithTolerance>(j, "conductingDiameter"));
-        x.set_material(get_stack_optional<std::variant<WireMaterial, std::string>>(j, "material"));
-        x.set_outer_diameter(get_stack_optional<DimensionWithTolerance>(j, "outerDiameter"));
-        x.set_coating(get_stack_optional<std::variant<InsulationWireCoating, std::string>>(j, "coating"));
-        x.set_conducting_area(get_stack_optional<DimensionWithTolerance>(j, "conductingArea"));
-        x.set_manufacturer_info(get_stack_optional<ManufacturerInfo>(j, "manufacturerInfo"));
-        x.set_name(get_stack_optional<std::string>(j, "name"));
-        x.set_number_conductors(get_stack_optional<int64_t>(j, "numberConductors"));
-        x.set_standard(get_stack_optional<WireStandard>(j, "standard"));
-        x.set_standard_name(get_stack_optional<std::string>(j, "standardName"));
-        x.set_type(j.at("type").get<WireType>());
-        x.set_conducting_height(get_stack_optional<DimensionWithTolerance>(j, "conductingHeight"));
-        x.set_conducting_width(get_stack_optional<DimensionWithTolerance>(j, "conductingWidth"));
-        x.set_outer_height(get_stack_optional<DimensionWithTolerance>(j, "outerHeight"));
-        x.set_outer_width(get_stack_optional<DimensionWithTolerance>(j, "outerWidth"));
-        x.set_edge_radius(get_stack_optional<DimensionWithTolerance>(j, "edgeRadius"));
-        x.set_strand(get_stack_optional<std::variant<WireRound, std::string>>(j, "strand"));
-    }
-
-    inline void to_json(json & j, const Wire & x) {
-        j = json::object();
-        j["conductingDiameter"] = x.get_conducting_diameter();
-        j["material"] = x.get_material();
-        j["outerDiameter"] = x.get_outer_diameter();
-        j["coating"] = x.get_coating();
-        j["conductingArea"] = x.get_conducting_area();
-        j["manufacturerInfo"] = x.get_manufacturer_info();
-        j["name"] = x.get_name();
-        j["numberConductors"] = x.get_number_conductors();
-        j["standard"] = x.get_standard();
-        j["standardName"] = x.get_standard_name();
-        j["type"] = x.get_type();
-        j["conductingHeight"] = x.get_conducting_height();
-        j["conductingWidth"] = x.get_conducting_width();
-        j["outerHeight"] = x.get_outer_height();
-        j["outerWidth"] = x.get_outer_width();
-        j["edgeRadius"] = x.get_edge_radius();
-        j["strand"] = x.get_strand();
-    }
-
 } // namespace OpenMagnetics

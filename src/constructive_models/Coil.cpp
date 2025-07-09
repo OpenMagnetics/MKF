@@ -1028,12 +1028,12 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
 
 double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns) {
     if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+        double wireDiameter = wire.get_maximum_outer_width();
         return physicalTurns * pow(wireDiameter, 2);
     }
     else {
-        double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
-        double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
+        double wireWidth = wire.get_maximum_outer_width();
+        double wireHeight = wire.get_maximum_outer_height();
         return physicalTurns * wireWidth * wireHeight;
     }
 }
