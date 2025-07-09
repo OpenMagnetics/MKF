@@ -318,16 +318,26 @@ void BasicPainter::paint_circle(double xCoordinate, double yCoordinate, double r
 }
 
 void BasicPainter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center) {
- 
-    if (!wire.get_outer_width()) {
-        throw std::runtime_error("Wire is missing outerWidth");
+    double outerWidth = 0;
+    double outerHeight = 0;
+    if (wire.get_outer_width()) {
+        outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
     }
-    if (!wire.get_outer_height()) {
-        throw std::runtime_error("Wire is missing outerHeight");
+    else {
+        if (!wire.get_conducting_width()) {
+            throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+        }
+        outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
     }
-
-    double outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
-    double outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+    if (wire.get_outer_height()) {
+        outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+    }
+    else {
+        if (!wire.get_conducting_height()) {
+            throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+        }
+        outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+    }
     double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
     double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
     double insulationThicknessInWidth = (outerWidth - conductingWidth) / 2;
@@ -561,8 +571,26 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                 _root->style(".turn_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
                 double xCoordinate = turns[i].get_coordinates()[0];
                 double yCoordinate = turns[i].get_coordinates()[1];
-                double outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
-                double outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+                double outerWidth = 0;
+                double outerHeight = 0;
+                if (wire.get_outer_width()) {
+                    outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
+                }
+                else {
+                    if (!wire.get_conducting_width()) {
+                        throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+                    }
+                    outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+                }
+                if (wire.get_outer_height()) {
+                    outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+                }
+                else {
+                    if (!wire.get_conducting_height()) {
+                        throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+                    }
+                    outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                }
                 paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes);
             }
 
