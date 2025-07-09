@@ -977,7 +977,7 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     return {physicalTurnsThisSlot, slotParallelsProportion};
 }
 
-double get_area_used_in_wires(Wire wire, uint64_t physicalTurns) {
+double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns) {
     if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
         double wireDiameter = resolve_dimensional_values(wire.get_outer_diameter().value());
         return physicalTurns * pow(wireDiameter, 2);
@@ -2415,6 +2415,147 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     return true;
 }
 
+bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::optional<double> insulationThickness) {
+    // In planar coils each section will have only one layer
+    set_layers_description(std::nullopt);
+    std::vector<Section> sections;
+
+    if (!insulationThickness) {
+        insulationThickness = defaults.pcbInsulationThickness;
+    }
+
+    auto bobbin = resolve_bobbin();
+    if (!get_groups_description()) {
+        create_default_group(bobbin);
+    }
+
+    if (!get_groups_description()) {
+        throw std::runtime_error("At least default group must be defined at this point.");
+    }
+
+    auto groups = get_groups_description().value();
+    if (groups.size() > 1) {
+        throw std::runtime_error("Only one group supported for now.");
+    }
+    auto group = groups[0];
+
+    auto wirePerWinding = get_wires();
+    if (wirePerWinding.size() == 0) {
+        throw std::runtime_error("Wires missing");
+    }
+
+    std::vector<size_t> numberSectionsPerWinding = std::vector<size_t>(wirePerWinding.size(), 0);
+    std::vector<std::vector<double>> totalParallelsProportionPerWinding;
+    std::vector<std::vector<double>> remainingParallelsProportionPerWinding;
+    std::vector<size_t> currentSectionIndexPerwinding = std::vector<size_t>(wirePerWinding.size(), 0);
+
+    for (auto windingIndex : stackUpForThisGroup) {
+        numberSectionsPerWinding[windingIndex]++;
+    }
+
+    for (auto winding : group.get_partial_windings()) {
+        totalParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
+        remainingParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
+    }
+    for (auto partialWinding : group.get_partial_windings()) {
+        auto parallelsProportion = partialWinding.get_parallels_proportion();
+        totalParallelsProportionPerWinding.push_back(parallelsProportion);
+        remainingParallelsProportionPerWinding.push_back(parallelsProportion);
+    }
+
+    std::vector<double> sectionWidthPerWinding;
+    std::vector<double> sectionHeightPerWinding;
+    double totalSectionHeight = 0;
+
+    for (auto windingIndex : stackUpForThisGroup) {
+        sectionWidthPerWinding.push_back(group.get_dimensions()[0]);
+        double sectionHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+        sectionHeightPerWinding.push_back(sectionHeight);
+        totalSectionHeight += sectionHeight;
+    }
+    double currentSectionCenterWidth = roundFloat(group.get_coordinates()[0], 9);
+    double currentSectionCenterHeight = roundFloat(group.get_coordinates()[1] + totalSectionHeight / 2, 9);
+
+    for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
+        Section section;
+        auto windingIndex = stackUpForThisGroup[stackUpIndex];
+        auto remainingParallelsProportionInWinding = remainingParallelsProportionPerWinding[windingIndex];
+        auto totalParallelsProportionInWinding = totalParallelsProportionPerWinding[windingIndex];
+        auto numberSections = numberSectionsPerWinding[windingIndex];
+        auto winding = get_functional_description()[windingIndex];
+        auto sectionIndex = currentSectionIndexPerwinding[windingIndex];
+        double sectionWidth = sectionWidthPerWinding[windingIndex];
+        double sectionHeight = sectionHeightPerWinding[windingIndex];
+        currentSectionCenterHeight -= sectionHeight / 2;
+
+        WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberSections);
+
+        double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+ 
+        auto parallelsProportions = get_parallels_proportions(sectionIndex,
+                                                               numberSections,
+                                                               get_number_turns(windingIndex),
+                                                               get_number_parallels(windingIndex),
+                                                               remainingParallelsProportionInWinding,
+                                                               windByConsecutiveTurns,
+                                                               totalParallelsProportionInWinding);
+
+        std::vector<double> sectionParallelsProportion = parallelsProportions.second;
+
+        size_t numberParallelsProportionsToZero = 0;
+        for (auto parallelProportion : sectionParallelsProportion) {
+            if (parallelProportion == 0) {
+                numberParallelsProportionsToZero++;
+            }
+        }
+
+        if (numberParallelsProportionsToZero == sectionParallelsProportion.size()) {
+            throw std::runtime_error("Parallel proportion in section cannot be all be 0");
+        }
+
+        uint64_t physicalTurnsThisSection = parallelsProportions.first;
+
+        auto partialWinding = group.get_partial_windings()[windingIndex];
+        partialWinding.set_parallels_proportion(sectionParallelsProportion);
+        section.set_partial_windings(std::vector<PartialWinding>{partialWinding});
+        section.set_group(group.get_name());
+        section.set_type(ElectricalType::CONDUCTION);
+        section.set_name(winding.get_name() + " section " + std::to_string(sectionIndex));
+        section.set_layers_orientation(WindingOrientation::CONTIGUOUS);
+        section.set_dimensions(std::vector<double>{sectionWidth, sectionHeight});
+        section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
+        section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+
+        section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (sectionWidth * sectionHeight));
+        section.set_winding_style(windByConsecutiveTurns);
+        sections.push_back(section);
+
+        for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+            remainingParallelsProportionPerWinding[windingIndex][parallelIndex] -= sectionParallelsProportion[parallelIndex];
+        }
+
+        currentSectionCenterHeight = roundFloat(currentSectionCenterHeight -= sectionHeight / 2, 9);
+        currentSectionIndexPerwinding[windingIndex]++;
+
+        if (stackUpIndex < stackUpForThisGroup.size() - 1 && insulationThickness.value() > 0) {
+            currentSectionCenterHeight -= insulationThickness.value() / 2;
+
+            Section insulationSection;
+            insulationSection.set_type(ElectricalType::INSULATION);
+            insulationSection.set_name("Insulation section between stack index" + std::to_string(stackUpIndex) + " and " + std::to_string(stackUpIndex + 1));
+            insulationSection.set_dimensions(std::vector<double>{sectionWidth, insulationThickness.value()});
+            insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
+            insulationSection.set_coordinate_system(CoordinateSystem::CARTESIAN);
+            insulationSection.set_filling_factor(1);
+            sections.push_back(insulationSection);
+            currentSectionCenterHeight -= insulationThickness.value() / 2;
+        }
+
+    }
+    set_sections_description(sections);
+    return true;
+}
+
 bool Coil::wind_by_layers() {
     set_layers_description(std::nullopt);
     if (!get_sections_description()) {
@@ -2936,183 +3077,36 @@ bool Coil::wind_by_round_layers() {
     return true;
 }
 
-bool Coil::wind_by_planar_layers(std::vector<size_t> stackUpForThisGroup, double borderToWireDistance, double wireToWireDistance) {
+bool Coil::wind_by_planar_layers() {
     set_layers_description(std::nullopt);
     std::vector<Layer> layers;
-
-    auto bobbin = resolve_bobbin();
-    if (!get_groups_description()) {
-        create_default_group(bobbin);
+    if (!get_sections_description()) {
+        return false;
     }
 
-    if (!get_groups_description()) {
-        throw std::runtime_error("At least default group must be defined at this point.");
-    }
+    auto sections = get_sections_description().value();
 
-    auto groups = get_groups_description().value();
-    if (groups.size() > 1) {
-        throw std::runtime_error("Only one group supported for now.");
-    }
-    auto group = groups[0];
-
-    auto wirePerWinding = get_wires();
-    std::vector<size_t> numberLayersPerWinding = std::vector<size_t>(0, wirePerWinding.size());
-    std::vector<std::vector<double>> totalParallelsProportionPerWinding;
-    std::vector<std::vector<double>> remainingParallelsProportionPerWinding;
-    std::vector<size_t> currentLayerIndexPerwinding = std::vector<size_t>(0, wirePerWinding.size());
-
-    for (auto windingIndex : stackUpForThisGroup) {
-        numberLayersPerWinding[windingIndex]++;
-    }
-
-    for (auto winding : group.get_partial_windings()) {
-        totalParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
-        remainingParallelsProportionPerWinding.push_back(winding.get_parallels_proportion());
-    }
-    for (auto partialWinding : group.get_partial_windings()) {
-        auto parallelsProportion = partialWinding.get_parallels_proportion();
-        totalParallelsProportionPerWinding.push_back(parallelsProportion);
-        remainingParallelsProportionPerWinding.push_back(parallelsProportion);
-    }
-
-    std::vector<double> layerWidthPerWinding;
-    std::vector<double> layerHeightPerWinding;
-    std::vector<double> currentLayerCenterWidthPerWinding;
-    std::vector<double> currentLayerCenterHeightPerWinding;
-
-    for (auto windingIndex : stackUpForThisGroup) {
-        layerWidthPerWinding.push_back(group.get_dimensions()[0] - borderToWireDistance / 2);
-        double layerHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
-        layerHeightPerWinding.push_back(layerHeight);
-        currentLayerCenterWidthPerWinding.push_back(roundFloat(group.get_coordinates()[0], 9));
-        currentLayerCenterHeightPerWinding.push_back(roundFloat(group.get_coordinates()[1] + group.get_dimensions()[1] / 2 - layerHeight / 2, 9));
-    }
-
-    for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
+    for (auto section : sections) {
         Layer layer;
-        auto windingIndex = stackUpForThisGroup[stackUpIndex];
-        auto remainingParallelsProportionInWinding = group.get_partial_windings()[0].get_parallels_proportion();
-        auto totalParallelsProportionInWinding = group.get_partial_windings()[0].get_parallels_proportion();
-        auto numberLayers = numberLayersPerWinding[windingIndex];
-        auto winding = get_functional_description()[windingIndex];
-        auto layerIndex = currentLayerIndexPerwinding[windingIndex];
-        double layerWidth = layerWidthPerWinding[windingIndex];
-        double layerHeight = layerHeightPerWinding[windingIndex];
-        double currentLayerCenterWidth = currentLayerCenterWidthPerWinding[windingIndex];
-        double currentLayerCenterHeight = currentLayerCenterHeightPerWinding[windingIndex];
-
-        WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberLayers);
-
-        double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
-        double maximumNumberPhysicalTurnsPerLayer = floor(layerWidth / (wireWidth + wireToWireDistance));
- 
-        auto parallelsProportions = get_parallels_proportions(layerIndex,
-                                                               numberLayers,
-                                                               get_number_turns(windingIndex),
-                                                               get_number_parallels(windingIndex),
-                                                               remainingParallelsProportionInWinding,
-                                                               windByConsecutiveTurns,
-                                                               totalParallelsProportionInWinding);
-
-        std::vector<double> layerParallelsProportion = parallelsProportions.second;
-
-        size_t numberParallelsProportionsToZero = 0;
-        for (auto parallelProportion : layerParallelsProportion) {
-            if (parallelProportion == 0) {
-                numberParallelsProportionsToZero++;
-            }
+        layer.set_partial_windings(section.get_partial_windings());
+        layer.set_section(section.get_name());
+        layer.set_type(section.get_type());
+        layer.set_orientation(section.get_layers_orientation());
+        layer.set_dimensions(section.get_dimensions());
+        layer.set_coordinates(section.get_coordinates());
+        layer.set_coordinate_system(section.get_coordinate_system());
+        layer.set_winding_style(section.get_winding_style());
+        layer.set_filling_factor(section.get_filling_factor());
+        layer.set_name(std::regex_replace(std::string(section.get_name()), std::regex("section"), "layer"));
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            layer.set_turns_alignment(CoilAlignment::SPREAD);
+        }
+        else {
+            layer.set_insulation_material(defaults.defaultPcbInsulationMaterial);
         }
 
-        if (numberParallelsProportionsToZero == layerParallelsProportion.size()) {
-            throw std::runtime_error("Parallel proportion in layer cannot be all be 0");
-        }
-
-        uint64_t physicalTurnsThisLayer = parallelsProportions.first;
-
-        auto partialWinding = group.get_partial_windings()[0];
-        partialWinding.set_parallels_proportion(layerParallelsProportion);
-        layer.set_partial_windings(std::vector<PartialWinding>{partialWinding});
-        // layer.set_section(sections[sectionIndex].get_name());
-        layer.set_type(ElectricalType::CONDUCTION);
-        layer.set_name(winding.get_name() + " layer " + std::to_string(layerIndex));
-        layer.set_orientation(WindingOrientation::CONTIGUOUS);
-        layer.set_turns_alignment(CoilAlignment::SPREAD);
-        layer.set_dimensions(std::vector<double>{layerWidth, layerHeight});
-        layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
-        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
-
-        layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerWidth * layerHeight));
-        layer.set_winding_style(windByConsecutiveTurns);
         layers.push_back(layer);
 
-        for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-            remainingParallelsProportionInWinding[parallelIndex] -= layerParallelsProportion[parallelIndex];
-        }
-
-        currentLayerCenterHeightPerWinding[windingIndex] = roundFloat(currentLayerCenterHeight - layerHeight, 9);
-
-    //     }
-    //     else {
-    //         if (sectionIndex == 0) {
-    //             throw std::runtime_error("outer insulation layers not implemented");
-    //         }
-
-    //         auto partialWinding = sections[sectionIndex - 1].get_partial_windings()[0];
-    //         auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
-    //         Section nextSection;
-    //         if (sectionIndex != (sections.size() - 1)) {
-    //             if (sections[sectionIndex - 1].get_type() != ElectricalType::CONDUCTION || sections[sectionIndex + 1].get_type() != ElectricalType::CONDUCTION) {
-    //                 throw std::runtime_error("Previous and next sections must be conductive");
-    //             }
-    //             nextSection = sections[sectionIndex + 1];
-    //         }
-    //         else {
-    //             nextSection = sections[0];
-    //         }
-    //         // auto nextSection = sections[sectionIndex + 1];
-    //         auto nextPartialWinding = nextSection.get_partial_windings()[0];
-    //         auto nextWindingIndex = get_winding_index_by_name(nextPartialWinding.get_winding());
-
-    //         auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
-    //         if (!_insulationLayers.contains(windingsMapKey)) {
-    //             log(_insulationLayersLog[windingsMapKey]);
-    //             continue;
-    //         }
-
-    //         auto insulationLayers = _insulationLayers[windingsMapKey];
-    //         if (insulationLayers.size() == 0) {
-    //             throw std::runtime_error("There must be at least one insulation layer between layers");
-    //         }
-
-    //         double layerWidth = insulationLayers[0].get_dimensions()[0];
-    //         double layerHeight = insulationLayers[0].get_dimensions()[1];
-
-    //         double currentLayerCenterWidth;
-    //         double currentLayerCenterHeight;
-    //         if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerWidth / 2, 9);
-    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
-    //         } else {
-    //             currentLayerCenterWidth = roundFloat(sections[sectionIndex].get_coordinates()[0], 9);
-    //             currentLayerCenterHeight = roundFloat(sections[sectionIndex].get_coordinates()[1] + sections[sectionIndex].get_dimensions()[1] / 2 - layerHeight / 2, 9);
-    //         }
-
-    //         for (size_t layerIndex = 0; layerIndex < insulationLayers.size(); ++layerIndex) {
-    //             auto insulationLayer = insulationLayers[layerIndex];
-    //             insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
-    //             insulationLayer.set_section(sections[sectionIndex].get_name());
-    //             insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
-    //             insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
-    //             layers.push_back(insulationLayer);
-
-    //             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-    //                 currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
-    //             }
-    //             else {
-    //                 currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
-    //             }
-    //         }
-    //     }
     }
     set_layers_description(layers);
     return true;
@@ -3572,6 +3566,172 @@ bool Coil::wind_by_round_turns() {
     set_turns_description(turns);
 
     convert_turns_to_cartesian_coordinates();
+    return true;
+}
+
+bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance) {
+    set_turns_description(std::nullopt);
+    if (!get_layers_description()) {
+        return false;
+    }
+    auto wirePerWinding = get_wires();
+
+    std::vector<std::vector<int64_t>> currentTurnIndex;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        currentTurnIndex.push_back(std::vector<int64_t>(get_number_parallels(windingIndex), 0));
+    }
+    auto bobbin = resolve_bobbin();
+    auto bobbinColumnShape = bobbin.get_processed_description().value().get_column_shape();
+    auto bobbinColumnDepth = bobbin.get_processed_description().value().get_column_depth();
+    double bobbinColumnWidth;
+    if (bobbin.get_processed_description().value().get_column_width()) {
+        bobbinColumnWidth = bobbin.get_processed_description().value().get_column_width().value();
+    }
+    else {
+        auto bobbinWindingWindow = std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_winding_windows()[0];
+        double bobbinWindingWindowWidth = bobbinWindingWindow.get_width().value();
+        double bobbinWindingWindowCenterWidth = bobbinWindingWindow.get_coordinates().value()[0];
+        bobbinColumnWidth = bobbinWindingWindowCenterWidth - bobbinWindingWindowWidth / 2;
+    }
+
+    auto layers = get_layers_description().value();
+
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR) {
+            auto conductionLayers = get_layers_by_type(ElectricalType::CONDUCTION);
+            if (conductionLayers.size() > settings->get_coil_maximum_layers_planar()) {
+                return false;
+            }
+        }
+
+    }
+
+    std::vector<Turn> turns;
+    for (auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            double totalLayerHeight;
+            double totalLayerWidth;
+            if (layer.get_partial_windings().size() > 1) {
+                throw std::runtime_error("More than one winding per layer not supported yet");
+            }
+            auto partialWinding = layer.get_partial_windings()[0];  // TODO: Support multiwinding in layers
+            auto winding = get_winding_by_name(partialWinding.get_winding());
+            auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+            double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+            double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+            auto physicalTurnsInLayer = get_number_turns(layer);
+            double currentTurnWidthIncrement = wireWidth + wireToWireDistance;
+            double currentTurnHeightIncrement = 0;
+            double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance + wireWidth / 2;
+            double currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
+
+            auto alignment = layer.get_turns_alignment().value();
+
+            if (!layer.get_winding_style()) {
+                layer.set_winding_style(WindingStyle::WIND_BY_CONSECUTIVE_TURNS);
+            }
+
+            if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+                    for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                        Turn turn;
+                        turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
+                        turn.set_layer(layer.get_name());
+                        if (bobbinColumnShape == ColumnShape::ROUND) {
+                            turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                            if (turn.get_length() < 0) {
+                                return false;
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                            turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                            if (turn.get_length() < 0) {
+                                return false;
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                            double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
+                            turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+
+                            if (turn.get_length() < 0) {
+                                return false;
+                            }
+                        }
+                        else {
+                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                        }
+                        turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                        turn.set_orientation(TurnOrientation::CLOCKWISE);
+                        turn.set_parallel(parallelIndex);
+                        // turn.set_section(layer.get_section().value());
+                        turn.set_winding(partialWinding.get_winding());
+                        turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+                        turn.set_rotation(0);
+                        turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+
+                        turns.push_back(turn);
+                        currentTurnCenterWidth += currentTurnWidthIncrement;
+                        currentTurnCenterHeight -= currentTurnHeightIncrement;
+                        currentTurnIndex[windingIndex][parallelIndex]++; 
+                    }
+                }
+            }
+            else {
+                int64_t firstParallelIndex = 0;
+                while (roundFloat(partialWinding.get_parallels_proportion()[firstParallelIndex], 10) == 0) {
+                    firstParallelIndex++;
+                }
+                int64_t numberTurns = round(partialWinding.get_parallels_proportion()[firstParallelIndex] * get_number_turns(windingIndex));
+                for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                        if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                            Turn turn;
+                            turn.set_coordinates(std::vector<double>{currentTurnCenterWidth, currentTurnCenterHeight});
+                            turn.set_layer(layer.get_name());
+                            if (bobbinColumnShape == ColumnShape::ROUND) {
+                                turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth);
+                                    if (turn.get_length() < 0) {
+                                        return false;
+                                    }
+                            }
+                            else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                                turn.set_length(2 * std::numbers::pi * currentTurnCenterWidth + 4 * (bobbinColumnDepth - bobbinColumnWidth));
+                                    if (turn.get_length() < 0) {
+                                        return false;
+                                    }
+                            }
+                            else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                                double currentTurnCornerRadius = currentTurnCenterWidth - bobbinColumnWidth;
+                                turn.set_length(4 * bobbinColumnDepth + 4 * bobbinColumnWidth + 2 * std::numbers::pi * currentTurnCornerRadius);
+                                if (turn.get_length() < 0) {
+                                    return false;
+                                }
+                            }
+                            else {
+                                throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                            }
+                            turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
+                            turn.set_orientation(TurnOrientation::CLOCKWISE);
+                            turn.set_parallel(parallelIndex);
+                            turn.set_section(layer.get_section().value());
+                            turn.set_winding(partialWinding.get_winding());
+                            turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
+                            turn.set_rotation(0);
+                            turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+
+                            turns.push_back(turn);
+                            currentTurnCenterWidth += currentTurnWidthIncrement;
+                            currentTurnCenterHeight -= currentTurnHeightIncrement;
+                            currentTurnIndex[windingIndex][parallelIndex]++; 
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    set_turns_description(turns);
     return true;
 }
 

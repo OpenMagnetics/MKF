@@ -45,6 +45,58 @@ namespace OpenMagnetics {
         return strand;
     }
 
+    std::optional<DimensionWithTolerance> Wire::get_outer_diameter() const {
+        if (!outer_diameter && get_conducting_diameter()) {
+            if (get_coating()) {
+                if (std::holds_alternative<InsulationWireCoating>(get_coating().value())) {
+                    auto insulationWireCoating = std::get<InsulationWireCoating>(get_coating().value());
+                    if (insulationWireCoating.get_type() == InsulationWireCoatingType::BARE) {
+                        return get_conducting_diameter().value();
+                    }
+                }
+            }
+            else {
+                return get_conducting_diameter().value();
+            }
+        }
+        return outer_diameter;
+    }
+
+    std::optional<DimensionWithTolerance> Wire::get_outer_width() const {
+        if (!outer_width && get_conducting_width()) {
+            if (get_coating()) {
+                if (std::holds_alternative<InsulationWireCoating>(get_coating().value())) {
+                    auto insulationWireCoating = std::get<InsulationWireCoating>(get_coating().value());
+                    if (insulationWireCoating.get_type() == InsulationWireCoatingType::BARE) {
+                        return get_conducting_width().value();
+                    }
+                }
+            }
+            else {
+                return get_conducting_width().value();
+            }
+        }
+        return outer_width;
+    }
+
+    std::optional<DimensionWithTolerance> Wire::get_outer_height() const {
+        if (!outer_height && get_conducting_height()) {
+            if (get_coating()) {
+                if (std::holds_alternative<InsulationWireCoating>(get_coating().value())) {
+                    auto insulationWireCoating = std::get<InsulationWireCoating>(get_coating().value());
+                    if (insulationWireCoating.get_type() == InsulationWireCoatingType::BARE) {
+                        return get_conducting_height().value();
+                    }
+                }
+            }
+            else {
+                return get_conducting_height().value();
+            }
+        }
+        return outer_height;
+    }
+
+
     std::optional<InsulationWireCoating> Wire::resolve_coating(const Wire& wire) {
         // If the coating is a string, we have to load its data from the database
         if (!wire.get_coating()) {

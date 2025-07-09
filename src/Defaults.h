@@ -43,8 +43,10 @@ struct Defaults {
     const std::string defaultInsulationMaterial = "ETFE";
     const std::string defaultLayerInsulationMaterial = "Kapton HN";
     const std::string defaultConductorMaterial = "copper";
+    const std::string defaultPcbInsulationMaterial = "FR4";
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
+    const double pcbInsulationThickness = 0.00157;
 };
 } // namespace OpenMagnetics
 
