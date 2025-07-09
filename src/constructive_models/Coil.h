@@ -83,7 +83,6 @@ class Coil : public MAS::Coil {
         bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_rectangular_layers();
         bool wind_by_round_layers();
-        bool wind_by_planar_layers(std::vector<size_t> stackUp, double borderToWireDistance, double wireToWireDistance);
         bool wind_by_rectangular_turns();
         bool wind_by_round_turns();
         bool wind_toroidal_additional_turns();
@@ -92,6 +91,9 @@ class Coil : public MAS::Coil {
         bool create_default_group(Bobbin bobbin);
 
     public:
+        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt);
+        bool wind_by_planar_layers();
+        bool wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance);
 
         Coil(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,

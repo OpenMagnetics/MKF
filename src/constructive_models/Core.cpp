@@ -151,8 +151,7 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
     auto numberStacks = *(get_functional_description().get_number_stacks());
     auto gapping = get_functional_description().get_gapping();
 
-    auto corePiece =
-        CorePiece::factory(std::get<CoreShape>(get_functional_description().get_shape()));
+    auto corePiece = CorePiece::factory(std::get<CoreShape>(get_functional_description().get_shape()));
     auto corePieceHeight = corePiece->get_height();
     auto corePieceDepth = corePiece->get_depth();
 
@@ -834,7 +833,9 @@ bool Core::process_gap() {
 }
 
 CoreMaterial Core::resolve_material() {
-    return resolve_material(get_functional_description().get_material());
+    auto material = resolve_material(get_functional_description().get_material());
+    get_mutable_functional_description().set_material(material);
+    return material;
 }
 
 CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
@@ -853,7 +854,9 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
 }
 
 CoreShape Core::resolve_shape() {
-    return resolve_shape(get_functional_description().get_shape());
+    auto shape = resolve_shape(get_functional_description().get_shape());
+    get_mutable_functional_description().set_shape(shape);
+    return shape;
 }
 
 CoreShape Core::resolve_shape(CoreShapeDataOrNameUnion coreShape) {

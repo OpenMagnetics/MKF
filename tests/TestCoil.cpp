@@ -5775,7 +5775,7 @@ SUITE(CoilLayersDescription) {
     bool plot = false;
     auto settings = Settings::GetInstance();
 
-    TEST(Test_Wind_By_Layer_Wind_One_Section_One_Layer) {
+    TEST(Test_Wind_By_Layers_Wind_One_Section_One_Layer) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5794,7 +5794,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_One_Section_Two_Layers) {
+    TEST(Test_Wind_By_Layers_Wind_One_Section_Two_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5813,7 +5813,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_One_Section_One_Layer_Two_Parallels) {
+    TEST(Test_Wind_By_Layers_Wind_One_Section_One_Layer_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5832,7 +5832,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_One_Section_Two_Layers_Two_Parallels) {
+    TEST(Test_Wind_By_Layers_Wind_One_Section_Two_Layers_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5851,7 +5851,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Two_Sections_Two_Layers_Two_Parallels) {
+    TEST(Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5870,7 +5870,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Two_Sections_One_Layer_One_Parallel) {
+    TEST(Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_One_Parallel) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5889,7 +5889,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Two_Sections_One_Layer_Two_Parallels) {
+    TEST(Test_Wind_By_Layers_Wind_Two_Sections_One_Layer_Two_Parallels) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5908,7 +5908,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Two_Sections_Two_Layers_One_Parallel) {
+    TEST(Test_Wind_By_Layers_Wind_Two_Sections_Two_Layers_One_Parallel) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5927,7 +5927,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Vertical_Winding_Horizontal_Layers) {
+    TEST(Test_Wind_By_Layers_Wind_Vertical_Winding_Horizontal_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5947,7 +5947,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Vertical_Winding_Vertical_Layers) {
+    TEST(Test_Wind_By_Layers_Wind_Vertical_Winding_Vertical_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5968,7 +5968,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding_Horizontal_Layers) {
+    TEST(Test_Wind_By_Layers_Wind_Horizontal_Winding_Horizontal_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -5989,7 +5989,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding_Vertical_Layers) {
+    TEST(Test_Wind_By_Layers_Wind_Horizontal_Winding_Vertical_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -6010,7 +6010,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil, layersOrientation);
     }
 
-    TEST(Test_Wind_By_Layer_Wind_Horizontal_Winding) {
+    TEST(Test_Wind_By_Layers_Wind_Horizontal_Winding) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -6030,7 +6030,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Random_0) {
+    TEST(Test_Wind_By_Layers_Random_0) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -6049,7 +6049,7 @@ SUITE(CoilLayersDescription) {
         OpenMagneticsTesting::check_layers_description(coil);
     }
 
-    TEST(Test_Wind_By_Layer_Random) {
+    TEST(Test_Wind_By_Layers_Random) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -6073,7 +6073,7 @@ SUITE(CoilLayersDescription) {
         }
     }
 
-    TEST(Test_Wind_By_Layer_With_Insulation_Layers) {
+    TEST(Test_Wind_By_Layers_With_Insulation_Layers) {
         settings->set_coil_wind_even_if_not_fit(false);
         settings->set_coil_try_rewind(false);
 
@@ -8562,4 +8562,469 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
         }
         OpenMagneticsTesting::check_turns_description(coil);
     }
+}
+SUITE(PlanarCoil) {
+    bool plot = true;
+    auto settings = Settings::GetInstance();
+
+    TEST(Test_Wind_By_Layers_Planar_One_Layer) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        std::vector<size_t> stackUp = {0};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(layersDescription.size(), 1);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Layers) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        std::vector<size_t> stackUp = {0, 0};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(layersDescription.size(), 2);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Windings) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7, 7};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(2U, layersDescription.size());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {8, 8};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 0, 1, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd_Turns) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {3, 3};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 0, 1, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {3, 3};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+    }
+
+    TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {3, 3};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(bobbinHeight, bobbinWidth);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.00076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp);
+        coil.wind_by_planar_layers();
+        auto layersDescription = coil.get_layers_description().value();
+        CHECK_EQUAL(7U, layersDescription.size());
+        CHECK(MAS::ElectricalType::CONDUCTION == layersDescription[0].get_type());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
+
+        CHECK(MAS::ElectricalType::INSULATION == layersDescription[1].get_type());
+
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK(MAS::ElectricalType::CONDUCTION == layersDescription[2].get_type());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+
+        CHECK(MAS::ElectricalType::INSULATION == layersDescription[3].get_type());
+
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK(MAS::ElectricalType::CONDUCTION == layersDescription[4].get_type());
+        CHECK_EQUAL("PRIMARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+
+        CHECK(MAS::ElectricalType::INSULATION == layersDescription[5].get_type());
+
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK(MAS::ElectricalType::CONDUCTION == layersDescription[6].get_type());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
+    }
+
+    TEST(Test_Wind_By_Turns_Planar_One_Layer) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        std::vector<size_t> stackUp = {0};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0.0002, 0.0002);
+        CHECK(coil.get_turns_description());
+        auto turnsDescription = coil.get_turns_description().value();
+        CHECK_EQUAL(turnsDescription.size(), 7);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Planar_One_Layer.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {13, 13};
+        std::vector<int64_t> numberParallels = {1, 1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.001);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0.0005);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0.0002, 0.0002);
+        auto turnsDescription = coil.get_turns_description().value();
+        CHECK_EQUAL(turnsDescription.size(), 6);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
 }
