@@ -524,6 +524,28 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
     auto turns = coil.get_turns_description().value();
 
     auto shapes = _root->add_child<SVG::Group>();
+
+    CoilGroupType coilType = CoilGroupType::WOUND;
+
+    if (coil.get_groups_description()) {
+        coilType = coil.get_groups_description().value()[0].get_type(); // TODO: take into account more groups
+    }
+
+    auto layers = coil.get_layers_description().value();
+
+    if (coilType == CoilGroupType::WOUND) {
+        for (size_t i = 0; i < layers.size(); ++i){
+            if (layers[i].get_type() == ElectricalType::INSULATION) {
+                paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+            }
+        }
+        paint_two_piece_set_margin(magnetic);
+    }
+    else if (coilType == CoilGroupType::PLANAR){
+        auto group = coil.get_groups_description().value()[0]; // TODO: take into account more groups
+        paint_rectangle(group.get_coordinates()[0], group.get_coordinates()[1], group.get_dimensions()[0], group.get_dimensions()[1], "fr4", shapes);
+    }
+
     for (size_t i = 0; i < turns.size(); ++i){
 
         auto windingIndex = coil.get_winding_index_by_name(turns[i].get_winding());
@@ -551,18 +573,8 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
                 double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
                 paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes);
             }
-            
         }
     }
-
-    auto layers = coil.get_layers_description().value();
-
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
-            paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
-        }
-    }
-    paint_two_piece_set_margin(magnetic);
 }
 
 void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
