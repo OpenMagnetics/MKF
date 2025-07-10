@@ -12,7 +12,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 SUITE(Reluctance) {
-
+    double maxError = 0.01;
     std::map<ReluctanceModels, double> maximumErrorReluctances = {
         {ReluctanceModels::ZHANG, 0.26},
         {ReluctanceModels::MUEHLETHALER, 0.42},
@@ -654,6 +654,23 @@ SUITE(Reluctance) {
 
             run_test_energy(ReluctanceModels::CLASSIC, "PQ 40/40",
                             OpenMagneticsTesting::get_distributed_gap(test["gapLength"], 3), test["expectedEnergy"], 1);
+        }
+    }
+
+    TEST(Test_Gap_By_Fringing_Factor) {
+        srand (time(NULL));
+        for (size_t i = 0; i < 100; ++i)
+        {
+            double randomPercentage = double(std::rand() % 50 + 1L) * 1e-2;
+            auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+            auto centralColumns = core.find_columns_by_type(ColumnType::CENTRAL);
+            double expectedGap = centralColumns[0].get_height() * randomPercentage;
+            core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(expectedGap));
+            auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+            auto fringingFactor = reluctanceModel->get_core_reluctance(core).get_maximum_fringing_factor().value();
+
+            double gap = reluctanceModel->get_gapping_by_fringing_factor(core, fringingFactor);
+            CHECK_CLOSE(expectedGap, gap, expectedGap * maxError);
         }
     }
 }

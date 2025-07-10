@@ -176,12 +176,12 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
     auto gapArea = *(gapInfo.get_area());
     auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
-    auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
+    auto gapSectionWidth = gapSectionDimensions[0];
+    auto gapSectionDepth = gapSectionDimensions[1];
+    auto distanceClosestNormalSurface = std::max(*(gapInfo.get_distance_closest_normal_surface()), gapSectionWidth);
     auto reluctanceInternal = gapLength / (constants.vacuumPermeability * gapArea);
     double reluctanceFringing = 0;
     double fringingFactor = 1;
-    auto gapSectionWidth = gapSectionDimensions[0];
-    auto gapSectionDepth = gapSectionDimensions[1];
 
     if (gapShape == ColumnShape::ROUND) {
         perimeter = std::numbers::pi * gapSectionWidth;
@@ -541,4 +541,38 @@ std::shared_ptr<ReluctanceModel> ReluctanceModel::factory(ReluctanceModels model
 std::shared_ptr<ReluctanceModel> ReluctanceModel::factory() {
     return factory(defaults.reluctanceModelDefault);
 }
+
+double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringingFactor) {
+    auto centralColumns = core.find_columns_by_type(ColumnType::CENTRAL);
+    if (centralColumns.size() == 0) {
+        throw std::runtime_error("No columns found in core");
+    }
+    double gapLength = centralColumns[0].get_height();
+    double gapIncrease = gapLength / 2;
+    double calculatedFringingFactor = 0;
+    bool slowMode = false;
+    size_t timeout = 100;
+    while (true) {
+        core.set_gap_length(gapLength);
+        auto calculatedFringingFactor = get_core_reluctance(core).get_maximum_fringing_factor().value();
+        if ((fabs(calculatedFringingFactor - fringingFactor) / fringingFactor) < 0.001) {
+            break;
+        }
+        if (calculatedFringingFactor < fringingFactor) {
+            gapLength += gapIncrease;
+        }
+        else {
+            gapLength -= gapIncrease;
+        }
+        gapLength = roundFloat(gapLength, 6);
+        gapIncrease = std::max(gapIncrease / 2, constants.residualGap);
+        timeout--;
+        if (timeout <= 0) {
+            break;
+        }
+    }
+
+    return gapLength;
+}
+
 } // namespace OpenMagnetics

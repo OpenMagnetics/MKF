@@ -567,6 +567,15 @@ void Core::scale_to_stacks(int64_t numberStacks) {
     set_functional_description(functionalDescription);
 }
 
+void Core::set_gap_length(double gapLength) {
+    for (size_t i = 0; i < get_functional_description().get_gapping().size(); ++i) {
+        if (get_functional_description().get_gapping()[i].get_type() != GapType::RESIDUAL) {
+            get_mutable_functional_description().get_mutable_gapping()[i].set_length(gapLength);
+        }
+    }
+    distribute_and_process_gap();
+}
+
 bool Core::distribute_and_process_gap() {
     auto constants = Constants();
     std::vector<CoreGap> newGapping;
