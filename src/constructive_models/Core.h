@@ -36,6 +36,7 @@ class Core : public MAS::MagneticCore {
     bool is_gap_processed();
     bool process_gap();
     bool distribute_and_process_gap();
+    void set_gap_length(double gapLength);
     void process_data();
     CoreMaterial resolve_material();
     static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);

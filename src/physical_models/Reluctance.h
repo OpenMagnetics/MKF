@@ -106,6 +106,7 @@ class ReluctanceModel {
     MagnetizingInductanceOutput get_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
     MagnetizingInductanceOutput get_core_reluctance(Core core, double initialPermeability);
     MagnetizingInductanceOutput get_gapping_reluctance(Core core);
+    double get_gapping_by_fringing_factor(Core core, double fringingFactor);
     ReluctanceModel() = default;
     virtual ~ReluctanceModel() = default;
 
