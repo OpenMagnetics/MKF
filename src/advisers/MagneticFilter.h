@@ -37,6 +37,7 @@ class MagneticFilterAreaProduct : public MagneticFilter {
         std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz;
         std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary;
         double _averageMarginInWindingWindow = 0;
+        double _magneticFluxDensityReference = 0.18;
 
     public:
         MagneticFilterAreaProduct() {};

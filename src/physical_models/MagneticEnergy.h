@@ -38,10 +38,12 @@ public:
     }
     static double get_ungapped_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint = std::nullopt, bool saturationProportion = true);
     static double get_ungapped_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);
-    double get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, std::optional<double> fringing_factor = std::nullopt);
+    static double get_relative_permeability_by_magnetic_energy(Core core, double temperature, double magneticEnergy, bool saturationProportion = true);
+    double get_gap_maximum_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, std::optional<double> fringingFactor = std::nullopt);
     double calculate_core_maximum_magnetic_energy(Core core, std::optional<OperatingPoint> operatingPoint = std::nullopt, bool saturationProportion = true);
     double calculate_core_maximum_magnetic_energy(Core core, double temperature, std::optional<double> frequency = std::nullopt, bool saturationProportion = true);
     DimensionWithTolerance calculate_required_magnetic_energy(Inputs inputs);
+    double calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, double magneticFluxDensitySaturation, double energyStoredInGap);
 };
 
 } // namespace OpenMagnetics

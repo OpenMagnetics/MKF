@@ -560,6 +560,9 @@ double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringin
         }
         if (calculatedFringingFactor < fringingFactor) {
             gapLength += gapIncrease;
+            if (gapLength > centralColumns[0].get_height()) {
+                return centralColumns[0].get_height() / 2;
+            }
         }
         else {
             gapLength -= gapIncrease;
