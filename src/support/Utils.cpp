@@ -648,6 +648,31 @@ std::vector<CoreShapeFamily> get_shape_families() {
     return coreShapeFamiliesInDatabase;
 }
 
+std::vector<std::string> get_material_families(std::optional<MaterialEnum> materialType) {
+    if (coreShapeDatabase.empty()) {
+        load_core_materials();
+    }
+    std::vector<std::string> families;
+    for (auto& [name, material] : coreMaterialDatabase) {
+        if (material.get_family())
+            if (!materialType) {
+                if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
+                    families.push_back(material.get_family().value());
+                }
+            }
+            else {
+                if (materialType.value() == material.get_material()) {
+                    if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
+                        families.push_back(material.get_family().value());
+                    }
+                }
+            }
+        }
+    }
+
+    return families;
+}
+
 std::vector<std::string> get_wire_names() {
     if (wireDatabase.empty()) {
         load_wires();

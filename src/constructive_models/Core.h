@@ -78,6 +78,7 @@ class Core : public MAS::MagneticCore {
     double get_magnetic_field_strength_saturation(double temperature);
     static double get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature);
     CoreShapeFamily get_shape_family();
+    std::string get_material_family();
     std::string get_shape_name();
     std::string get_material_name();
     int64_t get_number_stacks();

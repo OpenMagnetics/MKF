@@ -1133,6 +1133,39 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     return {valid, scoring};
 }
 
+MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs, std::map<std::string, std::string> models) {
+    _models = models;
+    _magneticEnergy = MagneticEnergy(models);
+    _requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(inputs));
+    _reluctanceModel = ReluctanceModel::factory(magic_enum::enum_cast<OpenMagnetics::ReluctanceModels>(_models["gapReluctance"]).value());
+}
+
+MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs) {
+    _requiredMagneticEnergy = resolve_dimensional_values(_magneticEnergy.calculate_required_magnetic_energy(inputs));
+    _reluctanceModel = ReluctanceModel::factory();
+}
+
+std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto core = magnetic->get_core();
+
+
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        return {true, 0};
+    }
+    else if (core.get_gapping().size() == 0) {
+        return {true, 0};
+    }
+    else {
+        double maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
+        double gapLength = core.get_gapping()[0].get_length();
+        if (gapLength > maximumGapLength) {
+            return {false, 0};
+        }
+        else {
+            return {true, -(maximumGapLength - gapLength)};
+        }
+    }
+}
 
 
 } // namespace OpenMagnetics

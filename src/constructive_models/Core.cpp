@@ -937,7 +937,9 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     // If the material is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(coreMaterial)) {
         if (std::get<std::string>(coreMaterial) == "dummy" || std::get<std::string>(coreMaterial) == "Dummy") {
-            return CoreMaterial();
+            CoreMaterial coreMaterial;
+            coreMaterial.set_name("Dummy");
+            return coreMaterial;
         }
         auto coreMaterialData = find_core_material_by_name(std::get<std::string>(coreMaterial));
         coreMaterial = coreMaterialData;
@@ -1234,6 +1236,13 @@ std::vector<WindingWindowElement> Core::get_winding_windows() {
     else {
         return std::vector<WindingWindowElement>();
     }
+}
+
+std::string Core::get_material_family() {
+    if (resolve_material().get_family())
+        return resolve_material().get_family().value();
+    else 
+        return ""; 
 }
 
 CoreShapeFamily Core::get_shape_family() {
