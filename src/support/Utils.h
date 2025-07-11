@@ -103,6 +103,7 @@ std::vector<std::string> get_shape_names();
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype=std::nullopt);
 std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family);
 std::vector<CoreShapeFamily> get_shape_families();
+std::vector<std::string> get_material_families(std::optional<MaterialEnum> materialType = std::nullopt);
 std::vector<std::string> get_wire_names();
 std::vector<std::string> get_bobbin_names();
 std::vector<std::string> get_insulation_material_names();

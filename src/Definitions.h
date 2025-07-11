@@ -117,7 +117,8 @@ enum class MagneticFilters : int {
     DC_CURRENT_DENSITY,
     EFFECTIVE_CURRENT_DENSITY,
     IMPEDANCE,
-    MAGNETIZING_INDUCTANCE
+    MAGNETIZING_INDUCTANCE,
+    FRINGING_FACTOR
 };
 
 class MagneticFilterOperation {
@@ -182,6 +183,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Effective Current Density") x = MagneticFilters::EFFECTIVE_CURRENT_DENSITY;
     else if (j == "Impedance") x = MagneticFilters::IMPEDANCE;
     else if (j == "Magnetizing Inductance") x = MagneticFilters::MAGNETIZING_INDUCTANCE;
+    else if (j == "Fringing Factor") x = MagneticFilters::FRINGING_FACTOR;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -207,6 +209,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::EFFECTIVE_CURRENT_DENSITY: j = "Effective Current Density"; break;
         case MagneticFilters::IMPEDANCE: j = "Impedance"; break;
         case MagneticFilters::MAGNETIZING_INDUCTANCE: j = "Magnetizing Inductance"; break;
+        case MagneticFilters::FRINGING_FACTOR: j = "Fringing Factor"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }

@@ -204,6 +204,21 @@ class MagneticFilterMagnetizingInductance : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
+class MagneticFilterFringingFactor : public MagneticFilter {
+    private:
+        std::map<std::string, std::string> _models;
+        MagneticEnergy _magneticEnergy;
+        double _requiredMagneticEnergy;
+        double _fringingFactorLitmit = 1.2;
+        std::shared_ptr<ReluctanceModel> _reluctanceModel;
+
+    public:
+        MagneticFilterFringingFactor() {};
+        MagneticFilterFringingFactor(Inputs inputs);
+        MagneticFilterFringingFactor(Inputs inputs, std::map<std::string, std::string> models);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
 // // Nice to have in the future
 // class MagneticFilterMaximumWeight : public MagneticFilter {
 //     public:
