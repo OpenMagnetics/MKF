@@ -59,6 +59,31 @@ Core::Core(const MagneticCore core) {
     }
 }
 
+Core::Core(const CoreShape shape, std::optional<CoreMaterial> material) {
+    get_mutable_functional_description().set_gapping(std::vector<CoreGap>({}));
+    get_mutable_functional_description().set_number_stacks(1);
+    get_mutable_functional_description().set_shape(shape);
+    if (material) {
+        get_mutable_functional_description().set_material(material.value());
+    }
+    else {
+        get_mutable_functional_description().set_material("Dummy");
+    }
+    if (shape.get_magnetic_circuit() == MagneticCircuit::OPEN) {
+        get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
+    }
+    else {
+        get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+    }
+
+    if (material) {
+        set_name(shape.get_name().value() + " " + material.value().get_name());
+    }
+    else {
+        set_name(shape.get_name().value());
+    }
+}
+
 double Core::get_depth() {
     if (!get_processed_description()) {
         throw std::runtime_error("Core is not processed");
@@ -621,8 +646,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                // return false;
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - constants.residualGap / 2);
@@ -644,8 +669,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                // return false;
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
@@ -664,8 +689,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                // return false;
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[i].get_length() / 2);
@@ -714,8 +739,8 @@ bool Core::distribute_and_process_gap() {
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
             if (distanceClosestNormalSurface < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
+                // return false;
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
@@ -777,6 +802,67 @@ bool Core::distribute_and_process_gap() {
     return true;
 }
 
+void Core::set_ground_gap(double gapLength) {
+    size_t numberColumns = get_columns().size();
+    std::vector<CoreGap> gapping;
+    {
+        CoreGap gap;
+        gap.set_type(GapType::SUBTRACTIVE);
+        gap.set_length(gapLength);
+        gapping.push_back(gap);
+    }
+    for (size_t i = 0; i < numberColumns - 1; ++i) {
+        CoreGap gap;
+        gap.set_type(GapType::RESIDUAL);
+        gap.set_length(constants.residualGap);
+        gapping.push_back(gap);
+    }
+    get_mutable_functional_description().set_gapping(gapping);
+}
+
+void Core::set_distributed_gap(double gapLength, size_t numberGaps) {
+    size_t numberColumns = get_columns().size();
+    std::vector<CoreGap> gapping;
+    for (size_t i = 0; i < numberGaps; ++i) {
+        CoreGap gap;
+        gap.set_type(GapType::SUBTRACTIVE);
+        gap.set_length(gapLength);
+        gapping.push_back(gap);
+    }
+    for (size_t i = 0; i < numberColumns - 1; ++i) {
+        CoreGap gap;
+        gap.set_type(GapType::RESIDUAL);
+        gap.set_length(constants.residualGap);
+        gapping.push_back(gap);
+    }
+    get_mutable_functional_description().set_gapping(gapping);
+}
+
+void Core::set_spacer_gap(double gapLength) {
+    size_t numberColumns = get_columns().size();
+    std::vector<CoreGap> gapping;
+    for (size_t i = 0; i < numberColumns; ++i) {
+        CoreGap gap;
+        gap.set_type(GapType::ADDITIVE);
+        gap.set_length(gapLength);
+        gapping.push_back(gap);
+    }
+    get_mutable_functional_description().set_gapping(gapping);
+}
+
+void Core::set_residual_gap() {
+    size_t numberColumns = get_columns().size();
+    std::vector<CoreGap> gapping;
+    for (size_t i = 0; i < numberColumns; ++i) {
+        CoreGap gap;
+        gap.set_type(GapType::RESIDUAL);
+        gap.set_length(constants.residualGap);
+        gapping.push_back(gap);
+    }
+    get_mutable_functional_description().set_gapping(gapping);
+}
+
+
 bool Core::is_gapping_missaligned() {
     auto gapping = get_functional_description().get_gapping();
     for (size_t i = 0; i < gapping.size(); ++i) {
@@ -825,8 +911,8 @@ bool Core::process_gap() {
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
             if (roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
-                return false;
-                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
+                // return false;
+                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
@@ -861,6 +947,14 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
         return std::get<CoreMaterial>(coreMaterial);
     }
 }
+
+void Core::set_material_initial_permeability(double value) {
+    auto coreMaterial = resolve_material();
+    PermeabilityPoint permeabilityPoint;
+    permeabilityPoint.set_value(value);
+    coreMaterial.get_mutable_permeability().set_initial(permeabilityPoint);
+}
+
 
 CoreShape Core::resolve_shape() {
     auto shape = resolve_shape(get_functional_description().get_shape());
@@ -948,7 +1042,8 @@ double Core::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, dou
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
-        throw std::runtime_error("Missing saturation data in core material");
+        return defaults.magneticFluxDensitySaturation;
+        // throw std::runtime_error("Missing saturation data in core material");
     }
     for (auto& datum : saturationData) {
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});

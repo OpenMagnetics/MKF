@@ -21,6 +21,7 @@ class Core : public MAS::MagneticCore {
   public:
     Core(const json& j, bool includeMaterialData = false, bool includeProcessedDescription = true, bool includeGeometricalDescription = true);
     Core(const MagneticCore core);
+    Core(const CoreShape shape, std::optional<CoreMaterial> material = std::nullopt);
     Core() = default;
     virtual ~Core() = default;
 
@@ -85,6 +86,11 @@ class Core : public MAS::MagneticCore {
     CoreType get_type();
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
+    void set_material_initial_permeability(double value);
+    void set_ground_gap(double gapLength);
+    void set_distributed_gap(double gapLength, size_t numberGaps);
+    void set_spacer_gap(double gapLength);
+    void set_residual_gap();
 };
 
 

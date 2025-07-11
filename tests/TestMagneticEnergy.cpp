@@ -128,4 +128,22 @@ SUITE(MagneticEnergy) {
         CHECK_CLOSE(expectedValue, requiredMagneticEnergy, max_error * expectedValue);
     }
 
+    TEST(Test_Relative_permeability_By_Magnetic_Energy) {
+        settings->reset();
+        clear_databases();
+        double ambientTemperature = 25;
+        std::string coreShape = "ETD 49";
+        std::string coreMaterial = "3C95";
+        auto gapping = OpenMagneticsTesting::get_residual_gap();
+        Core core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, 1, coreMaterial);
+
+        MagneticEnergy magneticEnergy(std::map<std::string, std::string>({{"gapReluctance", "ZHANG"}}));
+
+        double expectedValue = 42;
+        double MagneticEnergy = 0.032;
+
+        double calculatedValue = magneticEnergy.get_relative_permeability_by_magnetic_energy(core, ambientTemperature, MagneticEnergy);
+        CHECK_CLOSE(expectedValue, calculatedValue, max_error * expectedValue);
+    }
+
 }

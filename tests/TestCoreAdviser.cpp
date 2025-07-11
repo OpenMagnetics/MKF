@@ -18,20 +18,20 @@
 using namespace MAS;
 using namespace OpenMagnetics;
 
-SUITE(CoreAdviser) {
-    auto settings = Settings::GetInstance();
-
-    void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, std::vector<double> turnsRatios,
-                                 double desiredMagnetizingInductance, OpenMagnetics::Inputs& inputs,
-                                 double peakToPeak = 20, double dutyCycle = 0.5) {
-        DesignRequirements designRequirements = inputs.get_design_requirements();
-        inputs = OpenMagnetics::Inputs::create_quick_operating_point(
-            frequency, desiredMagnetizingInductance, ambientTemperature, WaveformLabel::SINUSOIDAL,
-            peakToPeak, dutyCycle, dcCurrent, turnsRatios);
-        if (designRequirements.get_insulation()) {
-            inputs.get_mutable_design_requirements().set_insulation(designRequirements.get_insulation().value());
-        }
+void prepare_test_parameters(double dcCurrent, double ambientTemperature, double frequency, std::vector<double> turnsRatios,
+                             double desiredMagnetizingInductance, OpenMagnetics::Inputs& inputs,
+                             double peakToPeak = 20, double dutyCycle = 0.5) {
+    DesignRequirements designRequirements = inputs.get_design_requirements();
+    inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        frequency, desiredMagnetizingInductance, ambientTemperature, WaveformLabel::SINUSOIDAL,
+        peakToPeak, dutyCycle, dcCurrent, turnsRatios);
+    if (designRequirements.get_insulation()) {
+        inputs.get_mutable_design_requirements().set_insulation(designRequirements.get_insulation().value());
     }
+}
+
+SUITE(CoreAdviserCommercial) {
+    auto settings = Settings::GetInstance();
 
     std::vector<Core> load_test_data() {
         std::string file_path = __FILE__;
@@ -1332,6 +1332,43 @@ SUITE(CoreAdviser) {
             results["data"].push_back(result);
         }
         results["log"] = log;
+    }
+}
+
+SUITE(CoreAdviserAny) {
+
+    TEST(Test_All_Shapes) {
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials);
+
+
+        // CHECK(masMagnetics.size() == 1);
+        // double bestScoring = masMagnetics[0].second;
+        // for (size_t i = 0; i < masMagnetics.size(); ++i)
+        // {
+        //     CHECK(masMagnetics[i].second <= bestScoring);
+        // }
+
+        // CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
+        // settings->reset();
     }
 
 }

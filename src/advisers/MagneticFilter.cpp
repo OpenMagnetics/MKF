@@ -75,15 +75,14 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 }
 
 MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
-    double magneticFluxDensityReference = 0.18;
     double frequencyReference = 100000;
     SignalDescriptor magneticFluxDensity;
     Processed processed;
     _operatingPointExcitation.set_frequency(frequencyReference);
     processed.set_label(WaveformLabel::SINUSOIDAL);
     processed.set_offset(0);
-    processed.set_peak(magneticFluxDensityReference);
-    processed.set_peak_to_peak(2 * magneticFluxDensityReference);
+    processed.set_peak(_magneticFluxDensityReference);
+    processed.set_peak_to_peak(2 * _magneticFluxDensityReference);
     magneticFluxDensity.set_processed(processed);
     _operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
     _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
@@ -195,24 +194,29 @@ std::pair<bool, double> MagneticFilterAreaProduct::evaluate_magnetic(Magnetic* m
         double wireAirFillingFactor = Wire::get_filling_factor_round(2 * skinDepth);
         double windingWindowUtilizationFactor = wireAirFillingFactor * bobbinFillingFactor;
         double magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
-        if (!_materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
-            auto coreLossesMethods = core.get_available_core_losses_methods();
+        try {
+            if (!_materialScaledMagneticFluxDensities.contains(core.get_material_name())) {
+                auto coreLossesMethods = core.get_available_core_losses_methods();
 
-            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
-                double referenceCoreLosses = _coreLossesModelSteinmetz->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
-                auto aux = _coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
-                magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                    double referenceCoreLosses = _coreLossesModelSteinmetz->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
+                    auto aux = _coreLossesModelSteinmetz->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
+                    magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                }
+                else {
+                    double referenceCoreLosses = _coreLossesModelProprietary->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
+
+                    auto aux = _coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
+                    magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                }
+                _materialScaledMagneticFluxDensities[core.get_material_name()] = magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
             }
             else {
-                double referenceCoreLosses = _coreLossesModelProprietary->get_core_losses(core, _operatingPointExcitation, temperature).get_core_losses();
-
-                auto aux = _coreLossesModelProprietary->get_magnetic_flux_density_from_core_losses(core, frequency, temperature, referenceCoreLosses);
-                magneticFluxDensityPeakAtFrequencyOfReferenceLosses = aux.get_processed().value().get_peak().value();
+                magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _materialScaledMagneticFluxDensities[core.get_material_name()];
             }
-            _materialScaledMagneticFluxDensities[core.get_material_name()] = magneticFluxDensityPeakAtFrequencyOfReferenceLosses;
         }
-        else {
-            magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _materialScaledMagneticFluxDensities[core.get_material_name()];
+        catch (const std::exception &exc) {
+            magneticFluxDensityPeakAtFrequencyOfReferenceLosses = _magneticFluxDensityReference;
         }
         double areaProductRequired = _areaProductRequiredPreCalculations[operatingPointIndex] / (windingWindowUtilizationFactor * magneticFluxDensityPeakAtFrequencyOfReferenceLosses);
         if (std::isnan(magneticFluxDensityPeakAtFrequencyOfReferenceLosses) || magneticFluxDensityPeakAtFrequencyOfReferenceLosses == 0) {

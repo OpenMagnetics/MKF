@@ -28,6 +28,7 @@ struct Defaults {
     const double maximumEffectiveCurrentDensity = 12000000;
     const double maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
+    const double ferriteInitialPermeability = 2000;
     const double magnetizingInductanceThresholdValidity = 0.25;
     const double harmonicAmplitudeThreshold = 0.05;
     const double ambientTemperature = 25;
