@@ -88,7 +88,7 @@ class Coil : public MAS::Coil {
         bool wind_toroidal_additional_turns();
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
-        bool create_default_group(Bobbin bobbin, CoilGroupType coilType = CoilGroupType::WOUND);
+        bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND);
 
     public:
         bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
@@ -180,7 +180,7 @@ class Coil : public MAS::Coil {
 
         std::string get_name(size_t windingIndex);
 
-        CoilGroupType get_coil_type(size_t groupIndex = 0);
+        WiringTechnology get_coil_type(size_t groupIndex = 0);
 
         std::vector<uint64_t> get_number_turns();
         uint64_t get_number_turns(size_t windingIndex);

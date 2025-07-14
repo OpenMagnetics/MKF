@@ -646,8 +646,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - constants.residualGap / 2 < 0) {
-                // return false;
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - constants.residualGap / 2);
@@ -669,8 +669,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2 < 0) {
-                // return false;
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[gapIndex].get_length() / 2);
@@ -689,8 +689,8 @@ bool Core::distribute_and_process_gap() {
             gap.set_coordinates(columns[i].get_coordinates());
             gap.set_shape(columns[i].get_shape());
             if (columns[i].get_height() / 2 - gapping[i].get_length() / 2 < 0) {
-                // return false;
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", column of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(columns[i].get_height() / 2 - gapping[i].get_length() / 2);
@@ -739,8 +739,8 @@ bool Core::distribute_and_process_gap() {
                                       windingColumn.get_coordinates()[2]}));
             gap.set_shape(windingColumn.get_shape());
             if (distanceClosestNormalSurface < 0) {
-                // return false;
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", non residual gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(distanceClosestNormalSurface);
@@ -911,8 +911,8 @@ bool Core::process_gap() {
             gap.set_coordinates(gapping[i].get_coordinates());
             gap.set_shape(columns[columnIndex].get_shape());
             if (roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2) < 0) {
-                // return false;
-                throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
+                return false;
+                // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
             gap.set_distance_closest_normal_surface(roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
@@ -948,6 +948,10 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
     else {
         return std::get<CoreMaterial>(coreMaterial);
     }
+}
+
+void Core::set_material(CoreMaterial coreMaterial) {
+    get_mutable_functional_description().set_material(coreMaterial);
 }
 
 void Core::set_material_initial_permeability(double value) {
@@ -1076,7 +1080,8 @@ double Core::get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, d
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
-        throw std::runtime_error("Missing saturation data in core material");
+        return defaults.magneticFluxDensitySaturation;
+        // throw std::runtime_error("Missing saturation data in core material");
     }
     for (auto& datum : saturationData) {
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
@@ -1229,6 +1234,15 @@ std::vector<ColumnElement> Core::get_columns() {
     }
 }
 
+WindingWindowElement Core::get_winding_window(size_t windingWindowIndex) {
+    if (get_processed_description()) {
+        return get_processed_description().value().get_winding_windows()[windingWindowIndex];
+    }
+    else {
+        return WindingWindowElement();
+    }
+}
+
 std::vector<WindingWindowElement> Core::get_winding_windows() {
     if (get_processed_description()) {
         return get_processed_description().value().get_winding_windows();
@@ -1270,8 +1284,13 @@ std::string Core::get_material_name() {
 }
 
 std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_methods(){
+    auto coreMaterial = resolve_material();
+    return get_available_core_losses_methods(coreMaterial);
+}
+
+std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_methods(CoreMaterial coreMaterial){
     std::vector<VolumetricCoreLossesMethodType> methods;
-    auto volumetricLossesMethodsVariants = resolve_material().get_volumetric_losses();
+    auto volumetricLossesMethodsVariants = coreMaterial.get_volumetric_losses();
     for (auto& volumetricLossesMethodVariant : volumetricLossesMethodsVariants) {
         auto volumetricLossesMethods = volumetricLossesMethodVariant.second;
         for (auto& volumetricLossesMethod : volumetricLossesMethods) {
@@ -1287,34 +1306,43 @@ std::vector<VolumetricCoreLossesMethodType> Core::get_available_core_losses_meth
 }
 
 
-bool Core::can_be_used_for_filtering(){
-    auto permeability = resolve_material().get_permeability();
+Application Core::resolve_material_application() {
+    auto coreMaterial = resolve_material();
+    auto application = resolve_material_application(coreMaterial);
+    get_mutable_functional_description().set_material(coreMaterial);
+    return application;
+}
 
-    if (!permeability.get_complex()) {
-        return false;
+Application Core::resolve_material_application(CoreMaterial& coreMaterial) {
+    if (coreMaterial.get_application()) {
+        return coreMaterial.get_application().value();
     }
     else {
-        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_real())) {
-            return false;
-        }
-        else {
-            auto realPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_real());
-            if (realPermeabilityPoints.size() < 2) {
-                return false;
-            }
-        }
-
-        if (std::holds_alternative<PermeabilityPoint>(permeability.get_complex()->get_imaginary())) {
-            return false;
-        }
-        else {
-            auto imaginaryPermeabilityPoints = std::get<std::vector<PermeabilityPoint>>(permeability.get_complex()->get_imaginary());
-            if (imaginaryPermeabilityPoints.size() < 2) {
-                return false;
-            }
-        }
-        return true;
+        coreMaterial.set_application(guess_material_application(coreMaterial));
+        return coreMaterial.get_application().value();
     }
+}
+
+Application Core::guess_material_application() {
+    auto coreMaterial = resolve_material();
+    return guess_material_application(coreMaterial);
+}
+
+Application Core::guess_material_application(CoreMaterial coreMaterial) {
+    for (auto method : get_available_core_losses_methods(coreMaterial)) {
+        if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
+            if (coreMaterial.get_permeability().get_complex()) {
+                return Application::INTERFERENCE_SUPPRESSION;
+            }
+            return Application::SIGNAL_PROCESSING;
+        }
+    }
+    return Application::POWER;
+}
+
+Application Core::guess_material_application(std::string coreMaterialName) {
+    auto coreMaterial = find_core_material_by_name(coreMaterialName);
+    return guess_material_application(coreMaterial);
 }
 
 CoreType Core::get_type() {

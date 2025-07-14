@@ -97,6 +97,9 @@ namespace OpenMagnetics {
 
         _verbose = false;
 
+        _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
+        _preferredCoreMaterialPowderManufacturer = "Micrometals";
+
     }
 
     bool Settings::get_verbose() const {
@@ -538,6 +541,20 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_losses_preferred_model_name(CoreLossesModels value) {
         _coreLossesModelNames = {value, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+    }
+
+    std::string Settings::get_preferred_core_material_ferrite_manufacturer() const {
+        return _preferredCoreMaterialFerriteManufacturer;
+    }
+    void Settings::set_preferred_core_material_ferrite_manufacturer(std::string value) {
+        _preferredCoreMaterialFerriteManufacturer = value;
+    }
+
+    std::string Settings::get_preferred_core_material_powder_manufacturer() const {
+        return _preferredCoreMaterialPowderManufacturer;
+    }
+    void Settings::set_preferred_core_material_powder_manufacturer(std::string value) {
+        _preferredCoreMaterialPowderManufacturer = value;
     }
 
 } // namespace OpenMagnetics

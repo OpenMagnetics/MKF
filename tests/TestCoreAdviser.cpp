@@ -30,7 +30,7 @@ void prepare_test_parameters(double dcCurrent, double ambientTemperature, double
     }
 }
 
-SUITE(CoreAdviserCommercial) {
+SUITE(CoreAdviserAvailableCores) {
     auto settings = Settings::GetInstance();
 
     std::vector<Core> load_test_data() {
@@ -56,7 +56,7 @@ SUITE(CoreAdviserCommercial) {
         return cores;
     }
 
-    TEST(Test_All_Cores) {
+    TEST(Test_CoreAdviserAvailableCores_All_Cores) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -98,7 +98,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_All_Cores_With_Margin) {
+    TEST(Test_CoreAdviserAvailableCores_All_Cores_With_Margin) {
         settings->reset();
         settings->set_core_adviser_include_margin(true);
         auto standard = InsulationIEC60664Model();
@@ -155,7 +155,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_Toroidal_Cores_With_Impedance) {
+    TEST(Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance) {
         clear_databases();
         settings->set_use_concentric_cores(false);
         settings->set_use_toroidal_cores(true);
@@ -197,6 +197,7 @@ SUITE(CoreAdviserCommercial) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         auto cores = load_test_data();
+        coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
 
 
@@ -209,7 +210,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "T 25.3/14.8/20 - N30 - Ungapped") {
+            if (mas.get_magnetic().get_core().get_name() == "T 58.3/32/18 - N30 - Ungapped") {
                 found = true;
             }
         }
@@ -262,7 +263,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_All_Cores_Load_Internally_Only_Stock) {
+    TEST(Test_CoreAdviserAvailableCores_All_Cores_Load_Internally_Only_Stock) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -296,7 +297,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_All_Cores_Load_Internally_All) {
+    TEST(Test_CoreAdviserAvailableCores_All_Cores_Load_Internally_All) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -330,7 +331,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_All_Cores_Two_Chosen_Ones) {
+    TEST(Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -374,7 +375,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_High_Power) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_High_Power) {
         clear_databases();
         double voltagePeakToPeak = 6000;
         double dcCurrent = 0;
@@ -412,7 +413,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_Only_Toroids_High_Power) {
+    TEST(Test_CoreAdviserAvailableCores_Only_Toroids_High_Power) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -444,7 +445,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_High_Power_High_Frequency) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_High_Power_High_Frequency) {
         clear_databases();
         double voltagePeakToPeak = 600000;
         double dcCurrent = 0;
@@ -473,7 +474,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Gapped 4.0 mm") {
+            if (mas.get_magnetic().get_core().get_name() == "E 70/33/32 - N87 - Distributed gapped 3.93 mm 3 stacks") {
                 if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 3) {
                     found = true;
                 }
@@ -483,7 +484,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Low_Power) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Low_Power) {
         clear_databases();
         double voltagePeakToPeak = 60;
         double dcCurrent = 0;
@@ -522,7 +523,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Low_Power_Low_Losses) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Low_Power_Low_Losses) {
         clear_databases();
         double voltagePeakToPeak = 60;
         double dcCurrent = 0;
@@ -551,7 +552,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "RM 4 - 3C95 - Gapped 0.3 mm") {
+            if (mas.get_magnetic().get_core().get_name() == "ER 14.5 - 3C97 - Gapped 0.34 mm") {
                 if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                     found = true;
                 }
@@ -561,7 +562,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Low_Power_Low_Losses_No_Care_About_Size) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Low_Power_Low_Losses_No_Care_About_Size) {
         clear_databases();
         double voltagePeakToPeak = 60;
         double dcCurrent = 0;
@@ -590,8 +591,9 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "ELP 38/8/25 - PC200 - Ungapped") {
-                if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 2) {
+            std::cout << mas.get_magnetic().get_core().get_name().value() << std::endl;
+            if (mas.get_magnetic().get_core().get_name() == "ER 18/3.2/10 - 3C97 - Gapped 0.45 mm") {
+                if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                     found = true;
                 }
             }
@@ -600,7 +602,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Redo_Culling) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling) {
         clear_databases();
         double voltagePeakToPeak = 6000;
         double dcCurrent = 0;
@@ -639,7 +641,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Two_Windings) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings) {
         clear_databases();
         double voltagePeakToPeak = 600;
         double dcCurrent = 0;
@@ -668,15 +670,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "RM 10 - 3C95 - Gapped 0.29 mm") {
-                found = true;
-            }
-        }
-        CHECK(found);
-
-        found = false;
-        for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "E 30/15/7 - 3C94 - Gapped 0.5 mm") {
+            if (mas.get_magnetic().get_core().get_name() == "EFD 30/15/9 - 3C95 - Gapped 0.32 mm") {
                 found = true;
             }
         }
@@ -685,7 +679,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_No_Toroids_Two_Points_High_Power_Low_Power) {
+    TEST(Test_CoreAdviserAvailableCores_No_Toroids_Two_Points_High_Power_Low_Power) {
         clear_databases();
         OpenMagnetics::Inputs inputs;
         std::vector<double> turnsRatios = {1};
@@ -728,7 +722,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "U 66/33/27 - Kool Mµ 26 - Ungapped") {
+            if (mas.get_magnetic().get_core().get_name() == "U 66/33/27 - Kool Mµ 60 - Ungapped") {
                 if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                     found = true;
                 }
@@ -742,7 +736,7 @@ SUITE(CoreAdviserCommercial) {
         settings->reset();
     }
 
-    TEST(Test_Two_Points_Equal) {
+    TEST(Test_CoreAdviserAvailableCores_Two_Points_Equal) {
         clear_databases();
         OpenMagnetics::Inputs inputs;
         std::vector<double> turnsRatios = {};
@@ -775,7 +769,7 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "E 70/33/32 - 95 - Distributed gapped 1.36 mm") {
+            if (mas.get_magnetic().get_core().get_name() == "E 65/32/27 - Kool Mµ Hƒ 60 - Ungapped") {
                 if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                     found = true;
                 }
@@ -957,12 +951,13 @@ SUITE(CoreAdviserCommercial) {
 
         bool found = false;
         for (auto [mas, scoring] : masMagnetics) {
-            if (mas.get_magnetic().get_core().get_name() == "EQ 13 - 3C95 - Ungapped") {
+            if (mas.get_magnetic().get_core().get_name() == "T 6.3/3.8/2.5 - parylene coated - N30 - Ungapped") {
                 if (scorings[mas.get_magnetic().get_manufacturer_info().value().get_reference().value()][CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] == 1) {
                     found = true;
                 }
             }
         }
+        CHECK(found);
 
         settings->reset();
     }
@@ -1335,9 +1330,9 @@ SUITE(CoreAdviserCommercial) {
     }
 }
 
-SUITE(CoreAdviserAny) {
-
-    TEST(Test_All_Shapes) {
+SUITE(CoreAdviserStandardCores) {
+    TEST(Test_CoreAdviserStandardCores_All_Shapes) {
+        settings->reset();
         clear_databases();
         load_core_shapes();
         double voltagePeakToPeak = 600;
@@ -1357,18 +1352,557 @@ SUITE(CoreAdviserAny) {
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials);
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
 
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives());
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+                if (mas.get_magnetic().get_core().get_name() == "95 E 25.4/6.3 gapped 0.23 mm") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
 
-        // CHECK(masMagnetics.size() == 1);
-        // double bestScoring = masMagnetics[0].second;
-        // for (size_t i = 0; i < masMagnetics.size(); ++i)
-        // {
-        //     CHECK(masMagnetics[i].second <= bestScoring);
-        // }
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "95 PQ 20/20 gapped 0.15 mm") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+    }
 
-        // CHECK(masMagnetics[0].first.get_magnetic().get_core().get_name() == "EP 20 - 3C91 - Gapped 0.382 mm");
-        // settings->reset();
+    TEST(Test_CoreAdviserStandardCores_All_Shapes_Two_Windings) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {0.1};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 5);
+
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "95 PQ 27/17 ungapped") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_All_Shapes_Small_Dc_Current) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 1;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 100e-6;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+            coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+
+        auto scorings = coreAdviser.get_scorings();
+
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "OC 26 T 18/9.0/7.1") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "95 ER 25.5 gapped 0.3 mm") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+        settings->reset();
+    }
+
+    TEST(Test_CoreAdviserStandardCores_All_Shapes_Medium_Dc_Current) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 25;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 100e-6;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+            coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+
+        auto scorings = coreAdviser.get_scorings();
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "OC 90 LP 42/25/12.3") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+        settings->reset();
+    }
+
+    TEST(Test_CoreAdviserStandardCores_All_Shapes_High_Dc_Current) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 80;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 100e-6;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+            coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                if (mas.get_magnetic().get_core().get_name() == "98 T 43/24/16") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+        settings->reset();
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Only_Toroidal_Shapes) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(false);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        for (auto [mas, scoring] : masMagnetics) {
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Only_Concentric_Shapes) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        for (auto [mas, scoring] : masMagnetics) {
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET);
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Only_Unique_Shapes) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        std::vector<std::string> usedShapes;
+
+        for (auto [mas, scoring] : masMagnetics) {
+            auto core = mas.get_magnetic().get_core();
+            if (std::find(usedShapes.begin(), usedShapes.end(), core.get_shape_name()) != usedShapes.end()) {
+                continue;
+            }
+            else {;
+                usedShapes.push_back(core.get_shape_name());
+            }
+
+        }
+        CHECK_EQUAL(masMagnetics.size(), usedShapes.size());
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Non_Unique_Shapes) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(true);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(false);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        std::vector<std::string> usedShapes;
+
+        for (auto [mas, scoring] : masMagnetics) {
+            auto core = mas.get_magnetic().get_core();
+            if (std::find(usedShapes.begin(), usedShapes.end(), core.get_shape_name()) != usedShapes.end()) {
+                continue;
+            }
+            else {;
+                usedShapes.push_back(core.get_shape_name());
+            }
+
+        }
+        CHECK(masMagnetics.size() > usedShapes.size());
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::vector<std::pair<double, double>> impedancePoints = {
+            {1e5, 1000},
+            {2e5, 2000},
+        };
+
+        std::vector<ImpedanceAtFrequency> minimumImpedance;
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            ImpedancePoint impedancePoint;
+            impedancePoint.set_magnitude(impedanceMagnitudePoint);
+            ImpedanceAtFrequency impedanceAtFrequency;
+            impedanceAtFrequency.set_frequency(frequencyPoint);
+            impedanceAtFrequency.set_impedance(impedancePoint);
+            minimumImpedance.push_back(impedanceAtFrequency);
+        }
+        inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        CHECK(masMagnetics.size() == 20);
+        for (auto [mas, scoring] : masMagnetics) {
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency_With_Dc) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 50;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::vector<std::pair<double, double>> impedancePoints = {
+            {1e5, 1000},
+            {2e5, 2000},
+        };
+
+        std::vector<ImpedanceAtFrequency> minimumImpedance;
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            ImpedancePoint impedancePoint;
+            impedancePoint.set_magnitude(impedanceMagnitudePoint);
+            ImpedanceAtFrequency impedanceAtFrequency;
+            impedanceAtFrequency.set_frequency(frequencyPoint);
+            impedanceAtFrequency.set_impedance(impedancePoint);
+            minimumImpedance.push_back(impedanceAtFrequency);
+        }
+        inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        CHECK(masMagnetics.size() == 20);
+        for (auto [mas, scoring] : masMagnetics) {
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Common_Mode_Choke_High_Frequency) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        settings->set_use_toroidal_cores(false);
+        settings->set_use_concentric_cores(true);
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        std::vector<std::pair<double, double>> impedancePoints = {
+            {1e6, 1000},
+            {2e6, 2000},
+        };
+
+        std::vector<ImpedanceAtFrequency> minimumImpedance;
+        for (auto [frequencyPoint, impedanceMagnitudePoint] : impedancePoints) {
+            ImpedancePoint impedancePoint;
+            impedancePoint.set_magnitude(impedanceMagnitudePoint);
+            ImpedanceAtFrequency impedanceAtFrequency;
+            impedanceAtFrequency.set_frequency(frequencyPoint);
+            impedanceAtFrequency.set_impedance(impedancePoint);
+            minimumImpedance.push_back(impedanceAtFrequency);
+        }
+        inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        CHECK(masMagnetics.size() == 20);
+        for (auto [mas, scoring] : masMagnetics) {
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+            CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Planar) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        inputs.get_mutable_design_requirements().set_wiring_technology(MAS::WiringTechnology::PRINTED);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        std::vector<MAS::CoreMaterial> materials;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                auto windingWindow = mas.get_mutable_magnetic().get_mutable_core().get_winding_window();
+                CHECK(windingWindow.get_height() < windingWindow.get_width());
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives());
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+                if (mas.get_magnetic().get_core().get_name() == "95 PQ 32/15 gapped 0.06 mm") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
     }
 
 }

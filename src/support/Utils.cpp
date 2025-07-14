@@ -654,7 +654,7 @@ std::vector<std::string> get_material_families(std::optional<MaterialEnum> mater
     }
     std::vector<std::string> families;
     for (auto& [name, material] : coreMaterialDatabase) {
-        if (material.get_family())
+        if (material.get_family()) {
             if (!materialType) {
                 if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
                     families.push_back(material.get_family().value());
@@ -1926,6 +1926,9 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
     std::map<std::string, double> normalizedScorings;
 
     for (auto [key, value] : scoring) {
+        if (std::isnan(value)) {
+            throw std::invalid_argument("scoring cannot be nan in normalize_scoring");
+        }
         double normalizedScoring = 0;
         if (maximumScoring != minimumScoring) {
 
@@ -1970,6 +1973,9 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
 
     for (size_t i = 0; i < scoring.size(); ++i) {
         double normalizedScoring = 0;
+        if (std::isnan(scoring[i])) {
+            throw std::invalid_argument("scoring cannot be nan in normalize_scoring");
+        }
         if (maximumScoring != minimumScoring) {
 
             if (log){

@@ -162,6 +162,7 @@ class Inputs : public MAS::Inputs {
     OvervoltageCategory get_overvoltage_category();
     PollutionDegree get_pollution_degree();
     std::vector<InsulationStandards> get_standards();
+    WiringTechnology get_wiring_technology();
     double get_maximum_voltage_peak();
     double get_maximum_voltage_rms();
     double get_maximum_current_effective_frequency();
@@ -174,6 +175,7 @@ class Inputs : public MAS::Inputs {
     double get_maximum_current_peak(size_t windingIndex);
     double get_maximum_current_rms(size_t windingIndex);
     double get_maximum_current_effective_frequency(size_t windingIndex);
+    double get_maximum_current_dc_bias(size_t windingIndex = 0);
     SignalDescriptor get_current_with_effective_maximum(size_t windingIndex = 0);
     std::vector<IsolationSide> get_isolation_sides_used();
 

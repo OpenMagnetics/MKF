@@ -349,6 +349,9 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
     else {
         double layerLength = 2 * std::numbers::pi * (windingWindow.get_radial_height().value() - _skinDepth);
         double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _skinDepth / _wireAirFillingFactor)) / layerLength;
+        if (estimatedNeededLayers < 0) {
+            throw std::runtime_error("estimatedNeededLayers cannot be negative");
+        }
         if (estimatedNeededLayers > 1) {
             manufacturabilityRelativeCost = estimatedNeededLayers * 2;
         }
@@ -490,11 +493,13 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
-                coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
-                // coil = Coil(coil);
-                settings->set_coil_delimit_and_compact(false);
-                coil.fast_wind();
-                break;
+                if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
+                    coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    // coil = Coil(coil);
+                    settings->set_coil_delimit_and_compact(false);
+                    coil.fast_wind();
+                    break;
+                }
             }
             else {
                 previousNumberTurnsPrimary = numberTurnsCombination[0];
@@ -682,14 +687,17 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
         coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
         auto selfResonantFrequency = _impedanceModel.calculate_self_resonant_frequency(core, coil);
 
+        // std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
         for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
             auto frequency = impedanceAtFrequency.get_frequency();
+        // std::cout << "frequency: " << frequency << std::endl;
             if (frequency > 0.25 * selfResonantFrequency) {  // hardcoded 20% of SRF
                 validDesign = false;
                 break;
             }
         }
 
+        // std::cout << "validDesign: " << validDesign << std::endl;
         if (!validDesign) {
             break;
         }
@@ -1123,6 +1131,7 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         auto aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
         double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());
         scoring += fabs(resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) - magnetizingInductance);
+
         if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance)) {
             valid = false;
         }
@@ -1148,21 +1157,20 @@ MagneticFilterFringingFactor::MagneticFilterFringingFactor(Inputs inputs) {
 std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     auto core = magnetic->get_core();
 
-
     if (core.get_shape_family() == CoreShapeFamily::T) {
-        return {true, 0};
+        return {true, 1};
     }
     else if (core.get_gapping().size() == 0) {
-        return {true, 0};
+        return {true, 1};
     }
     else {
         double maximumGapLength = _reluctanceModel->get_gapping_by_fringing_factor(core, _fringingFactorLitmit);
         double gapLength = core.get_gapping()[0].get_length();
         if (gapLength > maximumGapLength) {
-            return {false, 0};
+            return {false, 1};
         }
         else {
-            return {true, -(maximumGapLength - gapLength)};
+            return {true, 1};
         }
     }
 }

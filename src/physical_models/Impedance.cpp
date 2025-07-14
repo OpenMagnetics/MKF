@@ -3,6 +3,7 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "constructive_models/NumberTurns.h"
 #include "support/Utils.h"
 #include <cmath>
 
@@ -43,6 +44,48 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     auto impedance = 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 
     return impedance;
+}
+
+int64_t Impedance::calculate_minimum_number_turns(Magnetic magnetic, Inputs inputs) {
+    NumberTurns numberTurns(1, inputs.get_design_requirements());
+    if (!inputs.get_design_requirements().get_minimum_impedance()) {
+        throw std::invalid_argument("Missing impedance requirement");
+    }
+    auto minimumImpedanceRequirement = inputs.get_design_requirements().get_minimum_impedance().value();
+    auto temperature = inputs.get_maximum_temperature();
+    auto timeout = _maximumNumberTurns;
+    int64_t calculatedNumberTurns = -1;
+    while (true) {
+        auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+        calculatedNumberTurns = numberTurnsCombination[0];
+        magnetic.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(calculatedNumberTurns);
+        auto selfResonantFrequency = calculate_self_resonant_frequency(magnetic);
+
+        bool validDesign = true;
+        for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
+            auto frequency = impedanceAtFrequency.get_frequency();
+            auto requiredImpedanceMagnitude = impedanceAtFrequency.get_impedance().get_magnitude();
+            auto impedanceMagnitude = abs(calculate_impedance(magnetic, frequency, temperature));
+            if (impedanceMagnitude < requiredImpedanceMagnitude) {
+                validDesign = false;
+            }
+            if (frequency > 0.25 * selfResonantFrequency) {  // hardcoded 20% of SRF
+                validDesign = false;
+                return -1;
+            }
+        }
+
+        if (validDesign) {
+            break;
+        }
+
+        if (timeout == 0) {
+            return -1;
+        }
+        timeout--;
+    }
+
+    return calculatedNumberTurns;
 }
 
 double Impedance::calculate_q_factor(Magnetic magnetic, double frequency, double temperature) {

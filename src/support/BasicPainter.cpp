@@ -535,7 +535,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
 
     auto shapes = _root->add_child<SVG::Group>();
 
-    CoilGroupType coilType = CoilGroupType::WOUND;
+    WiringTechnology coilType = WiringTechnology::WOUND;
 
     if (coil.get_groups_description()) {
         coilType = coil.get_groups_description().value()[0].get_type(); // TODO: take into account more groups
@@ -543,7 +543,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
 
     auto layers = coil.get_layers_description().value();
 
-    if (coilType == CoilGroupType::WOUND) {
+    if (coilType == WiringTechnology::WOUND) {
         for (size_t i = 0; i < layers.size(); ++i){
             if (layers[i].get_type() == ElectricalType::INSULATION) {
                 paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
@@ -551,7 +551,7 @@ void BasicPainter::paint_two_piece_set_coil_turns(Magnetic magnetic) {
         }
         paint_two_piece_set_margin(magnetic);
     }
-    else if (coilType == CoilGroupType::PLANAR){
+    else if (coilType == WiringTechnology::PRINTED){
         auto group = coil.get_groups_description().value()[0]; // TODO: take into account more groups
         paint_rectangle(group.get_coordinates()[0], group.get_coordinates()[1], group.get_dimensions()[0], group.get_dimensions()[1], "fr4", shapes);
     }

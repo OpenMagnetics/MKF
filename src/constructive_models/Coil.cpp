@@ -1779,7 +1779,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding) {
     return wind_by_sections(proportionPerWinding, pattern, _interleavingLevel);
 }
 
-bool Coil::create_default_group(Bobbin bobbin, CoilGroupType coilType) {
+bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType) {
     Group group;
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -2475,7 +2475,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
     auto bobbin = resolve_bobbin();
     if (!get_groups_description()) {
-        create_default_group(bobbin, CoilGroupType::PLANAR);
+        create_default_group(bobbin, WiringTechnology::PRINTED);
     }
 
     if (!get_groups_description()) {
@@ -4504,9 +4504,9 @@ bool Coil::delimit_and_compact() {
     }
 }
 
-CoilGroupType Coil::get_coil_type(size_t groupIndex) {
+WiringTechnology Coil::get_coil_type(size_t groupIndex) {
     if (!get_groups_description()) {
-        return CoilGroupType::WOUND;
+        return WiringTechnology::WOUND;
     }
     auto groups = get_groups_description().value();
     if (groupIndex >= groups.size()) {
@@ -4525,7 +4525,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
 
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
-        if (get_turns_description() && groupType == CoilGroupType::WOUND) {
+        if (get_turns_description() && groupType == WiringTechnology::WOUND) {
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                     auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
@@ -4604,7 +4604,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
     }
 
      // Compact
-    if (get_sections_description() && groupType == CoilGroupType::WOUND) {
+    if (get_sections_description() && groupType == WiringTechnology::WOUND) {
         auto sections = get_sections_description().value();
 
         std::vector<std::vector<double>> alignedSectionDimensionsPerSection;

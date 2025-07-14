@@ -16,6 +16,7 @@ namespace OpenMagnetics {
 class Impedance {
     private:
         bool _fastCapacitance;
+        size_t _maximumNumberTurns = 200;
     protected:
     public:
     Impedance(bool fastCapacitance=true) {
@@ -30,6 +31,7 @@ class Impedance {
     double calculate_q_factor(Core core, Coil coil, double frequency, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Magnetic magnetic, double temperature = Defaults().ambientTemperature);
     double calculate_self_resonant_frequency(Core core, Coil coil, double temperature = Defaults().ambientTemperature);
+    int64_t calculate_minimum_number_turns(Magnetic magnetic, Inputs inputs);
 
 };
 
