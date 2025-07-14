@@ -22,13 +22,20 @@ namespace OpenMagnetics {
 class CoreAdviser {
     public: 
         enum class CoreAdviserFilters : int {
-            AREA_PRODUCT, 
-            ENERGY_STORED, 
-            COST, 
+            AREA_PRODUCT,
+            ENERGY_STORED,
+            COST,
             EFFICIENCY,
             DIMENSIONS,
             MINIMUM_IMPEDANCE,
-            FRINGING_FACTOR
+            FRINGING_FACTOR,
+            MAGNETIZING_INDUCTANCE
+        };
+
+        enum class CoreAdviserModes : int {
+            AVAILABLE_CORES,
+            STANDARD_CORES,
+            CUSTOM_CORES
         };
     protected:
         std::map<std::string, std::string> _models;
@@ -37,6 +44,7 @@ class CoreAdviser {
         std::map<CoreAdviserFilters, double> _weights;
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
+        Application _application = Application::POWER;
 
         void logEntry(std::string entry);
 
@@ -49,7 +57,8 @@ class CoreAdviser {
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::MINIMUM_IMPEDANCE,     { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::FRINGING_FACTOR,     { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::FRINGING_FACTOR,       { {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::MAGNETIZING_INDUCTANCE,{ {"invert", true}, {"log", true} } },
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
@@ -79,6 +88,18 @@ class CoreAdviser {
             _uniqueCoreShapes = value;
         }
 
+        bool get_unique_core_shapes() {
+            return _uniqueCoreShapes;
+        }
+
+        void set_application(Application value) {
+            _application = value;
+        }
+
+        Application get_application() {
+            return _application;
+        }
+
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults=1);
@@ -88,17 +109,24 @@ class CoreAdviser {
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, std::vector<CoreMaterial>* materials, size_t maximumNumberResults=1);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
-        std::vector<std::pair<Mas, double>> apply_filters(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-        std::vector<std::pair<Mas, double>> apply_fixed_filters(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
-        std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks, bool onlyMaterialsForFilters=false);
-        std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks, bool onlyMaterialsForFilters=false);
+        std::vector<std::pair<Mas, double>> filter_available_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        std::vector<std::pair<Mas, double>> filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        std::vector<std::pair<Mas, double>> filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        std::vector<std::pair<Mas, double>> filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);
+        std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks);
+        std::vector<std::pair<Magnetic, double>> create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks);
         void expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics);
+        std::vector<std::pair<Magnetic, double>> add_powder_materials(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+        std::vector<std::pair<Magnetic, double>> add_ferrite_materials_by_losses(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+        std::vector<std::pair<Magnetic, double>> add_ferrite_materials_by_impedance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, Inputs inputs);
+        bool should_include_powder(Inputs inputs);
     
     class MagneticCoreFilter {
         public:
             std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
+            bool _useCache = true;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring, bool firstFilter) {
                 if (firstFilter) {
@@ -116,6 +144,9 @@ class CoreAdviser {
             }
             void set_filter_configuration(std::map<CoreAdviserFilters, std::map<std::string, bool>>* filterConfiguration) {
                 _filterConfiguration = filterConfiguration;
+            }
+            void set_cache_usage(bool status) {
+                _useCache = status;
             }
             MagneticCoreFilter(){
             }
@@ -177,6 +208,13 @@ class CoreAdviser {
     class MagneticCoreFilterMinimumImpedance : public MagneticCoreFilter {
         private:
             MagneticFilterCoreMinimumImpedance _filter;
+        public:
+            std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
+    };
+    
+    class MagneticCoreFilterMagneticInductance : public MagneticCoreFilter {
+        private:
+            MagneticFilterMagnetizingInductance _filter;
         public:
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };

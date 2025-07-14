@@ -45,6 +45,7 @@ class Core : public MAS::MagneticCore {
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
     std::vector<ColumnElement> get_columns();
     std::vector<WindingWindowElement> get_winding_windows();
+    WindingWindowElement get_winding_window(size_t windingWindowIndex = 0);
     double get_depth();
     double get_height();
     double get_width();
@@ -81,12 +82,18 @@ class Core : public MAS::MagneticCore {
     std::string get_material_family();
     std::string get_shape_name();
     std::string get_material_name();
+    Application resolve_material_application();
+    static Application resolve_material_application(CoreMaterial& coreMaterial);
+    Application guess_material_application();
+    static Application guess_material_application(CoreMaterial coreMaterial);
+    static Application guess_material_application(std::string coreMaterialName);
     int64_t get_number_stacks();
     std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
-    bool can_be_used_for_filtering();
+    static std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods(CoreMaterial coreMaterial);
     CoreType get_type();
     bool fits(MaximumDimensions maximumDimensions, bool allowRotation=false);
     std::vector<double> get_maximum_dimensions();
+    void set_material(CoreMaterial coreMaterial);
     void set_material_initial_permeability(double value);
     void set_ground_gap(double gapLength);
     void set_distributed_gap(double gapLength, size_t numberGaps);

@@ -47,14 +47,15 @@ class CoreMaterialCrossReferencer {
         CoreMaterialCrossReferencer(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
+
             if (models.find("gapReluctance") == models.end()) {
                 _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
             }
             if (models.find("coreLosses") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+                _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
             }
             if (models.find("coreTemperature") == models.end()) {
-                _models["gapReluctance"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+                _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
             }
 
             _weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY] = 0.5;
@@ -164,8 +165,12 @@ class CoreMaterialCrossReferencer {
             std::vector<double> _magneticFluxDensities = {0.01, 0.025, 0.05, 0.1, 0.2};
             std::vector<double> _frequencies = {20000, 50000, 100000, 250000, 500000};
         public:
-            MagneticCoreFilterVolumetricLosses() {
-                _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::IGSE, CoreLossesModels::ROSHEN};
+            MagneticCoreFilterVolumetricLosses(std::optional<CoreLossesModels> preferredModel = std::nullopt) {
+                if (preferredModel) {
+                    _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{preferredModel.value(), CoreLossesModel::factory(preferredModel.value())});
+                }
+                // _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::PROPRIETARY, CoreLossesModels::IGSE, CoreLossesModels::ROSHEN};
+                _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::PROPRIETARY, CoreLossesModels::IGSE};
                 for (auto modelName : _coreLossesModelNames) {
                     _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
                 }

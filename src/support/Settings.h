@@ -91,6 +91,9 @@ class Settings
 
         bool _verbose = false;
 
+        std::string _preferredCoreMaterialFerriteManufacturer = "Fair-Rite";
+        std::string _preferredCoreMaterialPowderManufacturer = "Micrometals";
+
     public:
         bool _debug = false;
         Settings(Settings &other) = delete;
@@ -285,6 +288,13 @@ class Settings
 
         std::vector<CoreLossesModels> get_core_losses_model_names() const;
         void set_core_losses_preferred_model_name(CoreLossesModels value);
+
+        std::string get_preferred_core_material_ferrite_manufacturer() const;
+        void set_preferred_core_material_ferrite_manufacturer(std::string value);
+
+        std::string get_preferred_core_material_powder_manufacturer() const;
+        void set_preferred_core_material_powder_manufacturer(std::string value);
+
 
     };
 } // namespace OpenMagnetics

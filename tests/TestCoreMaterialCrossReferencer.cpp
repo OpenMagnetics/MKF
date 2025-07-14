@@ -18,11 +18,11 @@ using namespace OpenMagnetics;
 SUITE(CoreMaterialCrossReferencer) {
     auto settings = Settings::GetInstance();
 
-    TEST(Test_All_Core_Materials) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
-        CoreMaterialCrossReferencer coreMaterialCrossReferencer;
+        CoreMaterialCrossReferencer coreMaterialCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "STEINMETZ"}});
 
         std::string coreMaterialName = "3C97";
         CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
@@ -33,7 +33,6 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials.size() > 0);
 
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
-
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -63,7 +62,7 @@ SUITE(CoreMaterialCrossReferencer) {
         }
     }
 
-    TEST(Test_All_Core_Materials_Only_TDK) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_TDK) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -81,7 +80,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
     }
 
-    TEST(Test_All_Core_Materials_Powder) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -98,7 +97,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Kool Mµ Hƒ 26");
     }
 
-    TEST(Test_All_Core_Materials_Powder_Only_Micrometals) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -116,7 +115,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "SM 40");
     }
 
-    TEST(Test_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder_Only_Micrometals_Ferrite) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -134,7 +133,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
     }
 
-    TEST(Test_All_Core_Materials_Only_Volumetric_Losses) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -159,7 +158,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "JNP96A");
     }
 
-    TEST(Test_All_Core_Materials_Only_Volumetric_Losses_Powder) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;
@@ -184,7 +183,7 @@ SUITE(CoreMaterialCrossReferencer) {
         CHECK(crossReferencedCoreMaterials[0].first.get_name() == "Mix 40");
     }
 
-    TEST(Test_All_Core_Materials_Only_Fair_Rite) {
+    TEST(Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Fair_Rite) {
         settings->reset();
         clear_databases();
         OperatingPoint operatingPoint;

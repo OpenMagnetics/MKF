@@ -1098,9 +1098,9 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
     std::vector<double> difference;
 
-    _hysteresisMajorH = magneticFieldStrengthPoints;
-    _hysteresisMajorLoopTop = upperMagneticFluxDensityWaveform;
-    _hysteresisMajorLoopBottom = lowerMagneticFluxDensityWaveform;
+    // _hysteresisMajorH = magneticFieldStrengthPoints;
+    // _hysteresisMajorLoopTop = upperMagneticFluxDensityWaveform;
+    // _hysteresisMajorLoopBottom = lowerMagneticFluxDensityWaveform;
     for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {
         difference.push_back(fabs(upperMagneticFluxDensityWaveform[i] - lowerMagneticFluxDensityWaveform[i]));
     }
@@ -1143,8 +1143,8 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         }
     }
 
-    _hysteresisMinorLoopTop = cutUpperMagneticFluxDensityWaveform;
-    _hysteresisMinorLoopBottom = cutLowerMagneticFluxDensityWaveform;
+    // _hysteresisMinorLoopTop = cutUpperMagneticFluxDensityWaveform;
+    // _hysteresisMinorLoopBottom = cutLowerMagneticFluxDensityWaveform;
 
     size_t minimum_length =
         std::min(cutUpperMagneticFluxDensityWaveform.size(), cutLowerMagneticFluxDensityWaveform.size());

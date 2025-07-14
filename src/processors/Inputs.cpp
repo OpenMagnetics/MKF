@@ -2714,6 +2714,26 @@ double Inputs::get_maximum_current_effective_frequency() {
     return maximumCurrentEffectiveFrequency;
 }
 
+double Inputs::get_maximum_current_dc_bias(size_t windingIndex) {
+    if (get_operating_points().size() == 0)
+        throw std::invalid_argument("There are no operating points");
+
+    double maximumDcBias = 0;
+    for (auto& operatingPoint : get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() == 0)
+            throw std::invalid_argument("There are no winding excitation in operating point");
+
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            if (!excitation.get_current()) 
+                throw std::invalid_argument("Missing current in excitation");
+            if (!excitation.get_current()->get_processed()) 
+                throw std::invalid_argument("Current has not been processed");
+            maximumDcBias = std::max(maximumDcBias, excitation.get_current()->get_processed()->get_offset());
+        }
+    }
+    return maximumDcBias;
+}
+
 double Inputs::get_maximum_current_effective_frequency(size_t windingIndex) {
     if (get_operating_points().size() == 0)
         throw std::invalid_argument("There are no operating points");
@@ -2823,6 +2843,15 @@ std::vector<InsulationStandards> Inputs::get_standards() {
         throw std::invalid_argument("Missing standards in insulation requirements");
 
     return get_design_requirements().get_insulation()->get_standards().value();
+}
+
+WiringTechnology Inputs::get_wiring_technology() {
+    if (!get_design_requirements().get_wiring_technology()) {
+        return defaults.wiringTechnology;
+    }
+    else {
+        return get_design_requirements().get_wiring_technology().value();
+    }
 }
 
 void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {

@@ -47,6 +47,7 @@ struct Defaults {
     const std::string defaultPcbInsulationMaterial = "FR4";
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
+    const WiringTechnology wiringTechnology = WiringTechnology::WOUND;
     const double pcbInsulationThickness = 0.00157;
 };
 } // namespace OpenMagnetics
