@@ -3532,7 +3532,9 @@ SUITE(CoilPainter) {
         outFile.append("Test_Painter_Planar.svg");
         std::filesystem::remove(outFile);
         Painter painter(outFile, true);
-        // settings->set_painter_mode(PainterModes::CONTOUR);
+        // settings->set_painter_number_points_x(500);
+        // settings->set_painter_number_points_y(500);
+        settings->set_painter_mode(PainterModes::QUIVER);
         // settings->set_painter_logarithmic_scale(false);
         // settings->set_painter_include_fringing(false);
         // settings->set_painter_maximum_value_colorbar(std::nullopt);
