@@ -648,7 +648,7 @@ std::vector<CoreShapeFamily> get_shape_families() {
     return coreShapeFamiliesInDatabase;
 }
 
-std::vector<std::string> get_material_families(std::optional<MaterialEnum> materialType) {
+std::vector<std::string> get_material_families(std::optional<MaterialType> materialType) {
     if (coreShapeDatabase.empty()) {
         load_core_materials();
     }
