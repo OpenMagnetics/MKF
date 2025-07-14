@@ -1721,9 +1721,29 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
     auto turns = winding.get_turns_description().value();
 
     for (size_t i = 0; i < turns.size(); ++i){
+        double outerWidth = 0;
+        double outerHeight = 0;
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
+        if (wire.get_outer_width()) {
+            outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
+        }
+        else {
+            if (!wire.get_conducting_width()) {
+                throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+            }
+            outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+        }
+        if (wire.get_outer_height()) {
+            outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+        }
+        else {
+            if (!wire.get_conducting_height()) {
+                throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+            }
+            outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        }
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
             paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
         }
@@ -1733,10 +1753,10 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         else {
             {
                 std::vector<std::vector<double>> turnPoints = {};
-                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] + resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
-                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] - resolve_dimensional_values(wire.get_outer_width().value()) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(wire.get_outer_height().value()) / 2}));
+                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] - resolve_dimensional_values(outerWidth) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(outerHeight) / 2}));
+                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] + resolve_dimensional_values(outerWidth) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(outerHeight) / 2}));
+                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] + resolve_dimensional_values(outerWidth) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(outerHeight) / 2}));
+                turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] - resolve_dimensional_values(outerWidth) / 2, turns[i].get_coordinates()[1] - resolve_dimensional_values(outerHeight) / 2}));
 
                 std::vector<double> x, y;
                 for (auto& point : turnPoints) {

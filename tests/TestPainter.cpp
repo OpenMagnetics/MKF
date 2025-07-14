@@ -3476,42 +3476,53 @@ SUITE(CoilPainter) {
     }
 
     TEST(Test_Painter_Planar) {
-        std::vector<int64_t> numberTurns = {12, 6};
-        std::vector<int64_t> numberParallels = {1, 2};
+
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {20, 5};
+        std::vector<int64_t> numberParallels = {4, 4};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
-        uint8_t interleavingLevel = 2;
-        int64_t numberStacks = 1;
         double voltagePeakToPeak = 2000;
-        std::string coreShape = "ER 18/3/10";
-        std::string coreMaterial = "3C97";
-        auto gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
-        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
-        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
 
-
+        std::vector<OpenMagnetics::Wire> wires;
         OpenMagnetics::Wire wire;
-        wire.set_nominal_value_conducting_height(0.000034);
-        wire.set_nominal_value_conducting_width(0.001);
-        wire.set_nominal_value_outer_height(0.000044);
-        wire.set_nominal_value_outer_width(0.0011);
+        wire.set_nominal_value_conducting_width(0.0008);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
         wire.set_material("copper");
         wire.set_type(WireType::RECTANGULAR);
-        auto wires = std::vector<OpenMagnetics::Wire>({wire, wire});
+        wires.push_back(wire);
+        wire.set_nominal_value_conducting_width(0.0032);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wires.push_back(wire);
 
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment, wires, false);
-        // auto bobbin = coil.resolve_bobbin();
-        // auto processedDescription = bobbin.get_processed_description().value();
-        // processedDescription.get_mutable_winding_windows()[0].set_height(processedDescription.get_mutable_winding_windows()[0].get_height().value() / 2);
-        // bobbin.set_processed_description(processedDescription);
-        // coil.set_bobbin(bobbin);
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wires[windingIndex]);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+        coil.set_strict(false);
 
-
-        auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
-        coil.wind();
+        coil.wind_by_planar_sections(stackUp, 0.0001, 0.0001);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0.0002, 0.0002);
         coil.delimit_and_compact();
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
@@ -3526,9 +3537,9 @@ SUITE(CoilPainter) {
         // settings->set_painter_include_fringing(false);
         // settings->set_painter_maximum_value_colorbar(std::nullopt);
         // settings->set_painter_minimum_value_colorbar(std::nullopt);
-        // painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
         painter.paint_core(magnetic);
-        painter.paint_bobbin(magnetic);
+        // painter.paint_bobbin(magnetic);
         painter.paint_coil_turns(magnetic);
         painter.export_svg();
         CHECK(std::filesystem::exists(outFile));
