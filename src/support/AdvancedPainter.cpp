@@ -237,6 +237,7 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
         c->font_size(99);
     }
     else if (mode == PainterModes::QUIVER || mode == PainterModes::SCATTER) {
+        double pointSize = 5.0 / _scale;
 
         std::vector<double> X(field.get_data().size(), 0);
         std::vector<double> Y(field.get_data().size(), 0);
@@ -290,10 +291,10 @@ void AdvancedPainter::paint_magnetic_field(OperatingPoint operatingPoint, Magnet
 
         matplot::gcf()->quiet_mode(true);
         if (mode == PainterModes::QUIVER) {
-            auto q = matplot::quiver(X, Y, U, V, M, 0.0001)->normalize(true).line_width(1.5);
+            auto q = matplot::quiver(X, Y, U, V, M, 0.0001)->normalize(true).line_width(0.5);
         }
         else {
-            auto c = matplot::scatter(X, Y, 30, M);
+            auto c = matplot::scatter(X, Y, pointSize * _scale, M);
             c->marker_face(true);
         }
         matplot::colorbar();
@@ -1784,30 +1785,30 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         }
     }
 
-    auto layers = winding.get_layers_description().value();
+    // auto layers = winding.get_layers_description().value();
 
-    for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::INSULATION) {
+    // for (size_t i = 0; i < layers.size(); ++i){
+    //     if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-            std::vector<std::vector<double>> layerPoints = {};
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
-            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+    //         std::vector<std::vector<double>> layerPoints = {};
+    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
 
-            std::vector<double> x, y;
-            for (auto& point : layerPoints) {
-                x.push_back(point[0] + _offsetForColorBar);
-                y.push_back(point[1]);
-            }
-            if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
-            }
-            else {
-                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
-            }
-        }
-    }
+    //         std::vector<double> x, y;
+    //         for (auto& point : layerPoints) {
+    //             x.push_back(point[0] + _offsetForColorBar);
+    //             y.push_back(point[1]);
+    //         }
+    //         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+    //             matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
+    //         }
+    //         else {
+    //             matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
+    //         }
+    //     }
+    // }
 
     paint_two_piece_set_margin(magnetic);
 }

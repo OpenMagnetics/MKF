@@ -65,24 +65,15 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             coreWeights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = flowStep.get_weight();
         }
         if (flowStep.get_filter() == MagneticFilters::LOSSES) {
-            if (filterMode) {
-                coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = flowStep.get_weight();
-            }
-            else {
-                coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = flowStep.get_weight();
-            }
+            coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = flowStep.get_weight();
         }
     }
 
     if (filterMode) {
-        coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 0;
-        coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 0;
         coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
     }
     else {
-        coreWeights[CoreAdviser::CoreAdviserFilters::AREA_PRODUCT] = 1;
-        coreWeights[CoreAdviser::CoreAdviserFilters::ENERGY_STORED] = 1;
-        coreWeights[CoreAdviser::CoreAdviserFilters::MINIMUM_IMPEDANCE] = 0;
+        coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
     }
 
     CoreAdviser coreAdviser;

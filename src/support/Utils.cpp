@@ -1582,7 +1582,7 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
     MagnetizingInductance magnetizingInductanceObj;
     // Because Simulation may remove some processed data, and we are in no rush here
-    for (size_t operatingPointIndex = 0; operatingPointIndex <  mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
+    for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
         double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance);
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
