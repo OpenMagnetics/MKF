@@ -2599,6 +2599,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
             insulationSection.set_dimensions(std::vector<double>{sectionWidth, insulationThickness.value()});
             insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
             insulationSection.set_coordinate_system(CoordinateSystem::CARTESIAN);
+            insulationSection.set_layers_orientation(WindingOrientation::CONTIGUOUS);
             insulationSection.set_filling_factor(1);
             sections.push_back(insulationSection);
             currentSectionCenterHeight -= insulationThickness.value() / 2;
@@ -3723,7 +3724,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
                         turn.set_name(partialWinding.get_winding() + " parallel " + std::to_string(parallelIndex) + " turn " + std::to_string(currentTurnIndex[windingIndex][parallelIndex]));
                         turn.set_orientation(TurnOrientation::CLOCKWISE);
                         turn.set_parallel(parallelIndex);
-                        // turn.set_section(layer.get_section().value());
+                        turn.set_section(layer.get_section().value());
                         turn.set_winding(partialWinding.get_winding());
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(0);

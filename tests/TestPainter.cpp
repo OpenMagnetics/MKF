@@ -3489,7 +3489,7 @@ SUITE(CoilPainter) {
         double bobbinHeight = 0.01;
         double bobbinWidth = 0.02;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
-        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "3C95");
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
 
         std::vector<OpenMagnetics::Wire> wires;
@@ -3528,24 +3528,36 @@ SUITE(CoilPainter) {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto outFile = outputFilePath;
-        outFile.append("Test_Painter_Planar.svg");
-        std::filesystem::remove(outFile);
-        Painter painter(outFile, true);
-        // settings->set_painter_number_points_x(500);
-        // settings->set_painter_number_points_y(500);
-        settings->set_painter_mode(PainterModes::QUIVER);
-        // settings->set_painter_logarithmic_scale(false);
-        // settings->set_painter_include_fringing(false);
-        // settings->set_painter_maximum_value_colorbar(std::nullopt);
-        // settings->set_painter_minimum_value_colorbar(std::nullopt);
-        painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
-        painter.paint_core(magnetic);
-        // painter.paint_bobbin(magnetic);
-        painter.paint_coil_turns(magnetic);
-        painter.export_svg();
-        CHECK(std::filesystem::exists(outFile));
-        settings->reset();
+        {
+            OpenMagnetics::Mas mas;
+            mas.set_inputs(inputs);
+            mas.set_magnetic(magnetic);
+            mas.set_outputs({});
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Planar.mas.json");
+            OpenMagnetics::to_file(outFile, mas);
+        }
+        {
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Planar.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile, true);
+            // settings->set_painter_number_points_x(300);
+            // settings->set_painter_number_points_y(300);
+            settings->set_painter_mode(PainterModes::SCATTER);
+            // settings->set_painter_logarithmic_scale(false);
+            settings->set_painter_include_fringing(false);
+            // settings->set_painter_maximum_value_colorbar(std::nullopt);
+            // settings->set_painter_minimum_value_colorbar(std::nullopt);
+            painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+            painter.paint_core(magnetic);
+            // painter.paint_bobbin(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+            CHECK(std::filesystem::exists(outFile));
+            settings->reset();
+        }
     }
 
 

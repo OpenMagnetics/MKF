@@ -22,14 +22,9 @@ namespace OpenMagnetics {
 class CoreAdviser {
     public: 
         enum class CoreAdviserFilters : int {
-            AREA_PRODUCT,
-            ENERGY_STORED,
             COST,
             EFFICIENCY,
-            DIMENSIONS,
-            MINIMUM_IMPEDANCE,
-            FRINGING_FACTOR,
-            MAGNETIZING_INDUCTANCE
+            DIMENSIONS
         };
 
         enum class CoreAdviserModes : int {
@@ -51,14 +46,9 @@ class CoreAdviser {
     public:
 
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _filterConfiguration{
-                { CoreAdviserFilters::AREA_PRODUCT,          { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::ENERGY_STORED,         { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::COST,                  { {"invert", true}, {"log", true} } },
                 { CoreAdviserFilters::EFFICIENCY,            { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::MINIMUM_IMPEDANCE,     { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::FRINGING_FACTOR,       { {"invert", true}, {"log", true} } },
-                { CoreAdviserFilters::MAGNETIZING_INDUCTANCE,{ {"invert", true}, {"log", true} } },
+                { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } }
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
         std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
