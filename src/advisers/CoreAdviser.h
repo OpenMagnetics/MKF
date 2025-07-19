@@ -114,7 +114,7 @@ class CoreAdviser {
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
                 if (scoring != -1) {
-                    if (!(*_scorings)[filter].contains(name)) {
+                    if ((*_scorings)[filter].find(name) == (*_scorings)[filter].end()) {
                         (*_scorings)[filter][name] = 0;
                     }
                     auto oldScoring = (*_scorings)[filter][name];
