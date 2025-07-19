@@ -341,12 +341,16 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
 
     bool valid = windingWindowArea >= estimatedNeededWindingArea * defaults.coreAdviserThresholdValidity;
 
+
     double manufacturabilityRelativeCost;
     if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
         double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _skinDepth / _wireAirFillingFactor)) / windingWindow.get_height().value();
         manufacturabilityRelativeCost = estimatedNeededLayers;
     }
     else {
+        if (_skinDepth >= windingWindow.get_radial_height().value()) {
+            return {false, 0.0};
+        }
         double layerLength = 2 * std::numbers::pi * (windingWindow.get_radial_height().value() - _skinDepth);
         double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _skinDepth / _wireAirFillingFactor)) / layerLength;
         if (estimatedNeededLayers < 0) {
@@ -687,17 +691,14 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
         coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
         auto selfResonantFrequency = _impedanceModel.calculate_self_resonant_frequency(core, coil);
 
-        // std::cout << "selfResonantFrequency: " << selfResonantFrequency << std::endl;
         for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
             auto frequency = impedanceAtFrequency.get_frequency();
-        // std::cout << "frequency: " << frequency << std::endl;
             if (frequency > 0.25 * selfResonantFrequency) {  // hardcoded 20% of SRF
                 validDesign = false;
                 break;
             }
         }
 
-        // std::cout << "validDesign: " << validDesign << std::endl;
         if (!validDesign) {
             break;
         }
