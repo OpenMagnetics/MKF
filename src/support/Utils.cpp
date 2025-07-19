@@ -1925,6 +1925,18 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
     )).second;
     std::map<std::string, double> normalizedScorings;
 
+    if (log && minimumScoring == 0) {
+        minimumScoring = 1e-10;
+    }
+
+    double difference;
+    if (log) {
+        difference = std::log10(maximumScoring) - std::log10(minimumScoring);
+    }
+    else {
+        difference = maximumScoring - minimumScoring;
+    }
+
     for (auto [key, value] : scoring) {
         if (std::isnan(value)) {
             throw std::invalid_argument("scoring cannot be nan in normalize_scoring");
@@ -1934,18 +1946,18 @@ std::map<std::string, double> normalize_scoring(std::map<std::string, double> sc
 
             if (log){
                 if (invert) {
-                    normalizedScoring += weight * (1 - (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring)));
+                    normalizedScoring += weight * (1 - (std::log10(value) - std::log10(minimumScoring)) / difference);
                 }
                 else {
-                    normalizedScoring += weight * (std::log10(value) - std::log10(minimumScoring)) / (std::log10(maximumScoring) - std::log10(minimumScoring));
+                    normalizedScoring += weight * (std::log10(value) - std::log10(minimumScoring)) / difference;
                 }
             }
             else {
                 if (invert) {
-                    normalizedScoring += weight * (1 - (value - minimumScoring) / (maximumScoring - minimumScoring));
+                    normalizedScoring += weight * (1 - (value - minimumScoring) / difference);
                 }
                 else {
-                    normalizedScoring += weight * (value - minimumScoring) / (maximumScoring - minimumScoring);
+                    normalizedScoring += weight * (value - minimumScoring) / difference;
                 }
             }
         }

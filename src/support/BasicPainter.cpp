@@ -436,7 +436,6 @@ void BasicPainter::paint_toroidal_coil_sections(Magnetic magnetic) {
 
     auto sections = magnetic.get_coil().get_sections_description().value();
 
-    auto shapes = _root->add_child<SVG::Group>();
     for (size_t i = 0; i < sections.size(); ++i){
         {
             double strokeWidth = sections[i].get_dimensions()[0];
@@ -504,7 +503,6 @@ void BasicPainter::paint_toroidal_coil_layers(Magnetic magnetic) {
         {
             double strokeWidth = layers[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-            double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
@@ -632,7 +630,6 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
         if (turns[i].get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
             throw std::runtime_error("Painter: Turn coordinates are not in cartesian");
         }
-        double heightCorrectionDueToExternalTurns = processedDescription.get_width() * (1 - _extraDimension) / 2;
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
@@ -678,7 +675,6 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
 
             double strokeWidth = layers[i].get_dimensions()[0];
             double circleDiameter = (initialRadius - layers[i].get_coordinates()[0]) * 2;
-            double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
             double angleProportion = layers[i].get_dimensions()[1] / 360;
             std::string termination = angleProportion < 1? "butt" : "round";
 
@@ -778,35 +774,47 @@ void BasicPainter::paint_two_piece_set_core(Core core) {
     auto gapsInRightColumn = core.find_gaps_by_column(rightColumn);
     std::sort(gapsInRightColumn.begin(), gapsInRightColumn.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] > rhs.get_coordinates().value()[1];});
 
-    double lowestHeightTopCoreMainColumn;
-    double lowestHeightTopCoreRightColumn;
-    double highestHeightBottomCoreMainColumn;
-    double highestHeightBottomCoreRightColumn;
+    double lowestHeightTopCoreMainColumn = 0;
+    double lowestHeightTopCoreRightColumn = 0;
+    double highestHeightBottomCoreMainColumn = 0;
+    double highestHeightBottomCoreRightColumn = 0;
+    double topCoreOffset = 0;
+    double bottomCoreOffset = 0;
     if (gapsInMainColumn.size() == 0) {
         lowestHeightTopCoreMainColumn = 0;
         highestHeightBottomCoreMainColumn = 0;
     }
     else {
-        lowestHeightTopCoreMainColumn = gapsInMainColumn.front().get_coordinates().value()[1] + gapsInMainColumn.front().get_length() / 2;
-        highestHeightBottomCoreMainColumn = gapsInMainColumn.back().get_coordinates().value()[1] - gapsInMainColumn.back().get_length() / 2;
+        if (gapsInRightColumn.front().get_type() != GapType::ADDITIVE) {
+            lowestHeightTopCoreMainColumn = gapsInMainColumn.front().get_coordinates().value()[1] + gapsInMainColumn.front().get_length() / 2;
+            highestHeightBottomCoreMainColumn = gapsInMainColumn.back().get_coordinates().value()[1] - gapsInMainColumn.back().get_length() / 2;
+        }
+        else {
+            topCoreOffset = gapsInMainColumn.front().get_length() / 2;
+            bottomCoreOffset = -gapsInMainColumn.front().get_length() / 2;
+        }
     }
     if (gapsInRightColumn.size() == 0) {
         lowestHeightTopCoreRightColumn = 0;
         highestHeightBottomCoreRightColumn = 0;
     }
     else {
-        lowestHeightTopCoreRightColumn = gapsInRightColumn.front().get_coordinates().value()[1] + gapsInRightColumn.front().get_length() / 2;
-        highestHeightBottomCoreRightColumn = gapsInRightColumn.back().get_coordinates().value()[1] - gapsInRightColumn.back().get_length() / 2;
+        if (gapsInRightColumn.front().get_type() != GapType::ADDITIVE) {
+            lowestHeightTopCoreRightColumn = gapsInRightColumn.front().get_coordinates().value()[1] + gapsInRightColumn.front().get_length() / 2;
+            highestHeightBottomCoreRightColumn = gapsInRightColumn.back().get_coordinates().value()[1] - gapsInRightColumn.back().get_length() / 2;
+        }
+        else {
+        }
     }
 
-    topPiecePoints.push_back(SVG::Point(0, processedDescription.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth, processedDescription.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth, lowestHeightTopCoreRightColumn));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, lowestHeightTopCoreRightColumn));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, rightColumn.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, mainColumn.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, lowestHeightTopCoreMainColumn));
-    topPiecePoints.push_back(SVG::Point(0, lowestHeightTopCoreMainColumn));
+    topPiecePoints.push_back(SVG::Point(0, topCoreOffset + processedDescription.get_height() / 2));
+    topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + processedDescription.get_height() / 2));
+    topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
+    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
+    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + rightColumn.get_height() / 2));
+    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + mainColumn.get_height() / 2));
+    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + lowestHeightTopCoreMainColumn));
+    topPiecePoints.push_back(SVG::Point(0, topCoreOffset + lowestHeightTopCoreMainColumn));
 
     for (size_t i = 1; i < gapsInMainColumn.size(); ++i)
     {
@@ -827,14 +835,14 @@ void BasicPainter::paint_two_piece_set_core(Core core) {
         gapChunks.push_back(chunk);
     }
 
-    bottomPiecePoints.push_back(SVG::Point(0, -processedDescription.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, -processedDescription.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, highestHeightBottomCoreRightColumn));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, highestHeightBottomCoreRightColumn));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, -rightColumn.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, -mainColumn.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, highestHeightBottomCoreMainColumn));
-    bottomPiecePoints.push_back(SVG::Point(0, highestHeightBottomCoreMainColumn));
+    bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset - processedDescription.get_height() / 2));
+    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset - processedDescription.get_height() / 2));
+    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
+    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
+    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset - rightColumn.get_height() / 2));
+    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset - mainColumn.get_height() / 2));
+    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
+    bottomPiecePoints.push_back(SVG::Point(0, bottomCoreOffset + highestHeightBottomCoreMainColumn));
 
     auto shapes = _root->add_child<SVG::Group>();
     *shapes << SVG::Polygon(scale_points(topPiecePoints, 0, _scale));
@@ -999,7 +1007,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     if (margins[0] > 0) {
                         double strokeWidth = sections[i].get_dimensions()[0];
                         double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
-                        double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
                         double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -1012,7 +1019,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                     if (margins[1] > 0) {
                         double strokeWidth = sections[i].get_dimensions()[0];
                         double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
-                        double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
                         double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
                         if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -1027,7 +1033,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
                 if (margins[0] > 0) {
                     double strokeWidth = margins[0];
                     double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] - sections[i].get_dimensions()[0] / 2) + margins[0] / 2) * 2;
-                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {
@@ -1040,7 +1045,6 @@ void BasicPainter::paint_toroidal_margin(Magnetic magnetic) {
 
                     double strokeWidth = margins[1];
                     double circleDiameter = (windingWindowRadialHeight - (sections[i].get_coordinates()[0] + sections[i].get_dimensions()[0] / 2) - margins[1] / 2) * 2;
-                    double circlePerimeter = std::numbers::pi * circleDiameter * _scale;
 
                     double angle = wound_distance_to_angle(sections[i].get_dimensions()[1], circleDiameter / 2 + strokeWidth / 2);
                     if (sections[i].get_type() == ElectricalType::CONDUCTION) {

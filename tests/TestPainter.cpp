@@ -2056,7 +2056,7 @@ SUITE(CoilPainter) {
 
         painter.paint_core(magnetic);
         painter.paint_bobbin(magnetic);
-        painter.paint_coil_sections(magnetic);
+        // painter.paint_coil_sections(magnetic);
 
         painter.export_svg();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));

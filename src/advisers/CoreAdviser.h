@@ -51,7 +51,6 @@ class CoreAdviser {
                 { CoreAdviserFilters::DIMENSIONS,            { {"invert", true}, {"log", true} } }
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
-        std::map<CoreAdviserFilters, std::map<std::string, bool>> _validScorings;
         CoreAdviser(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
@@ -68,11 +67,7 @@ class CoreAdviser {
         std::string read_log() {
             return _log;
         }
-        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(){
-            return get_scorings(false);
-        }
-
-        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted);
+        std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false);
 
         void set_unique_core_shapes(bool value) {
             _uniqueCoreShapes = value;
@@ -114,23 +109,20 @@ class CoreAdviser {
     class MagneticCoreFilter {
         public:
             std::map<CoreAdviserFilters, std::map<std::string, double>>* _scorings;
-            std::map<CoreAdviserFilters, std::map<std::string, bool>>* _validScorings;
             std::map<CoreAdviserFilters, std::map<std::string, bool>>* _filterConfiguration;
             bool _useCache = true;
 
-            void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring, bool firstFilter) {
-                if (firstFilter) {
-                    (*_validScorings)[filter][name] = true;
-                }
+            void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
                 if (scoring != -1) {
-                    (*_scorings)[filter][name] = scoring;
+                    if (!(*_scorings)[filter].contains(name)) {
+                        (*_scorings)[filter][name] = 0;
+                    }
+                    auto oldScoring = (*_scorings)[filter][name];
+                    (*_scorings)[filter][name] = oldScoring + scoring;
                 }
             }
             void set_scorings(std::map<CoreAdviserFilters, std::map<std::string, double>>* scorings) {
                 _scorings = scorings;
-            }
-            void set_valid_scorings(std::map<CoreAdviserFilters, std::map<std::string, bool>>* validScorings) {
-                _validScorings = validScorings;
             }
             void set_filter_configuration(std::map<CoreAdviserFilters, std::map<std::string, bool>>* filterConfiguration) {
                 _filterConfiguration = filterConfiguration;
