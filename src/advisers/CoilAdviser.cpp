@@ -36,6 +36,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
+        logEntry("Starting Coil Adviser without wires", "CoilAdviser");
         if (wireDatabase.empty()) {
             load_wires();
         }
@@ -60,6 +61,7 @@ namespace OpenMagnetics {
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults){
+        logEntry("Starting Coil Adviser", "CoilAdviser");
         auto core = mas.get_magnetic().get_core();
         auto coreType = core.get_functional_description().get_type();
 
@@ -69,6 +71,7 @@ namespace OpenMagnetics {
         mas.set_inputs(inputs);
 
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(maximumNumberResults / (patterns.size() * repetitions.size())));
+        logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
 
         std::vector<Mas> masMagneticsWithCoil;
         for (auto repetition : repetitions) {
@@ -104,8 +107,6 @@ namespace OpenMagnetics {
                     }
                     reference += " " + std::to_string(insulationIndex);
 
-
-
                     auto resultsPerPattern = get_advised_coil_for_pattern(wires, mas, pattern, repetition, solidInsulationRequirementsForWires, maximumNumberResultsPerPattern, reference);
 
                     std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masMagneticsWithCoil));
@@ -124,9 +125,11 @@ namespace OpenMagnetics {
         coil.set_strict(false);
         coil.set_inputs(mas.get_inputs());
         coil.calculate_insulation(true);
-        coil.wind_by_sections(sectionProportions, pattern, repetitions);
-        coil.delimit_and_compact();
-        coil.set_strict(true);
+        auto result = coil.wind_by_sections(sectionProportions, pattern, repetitions);
+        if (result) {
+            coil.delimit_and_compact();
+            coil.set_strict(true);
+        }
 
         if (coil.get_sections_description()) {
             auto sections = coil.get_sections_description().value();
@@ -250,6 +253,8 @@ namespace OpenMagnetics {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
             };
             bool found = false;
+            logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
+
             for (auto& wireConfiguration : wireConfigurations) {
                 _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
                 _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
@@ -277,6 +282,7 @@ namespace OpenMagnetics {
             }
         }
 
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
         mas.get_mutable_magnetic().set_coil(coil);
 
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -340,6 +346,7 @@ namespace OpenMagnetics {
 
             currentWireIndexPerWinding[lowestIndex]++;
         }
+        logEntry("Managed to wind " + std::to_string(masMagneticsWithCoil.size()) + " coils", "CoilAdviser");
 
         return masMagneticsWithCoil;
 

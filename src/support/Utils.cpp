@@ -44,8 +44,35 @@ OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
 OpenMagnetics::MagneticsCache magneticsCache;
 
 bool _addInternalData = true;
+std::string _log;
+uint8_t _logVerbosity = 1;
 
 namespace OpenMagnetics {
+
+std::string read_log() {
+    return _log;
+}
+
+void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
+    if (entryVerbosity <= _logVerbosity) {
+        std::string logEntry = "";
+        if (module != "") {
+            logEntry += module + ": ";
+        }
+        logEntry += entry + "\n";
+
+        // std::cout << logEntry;
+        _log += logEntry;
+    }
+}
+
+uint8_t get_log_verbosity() {
+    return _logVerbosity;
+}
+
+void set_log_verbosity(uint8_t logVerbosity) {
+    _logVerbosity = logVerbosity;
+}
 
 void load_cores(std::optional<std::string> fileToLoad) {
     bool includeToroidalCores = settings->get_use_toroidal_cores();

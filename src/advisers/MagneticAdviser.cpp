@@ -77,7 +77,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     CoreAdviser coreAdviser;
+
     coreAdviser.set_unique_core_shapes(true);
+    coreAdviser.set_application(get_application());
     CoilAdviser coilAdviser;
     MagneticSimulator magneticSimulator;
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;
@@ -145,6 +147,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
+    logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser");
     auto masMagneticsWithScoring = score_magnetics(masData, filterFlow);
 
     sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {

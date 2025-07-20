@@ -406,16 +406,21 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
 
             if (_inputs) {
                 if (_inputs->get_design_requirements().get_insulation()) {
+                    logEntry("Calculating Required Insulation", "Coil", 2);
                     calculate_insulation();
                 }
                 else {
+                    logEntry("Calculating Mechanical Insulation", "Coil", 2);
                     calculate_mechanical_insulation();
                 }
             }
             else {
+                logEntry("Calculating Mechanical Insulation", "Coil", 2);
                 calculate_mechanical_insulation();
             }
+            logEntry("Winding by sections", "Coil", 2);
             wind_by_sections(proportionPerWinding, pattern, repetitions);
+            logEntry("Winding by layers", "Coil", 2);
             wind_by_layers();
 
             if (!get_layers_description()) {
@@ -425,12 +430,15 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             auto sections = get_sections_description().value();
 
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
+                logEntry("Winding by turns", "Coil", 2);
                 wind_by_turns();
                 if (delimitAndCompact) {
+                    logEntry("Delimiting and compacting", "Coil", 2);
                     delimit_and_compact();
                 }
             }
             if (tryRewind && (!are_sections_and_layers_fitting() || !get_turns_description())) {
+                logEntry("Trying to rewind", "Coil", 2);
                 try_rewind();
             }
         }
@@ -1896,7 +1904,6 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
         auto windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), numberSectionsPerWinding);
        
-
         auto wirePerWinding = get_wires();
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             remainingParallelsProportion.push_back(std::vector<double>(get_number_parallels(windingIndex), 1));
@@ -4523,6 +4530,9 @@ bool Coil::delimit_and_compact_rectangular_window() {
         
     auto groupType = get_coil_type();
 
+    if (!get_sections_description()) {
+        throw std::runtime_error("No sections to delimit");
+    }
 
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
@@ -4578,30 +4588,30 @@ bool Coil::delimit_and_compact_rectangular_window() {
         }
         set_sections_description(sections);
 
-        auto groups = get_groups_description().value();
-        for (size_t i = 0; i < groups.size(); ++i) {
-            auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
-            if (sectionsInGroup.size() == 0) {
-                throw std::runtime_error("No sections in group: " + groups[i].get_name());
-            }
-            auto groupCoordinates = groups[i].get_coordinates();
-            double currentGroupMaximumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) + sectionsInGroup[0].get_dimensions()[0] / 2;
-            double currentGroupMinimumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) - sectionsInGroup[0].get_dimensions()[0] / 2;
-            double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
-            double currentGroupMinimumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) - sectionsInGroup[0].get_dimensions()[1] / 2;
+        // auto groups = get_groups_description().value();
+        // for (size_t i = 0; i < groups.size(); ++i) {
+        //     auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
+        //     if (sectionsInGroup.size() == 0) {
+        //         throw std::runtime_error("No sections in group: " + groups[i].get_name());
+        //     }
+        //     auto groupCoordinates = groups[i].get_coordinates();
+        //     double currentGroupMaximumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) + sectionsInGroup[0].get_dimensions()[0] / 2;
+        //     double currentGroupMinimumWidth = (sectionsInGroup[0].get_coordinates()[0] - groupCoordinates[0]) - sectionsInGroup[0].get_dimensions()[0] / 2;
+        //     double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
+        //     double currentGroupMinimumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) - sectionsInGroup[0].get_dimensions()[1] / 2;
 
-            for (auto& section : sectionsInGroup) {
-                currentGroupMaximumWidth = std::max(currentGroupMaximumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) + section.get_dimensions()[0] / 2);
-                currentGroupMinimumWidth = std::min(currentGroupMinimumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) - section.get_dimensions()[0] / 2);
-                currentGroupMaximumHeight = std::max(currentGroupMaximumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) + section.get_dimensions()[1] / 2);
-                currentGroupMinimumHeight = std::min(currentGroupMinimumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) - section.get_dimensions()[1] / 2);
-            }
-            groups[i].set_coordinates(std::vector<double>({groupCoordinates[0] + (currentGroupMaximumWidth + currentGroupMinimumWidth) / 2,
-                                                       groupCoordinates[1] + (currentGroupMaximumHeight + currentGroupMinimumHeight) / 2}));
-            groups[i].set_dimensions(std::vector<double>({currentGroupMaximumWidth - currentGroupMinimumWidth,
-                                                   currentGroupMaximumHeight - currentGroupMinimumHeight}));
-        }
-        set_groups_description(groups);
+        //     for (auto& section : sectionsInGroup) {
+        //         currentGroupMaximumWidth = std::max(currentGroupMaximumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) + section.get_dimensions()[0] / 2);
+        //         currentGroupMinimumWidth = std::min(currentGroupMinimumWidth, (section.get_coordinates()[0] - groupCoordinates[0]) - section.get_dimensions()[0] / 2);
+        //         currentGroupMaximumHeight = std::max(currentGroupMaximumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) + section.get_dimensions()[1] / 2);
+        //         currentGroupMinimumHeight = std::min(currentGroupMinimumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) - section.get_dimensions()[1] / 2);
+        //     }
+        //     groups[i].set_coordinates(std::vector<double>({groupCoordinates[0] + (currentGroupMaximumWidth + currentGroupMinimumWidth) / 2,
+        //                                                groupCoordinates[1] + (currentGroupMaximumHeight + currentGroupMinimumHeight) / 2}));
+        //     groups[i].set_dimensions(std::vector<double>({currentGroupMaximumWidth - currentGroupMinimumWidth,
+        //                                            currentGroupMaximumHeight - currentGroupMinimumHeight}));
+        // }
+        // set_groups_description(groups);
     }
 
      // Compact

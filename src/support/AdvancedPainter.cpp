@@ -1506,12 +1506,6 @@ void AdvancedPainter::paint_rectangular_wire(double xCoordinate, double yCoordin
     double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
     double insulationThicknessInWidth = (outerWidth - conductingWidth) / 2;
     double insulationThicknessInHeight = (outerHeight - conductingHeight) / 2;
-    std::cout << "outerWidth: " << outerWidth << std::endl;
-    std::cout << "outerHeight: " << outerHeight << std::endl;
-    std::cout << "conductingWidth: " << conductingWidth << std::endl;
-    std::cout << "conductingHeight: " << conductingHeight << std::endl;
-    std::cout << "insulationThicknessInWidth: " << insulationThicknessInWidth << std::endl;
-    std::cout << "insulationThicknessInHeight: " << insulationThicknessInHeight << std::endl;
     auto coating = wire.resolve_coating();
     size_t numberLines = 0;
     double strokeWidth = 0;
@@ -1722,29 +1716,10 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
     auto turns = winding.get_turns_description().value();
 
     for (size_t i = 0; i < turns.size(); ++i){
-        double outerWidth = 0;
-        double outerHeight = 0;
 
         auto windingIndex = winding.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        if (wire.get_outer_width()) {
-            outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
-        }
-        else {
-            if (!wire.get_conducting_width()) {
-                throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
-            }
-            outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
-        }
-        if (wire.get_outer_height()) {
-            outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
-        }
-        else {
-            if (!wire.get_conducting_height()) {
-                throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
-            }
-            outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-        }
+
         if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
             paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
         }
@@ -1752,6 +1727,26 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
             paint_litz_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wire);
         }
         else {
+            double outerWidth = 0;
+            double outerHeight = 0;
+            if (wire.get_outer_width()) {
+                outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
+            }
+            else {
+                if (!wire.get_conducting_width()) {
+                    throw std::runtime_error("Wire is missing both outerWidth and conductingWidth");
+                }
+                outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+            }
+            if (wire.get_outer_height()) {
+                outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+            }
+            else {
+                if (!wire.get_conducting_height()) {
+                    throw std::runtime_error("Wire is missing both outerHeight and conductingHeight");
+                }
+                outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+            }
             {
                 std::vector<std::vector<double>> turnPoints = {};
                 turnPoints.push_back(std::vector<double>({turns[i].get_coordinates()[0] - resolve_dimensional_values(outerWidth) / 2, turns[i].get_coordinates()[1] + resolve_dimensional_values(outerHeight) / 2}));
@@ -1785,30 +1780,30 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
         }
     }
 
-    // auto layers = winding.get_layers_description().value();
+    auto layers = winding.get_layers_description().value();
 
-    // for (size_t i = 0; i < layers.size(); ++i){
-    //     if (layers[i].get_type() == ElectricalType::INSULATION) {
+    for (size_t i = 0; i < layers.size(); ++i){
+        if (layers[i].get_type() == ElectricalType::INSULATION) {
 
-    //         std::vector<std::vector<double>> layerPoints = {};
-    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
-    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
-    //         layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+            std::vector<std::vector<double>> layerPoints = {};
+            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] + layers[i].get_dimensions()[1] / 2}));
+            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
+            layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
 
-    //         std::vector<double> x, y;
-    //         for (auto& point : layerPoints) {
-    //             x.push_back(point[0] + _offsetForColorBar);
-    //             y.push_back(point[1]);
-    //         }
-    //         if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-    //             matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
-    //         }
-    //         else {
-    //             matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
-    //         }
-    //     }
-    // }
+            std::vector<double> x, y;
+            for (auto& point : layerPoints) {
+                x.push_back(point[0] + _offsetForColorBar);
+                y.push_back(point[1]);
+            }
+            if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
+            }
+            else {
+                matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
+            }
+        }
+    }
 
     paint_two_piece_set_margin(magnetic);
 }
@@ -1901,10 +1896,7 @@ void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
             _postProcessingChanges[key] = R"( transform="rotate( )" + std::to_string(-(layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2)) + " " + std::to_string((_offsetForColorBar + imageWidth / 2) * _scale) + " " + std::to_string(imageHeight / 2 * _scale) + ")\" " + 
                                             R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
             _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
-            std::cout << "angleProportion: " << angleProportion << std::endl;
-            std::cout << "strokeWidth: " << strokeWidth << std::endl;
-            std::cout << "circlePerimeter: " << circlePerimeter << std::endl;
-            
+
             if (layers[i].get_additional_coordinates()) {
                 circleDiameter = (initialRadius - layers[i].get_additional_coordinates().value()[0][0]) * 2;
                 matplot::ellipse(_offsetForColorBar - circleDiameter / 2, -circleDiameter / 2, circleDiameter, circleDiameter)->line_width(strokeWidth * _scale).color(matplot::to_array(currentMapIndex));
@@ -1912,7 +1904,6 @@ void AdvancedPainter::paint_toroidal_winding_turns(Magnetic magnetic) {
                                                 R"(stroke-linecap=")" + termination + R"(" stroke-dashoffset="0" stroke-dasharray=")" + std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)) + "\"";
                 _postProcessingColors[key] = key_to_rgb_color(stoi(settings->get_painter_color_insulation(), 0, 16));
             }
-
 
         }
     }

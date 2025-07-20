@@ -17,6 +17,7 @@ class MagneticAdviser{
         std::map<MagneticFilters, std::map<std::string, double>> _scorings;
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
+        Application _application = Application::POWER;
         std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
             MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
             MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
@@ -44,6 +45,14 @@ class MagneticAdviser{
             if (scoring != -1) {
                 _scorings[filter][name] = scoring;
             }
+        }
+        
+        void set_application(Application value) {
+            _application = value;
+        }
+
+        Application get_application() {
+            return _application;
         }
 
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, size_t maximumNumberResults=1);

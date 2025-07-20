@@ -508,7 +508,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
     magic_enum::enum_for_each<CoreMaterialCrossReferencerFilters>([&] (auto val) {
         CoreMaterialCrossReferencerFilters filter = val;
         std::string filterString = std::string{magic_enum::enum_name(filter)};
-        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " before filtering by " + filterString + ".");
+        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " before filtering by " + filterString + ".", "Core Material Cross Referencer", 2);
         switch (filter) {
             case CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY: 
                 rankedCoreMaterials = filterInitialPermeability.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY]);

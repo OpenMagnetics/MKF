@@ -1340,6 +1340,33 @@ Application Core::guess_material_application(CoreMaterial coreMaterial) {
     return Application::POWER;
 }
 
+bool Core::check_material_application(Application application) {
+    auto coreMaterial = resolve_material();
+    return check_material_application(coreMaterial, application);
+}
+
+bool Core::check_material_application(CoreMaterial coreMaterial, Application application) {
+    if (coreMaterial.get_permeability().get_complex()) {
+        if (application == Application::INTERFERENCE_SUPPRESSION) {
+            return true;
+        }
+    }
+
+    for (auto method : get_available_core_losses_methods(coreMaterial)) {
+        if (method == VolumetricCoreLossesMethodType::LOSS_FACTOR) {
+            if (application == Application::SIGNAL_PROCESSING) {
+                return true;
+            }
+        }
+        else {
+            if (application == Application::POWER) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 Application Core::guess_material_application(std::string coreMaterialName) {
     auto coreMaterial = find_core_material_by_name(coreMaterialName);
     return guess_material_application(coreMaterial);

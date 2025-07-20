@@ -792,7 +792,7 @@ SUITE(CoreAdviserAvailableCores) {
 
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, &coresInInventory, 1000);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         auto scores = coreAdviser.get_scorings();
         json result;
         json resultScores = scores;
@@ -846,7 +846,7 @@ SUITE(CoreAdviserAvailableCores) {
         }
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, &coresInInventory, 100, 500);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         auto scores = coreAdviser.get_scorings();
         json result;
         json resultScores = scores;
@@ -910,7 +910,7 @@ SUITE(CoreAdviserAvailableCores) {
         }
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 20);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
             listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
@@ -968,7 +968,7 @@ SUITE(CoreAdviserAvailableCores) {
         }
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 500);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
             listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
@@ -1017,7 +1017,7 @@ SUITE(CoreAdviserAvailableCores) {
         settings->set_use_toroidal_cores(false);
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 20);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
             listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
@@ -1049,7 +1049,7 @@ SUITE(CoreAdviserAvailableCores) {
         CoreAdviser coreAdviser;
 
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 2);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
             listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
@@ -1086,7 +1086,7 @@ SUITE(CoreAdviserAvailableCores) {
 
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         auto scoring = coreAdviser.get_scorings();
         std::map<std::string, std::map<std::string, double>> filteredScoring;
 
@@ -1151,7 +1151,7 @@ SUITE(CoreAdviserAvailableCores) {
 
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         auto scoring = coreAdviser.get_scorings();
         std::map<std::string, std::map<std::string, double>> filteredScoring;
 
@@ -1207,7 +1207,7 @@ SUITE(CoreAdviserAvailableCores) {
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, 20);
         // auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &coresInInventory, 20);
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         std::vector<std::string> listOfNames;
         for (size_t i = 0; i < masMagnetics.size(); ++i ){
             listOfNames.push_back(masMagnetics[i].first.get_magnetic().get_manufacturer_info().value().get_reference().value());
@@ -1245,7 +1245,7 @@ SUITE(CoreAdviserAvailableCores) {
         CoreAdviser coreAdviser;
         auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, maximumNumberResults);
 
-        auto log = coreAdviser.read_log();
+        auto log = OpenMagnetics::read_log();
         auto scoring = coreAdviser.get_scorings();
         std::map<std::string, std::map<std::string, double>> filteredScoring;
 

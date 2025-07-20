@@ -37,7 +37,8 @@ namespace OpenMagnetics {
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
             if (!dielectricStrengthElement.get_thickness()) {
-                throw std::invalid_argument("Missing thickness in dielectric strength element");
+                continue;
+                // throw std::invalid_argument("Missing thickness in dielectric strength element");
             }
             if (dielectricStrengthElement.get_thickness().value() > tapeThickness) {
                 tapeThickness = dielectricStrengthElement.get_thickness().value();
@@ -53,7 +54,8 @@ namespace OpenMagnetics {
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
             if (!dielectricStrengthElement.get_thickness()) {
-                throw std::invalid_argument("Missing thickness in dielectric strength element");
+                continue;
+                // throw std::invalid_argument("Missing thickness in dielectric strength element");
             }
             if (dielectricStrengthElement.get_thickness().value() < tapeThickness) {
                 tapeThickness = dielectricStrengthElement.get_thickness().value();
@@ -68,7 +70,8 @@ namespace OpenMagnetics {
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
             if (!dielectricStrengthElement.get_thickness()) {
-                throw std::invalid_argument("Missing thickness in dielectric strength element");
+                continue;
+                // throw std::invalid_argument("Missing thickness in dielectric strength element");
             }
             if (dielectricStrengthElement.get_thickness().value() > tapeThickness) {
                 tapeThickness = dielectricStrengthElement.get_thickness().value();
@@ -82,7 +85,8 @@ namespace OpenMagnetics {
 
         for (auto dielectricStrengthElement : get_dielectric_strength()) {
             if (!dielectricStrengthElement.get_thickness()) {
-                throw std::invalid_argument("Missing thickness in dielectric strength element");
+                continue;
+                // throw std::invalid_argument("Missing thickness in dielectric strength element");
             }
             if (dielectricStrengthElement.get_thickness().value() < tapeThickness) {
                 tapeThickness = dielectricStrengthElement.get_thickness().value();

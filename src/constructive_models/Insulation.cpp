@@ -177,6 +177,9 @@ std::optional<CoilSectionInterface> InsulationCoordinator::calculate_coil_sectio
     {
         auto aux = insulationMaterial.get_thicker_tape();
         tapeThickness = aux.first;
+        if (tapeThickness == 0) {
+            return std::nullopt;
+        }
         tapeDielectricStrength = aux.second;
     }
 

@@ -49,8 +49,6 @@ class WireAdviser {
             _maximumNumberParallels = defaults.maximumNumberParallels;
         }
         virtual ~WireAdviser() = default;
-
-        void logEntry(std::string entry);
         
         std::string read_log() {
             return _log;

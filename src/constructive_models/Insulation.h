@@ -21,9 +21,9 @@ class CoilSectionInterface {
     virtual ~CoilSectionInterface() = default;
 
     private:
-    double totalMarginTapeDistance;
-    double solidInsulationThickness;
-    size_t numberLayersInsulation;
+    double totalMarginTapeDistance = 0;
+    double solidInsulationThickness = 0;
+    size_t numberLayersInsulation = 0;
     LayerPurpose layerPurpose;
 
     public:
