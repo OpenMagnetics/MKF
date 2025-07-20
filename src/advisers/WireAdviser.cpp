@@ -10,10 +10,6 @@
 
 namespace OpenMagnetics {
 
-void WireAdviser::logEntry(std::string entry) {
-    // std::cout << entry << std::endl;
-    _log += entry + "\n";
-}
 
 void normalize_scoring(std::vector<std::pair<CoilFunctionalDescription, double>>* coilsWithScoring, std::vector<double>* newScoring, bool invert=true) {
     auto normalizedScorings = OpenMagnetics::normalize_scoring(*newScoring, 1, invert, false);
@@ -365,31 +361,31 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
                                                                                         size_t maximumNumberResults){
     auto coilsWithScoring = create_dataset(coilFunctionalDescription, wires, section, current, temperature);
 
-    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
+    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires", "WireAdviser", 2);
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area no parallels.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area no parallels.", "WireAdviser", 2);
 
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by solid insulation.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by solid insulation.", "WireAdviser", 2);
     }
 
     auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels.", "WireAdviser", 2);
 
     if (tempCoilsWithScoring.size() == 0) {
         coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels, allowing not fitting.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels, allowing not fitting.", "WireAdviser", 2);
     }
     else{
         coilsWithScoring = tempCoilsWithScoring;
     }
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.", "WireAdviser", 2);
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.", "WireAdviser", 2);
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));

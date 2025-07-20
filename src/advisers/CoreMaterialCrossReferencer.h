@@ -27,10 +27,6 @@ class CoreMaterialCrossReferencer {
         std::optional<std::string> _onlyManufacturer;
         std::map<CoreMaterialCrossReferencerFilters, double> _weights;
 
-        void logEntry(std::string entry) {
-            // std::cout << entry + "\n" << std::endl;
-            _log += entry + "\n";
-        }
 
     public:
         std::map<CoreMaterialCrossReferencerFilters, std::map<std::string, bool>> _filterConfiguration{

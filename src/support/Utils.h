@@ -24,6 +24,8 @@
 extern OpenMagnetics::Defaults defaults;
 extern OpenMagnetics::Constants constants;
 extern OpenMagnetics::Settings *settings;
+extern std::string _log;
+extern uint8_t _logVerbosity;
 
 extern std::vector<OpenMagnetics::Core> coreDatabase;
 extern std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
@@ -71,6 +73,11 @@ extern OpenMagnetics::MagneticsCache magneticsCache;
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
+std::string read_log();
+uint8_t get_log_verbosity();
+void set_log_verbosity(uint8_t logVerbosity);
 
 bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);

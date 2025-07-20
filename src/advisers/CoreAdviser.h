@@ -34,14 +34,12 @@ class CoreAdviser {
         };
     protected:
         std::map<std::string, std::string> _models;
-        std::string _log;
         bool _uniqueCoreShapes = false;
         std::map<CoreAdviserFilters, double> _weights;
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
         Application _application = Application::POWER;
 
-        void logEntry(std::string entry);
 
     public:
 
@@ -63,9 +61,6 @@ class CoreAdviser {
             _models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
             _models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
             _models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
-        }
-        std::string read_log() {
-            return _log;
         }
         std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false);
 

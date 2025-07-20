@@ -28,10 +28,6 @@ class CoreCrossReferencer {
         double _limit = 1;
         std::map<CoreCrossReferencerFilters, double> _weights;
 
-        void logEntry(std::string entry) {
-            _log += entry + "\n";
-        }
-
     public:
         std::map<CoreCrossReferencerFilters, std::map<std::string, bool>> _filterConfiguration{
                 { CoreCrossReferencerFilters::PERMEANCE,            { {"invert", true}, {"log", false} } },

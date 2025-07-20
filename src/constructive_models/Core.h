@@ -87,6 +87,8 @@ class Core : public MAS::MagneticCore {
     Application guess_material_application();
     static Application guess_material_application(CoreMaterial coreMaterial);
     static Application guess_material_application(std::string coreMaterialName);
+    bool check_material_application(Application application);
+    static bool check_material_application(CoreMaterial coreMaterial, Application application);
     int64_t get_number_stacks();
     std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods();
     static std::vector<VolumetricCoreLossesMethodType> get_available_core_losses_methods(CoreMaterial coreMaterial);
