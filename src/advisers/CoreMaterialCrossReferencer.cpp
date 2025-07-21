@@ -532,7 +532,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
                 rankedCoreMaterials = filterResistivity.filter_core_materials(&rankedCoreMaterials, referenceCoreMaterial, temperature, weights[CoreMaterialCrossReferencerFilters::RESISTIVITY]);
                 break;
         }    
-        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " after filtering by " + filterString + ".");
+        logEntry("There are " + std::to_string(rankedCoreMaterials.size()) + " after filtering by " + filterString + ".", "Core Material Cross Referencer", 2);
     });
 
     if (rankedCoreMaterials.size() > maximumNumberResults) {

@@ -8,6 +8,30 @@
 
 namespace OpenMagnetics {
 
+void MagneticAdviser::set_unique_core_shapes(bool value) {
+    _uniqueCoreShapes = value;
+}
+
+bool MagneticAdviser::get_unique_core_shapes() {
+    return _uniqueCoreShapes;
+}
+
+void MagneticAdviser::set_application(Application value) {
+    _application = value;
+}
+
+Application MagneticAdviser::get_application() {
+    return _application;
+}
+
+void MagneticAdviser::set_core_mode(CoreAdviser::CoreAdviserModes value) {
+    _coreAdviserMode = value;
+}
+
+CoreAdviser::CoreAdviserModes MagneticAdviser::get_core_mode() {
+    return _coreAdviserMode;
+}
+
 void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow, std::optional<Inputs> inputs) {
     _filters.clear();
     _loadedFilterFlow = flow;
@@ -18,12 +42,7 @@ void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
-    std::vector<MagneticFilterOperation> customMagneticFilterFlow{
-        MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
-        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
-        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, 1.0),
-    };
-    return get_advised_magnetic(inputs, customMagneticFilterFlow, maximumNumberResults);
+    return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults) {
@@ -37,10 +56,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
     load_filter_flow(filterFlow, inputs);
-    bool filterMode = bool(inputs.get_design_requirements().get_minimum_impedance());
     std::vector<Mas> masData;
 
-    if (filterMode) {
+    if (get_application() == Application::INTERFERENCE_SUPPRESSION) {
         settings->set_use_toroidal_cores(true);
         settings->set_use_only_cores_in_stock(false);
         settings->set_use_concentric_cores(false);
@@ -69,17 +87,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
-    if (filterMode) {
-        coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 0;
-    }
-    else {
-        coreWeights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
-    }
-
     CoreAdviser coreAdviser;
 
     coreAdviser.set_unique_core_shapes(true);
     coreAdviser.set_application(get_application());
+    coreAdviser.set_mode(get_core_mode());
     CoilAdviser coilAdviser;
     MagneticSimulator magneticSimulator;
     size_t numberWindings = inputs.get_design_requirements().get_turns_ratios().size() + 1;

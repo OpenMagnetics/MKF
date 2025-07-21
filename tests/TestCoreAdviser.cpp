@@ -1302,12 +1302,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         {
             bool found = false;
@@ -1356,12 +1355,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 5);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 5);
 
         {
             bool found = false;
@@ -1393,12 +1391,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
-            coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 10);
 
         auto scorings = coreAdviser.get_scorings();
 
@@ -1444,12 +1441,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
             coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 10);
 
         auto scorings = coreAdviser.get_scorings();
         {
@@ -1483,12 +1479,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
             coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 10);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 10);
 
         {
             bool found = false;
@@ -1524,12 +1519,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         for (auto [mas, scoring] : masMagnetics) {
             CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
@@ -1557,12 +1551,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         for (auto [mas, scoring] : masMagnetics) {
             CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TWO_PIECE_SET);
@@ -1590,12 +1583,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         std::vector<std::string> usedShapes;
 
@@ -1632,12 +1624,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(false);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         std::vector<std::string> usedShapes;
 
@@ -1694,12 +1685,11 @@ SUITE(CoreAdviserStandardCores) {
         CoreAdviser coreAdviser;
         coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         CHECK(masMagnetics.size() == 20);
         for (auto [mas, scoring] : masMagnetics) {
@@ -1748,12 +1738,11 @@ SUITE(CoreAdviserStandardCores) {
         CoreAdviser coreAdviser;
         coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         CHECK(masMagnetics.size() == 20);
         for (auto [mas, scoring] : masMagnetics) {
@@ -1802,12 +1791,11 @@ SUITE(CoreAdviserStandardCores) {
         CoreAdviser coreAdviser;
         coreAdviser.set_application(MAS::Application::INTERFERENCE_SUPPRESSION);
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         CHECK(masMagnetics.size() == 20);
         for (auto [mas, scoring] : masMagnetics) {
@@ -1835,12 +1823,11 @@ SUITE(CoreAdviserStandardCores) {
         OperatingPoint operatingPoint;
         CoreAdviser coreAdviser;
         std::vector<MAS::CoreShape> shapes;
-        std::vector<MAS::CoreMaterial> materials;
         for (auto [name, shape] : coreShapeDatabase) {
             shapes.push_back(shape);
         }
         coreAdviser.set_unique_core_shapes(true);
-        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, &materials, 20);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
 
         {
             bool found = false;

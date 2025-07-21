@@ -27,6 +27,29 @@ CMRC_DECLARE(data);
 
 namespace OpenMagnetics {
 
+void CoreAdviser::set_unique_core_shapes(bool value) {
+    _uniqueCoreShapes = value;
+}
+
+bool CoreAdviser::get_unique_core_shapes() {
+    return _uniqueCoreShapes;
+}
+
+void CoreAdviser::set_application(Application value) {
+    _application = value;
+}
+
+Application CoreAdviser::get_application() {
+    return _application;
+}
+
+void CoreAdviser::set_mode(CoreAdviser::CoreAdviserModes value) {
+    _mode = value;
+}
+
+CoreAdviser::CoreAdviserModes CoreAdviser::get_mode() {
+    return _mode;
+}
 
 std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> CoreAdviser::get_scorings(bool weighted){
     std::map<std::string, std::map<CoreAdviser::CoreAdviserFilters, double>> swappedScorings;
@@ -457,8 +480,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMagnetic
     return filteredMagneticsWithScoring;
 }
 
-
-
 Coil get_dummy_coil(Inputs inputs) {
     double frequency = 0; 
     double temperature = 0; 
@@ -491,6 +512,31 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     return get_advised_core(inputs, weights, maximumNumberResults);
 }
 
+std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
+    if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
+        if (coreDatabase.empty()) {
+            load_cores();
+        }
+        return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
+    }
+    else if (get_mode() == CoreAdviserModes::STANDARD_CORES) {
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
+        if (coreShapeDatabase.empty()) {
+            load_core_shapes();
+        }
+        std::vector<MAS::CoreShape> shapes;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        return get_advised_core(inputs, &shapes, maximumNumberResults);
+    }
+    else {
+        throw std::runtime_error("Custom cores not yet implemented for CoreAdviser");
+    }
+}
+
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults) {
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
@@ -498,13 +544,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         weights[filter] = 1.0;
     });
     return get_advised_core(inputs, weights, cores, maximumNumberResults);
-}
-
-std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
-    if (coreDatabase.empty()) {
-        load_cores();
-    }
-    return get_advised_core(inputs, weights, &coreDatabase, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
@@ -576,7 +615,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
     return filteredMagnetics;
 }
 
-std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, std::vector<CoreMaterial>* materials, size_t maximumNumberResults) {
+std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
     auto globalIncludeStacks = settings->get_core_adviser_include_stacks();
     auto magnetics = create_magnetic_dataset(inputs, shapes, false);
 
