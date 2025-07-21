@@ -63,9 +63,9 @@ class WireFieldPoint : public FieldPoint {
     double & get_mutable_area() { return area; }
     void set_area(const double & area) { this->area = area; }
 
-    const double & get_lossDensity() const { return lossDensity; }
-    double & get_mutable_lossDensity() { return lossDensity; }
-    void set_lossDensity(const double & lossDensity) { this->lossDensity = lossDensity; }
+    const double & get_loss_density() const { return lossDensity; }
+    double & get_mutable_loss_density() { return lossDensity; }
+    void set_loss_density(const double & lossDensity) { this->lossDensity = lossDensity; }
 };
 
 class WireMagneticStrengthFieldOutput : public WindingWindowMagneticStrengthFieldOutput {

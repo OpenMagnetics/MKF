@@ -61,7 +61,7 @@ void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
         }
         logEntry += entry + "\n";
 
-        // std::cout << logEntry;
+        std::cout << logEntry;
         _log += logEntry;
     }
 }

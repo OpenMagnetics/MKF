@@ -17,7 +17,6 @@ class MagneticAdviser{
         std::map<MagneticFilters, std::map<std::string, double>> _scorings;
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
-        Application _application = Application::POWER;
         std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
             MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
             MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
@@ -34,6 +33,9 @@ class MagneticAdviser{
             MagneticFilterOperation(MagneticFilters::MAGNETIZING_INDUCTANCE, true, false, 1.0),
         };
         bool _simulateResults = true;
+        bool _uniqueCoreShapes = false;
+        Application _application = Application::POWER;
+        CoreAdviser::CoreAdviserModes _coreAdviserMode = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
 
         MagneticAdviser() {
         }
@@ -47,13 +49,12 @@ class MagneticAdviser{
             }
         }
         
-        void set_application(Application value) {
-            _application = value;
-        }
-
-        Application get_application() {
-            return _application;
-        }
+        void set_unique_core_shapes(bool value);
+        bool get_unique_core_shapes();
+        void set_application(Application value);
+        Application get_application();
+        void set_core_mode(CoreAdviser::CoreAdviserModes value);
+        CoreAdviser::CoreAdviserModes get_core_mode();
 
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults);

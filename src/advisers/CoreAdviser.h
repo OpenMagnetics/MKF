@@ -39,6 +39,7 @@ class CoreAdviser {
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
         Application _application = Application::POWER;
+        CoreAdviserModes _mode = CoreAdviserModes::AVAILABLE_CORES;
 
 
     public:
@@ -64,29 +65,20 @@ class CoreAdviser {
         }
         std::map<std::string, std::map<CoreAdviserFilters, double>> get_scorings(bool weighted = false);
 
-        void set_unique_core_shapes(bool value) {
-            _uniqueCoreShapes = value;
-        }
-
-        bool get_unique_core_shapes() {
-            return _uniqueCoreShapes;
-        }
-
-        void set_application(Application value) {
-            _application = value;
-        }
-
-        Application get_application() {
-            return _application;
-        }
+        void set_unique_core_shapes(bool value);
+        bool get_unique_core_shapes();
+        void set_application(Application value);
+        Application get_application();
+        void set_mode(CoreAdviserModes value);
+        CoreAdviserModes get_mode();
 
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, size_t maximumNumberResults=1);
-        std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults=1);
+        std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults=1);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
         std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores);
-        std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, std::vector<CoreMaterial>* materials, size_t maximumNumberResults=1);
+        std::vector<std::pair<Mas, double>> get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults=1);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
         std::vector<std::pair<Mas, double>> filter_available_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults);

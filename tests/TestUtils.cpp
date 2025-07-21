@@ -725,5 +725,4 @@ SUITE(Utils) {
         CHECK(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining().value()[0].get_length() > 0);
         CHECK(!autocompletedMagnetic.get_core().get_geometrical_description().value()[1].get_machining());
     }
-
 }

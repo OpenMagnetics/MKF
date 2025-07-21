@@ -695,7 +695,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
                 break;
         }    
         std::string filterString = std::string{magic_enum::enum_name(filter)};
-        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + filterString + ".");
+        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + filterString + ".", "Core Cross Referencer", 2);
     });
 
     if (rankedCores.size() > (1.1 * maximumNumberResults)) {
@@ -704,7 +704,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
 
     // We leave core losses for the last one, as it is the most computationally costly
     rankedCores = filterVolumetricLosses.filter_core(&rankedCores, referenceCore, referenceNumberTurns, inputs, _models, weights[CoreCrossReferencerFilters::CORE_LOSSES], limit);
-        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + std::string{magic_enum::enum_name(CoreCrossReferencerFilters::CORE_LOSSES)} + ".");
+        logEntry("There are " + std::to_string(rankedCores.size()) + " after filtering by " + std::string{magic_enum::enum_name(CoreCrossReferencerFilters::CORE_LOSSES)} + ".", "Core Cross Referencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {
         rankedCores = std::vector<std::pair<Core, double>>(rankedCores.begin(), rankedCores.end() - (rankedCores.size() - maximumNumberResults));
