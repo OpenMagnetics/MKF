@@ -1,7 +1,7 @@
 #pragma once
 #include "constructive_models/Coil.h"
 #include "constructive_models/Wire.h"
-#include "Defaults.h"
+#include "Utils.h"
 #include <MAS.hpp>
 
 using namespace MAS;
@@ -36,6 +36,8 @@ class WireAdviser {
         std::optional<WireStandard> _commonWireStandard;
         int _maximumNumberParallels;
         double _maximumOuterAreaProportion;
+        double _wireToWireDistance = defaults.minimumWireToWireDistance;
+        double _borderToWireDistance = defaults.minimumBorderToWireDistance;
         std::string _log;
     public:
 
@@ -49,9 +51,19 @@ class WireAdviser {
             _maximumNumberParallels = defaults.maximumNumberParallels;
         }
         virtual ~WireAdviser() = default;
-        
-        std::string read_log() {
-            return _log;
+
+        void set_wire_to_wire_distance(double wireToWireDistance) {
+            _wireToWireDistance = wireToWireDistance;
+        }
+        double get_wire_to_wire_distance() {
+            return _wireToWireDistance;
+        }
+
+        void set_border_to_wire_distance(double borderToWireDistance) {
+            _borderToWireDistance = borderToWireDistance;
+        }
+        double get_border_to_wire_distance() {
+            return _borderToWireDistance;
         }
 
         void set_maximum_effective_current_density(double maximumEffectiveCurrentDensity) {
@@ -110,6 +122,12 @@ class WireAdviser {
                                                                                  Section section,
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
+        std::vector<std::pair<CoilFunctionalDescription, double>> create_planar_dataset(CoilFunctionalDescription coilFunctionalDescription,
+                                                                                        std::vector<Wire>* wires,
+                                                                                        Section section,
+                                                                                        SignalDescriptor current,
+                                                                                        double temperature,
+                                                                                        uint8_t numberSections);
         void expand_wires_dataset_with_parallels(std::vector<CoilFunctionalDescription>* coilFunctionalDescriptions);
         void set_maximum_area_proportion(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     
