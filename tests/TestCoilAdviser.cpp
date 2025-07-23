@@ -712,6 +712,79 @@ SUITE(CoilAdviser) {
         settings->reset();
     }
 
+    TEST(Test_CoilAdviser_Planar) {
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
+        std::vector<double> turnsRatios;
+        int64_t numberStacks = 1;
+
+
+        double magnetizingInductance = 10e-6;
+        double temperature = 25;
+        WaveformLabel waveShape = WaveformLabel::SINUSOIDAL;
+        double dutyCycle = 0.5;
+        double dcCurrent = 0;
+
+        std::vector<int64_t> numberTurns = {82, 55};
+        std::vector<int64_t> numberParallels = {1, 1};
+        for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+            turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+        }
+        double frequency = 75590;
+        double peakToPeak = 13;
+
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ELP 43/10/28", gapping, numberTurns, numberStacks, "3C91");
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
+                                                                                              magnetizingInductance,
+                                                                                              temperature,
+                                                                                              waveShape,
+                                                                                              peakToPeak,
+                                                                                              dutyCycle,
+                                                                                              dcCurrent,
+                                                                                              turnsRatios);
+
+        inputs.get_mutable_design_requirements().set_wiring_technology(MAS::WiringTechnology::PRINTED);
+        // DimensionWithTolerance altitude;
+        // DimensionWithTolerance mainSupplyVoltage;
+        // auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641, InsulationStandards::IEC_623681};
+        // altitude.set_maximum(2000);
+        // mainSupplyVoltage.set_nominal(400);
+        // auto cti = Cti::GROUP_I;
+        // auto overvoltageCategory = OvervoltageCategory::OVC_IV;
+        // auto insulationType = InsulationType::BASIC;
+        // auto pollutionDegree = PollutionDegree::P1;
+        // auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards);
+        // inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
+
+        OpenMagnetics::Mas masMagnetic;
+        inputs.process();
+        masMagnetic.set_inputs(inputs);
+        masMagnetic.set_magnetic(magnetic);
+
+        CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 1);
+
+
+        CHECK(masMagneticsWithCoil.size() > 0);
+
+        int currentIndex = 0;
+        for (auto& masMagneticWithCoil : masMagneticsWithCoil) {
+            OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            std::string filename = "Test_CoilAdviser_Planar_" + std::to_string(currentIndex) + ".svg";
+            currentIndex++;
+            outFile.append(filename);
+            Painter painter(outFile);
+
+            painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
+            painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
+            // painter.paint_coil_sections(masMagneticWithCoil.get_mutable_magnetic());
+            painter.export_svg();
+        }
+        settings->reset();
+    }
+
     TEST(Test_CoilAdviser_Random_Base) {
         auto settings = Settings::GetInstance();
         settings->reset();

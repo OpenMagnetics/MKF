@@ -215,6 +215,12 @@ class Wire : public MAS::Wire {
             set_outer_width(aux);
         }
 
+        void set_nominal_value_conducting_area(double value) {
+            DimensionWithTolerance aux;
+            aux.set_nominal(value);
+            set_conducting_area(aux);
+        }
+
         int get_equivalent_insulation_layers(double voltageToInsulate);
 
         std::vector<std::vector<double>> calculate_current_density_distribution(SignalDescriptor current, double frequency, double temperature, size_t numberPoints=10);

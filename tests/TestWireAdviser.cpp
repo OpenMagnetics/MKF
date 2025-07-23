@@ -38,8 +38,11 @@ SUITE(WireAdviser) {
         section.set_coordinate_system(CoordinateSystem::CARTESIAN);
 
         Processed processed;
+        processed.set_peak_to_peak(currentRms * 2 * 1.4142);
         processed.set_rms(currentRms);
         processed.set_effective_frequency(currentEffectiveFrequency);
+        processed.set_offset(0);
+        processed.set_label(MAS::WaveformLabel::TRIANGULAR);
         current.set_processed(processed);
     }
 
@@ -163,6 +166,27 @@ SUITE(WireAdviser) {
         CHECK(WireType::FOIL == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
+    TEST(Test_Planar) {
+        settings->reset();
+        clear_databases();
+        numberTurns = 20;
+        currentRms = 10;
+        currentEffectiveFrequency = 134567;
+        setup();
+        WireAdviser wireAdviser;
+        section.set_dimensions({windingWindowWidth, 0.00007});
+
+        current = OpenMagnetics::Inputs::standardize_waveform(current, 100000);
+        auto waveform = current.get_waveform().value();
+        auto sampledWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, 100000);
+        current.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(sampledWaveform, 100000));
+
+        auto masMagneticsWithCoil = wireAdviser.get_advised_planar_wire(coilFunctionalDescription, section, current, temperature, 3, 1000);
+        auto masMagneticWithCoil = masMagneticsWithCoil[0].first;
+
+        CHECK(masMagneticsWithCoil.size() > 0);
+        CHECK(WireType::PLANAR == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
+    }
 
     TEST(Test_WireAdviser_Low_Frequency_Few_Turns) {
         settings->reset();
@@ -337,7 +361,5 @@ SUITE(WireAdviser) {
             painter.paint_wire(wire);
             painter.export_svg();
         }
-
-
     }
 }

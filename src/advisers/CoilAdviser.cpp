@@ -147,15 +147,23 @@ namespace OpenMagnetics {
         auto core = mas.get_magnetic().get_core();
         auto coil = mas.get_magnetic().get_coil();
 
-        if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
-            coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
-            coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
+        if (mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::PRINTED) {
+            coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+            coil.set_section_alignment(CoilAlignment::CENTERED);
+            coil.set_layers_orientation(WindingOrientation::CONTIGUOUS);
+            coil.set_turns_alignment(CoilAlignment::SPREAD);
         }
         else {
-            coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
-            coil.set_section_alignment(CoilAlignment::SPREAD);
-            if (filterMode) {
-                coil.set_turns_alignment(CoilAlignment::CENTERED);
+            if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+                coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
+                coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
+            }
+            else {
+                coil.set_winding_orientation(WindingOrientation::CONTIGUOUS);
+                coil.set_section_alignment(CoilAlignment::SPREAD);
+                if (filterMode) {
+                    coil.set_turns_alignment(CoilAlignment::CENTERED);
+                }
             }
         }
         mas.get_mutable_magnetic().set_coil(coil);
@@ -164,6 +172,7 @@ namespace OpenMagnetics {
 
         auto needsMargin = InsulationCoordinator::needs_margin(solidInsulationRequirementsForWires, pattern, repetitions);
         coil.set_inputs(mas.get_inputs());
+        coil.clear();
         coil.wind_by_sections(sectionProportions, pattern, repetitions);
 
         auto sections = get_advised_sections(mas, pattern, repetitions);
@@ -183,7 +192,7 @@ namespace OpenMagnetics {
 
         _wireAdviser.set_common_wire_standard(_commonWireStandard);  // TODO, rethink this
 
-        if (needsMargin) {
+        if (needsMargin && mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::WOUND) {
             // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 solidInsulationRequirementsForWires[windingIndex].set_maximum_number_layers(1);
@@ -246,39 +255,62 @@ namespace OpenMagnetics {
                                      {
                                          return p1.get_conditions().get_ambient_temperature() < p2.get_conditions().get_ambient_temperature();
                                      })).get_conditions().get_ambient_temperature();
-            std::vector<std::map<std::string, double>> wireConfigurations = {
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
-            };
-            bool found = false;
-            logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
-
-            for (auto& wireConfiguration : wireConfigurations) {
-                _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
-                _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
-
+            if (mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::PRINTED) {
+                bool found = false;
                 auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
 
-                auto wiresWithScoring = _wireAdviser.get_advised_wire(wires,
-                                                                     coil.get_functional_description()[windingIndex],
-                                                                     sections[sectionIndex],
-                                                                     maximumCurrent,
-                                                                     maximumTemperature,
-                                                                     coil.get_interleaving_level(),
-                                                                     maximumNumberWires);
+                auto wiresWithScoring = _wireAdviser.get_advised_planar_wire(coil.get_functional_description()[windingIndex],
+                                                                             sections[sectionIndex],
+                                                                             maximumCurrent,
+                                                                             maximumTemperature,
+                                                                             coil.get_interleaving_level(),
+                                                                             maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
                     timeout += wiresWithScoring.size();
 
                     wireCoilPerWinding.push_back(wiresWithScoring);
                     found = true;
-                    break;
+                }
+                if (!found) {
+                    wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
                 }
             }
-            if (!found) {
-                wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
+            else {
+                std::vector<std::map<std::string, double>> wireConfigurations = {
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
+                };
+                bool found = false;
+                logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
+
+                for (auto& wireConfiguration : wireConfigurations) {
+                    _wireAdviser.set_maximum_effective_current_density(wireConfiguration["maximumEffectiveCurrentDensity"]);
+                    _wireAdviser.set_maximum_number_parallels(wireConfiguration["maximumNumberParallels"]);
+
+                    auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
+
+                    auto wiresWithScoring = _wireAdviser.get_advised_wire(wires,
+                                                                         coil.get_functional_description()[windingIndex],
+                                                                         sections[sectionIndex],
+                                                                         maximumCurrent,
+                                                                         maximumTemperature,
+                                                                         coil.get_interleaving_level(),
+                                                                         maximumNumberWires);
+
+                    if (wiresWithScoring.size() != 0) {
+                        timeout += wiresWithScoring.size();
+
+                        wireCoilPerWinding.push_back(wiresWithScoring);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    wireCoilPerWinding.push_back(std::vector<std::pair<CoilFunctionalDescription, double>>{});
+                }
             }
         }
 
