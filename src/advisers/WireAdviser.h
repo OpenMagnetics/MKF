@@ -98,6 +98,13 @@ class WireAdviser {
                                                                                    uint8_t numberSections,
                                                                                    size_t maximumNumberResults=1);
 
+        std::vector<std::pair<CoilFunctionalDescription, double>> get_advised_planar_wire(CoilFunctionalDescription coilFunctionalDescription,
+                                                                                          Section section,
+                                                                                          SignalDescriptor current,
+                                                                                          double temperature,
+                                                                                          uint8_t numberSections,
+                                                                                          size_t maximumNumberResults);
+
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_area_no_parallels(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                               Section section);
 
@@ -109,6 +116,10 @@ class WireAdviser {
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_effective_resistance(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
                                                                                                  double temperature);
+
+        std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_skin_losses_density(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
+                                                                                                SignalDescriptor current,
+                                                                                                double temperature);
 
         std::vector<std::pair<CoilFunctionalDescription, double>> filter_by_proximity_factor(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils,
                                                                                                  SignalDescriptor current,
@@ -123,10 +134,7 @@ class WireAdviser {
                                                                                  SignalDescriptor current,
                                                                                  double temperature);
         std::vector<std::pair<CoilFunctionalDescription, double>> create_planar_dataset(CoilFunctionalDescription coilFunctionalDescription,
-                                                                                        std::vector<Wire>* wires,
                                                                                         Section section,
-                                                                                        SignalDescriptor current,
-                                                                                        double temperature,
                                                                                         uint8_t numberSections);
         void expand_wires_dataset_with_parallels(std::vector<CoilFunctionalDescription>* coilFunctionalDescriptions);
         void set_maximum_area_proportion(std::vector<std::pair<CoilFunctionalDescription, double>>* unfilteredCoils, Section section, uint8_t numberSections);

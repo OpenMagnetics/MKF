@@ -204,6 +204,13 @@ class MagneticFilterMagnetizingInductance : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
+class MagneticFilterSkinLossesDensity : public MagneticFilter {
+    public:
+        MagneticFilterSkinLossesDensity() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+        std::pair<bool, double> evaluate_magnetic(CoilFunctionalDescription winding, SignalDescriptor current, double temperature);
+};
+
 class MagneticFilterFringingFactor : public MagneticFilter {
     private:
         std::map<std::string, std::string> _models;

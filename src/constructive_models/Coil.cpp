@@ -2011,8 +2011,10 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
 
                 if (section.get_dimensions()[0] < 0) {
                     throw std::runtime_error("Something wrong happened in section dimensions 0: " + std::to_string(section.get_dimensions()[0]) +
+                                             " availableWidth: " + std::to_string(availableWidth) +
                                              " currentSectionWidth: " + std::to_string(currentSectionWidth) +
-                                             " currentSectionHeight: " + std::to_string(currentSectionHeight)
+                                             " currentSectionHeight: " + std::to_string(currentSectionHeight) + 
+                                             " _marginsPerSection[sectionIndex][0]: " + std::to_string(_marginsPerSection[sectionIndex][0])
                                              );
                 }
                 if (windingOrientation == WindingOrientation::OVERLAPPING) {
@@ -5176,6 +5178,7 @@ size_t Coil::convert_conduction_section_index_to_global(size_t conductionSection
 }
 
 void Coil::clear() {
+    set_groups_description(std::nullopt);
     set_sections_description(std::nullopt);
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);

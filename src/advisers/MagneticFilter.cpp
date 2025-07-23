@@ -2,6 +2,7 @@
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/MagneticEnergy.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/Impedance.h"
 
 #include <cfloat>
@@ -69,8 +70,12 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterImpedance>();
         case MagneticFilters::MAGNETIZING_INDUCTANCE:
             return std::make_shared<MagneticFilterMagnetizingInductance>();
+        case MagneticFilters::SKIN_LOSSES_DENSITY:
+            return std::make_shared<MagneticFilterSkinLossesDensity>();
+        case MagneticFilters::FRINGING_FACTOR:
+            return std::make_shared<MagneticFilterFringingFactor>();
         default:
-            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE}");
+            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY}");
     }
 }
 
@@ -1047,7 +1052,6 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
     return {valid, scoring};
 }
 
-
 std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     bool valid = true;
     double scoring = 0;
@@ -1174,6 +1178,38 @@ std::pair<bool, double> MagneticFilterFringingFactor::evaluate_magnetic(Magnetic
             return {true, 1};
         }
     }
+}
+
+std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    bool valid = true;
+    double scoring = 0;
+    auto temperature = inputs->get_maximum_temperature();
+
+    for (auto operatingPoint : inputs->get_operating_points()) {
+        for (size_t windingIndex = 0; windingIndex < magnetic->get_mutable_coil().get_functional_description().size(); ++windingIndex) {
+            auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
+            if (!excitation.get_current()) {
+                throw std::runtime_error("Current is missing in excitation");
+            }
+            auto current = excitation.get_current().value();
+            auto winding = magnetic->get_coil().get_functional_description()[windingIndex];
+            auto [auxValid, auxScoring] = evaluate_magnetic(winding, current, temperature);
+            valid &= auxValid;
+            scoring += auxScoring;
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {valid, scoring};
+}
+
+
+std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(CoilFunctionalDescription winding, SignalDescriptor current, double temperature) {
+    auto wire = Coil::resolve_wire(winding);
+    double skinEffectLossesPerMeter = WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
+    double valid = true;
+    return {valid, skinEffectLossesPerMeter};
 }
 
 
