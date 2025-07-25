@@ -6004,14 +6004,24 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
         auto section = sections[sectionIndex];
         if (sectionIndex == 0 || sectionIndex == sections.size() - 1) {
             auto oldSectionCoordinates = section.get_coordinates();
-            section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+            }
+            else {
+                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
+            }
             newSections.push_back(section);
 
 
             auto layers = get_layers_by_section(section.get_name());
             for (auto layer : layers) {
                 auto oldCoordinates = layer.get_coordinates();
-                layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                    layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                }
+                else {
+                    layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
+                }
                 newLayers.push_back(layer);
             }
             continue;
@@ -6021,13 +6031,23 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
                 (sections[sectionIndex - 1].get_partial_windings()[0].get_winding() != windingNames.value().second && sections[sectionIndex + 1].get_partial_windings()[0].get_winding() != windingNames.value().first)) {
 
                     auto oldSectionCoordinates = section.get_coordinates();
-                    section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+                    if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                        section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+                    }
+                    else {
+                        section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
+                    }
                     newSections.push_back(section);
 
                     auto layers = get_layers_by_section(section.get_name());
                     for (auto layer : layers) {
                         auto oldCoordinates = layer.get_coordinates();
-                        layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                        if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                            layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                        }
+                        else {
+                            layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
+                        }
                         newLayers.push_back(layer);
                     }
                     continue;
@@ -6039,26 +6059,57 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
             if (material) {
                 insulationLayer.set_insulation_material(material.value());
             }
-            insulationLayer.set_dimensions({layerThickness, insulationLayer.get_dimensions()[1]});
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                insulationLayer.set_dimensions({layerThickness, insulationLayer.get_dimensions()[1]});
+            }
+            else {
+                insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerThickness});
+            }
+            auto oldSectionCoordinates = section.get_coordinates();
             auto oldCoordinates = insulationLayer.get_coordinates();
 
             for (size_t layerIndex = 0; layerIndex < numberInsulationLayers; ++layerIndex) {
-                insulationLayer.set_coordinates({oldCoordinates[0] + currentDisplacement + layerThickness * layerIndex, oldCoordinates[1]});
+                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                    insulationLayer.set_coordinates({oldSectionCoordinates[0] - section.get_dimensions()[0] / 2 + currentDisplacement + layerThickness * (layerIndex + 0.5), oldCoordinates[1]});
+                }
+                else {
+                    insulationLayer.set_coordinates({oldCoordinates[0], oldSectionCoordinates[1] + section.get_dimensions()[1] / 2 - currentDisplacement - layerThickness * (layerIndex + 0.5)});
+                }
                 insulationLayer.set_name(insulationLayer.get_section().value() +  " insulation layer " + std::to_string(layerIndex));
                 newLayers.push_back(insulationLayer);
             }
 
-            currentDisplacement += layerThickness * numberInsulationLayers - section.get_dimensions()[0];
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                section.set_coordinates({oldSectionCoordinates[0] - section.get_dimensions()[0] / 2 + currentDisplacement + (layerThickness * numberInsulationLayers) / 2, oldSectionCoordinates[1]});
+            }
+            else {
+                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] + section.get_dimensions()[1] / 2 - currentDisplacement - (layerThickness * numberInsulationLayers) / 2});
+            }
 
-            auto oldSectionCoordinates = section.get_coordinates();
-            section.set_coordinates({oldSectionCoordinates[0] - section.get_dimensions()[0] / 2 + (layerThickness * numberInsulationLayers), oldSectionCoordinates[1]});
-            section.set_dimensions({layerThickness * numberInsulationLayers, section.get_dimensions()[1]});
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                currentDisplacement += layerThickness * numberInsulationLayers - section.get_dimensions()[0];
+            }
+            else {
+                currentDisplacement += layerThickness * numberInsulationLayers - section.get_dimensions()[1];
+            }
+
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                section.set_dimensions({layerThickness * numberInsulationLayers, section.get_dimensions()[1]});
+            }
+            else {
+                section.set_dimensions({section.get_dimensions()[0], layerThickness * numberInsulationLayers});
+            }
             newSections.push_back(section);
 
         }
         else {
             auto oldSectionCoordinates = section.get_coordinates();
-            section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
+            }
+            else {
+                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
+            }
             newSections.push_back(section);
 
             auto layers = get_layers_by_section(section.get_name());
@@ -6066,16 +6117,22 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
             std::cout << "currentDisplacement: " << currentDisplacement << std::endl;
             for (auto layer : layers) {
                 auto oldCoordinates = layer.get_coordinates();
-                layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+                    layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
+                }
+                else {
+                    layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
+                }
                 newLayers.push_back(layer);
             }
         }
 
     }
+    set_sections_description(newSections);
     set_layers_description(newLayers);
 
     wind_by_turns();
-    // delimit_and_compact();
+    delimit_and_compact();
 
 }
 
