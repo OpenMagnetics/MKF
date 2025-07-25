@@ -690,7 +690,7 @@ void BasicPainter::paint_toroidal_coil_turns(Magnetic magnetic) {
     }
 
     paint_toroidal_margin(magnetic);
-    _root->autoscale();
+    // _root->autoscale();
 }
 
 void BasicPainter::paint_two_piece_set_bobbin(Magnetic magnetic) {
