@@ -5966,7 +5966,27 @@ void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::s
             }
 
             if (layers[layerIndex].get_type() == ElectricalType::INSULATION) {
-                layers[layerIndex].set_dimensions({layerThickness, layerLength});
+                auto oldCoordinates = layers[layerIndex].get_coordinates();
+                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
+                    layers[layerIndex].set_coordinates({oldCoordinates[0] + (layerThickness - layers[layerIndex].get_dimensions()[0]) / 2, oldCoordinates[1]});
+                }
+                else {
+                    layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - (layerThickness - layers[layerIndex].get_dimensions()[0]) / 2});
+                }
+                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
+                    currentDisplacement += layerThickness - layers[layerIndex].get_dimensions()[0];
+                    layers[layerIndex].set_dimensions({layerThickness, layerLength});
+                }
+                else {
+                    currentDisplacement += layerThickness - layers[layerIndex].get_dimensions()[1];
+                    layers[layerIndex].set_dimensions({layerLength, layerThickness});
+                }
+                if (layerThickness == 0) {
+                    continue;
+                }
+                newLayers.push_back(layers[layerIndex]);
+            }
+            else {
                 auto oldCoordinates = layers[layerIndex].get_coordinates();
                 if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
                     layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
