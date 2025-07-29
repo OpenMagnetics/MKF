@@ -110,6 +110,7 @@ class Coil : public MAS::Coil {
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
+        bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::optional<double> wireToWireDistance = std::nullopt, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();

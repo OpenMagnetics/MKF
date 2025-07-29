@@ -314,25 +314,58 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                                                                                              uint8_t numberSections) {
     std::vector<std::pair<CoilFunctionalDescription, double>> coilFunctionalDescriptions;
     auto planarWires = get_wires(WireType::PLANAR);
-    auto maximumNumberTurnsPerSection = ceil(coilFunctionalDescription.get_number_turns() / numberSections);
-    auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
-    auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / coilFunctionalDescription.get_number_turns();
-    size_t maximumNumberParallels = numberSections;
 
-    for (auto wire : planarWires) {
-        if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
-            wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
-            for (size_t numberParallels = 1; numberParallels <= maximumNumberParallels; ++numberParallels) {
-                wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn / numberParallels);
-                wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn / numberParallels);
-                wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn / numberParallels * resolve_dimensional_values(wire.get_conducting_height().value()));
+    // No paralells
+    {
+        auto maximumNumberTurnsPerSection = ceil(coilFunctionalDescription.get_number_turns() / numberSections);
+        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
+        if (maximumAvailableWidthForCopper < 0) {
+            return coilFunctionalDescriptions;
+            // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
+        }
+        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / maximumNumberTurnsPerSection;
+
+        for (auto wire : planarWires) {
+            if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
+                wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
+                wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
+                wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
+                wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
                 coilFunctionalDescription.set_wire(wire);
-                coilFunctionalDescription.set_number_parallels(numberParallels);
+                coilFunctionalDescription.set_number_parallels(1);
                 coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
             }
         }
+
     }
 
+    // Paralells
+    {
+        auto maximumNumberTurnsPerSection = coilFunctionalDescription.get_number_turns();
+        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
+        if (maximumAvailableWidthForCopper < 0) {
+            return coilFunctionalDescriptions;
+            // throw std::runtime_error("maximumAvailableWidthForCopper cannot be negative");
+        }
+        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / coilFunctionalDescription.get_number_turns();
+        size_t maximumNumberParallels = numberSections;
+
+        for (auto wire : planarWires) {
+            if (resolve_dimensional_values(wire.get_conducting_height().value()) < section.get_dimensions()[1]) {
+                wire.set_nominal_value_outer_height(resolve_dimensional_values(wire.get_conducting_height().value()));
+                for (size_t numberParallels = 2; numberParallels <= maximumNumberParallels; ++numberParallels) {
+                    wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
+                    wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
+                    wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * resolve_dimensional_values(wire.get_conducting_height().value()));
+                    coilFunctionalDescription.set_wire(wire);
+                    coilFunctionalDescription.set_number_parallels(numberParallels);
+                    coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
+                }
+            }
+        }
+
+
+    }
     return coilFunctionalDescriptions;
 }
 
