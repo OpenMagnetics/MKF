@@ -713,6 +713,8 @@ SUITE(CoilAdviser) {
     }
 
     TEST(Test_CoilAdviser_Planar) {
+        // OpenMagnetics::set_log_verbosity(2);
+        settings->set_coil_maximum_layers_planar(17);
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
         std::vector<double> turnsRatios;
         int64_t numberStacks = 1;
@@ -724,7 +726,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.5;
         double dcCurrent = 0;
 
-        std::vector<int64_t> numberTurns = {82, 55};
+        std::vector<int64_t> numberTurns = {112, 15};
         std::vector<int64_t> numberParallels = {1, 1};
         for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
             turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
@@ -742,18 +744,9 @@ SUITE(CoilAdviser) {
                                                                                               dcCurrent,
                                                                                               turnsRatios);
 
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
+        magnetic.get_mutable_coil().set_bobbin(bobbin);
         inputs.get_mutable_design_requirements().set_wiring_technology(MAS::WiringTechnology::PRINTED);
-        // DimensionWithTolerance altitude;
-        // DimensionWithTolerance mainSupplyVoltage;
-        // auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641, InsulationStandards::IEC_623681};
-        // altitude.set_maximum(2000);
-        // mainSupplyVoltage.set_nominal(400);
-        // auto cti = Cti::GROUP_I;
-        // auto overvoltageCategory = OvervoltageCategory::OVC_IV;
-        // auto insulationType = InsulationType::BASIC;
-        // auto pollutionDegree = PollutionDegree::P1;
-        // auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards);
-        // inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
 
         OpenMagnetics::Mas masMagnetic;
         inputs.process();
@@ -761,7 +754,7 @@ SUITE(CoilAdviser) {
         masMagnetic.set_magnetic(magnetic);
 
         CoilAdviser coilAdviser;
-        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 1);
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 100);
 
 
         CHECK(masMagneticsWithCoil.size() > 0);
@@ -771,7 +764,7 @@ SUITE(CoilAdviser) {
             OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            std::string filename = "Test_CoilAdviser_Planar_" + std::to_string(currentIndex) + ".svg";
+            std::string filename = "Test_CoilAdviser_Planar_" + masMagneticWithCoil.get_mutable_magnetic().get_reference() + ".svg";
             currentIndex++;
             outFile.append(filename);
             Painter painter(outFile);
