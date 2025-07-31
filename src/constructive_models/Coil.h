@@ -194,8 +194,8 @@ class Coil : public MAS::Coil {
         uint64_t get_number_parallels(size_t windingIndex);
         void set_number_parallels(std::vector<uint64_t> numberParallels);
 
-        void set_interlayer_insulation(double layerThickness, std::optional<std::string> material = std::nullopt, std::optional<std::string> windingName = std::nullopt);
-        void set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material = std::nullopt, std::optional<std::pair<std::string, std::string>> windingNames = std::nullopt);
+        void set_interlayer_insulation(double layerThickness, std::optional<std::string> material = std::nullopt, std::optional<std::string> windingName = std::nullopt, bool autowind=true);
+        void set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material = std::nullopt, std::optional<std::pair<std::string, std::string>> windingNames = std::nullopt, bool autowind=true);
 
         std::vector<Section> get_sections_by_group(std::string groupName);
         const std::vector<Section> get_sections_by_type(ElectricalType electricalType) const;
