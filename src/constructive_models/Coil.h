@@ -54,10 +54,11 @@ class CoilFunctionalDescription : public MAS::CoilFunctionalDescription {
 class Coil : public MAS::Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
-        std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationLayers;
+        std::map<std::pair<size_t, size_t>, std::vector<Layer>> _insulationInterSectionsLayers;
+        std::map<size_t, Layer> _insulationInterLayers;
         std::map<std::pair<size_t, size_t>, CoilSectionInterface> _coilSectionInterfaces;
         std::map<std::pair<size_t, size_t>, std::string> _insulationSectionsLog;
-        std::map<std::pair<size_t, size_t>, std::string> _insulationLayersLog;
+        std::map<std::pair<size_t, size_t>, std::string> _insulationInterSectionsLayersLog;
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> _sectionInfoWithInsulation;
         std::vector<std::vector<double>> _marginsPerSection;
         size_t _interleavingLevel = 1;

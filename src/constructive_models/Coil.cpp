@@ -404,19 +404,22 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
 
-            if (_inputs) {
-                if (_inputs->get_design_requirements().get_insulation()) {
-                    logEntry("Calculating Required Insulation", "Coil", 2);
-                    calculate_insulation();
+            if (_insulationSections.size() == 0) {
+
+                if (_inputs) {
+                    if (_inputs->get_design_requirements().get_insulation()) {
+                        logEntry("Calculating Required Insulation", "Coil", 2);
+                        calculate_insulation();
+                    }
+                    else {
+                        logEntry("Calculating Mechanical Insulation", "Coil", 2);
+                        calculate_mechanical_insulation();
+                    }
                 }
                 else {
                     logEntry("Calculating Mechanical Insulation", "Coil", 2);
                     calculate_mechanical_insulation();
                 }
-            }
-            else {
-                logEntry("Calculating Mechanical Insulation", "Coil", 2);
-                calculate_mechanical_insulation();
             }
             logEntry("Winding by sections", "Coil", 2);
             wind_by_sections(proportionPerWinding, pattern, repetitions);
@@ -1047,7 +1050,7 @@ double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns) 
 }
 
 void Coil::set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers) {
-    _insulationLayers = insulationLayers;
+    _insulationInterSectionsLayers = insulationLayers;
 }
 
 bool Coil::calculate_custom_thickness_insulation(double thickness) {
@@ -1090,7 +1093,7 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
             coilSectionInterface.set_total_margin_tape_distance(0);
             coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             Layer layer;
@@ -1126,7 +1129,7 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
             }
             // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
             layer.set_filling_factor(1);
-            _insulationLayers[windingsMapKey].push_back(layer);
+            _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
 
             Section section;
             section.set_name("temp");
@@ -1205,7 +1208,7 @@ bool Coil::calculate_mechanical_insulation() {
             coilSectionInterface.set_total_margin_tape_distance(0);
             coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             for (size_t layerIndex = 0; layerIndex < coilSectionInterface.get_number_layers_insulation(); ++layerIndex) {
@@ -1242,9 +1245,9 @@ bool Coil::calculate_mechanical_insulation() {
                 }
                 // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layer.set_filling_factor(1);
-                _insulationLayers[windingsMapKey].push_back(layer);
+                _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
+            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -1347,7 +1350,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
             }
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             for (size_t layerIndex = 0; layerIndex < coilSectionInterface.get_number_layers_insulation(); ++layerIndex) {
@@ -1384,9 +1387,9 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
 
                 layer.set_filling_factor(1);
-                _insulationLayers[windingsMapKey].push_back(layer);
+                _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
+            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -2323,6 +2326,11 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
                     numberLayers = aux.first;
                     currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+
+                    if (_insulationInterLayers.contains(windingIndex)) {
+                        auto insulationLayer = _insulationInterLayers[windingIndex];
+                        currentSectionRadialHeight += (numberLayers - 1) * insulationLayer.get_dimensions()[0];
+                    }
                 }
                 else {
                     while (numberLayers != prevNumberLayers) {
@@ -2812,13 +2820,56 @@ bool Coil::wind_by_rectangular_layers() {
                     remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
                 }
 
+                if (layerIndex == numberLayers - 1) {
+                    break;
+                }
+
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
+                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight / 2, 9);
                 }
                 else {
-                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
+                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth / 2, 9);
+                }
+
+                if (_insulationInterLayers.contains(windingIndex)) {
+     
+                    auto insulationLayer = _insulationInterLayers[windingIndex];
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                    }
+                    else {
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+
+                    insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                    insulationLayer.set_section(sections[sectionIndex].get_name());
+                    insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
+                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        insulationLayer.set_dimensions(std::vector<double>{layerWidth, insulationLayer.get_dimensions()[1]});
+                    }
+                    else {
+                        insulationLayer.set_dimensions(std::vector<double>{insulationLayer.get_dimensions()[0], layerHeight});
+                    }
+                    layers.push_back(insulationLayer);
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                    }
+                    else {
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+
+                }
+
+                if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight / 2, 9);
+                }
+                else {
+                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth / 2, 9);
                 }
             }
+
         }
         else {
             if (sectionIndex == 0) {
@@ -2842,12 +2893,12 @@ bool Coil::wind_by_rectangular_layers() {
             auto nextWindingIndex = get_winding_index_by_name(nextPartialWinding.get_winding());
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
-            if (!_insulationLayers.contains(windingsMapKey)) {
-                log(_insulationLayersLog[windingsMapKey]);
+            if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
+                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
 
-            auto insulationLayers = _insulationLayers[windingsMapKey];
+            auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
             if (insulationLayers.size() == 0) {
                 throw std::runtime_error("There must be at least one insulation layer between layers");
             }
@@ -2869,7 +2920,7 @@ bool Coil::wind_by_rectangular_layers() {
                 auto insulationLayer = insulationLayers[layerIndex];
                 insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
                 insulationLayer.set_section(sections[sectionIndex].get_name());
-                insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+                insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layers.push_back(insulationLayer);
 
@@ -3058,8 +3109,48 @@ bool Coil::wind_by_round_layers() {
                     remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
                 }
 
+
+                if (layerIndex == numberLayers - 1) {
+                    break;
+                }
+
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight, 9);
+                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight / 2, 9);
+                }
+                else {
+                    throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                }
+
+
+                if (_insulationInterLayers.contains(windingIndex)) {
+     
+                    auto insulationLayer = _insulationInterLayers[windingIndex];
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                        currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+                    else {
+                        throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                    }
+
+                    insulationLayer.set_section(sections[sectionIndex].get_name());
+                    insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
+                    insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
+                    insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerAngle});
+                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
+                    layers.push_back(insulationLayer);
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                        currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+                    else {
+                        throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                    }
+
+                }
+
+                if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight / 2, 9);
                 }
                 else {
                     throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -3094,12 +3185,12 @@ bool Coil::wind_by_round_layers() {
             }
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
-            if (!_insulationLayers.contains(windingsMapKey)) {
-                log(_insulationLayersLog[windingsMapKey]);
+            if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
+                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
 
-            auto insulationLayers = _insulationLayers[windingsMapKey];
+            auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
             if (insulationLayers.size() == 0) {
                 throw std::runtime_error("There must be at least one insulation layer between layers");
             }
@@ -3120,7 +3211,7 @@ bool Coil::wind_by_round_layers() {
                 auto insulationLayer = insulationLayers[layerIndex];
                 insulationLayer.set_section(sections[sectionIndex].get_name());
                 insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
-                insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+                insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layers.push_back(insulationLayer);
 
@@ -3352,6 +3443,8 @@ bool Coil::wind_by_rectangular_turns() {
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(0);
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                        if (turn.get_name() == "winding 1 parallel 1 turn 0") {
+                        }
 
                         turns.push_back(turn);
                         currentTurnCenterWidth += currentTurnWidthIncrement;
@@ -3484,7 +3577,7 @@ bool Coil::wind_by_round_turns() {
             }
             double wireAngle = wound_distance_to_angle(wireHeight, wireRadius);
             if (_strict && (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle))) {
-                // Turns won't fit
+                // Turns won't fit 
                 return false;
             }
 
@@ -4518,6 +4611,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
 }
 
 bool Coil::delimit_and_compact() {
+
     auto bobbin = resolve_bobbin();
 
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -4544,7 +4638,6 @@ WiringTechnology Coil::get_coil_type(size_t groupIndex) {
 
 bool Coil::delimit_and_compact_rectangular_window() {
     // Delimit
-        
     auto groupType = get_coil_type();
 
     if (!get_sections_description()) {
@@ -4572,7 +4665,14 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                                                layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
                     layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
                                                                currentLayerMaximumHeight - currentLayerMinimumHeight}));
-
+                    if (i < layers.size() - 1) {
+                        layerCoordinates = layers[i + 1].get_coordinates();
+                        if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
+                            layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                                       layerCoordinates[1]}));
+                            layers[i + 1].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth, layers[i + 1].get_dimensions()[1]}));
+                        }
+                    }
                 }
                 set_layers_description(layers);
             }
@@ -4592,11 +4692,14 @@ bool Coil::delimit_and_compact_rectangular_window() {
                 double currentSectionMinimumHeight = (layersInSection[0].get_coordinates()[1] - sectionCoordinates[1]) - layersInSection[0].get_dimensions()[1] / 2;
 
                 for (auto& layer : layersInSection) {
-                    currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) + layer.get_dimensions()[0] / 2);
-                    currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
-                    currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
-                    currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
+                    if (layer.get_type() == ElectricalType::CONDUCTION) {
+                        currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) + layer.get_dimensions()[0] / 2);
+                        currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
+                        currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
+                        currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
+                    }
                 }
+
                 sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0] + (currentSectionMaximumWidth + currentSectionMinimumWidth) / 2,
                                                            sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
                 sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
@@ -4715,6 +4818,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
                             if (turns[turnIndex].get_layer().value() == layers[layerIndex].get_name()){
 
 
+                                turns[turnIndex].set_coordinate_system(CoordinateSystem::CARTESIAN);
         
                                 if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::OBLONG || bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                     if (turns[turnIndex].get_coordinates()[0] < compactingShiftWidth) {
@@ -5828,332 +5932,176 @@ bool Coil::is_edge_wound_coil() {
 }
 
 void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::string> material, std::optional<std::string> windingName) {
-    Layer insulationLayer;
-    std::string sectionName = "";
-    if (windingName) {
-        auto sections = get_sections_by_winding(windingName.value());
-        sectionName = sections[0].get_name();
-        auto sectionlayers = get_layers_by_section(sectionName);
-        bool found = false;
-        for (auto layer : sectionlayers) {
-            if (layer.get_type() == ElectricalType::INSULATION) {
-                found = true;
-                insulationLayer = layer;
-                break;
-            }
-        }
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
 
-        if (!found) {
-            insulationLayer.set_partial_windings(std::vector<PartialWinding>{});
-            insulationLayer.set_type(ElectricalType::INSULATION);
-            insulationLayer.set_name("temp");
-            insulationLayer.set_orientation(get_layers_orientation());
-            insulationLayer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
-            insulationLayer.set_filling_factor(1);
-            insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
-            if (material) {
-                insulationLayer.set_insulation_material(material.value());
-            }
-            else {
-                insulationLayer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
-            }
+    auto layersOrientation = _layersOrientation;
 
-        }
+    // TODO: Properly think about insulation layers with weird windings
+    auto windingOrientation = get_winding_orientation();
+
+    Layer layer;
+    layer.set_partial_windings(std::vector<PartialWinding>{});
+    layer.set_type(ElectricalType::INSULATION);
+    layer.set_name("custom thickness temp");
+    layer.set_orientation(layersOrientation);
+    layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
+
+    if (material) {
+        layer.set_insulation_material(material.value());
     }
-    else if (get_layers_description_insulation().size() > 0) {
-        insulationLayer = get_layers_description_insulation()[0];
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (layersOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowHeight});
+        }
+        else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
+            layer.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness});
+        }
     }
     else {
-        insulationLayer.set_partial_windings(std::vector<PartialWinding>{});
-        insulationLayer.set_type(ElectricalType::INSULATION);
-        insulationLayer.set_name("temp");
-        insulationLayer.set_orientation(get_layers_orientation());
-        insulationLayer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
-        insulationLayer.set_filling_factor(1);
+        layer.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        layer.set_dimensions(std::vector<double>{layerThickness, windingWindowAngle});
+    }
+    layer.set_filling_factor(1);
 
-        insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
-        if (material) {
-            insulationLayer.set_insulation_material(material.value());
-        }
-        else {
-            insulationLayer.set_insulation_material(defaults.defaultLayerInsulationMaterial);
+    if (windingName) {
+        auto windingIndex = get_winding_index_by_name(windingName.value());
+        _insulationInterLayers[windingIndex] = layer;
+    }
+    else {
+        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+            _insulationInterLayers[windingIndex] = layer;
         }
     }
 
+    wind();
 
-    auto layers = get_layers_description().value();
-    double layerLength = 0;
-
-    auto bobbin = resolve_bobbin();
-    auto windingWindowDimensions = bobbin.get_winding_window_dimensions();
-    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
-    std::vector<Layer> newLayers;
-    double currentDisplacement = 0;
-    size_t insulationLayerIndex = 0;
-
-    for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
-
-        auto section = get_section_by_name(layers[layerIndex].get_section().value());
-
-        if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-            layerLength = section.get_dimensions()[1];
-        }
-        else {
-            layerLength = section.get_dimensions()[0];
-        }
-
-        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR || get_winding_orientation() == WindingOrientation::CONTIGUOUS) {
-            if (section.get_type() == ElectricalType::INSULATION) {
-                newLayers.push_back(layers[layerIndex]);
-                currentDisplacement = 0;
-                continue;
-            }
-        }
-
-        if (sectionName != "") {
-            if (layers[layerIndex].get_section() != sectionName) {
-                auto oldCoordinates = layers[layerIndex].get_coordinates();
-                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                }
-                else {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                }
-                newLayers.push_back(layers[layerIndex]);
-                continue;
-            }
-        }
-        if (layerIndex < layers.size() - 1) {
-            if (layers[layerIndex].get_section() != layers[layerIndex + 1].get_section()) {
-                auto oldCoordinates = layers[layerIndex].get_coordinates();
-                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                }
-                else {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                }
-                newLayers.push_back(layers[layerIndex]);
-                continue;
-            }
-            if (layers[layerIndex].get_type() == ElectricalType::CONDUCTION && layers[layerIndex + 1].get_type() == ElectricalType::CONDUCTION) {
-                auto oldCoordinates = layers[layerIndex].get_coordinates();
-                {
-                    if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                        layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                    }
-                    else {
-                        layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                    }
-                    newLayers.push_back(layers[layerIndex]);
-                }
-                {
-                    insulationLayer.set_coordinate_system(layers[layerIndex].get_coordinate_system());
-                    insulationLayer.set_section(layers[layerIndex].get_section());
-                    insulationLayer.set_name(layers[layerIndex].get_section().value() +  " insulation layer " + std::to_string(insulationLayerIndex));
-                    if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                        insulationLayer.set_coordinates({oldCoordinates[0] + layers[layerIndex].get_dimensions()[0] / 2 + layerThickness / 2 + currentDisplacement, oldCoordinates[1]});
-                        insulationLayer.set_dimensions({layerThickness, layerLength});
-                    }
-                    else {
-                        insulationLayer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - (layers[layerIndex].get_dimensions()[1] / 2 + layerThickness / 2 + currentDisplacement)});
-                        insulationLayer.set_dimensions({layerLength, layerThickness});
-                    }
-                    newLayers.push_back(insulationLayer);
-                    currentDisplacement += layerThickness;
-                    insulationLayerIndex++;
-                }
-                continue;
-            }
-
-            if (layers[layerIndex].get_type() == ElectricalType::INSULATION) {
-                auto oldCoordinates = layers[layerIndex].get_coordinates();
-                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0] + (layerThickness - layers[layerIndex].get_dimensions()[0]) / 2, oldCoordinates[1]});
-                }
-                else {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - (layerThickness - layers[layerIndex].get_dimensions()[0]) / 2});
-                }
-                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                    currentDisplacement += layerThickness - layers[layerIndex].get_dimensions()[0];
-                    layers[layerIndex].set_dimensions({layerThickness, layerLength});
-                }
-                else {
-                    currentDisplacement += layerThickness - layers[layerIndex].get_dimensions()[1];
-                    layers[layerIndex].set_dimensions({layerLength, layerThickness});
-                }
-                if (layerThickness == 0) {
-                    continue;
-                }
-                newLayers.push_back(layers[layerIndex]);
-            }
-            else {
-                auto oldCoordinates = layers[layerIndex].get_coordinates();
-                if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                }
-                else {
-                    layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                }
-                newLayers.push_back(layers[layerIndex]);
-            }
-        }
-        else {
-            auto oldCoordinates = layers[layerIndex].get_coordinates();
-            if (layers[layerIndex].get_orientation() == WindingOrientation::OVERLAPPING) {
-                layers[layerIndex].set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-            }
-            else {
-                layers[layerIndex].set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-            }
-            newLayers.push_back(layers[layerIndex]);
-        }
-    }
-    set_layers_description(newLayers);
-
-    wind_by_turns();
-    delimit_and_compact();
 }
 
 void Coil::set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material, std::optional<std::pair<std::string, std::string>> windingNames) {
-    auto sections = get_sections_description().value();
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
 
-    double currentDisplacement = 0;
-    std::vector<Section> newSections;
-    std::vector<Layer> newLayers;
-    for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
-        auto section = sections[sectionIndex];
-        if (sectionIndex == 0 || sectionIndex == sections.size() - 1) {
-            auto oldSectionCoordinates = section.get_coordinates();
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
-            }
-            else {
-                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
-            }
-            newSections.push_back(section);
+    auto layersOrientation = _layersOrientation;
 
+    // TODO: Properly think about insulation layers with weird windings
+    auto windingOrientation = get_winding_orientation();
 
-            auto layers = get_layers_by_section(section.get_name());
-            for (auto layer : layers) {
-                auto oldCoordinates = layer.get_coordinates();
-                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                    layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                }
-                else {
-                    layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                }
-                newLayers.push_back(layer);
-            }
-            continue;
+    if (windingOrientation == WindingOrientation::CONTIGUOUS && _layersOrientation == WindingOrientation::OVERLAPPING) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::CONTIGUOUS;
         }
-        if (windingNames) {
-            if ((sections[sectionIndex - 1].get_partial_windings()[0].get_winding() != windingNames.value().first && sections[sectionIndex + 1].get_partial_windings()[0].get_winding() != windingNames.value().second) || 
-                (sections[sectionIndex - 1].get_partial_windings()[0].get_winding() != windingNames.value().second && sections[sectionIndex + 1].get_partial_windings()[0].get_winding() != windingNames.value().first)) {
-
-                    auto oldSectionCoordinates = section.get_coordinates();
-                    if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                        section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
-                    }
-                    else {
-                        section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
-                    }
-                    newSections.push_back(section);
-
-                    auto layers = get_layers_by_section(section.get_name());
-                    for (auto layer : layers) {
-                        auto oldCoordinates = layer.get_coordinates();
-                        if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                            layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                        }
-                        else {
-                            layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                        }
-                        newLayers.push_back(layer);
-                    }
-                    continue;
-            }
-        }
-        if (section.get_type() == ElectricalType::INSULATION) {
-            auto currentInsulationLayers = get_layers_by_section(section.get_name());
-            auto insulationLayer = currentInsulationLayers[0];
-            if (material) {
-                insulationLayer.set_insulation_material(material.value());
-            }
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                insulationLayer.set_dimensions({layerThickness, insulationLayer.get_dimensions()[1]});
-            }
-            else {
-                insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerThickness});
-            }
-            auto oldSectionCoordinates = section.get_coordinates();
-            auto oldCoordinates = insulationLayer.get_coordinates();
-
-            for (size_t layerIndex = 0; layerIndex < numberInsulationLayers; ++layerIndex) {
-                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                    insulationLayer.set_coordinates({oldSectionCoordinates[0] - section.get_dimensions()[0] / 2 + currentDisplacement + layerThickness * (layerIndex + 0.5), oldCoordinates[1]});
-                }
-                else {
-                    insulationLayer.set_coordinates({oldCoordinates[0], oldSectionCoordinates[1] + section.get_dimensions()[1] / 2 - currentDisplacement - layerThickness * (layerIndex + 0.5)});
-                }
-                insulationLayer.set_name(insulationLayer.get_section().value() +  " insulation layer " + std::to_string(layerIndex));
-                newLayers.push_back(insulationLayer);
-            }
-
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                section.set_coordinates({oldSectionCoordinates[0] - section.get_dimensions()[0] / 2 + currentDisplacement + (layerThickness * numberInsulationLayers) / 2, oldSectionCoordinates[1]});
-            }
-            else {
-                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] + section.get_dimensions()[1] / 2 - currentDisplacement - (layerThickness * numberInsulationLayers) / 2});
-            }
-
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                currentDisplacement += layerThickness * numberInsulationLayers - section.get_dimensions()[0];
-            }
-            else {
-                currentDisplacement += layerThickness * numberInsulationLayers - section.get_dimensions()[1];
-            }
-
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                section.set_dimensions({layerThickness * numberInsulationLayers, section.get_dimensions()[1]});
-            }
-            else {
-                section.set_dimensions({section.get_dimensions()[0], layerThickness * numberInsulationLayers});
-            }
-            newSections.push_back(section);
-
-        }
-        else {
-            auto oldSectionCoordinates = section.get_coordinates();
-            if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                section.set_coordinates({oldSectionCoordinates[0] + currentDisplacement, oldSectionCoordinates[1]});
-            }
-            else {
-                section.set_coordinates({oldSectionCoordinates[0], oldSectionCoordinates[1] - currentDisplacement});
-            }
-            newSections.push_back(section);
-
-            auto layers = get_layers_by_section(section.get_name());
-            std::cout << "section.get_name(): " << section.get_name() << std::endl;
-            std::cout << "currentDisplacement: " << currentDisplacement << std::endl;
-            for (auto layer : layers) {
-                auto oldCoordinates = layer.get_coordinates();
-                if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-                    layer.set_coordinates({oldCoordinates[0] + currentDisplacement, oldCoordinates[1]});
-                }
-                else {
-                    layer.set_coordinates({oldCoordinates[0], oldCoordinates[1] - currentDisplacement});
-                }
-                newLayers.push_back(layer);
-            }
-        }
-
     }
-    set_sections_description(newSections);
-    set_layers_description(newLayers);
+    if (windingOrientation == WindingOrientation::OVERLAPPING && _layersOrientation == WindingOrientation::CONTIGUOUS) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::OVERLAPPING;
+        }
+    }
 
-    wind_by_turns();
-    delimit_and_compact();
 
+
+    std::vector<Layer> insulationLayers;
+    Layer layer;
+    layer.set_partial_windings(std::vector<PartialWinding>{});
+    layer.set_type(ElectricalType::INSULATION);
+    layer.set_name("custom thickness temp");
+    layer.set_orientation(layersOrientation);
+    layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
+
+    if (material) {
+        layer.set_insulation_material(material.value());
+    }
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (layersOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowHeight});
+        }
+        else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
+            layer.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness});
+        }
+    }
+    else {
+        layer.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowAngle});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            double tapeThicknessInAngle = wound_distance_to_angle(layerThickness, windingWindowRadialHeight);
+            layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+        }
+    }
+    layer.set_filling_factor(1);
+    for (size_t layerIndex = 0; layerIndex < numberInsulationLayers; ++layerIndex) {
+        insulationLayers.push_back(layer);
+    }
+
+    Section section;
+    section.set_name("custom thickness temp");
+    section.set_partial_windings(std::vector<PartialWinding>{});
+    section.set_layers_orientation(layersOrientation);
+    section.set_type(ElectricalType::INSULATION);
+
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            section.set_dimensions(std::vector<double>{layerThickness * numberInsulationLayers, windingWindowHeight});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            section.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness * numberInsulationLayers});
+        }
+    }
+    else {
+        section.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            section.set_dimensions(std::vector<double>{layerThickness * numberInsulationLayers, windingWindowAngle});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            double tapeThicknessInAngle = wound_distance_to_angle(layerThickness * numberInsulationLayers, windingWindowRadialHeight);
+            section.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+        }
+    }
+    section.set_filling_factor(1);
+
+    if (windingNames) {
+        auto windingIndex = get_winding_index_by_name(windingNames->first);
+        auto nextWindingIndex = get_winding_index_by_name(windingNames->second);
+
+        {
+            auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
+            _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+            _insulationSections[windingsMapKey] = section;
+        }
+        {
+            auto windingsMapKey = std::pair<size_t, size_t>{nextWindingIndex, windingIndex};
+            _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+            _insulationSections[windingsMapKey] = section;
+        }
+    }
+    else {
+        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+            for (size_t nextWindingIndex = 0; nextWindingIndex < get_functional_description().size(); ++nextWindingIndex) {
+                auto windingsMapKey = std::pair<size_t, size_t>{nextWindingIndex, windingIndex};
+                _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+                _insulationSections[windingsMapKey] = section;
+            }
+        }
+    }
+
+    wind();
 }
 
 
