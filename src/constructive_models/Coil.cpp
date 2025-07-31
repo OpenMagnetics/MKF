@@ -5931,7 +5931,7 @@ bool Coil::is_edge_wound_coil() {
     return true;
 }
 
-void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::string> material, std::optional<std::string> windingName) {
+void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::string> material, std::optional<std::string> windingName, bool autowind) {
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -5979,11 +5979,13 @@ void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::s
         }
     }
 
-    wind();
+    if (autowind) {
+        wind();
+    }
 
 }
 
-void Coil::set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material, std::optional<std::pair<std::string, std::string>> windingNames) {
+void Coil::set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material, std::optional<std::pair<std::string, std::string>> windingNames, bool autowind) {
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -6003,8 +6005,6 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
             layersOrientation = WindingOrientation::OVERLAPPING;
         }
     }
-
-
 
     std::vector<Layer> insulationLayers;
     Layer layer;
@@ -6101,7 +6101,9 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
         }
     }
 
-    wind();
+    if (autowind) {
+        wind();
+    }
 }
 
 
