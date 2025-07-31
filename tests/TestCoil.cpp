@@ -6607,8 +6607,10 @@ SUITE(CoilTurnsDescription) {
     }
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers) {
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
         settings->set_coil_wind_even_if_not_fit(true);
-        std::vector<int64_t> numberTurns = {20, 20};
+        std::vector<int64_t> numberTurns = {40, 40};
         std::vector<int64_t> numberParallels = {3, 2};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
@@ -6623,14 +6625,14 @@ SUITE(CoilTurnsDescription) {
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         "PQ 28/20",
+                                                         "PQ 32/30",
                                                          interleavingLevel,
                                                          windingOrientation,
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
 
-        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 32/30", json::parse("[]"), 1, "Dummy");
         // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
         // coil.set_bobbin(bobbin);
         OpenMagneticsTesting::check_turns_description(coil);
@@ -6646,9 +6648,9 @@ SUITE(CoilTurnsDescription) {
             magnetic.set_core(core);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
+            painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
         }
 
         coil.set_interlayer_insulation(0.0001);
@@ -6668,8 +6670,9 @@ SUITE(CoilTurnsDescription) {
             painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
         }
+        
+        settings->reset();
     }
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Two_Times) {
@@ -6823,7 +6826,7 @@ SUITE(CoilTurnsDescription) {
             settings->reset();
         }
 
-        coil.set_interlayer_insulation(0.001);
+        coil.set_interlayer_insulation(0.0005);
 
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -6845,6 +6848,8 @@ SUITE(CoilTurnsDescription) {
     }
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Toroidal_Core_Contiguous) {
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
         std::vector<int64_t> numberParallels = {3, 2};
@@ -6884,9 +6889,9 @@ SUITE(CoilTurnsDescription) {
             magnetic.set_core(core);
             painter.paint_core(magnetic);
             painter.paint_bobbin(magnetic);
+            painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
         }
 
         coil.set_interlayer_insulation(0.0001);
@@ -6906,8 +6911,8 @@ SUITE(CoilTurnsDescription) {
             painter.paint_coil_layers(magnetic);
             painter.paint_coil_turns(magnetic);
             painter.export_svg();
-            settings->reset();
         }
+        settings->reset();
     }
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_Only_Primary) {
@@ -7043,6 +7048,8 @@ SUITE(CoilTurnsDescription) {
     }
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Layers_Contiguous_Layers) {
+        // settings->set_coil_delimit_and_compact(false);
+        // settings->set_coil_try_rewind(false);
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
         std::vector<int64_t> numberParallels = {3, 2};
@@ -7109,7 +7116,7 @@ SUITE(CoilTurnsDescription) {
         }
     }
 
-    TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections) {
+    TEST(Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections) {
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
         std::vector<int64_t> numberParallels = {3, 2};
@@ -7141,7 +7148,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Before.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Before.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7159,7 +7166,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_After.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_After.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7175,7 +7182,7 @@ SUITE(CoilTurnsDescription) {
         }
     }
 
-    TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Interleaved) {
+    TEST(Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved) {
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
         std::vector<int64_t> numberParallels = {3, 2};
@@ -7192,14 +7199,14 @@ SUITE(CoilTurnsDescription) {
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         "PQ 28/20",
+                                                         "PQ 40/40",
                                                          interleavingLevel,
                                                          windingOrientation,
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
 
-        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
         // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
         // coil.set_bobbin(bobbin);
         OpenMagneticsTesting::check_turns_description(coil);
@@ -7207,7 +7214,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Interleaved_Before.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_Before.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7220,12 +7227,12 @@ SUITE(CoilTurnsDescription) {
             settings->reset();
         }
 
-        coil.set_intersection_insulation(0.0002, 1);
+        coil.set_intersection_insulation(0.0001, 1);
 
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Interleaved_After.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_After.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7242,7 +7249,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Interleaved_After_Sections.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Interleaved_After_Sections.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7258,7 +7265,7 @@ SUITE(CoilTurnsDescription) {
         }
     }
 
-    TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Contiguous) {
+    TEST(Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous) {
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
         std::vector<int64_t> numberParallels = {3, 2};
@@ -7290,7 +7297,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Contiguous_Before.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous_Before.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7308,7 +7315,7 @@ SUITE(CoilTurnsDescription) {
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
             auto outFile = outputFilePath;
-            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterLayers_All_Sections_Contiguous_After.svg");
+            outFile.append("Test_Wind_By_Turn_Change_Insulation_InterSections_All_Sections_Contiguous_After.svg");
             std::filesystem::remove(outFile);
             Painter painter(outFile);
             OpenMagnetics::Magnetic magnetic;
@@ -7327,7 +7334,7 @@ SUITE(CoilTurnsDescription) {
     TEST(Test_Wind_By_Turn_Change_Insulation_InterSections_All_Layers_Toroidal_Core) {
         settings->set_coil_wind_even_if_not_fit(true);
         std::vector<int64_t> numberTurns = {20, 20};
-        std::vector<int64_t> numberParallels = {3, 2};
+        std::vector<int64_t> numberParallels = {3, 3};
         uint8_t interleavingLevel = 1;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
         std::vector<OpenMagnetics::Wire> wires;
@@ -7369,7 +7376,7 @@ SUITE(CoilTurnsDescription) {
             settings->reset();
         }
 
-        coil.set_intersection_insulation(0.0001, 3);
+        coil.set_intersection_insulation(0.0001, 1);
 
         {
             auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
@@ -7458,7 +7465,7 @@ SUITE(CoilTurnsDescription) {
 
     TEST(Test_Wind_By_Turn_Change_Insulation_InterLayers_And_InterSections_All_Sections) {
         settings->set_coil_wind_even_if_not_fit(true);
-        std::vector<int64_t> numberTurns = {20, 20};
+        std::vector<int64_t> numberTurns = {50, 50};
         std::vector<int64_t> numberParallels = {3, 2};
         uint8_t interleavingLevel = 2;
         std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
@@ -7473,14 +7480,14 @@ SUITE(CoilTurnsDescription) {
         
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
                                                          numberParallels,
-                                                         "PQ 28/20",
+                                                         "PQ 40/40",
                                                          interleavingLevel,
                                                          windingOrientation,
                                                          layersOrientation,
                                                          turnsAlignment,
                                                          sectionsAlignment);
 
-        auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", json::parse("[]"), 1, "Dummy");
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
         // auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
         // coil.set_bobbin(bobbin);
         OpenMagneticsTesting::check_turns_description(coil);
@@ -7501,6 +7508,7 @@ SUITE(CoilTurnsDescription) {
             settings->reset();
         }
 
+    std::cout << "Mierdooooooooooooooon" << std::endl;
         coil.set_interlayer_insulation(0.00005);
         coil.set_intersection_insulation(0.0002, 1);
 
