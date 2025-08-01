@@ -1223,15 +1223,21 @@ std::pair<bool, double> MagneticFilterHeight::evaluate_magnetic(Magnetic* magnet
 
 std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
     MagneticSimulator _magneticSimulator;
-
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
     double losses = 0;
-    for (auto operatingPoint : inputs->get_operating_points()) {
-        auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
-        auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature).get_winding_losses();
-        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic).get_core_losses();
-        losses += windingLosses + coreLosses;
+
+    if (previousLosses) {
+        losses = previousLosses.value();
     }
-    losses /= inputs->get_operating_points().size();
+    else {
+        for (auto operatingPoint : inputs->get_operating_points()) {
+            auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
+            auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature).get_winding_losses();
+            auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic).get_core_losses();
+            losses += windingLosses + coreLosses;
+        }
+        losses /= inputs->get_operating_points().size();
+    }
 
     auto coreTemperatureModel = CoreTemperatureModel::factory(defaults.coreTemperatureModelDefault);
 
@@ -1242,23 +1248,57 @@ std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magneti
 }
 
 std::pair<bool, double> MagneticFilterLossesTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
-    auto [lossesValid, lossesScoring] = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs);
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
+    double losses = 0;
+    if (previousLosses) {
+        losses = previousLosses.value();
+    }
+    else {
+        auto aux = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs);
+        losses = aux.second;
+    }
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs);
-    return {true, lossesScoring * volumeScoring};
+    return {true, losses * volumeScoring};
 }
 
 std::pair<bool, double> MagneticFilterVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
+    double temperature = 0;
+    if (previousTemperatureRise) {
+        temperature = previousTemperatureRise.value();
+    }
+    else {
+        auto aux = MagneticFilterTemperatureRise().evaluate_magnetic(magnetic, inputs);
+        temperature = aux.second;
+    }
+
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs);
-    auto [temperatureValid, temperatureScoring] = MagneticFilterTemperatureRise().evaluate_magnetic(magnetic, inputs);
-    return {true, volumeScoring * temperatureScoring};
+    return {true, volumeScoring * temperature};
 
 }
 
 std::pair<bool, double> MagneticFilterLossesTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
-    auto [lossesValid, lossesScoring] = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs);
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
+    double losses = 0;
+    if (previousLosses) {
+        losses = previousLosses.value();
+    }
+    else {
+        auto aux = MagneticFilterLosses().evaluate_magnetic(magnetic, inputs);
+        losses = aux.second;
+    }
+    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
+    double temperature = 0;
+    if (previousTemperatureRise) {
+        temperature = previousTemperatureRise.value();
+    }
+    else {
+        auto aux = MagneticFilterTemperatureRise().evaluate_magnetic(magnetic, inputs);
+        temperature = aux.second;
+    }
+
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs);
-    auto [temperatureValid, temperatureScoring] = MagneticFilterTemperatureRise().evaluate_magnetic(magnetic, inputs);
-    return {true, lossesScoring * volumeScoring * temperatureScoring};
+    return {true, losses * volumeScoring * temperature};
 }
 
 

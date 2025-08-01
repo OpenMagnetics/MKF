@@ -196,8 +196,8 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Height") x = MagneticFilters::HEIGHT;
     else if (j == "Temperature Rise") x = MagneticFilters::TEMPERATURE_RISE;
     else if (j == "Losses Times Volume") x = MagneticFilters::LOSSES_TIMES_VOLUME;
-    else if (j == "Volume Times Temperature_Rise") x = MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE;
-    else if (j == "Losses Times Volume Times Temperature_Rise") x = MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
+    else if (j == "Volume Times Temperature Rise") x = MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE;
+    else if (j == "Losses Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -229,8 +229,8 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::HEIGHT: j = "Height"; break;
         case MagneticFilters::TEMPERATURE_RISE: j = "Temperature Rise"; break;
         case MagneticFilters::LOSSES_TIMES_VOLUME: j = "Losses Times Volume"; break;
-        case MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE: j = "Volume Times Temperature_Rise"; break;
-        case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses Times Volume Times Temperature_Rise"; break;
+        case MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE: j = "Volume Times Temperature Rise"; break;
+        case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses Times Volume Times Temperature Rise"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }

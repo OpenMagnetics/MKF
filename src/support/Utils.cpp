@@ -42,6 +42,7 @@ OpenMagnetics::Constants constants = OpenMagnetics::Constants();
 OpenMagnetics::Settings* settings = OpenMagnetics::Settings::GetInstance();
 
 OpenMagnetics::MagneticsCache magneticsCache;
+std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
 bool _addInternalData = true;
 std::string _log;
@@ -49,6 +50,26 @@ uint8_t _logVerbosity = 1;
 
 namespace OpenMagnetics {
 
+void clear_scoring() {
+    _scorings.clear();
+}
+
+void add_scoring(std::string name, MagneticFilters filter, double scoring) {
+    if (scoring != -1) {
+        _scorings[filter][name] = scoring;
+    }
+}
+
+std::optional<double> get_scoring(std::string name, MagneticFilters filter) {
+    if (!_scorings.count(filter)) {
+        return std::nullopt;
+    }
+    if (!_scorings[filter].count(name)) {
+        return std::nullopt;
+    }
+    return _scorings[filter][name];
+}
+        
 std::string read_log() {
     return _log;
 }
