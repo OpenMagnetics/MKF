@@ -1022,6 +1022,7 @@ std::pair<bool, double> MagneticFilterTurnsRatios::evaluate_magnetic(Magnetic* m
             if (!check_requirement(turnsRatioRequirement, magneticTurnsRatios[i])) {
                 return {false, 0.0};
             }
+            scoring += abs(resolve_dimensional_values(turnsRatioRequirement) - resolve_dimensional_values(magneticTurnsRatios[i]));
         }
     }
     return {valid, scoring};
@@ -1132,6 +1133,16 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
             }
         }
         scoring /= impedanceRequirement.size();
+    }
+    if (inputs->get_operating_points().size() > 0) {
+        for (auto operatingPoint : inputs->get_operating_points()) {
+            auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
+            scoring += 1.0 / abs(impedance);
+        }
+    }
+    else {
+        auto impedance = OpenMagnetics::Impedance().calculate_impedance(*magnetic, defaults.measurementFrequency);
+        scoring += 1.0 / abs(impedance);
     }
 
     return {valid, scoring};
