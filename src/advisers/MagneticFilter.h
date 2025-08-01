@@ -219,6 +219,49 @@ class MagneticFilterFringingFactor : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
+class MagneticFilterVolume : public MagneticFilter {
+    public:
+        MagneticFilterVolume() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterArea : public MagneticFilter {
+    public:
+        MagneticFilterArea() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterHeight : public MagneticFilter {
+    public:
+        MagneticFilterHeight() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterTemperatureRise : public MagneticFilter {
+    public:
+        MagneticFilterTemperatureRise() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterLossesTimesVolume : public MagneticFilter {
+    public:
+        MagneticFilterLossesTimesVolume() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilter {
+    public:
+        MagneticFilterVolumeTimesTemperatureRise() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+    public:
+        MagneticFilterLossesTimesVolumeTimesTemperatureRise() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+
 // // Nice to have in the future
 // class MagneticFilterMaximumWeight : public MagneticFilter {
 //     public:
