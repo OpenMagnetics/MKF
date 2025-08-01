@@ -55,6 +55,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
+    clear_scoring();
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
 
