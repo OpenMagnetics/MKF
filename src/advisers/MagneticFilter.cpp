@@ -1230,13 +1230,8 @@ std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magneti
         losses = previousLosses.value();
     }
     else {
-        for (auto operatingPoint : inputs->get_operating_points()) {
-            auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
-            auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature).get_winding_losses();
-            auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic).get_core_losses();
-            losses += windingLosses + coreLosses;
-        }
-        losses /= inputs->get_operating_points().size();
+        auto aux = MagneticFilterCoreAndDcLosses().evaluate_magnetic(magnetic, inputs);
+        losses = aux.second;
     }
 
     auto coreTemperatureModel = CoreTemperatureModel::factory(defaults.coreTemperatureModelDefault);
