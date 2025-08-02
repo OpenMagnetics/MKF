@@ -261,6 +261,18 @@ class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilte
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
+class MagneticFilterCoreAndDcLossesTimesVolume : public MagneticFilter {
+    public:
+        MagneticFilterCoreAndDcLossesTimesVolume() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
+class MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+    public:
+        MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
+};
+
 
 // // Nice to have in the future
 // class MagneticFilterMaximumWeight : public MagneticFilter {

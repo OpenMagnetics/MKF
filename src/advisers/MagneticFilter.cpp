@@ -1301,5 +1301,43 @@ std::pair<bool, double> MagneticFilterLossesTimesVolumeTimesTemperatureRise::eva
     return {true, losses * volumeScoring * temperature};
 }
 
+std::pair<bool, double> MagneticFilterCoreAndDcLossesTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::CORE_AND_DC_LOSSES);
+    double losses = 0;
+    if (previousLosses) {
+        losses = previousLosses.value();
+    }
+    else {
+        auto aux = MagneticFilterCoreAndDcLosses().evaluate_magnetic(magnetic, inputs);
+        losses = aux.second;
+    }
+    auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs);
+    return {true, losses * volumeScoring};
+}
+
+std::pair<bool, double> MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs) {
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::CORE_AND_DC_LOSSES);
+    double losses = 0;
+    if (previousLosses) {
+        losses = previousLosses.value();
+    }
+    else {
+        auto aux = MagneticFilterCoreAndDcLosses().evaluate_magnetic(magnetic, inputs);
+        losses = aux.second;
+    }
+    auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
+    double temperature = 0;
+    if (previousTemperatureRise) {
+        temperature = previousTemperatureRise.value();
+    }
+    else {
+        auto aux = MagneticFilterTemperatureRise().evaluate_magnetic(magnetic, inputs);
+        temperature = aux.second;
+    }
+
+    auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs);
+    return {true, losses * volumeScoring * temperature};
+}
+
 
 } // namespace OpenMagnetics
