@@ -15,6 +15,7 @@ class Magnetic : public MAS::Magnetic {
         Core core;
         std::optional<std::vector<DistributorInfo>> distributors_info;
         std::optional<ManufacturerInfo> manufacturer_info;
+        std::optional<std::vector<double>> _maximumDimensions;
         Coil coil;
     public:
         Magnetic() = default;
