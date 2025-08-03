@@ -238,8 +238,11 @@ class MagneticFilterHeight : public MagneticFilter {
 };
 
 class MagneticFilterTemperatureRise : public MagneticFilter {
+    private:
+        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
     public:
         MagneticFilterTemperatureRise() {};
+        MagneticFilterTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
@@ -250,26 +253,39 @@ class MagneticFilterLossesTimesVolume : public MagneticFilter {
 };
 
 class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilter {
+    private:
+        MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
         MagneticFilterVolumeTimesTemperatureRise() {};
+        MagneticFilterVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+    private:
+        MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
         MagneticFilterLossesTimesVolumeTimesTemperatureRise() {};
+        MagneticFilterLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterCoreAndDcLossesTimesVolume : public MagneticFilter {
+    private:
+        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
     public:
         MagneticFilterCoreAndDcLossesTimesVolume() {};
+        MagneticFilterCoreAndDcLossesTimesVolume(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+    private:
+        MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
+        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
     public:
         MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise() {};
+        MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs);
 };
 
