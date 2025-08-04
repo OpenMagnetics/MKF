@@ -216,13 +216,14 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     }
 
     for (auto mas : catalogMagneticsWithInputs) {
+        std::vector<Outputs> outputs;
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
         for (auto filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
         
-            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs);
+            auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
             add_scoring(magnetic.get_reference(), filterEnum, scoring);
             if (strict) {
                 if ((valid && filterConfiguration.get_strictly_required()) || (!valid && noStrictlyRequiredFilters)) {
@@ -244,6 +245,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             Mas mas;
             mas.set_magnetic(magnetic);
             mas.set_inputs(inputs);
+            mas.set_outputs(outputs);
             validMas.push_back(mas);
         }
     }
