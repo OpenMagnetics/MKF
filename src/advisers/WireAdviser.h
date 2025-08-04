@@ -1,7 +1,7 @@
 #pragma once
 #include "constructive_models/Coil.h"
 #include "constructive_models/Wire.h"
-#include "Utils.h"
+#include "support/Utils.h"
 #include <MAS.hpp>
 
 using namespace MAS;
