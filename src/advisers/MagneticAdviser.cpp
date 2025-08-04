@@ -55,6 +55,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
+    clear_scoring();
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
 
@@ -131,8 +132,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
             size_t processedCoils = 0;
             for (auto mas : masMagneticsWithCoreAndCoil) {
+                std::cout << "Mierda 0" << std::endl;
+
                 size_t numberSections = mas.get_magnetic().get_coil().get_sections_description()->size();
-                double margin = mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin().value()[0];
+                std::cout << "Mierda 1" << std::endl;
+
+                double margin = 0;
+                if (mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin()) {
+                    margin = mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin().value()[0];
+                }
+                std::cout << "Mierda 2" << std::endl;
                 std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
                 if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
                     continue;

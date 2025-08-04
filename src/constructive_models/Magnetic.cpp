@@ -30,11 +30,14 @@ std::string Magnetic::get_reference() {
 }
 
 std::vector<double> Magnetic::get_maximum_dimensions() {
-    auto coreMaximumDimensions = get_mutable_core().get_maximum_dimensions();
-    auto coilMaximumDimensions = get_mutable_coil().get_maximum_dimensions();
-    return {std::max(coreMaximumDimensions[0], coilMaximumDimensions[0]),
-            std::max(coreMaximumDimensions[1], coilMaximumDimensions[1]),
-            std::max(coreMaximumDimensions[2], coilMaximumDimensions[2])};
+    if (!_maximumDimensions) {
+        auto coreMaximumDimensions = get_mutable_core().get_maximum_dimensions();
+        auto coilMaximumDimensions = get_mutable_coil().get_maximum_dimensions();
+        _maximumDimensions = {std::max(coreMaximumDimensions[0], coilMaximumDimensions[0]),
+                              std::max(coreMaximumDimensions[1], coilMaximumDimensions[1]),
+                              std::max(coreMaximumDimensions[2], coilMaximumDimensions[2])};
+    }
+    return _maximumDimensions.value();
 }
 
 bool fits_one_dimension(std::vector<double> magneticDimensions, double dimension) {
