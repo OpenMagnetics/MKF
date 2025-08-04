@@ -455,6 +455,7 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
     _windingOhmicLosses = WindingOhmicLosses();
     _models = models;
 }
+
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
     bool largeWaveform = false;
 
