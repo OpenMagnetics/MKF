@@ -404,19 +404,22 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
 
-            if (_inputs) {
-                if (_inputs->get_design_requirements().get_insulation()) {
-                    logEntry("Calculating Required Insulation", "Coil", 2);
-                    calculate_insulation();
+            if (_insulationSections.size() == 0) {
+
+                if (_inputs) {
+                    if (_inputs->get_design_requirements().get_insulation()) {
+                        logEntry("Calculating Required Insulation", "Coil", 2);
+                        calculate_insulation();
+                    }
+                    else {
+                        logEntry("Calculating Mechanical Insulation", "Coil", 2);
+                        calculate_mechanical_insulation();
+                    }
                 }
                 else {
                     logEntry("Calculating Mechanical Insulation", "Coil", 2);
                     calculate_mechanical_insulation();
                 }
-            }
-            else {
-                logEntry("Calculating Mechanical Insulation", "Coil", 2);
-                calculate_mechanical_insulation();
             }
             logEntry("Winding by sections", "Coil", 2);
             wind_by_sections(proportionPerWinding, pattern, repetitions);
@@ -1122,7 +1125,7 @@ double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns) 
 }
 
 void Coil::set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers) {
-    _insulationLayers = insulationLayers;
+    _insulationInterSectionsLayers = insulationLayers;
 }
 
 bool Coil::calculate_custom_thickness_insulation(double thickness) {
@@ -1165,7 +1168,7 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
             coilSectionInterface.set_total_margin_tape_distance(0);
             coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             Layer layer;
@@ -1201,7 +1204,7 @@ bool Coil::calculate_custom_thickness_insulation(double thickness) {
             }
             // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
             layer.set_filling_factor(1);
-            _insulationLayers[windingsMapKey].push_back(layer);
+            _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
 
             Section section;
             section.set_name("temp");
@@ -1280,7 +1283,7 @@ bool Coil::calculate_mechanical_insulation() {
             coilSectionInterface.set_total_margin_tape_distance(0);
             coilSectionInterface.set_layer_purpose(CoilSectionInterface::LayerPurpose::MECHANICAL);
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             for (size_t layerIndex = 0; layerIndex < coilSectionInterface.get_number_layers_insulation(); ++layerIndex) {
@@ -1317,9 +1320,9 @@ bool Coil::calculate_mechanical_insulation() {
                 }
                 // layer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layer.set_filling_factor(1);
-                _insulationLayers[windingsMapKey].push_back(layer);
+                _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
+            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -1422,7 +1425,7 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
             }
 
-            _insulationLayers[windingsMapKey] = std::vector<Layer>();
+            _insulationInterSectionsLayers[windingsMapKey] = std::vector<Layer>();
             _coilSectionInterfaces[windingsMapKey] = coilSectionInterface;
 
             for (size_t layerIndex = 0; layerIndex < coilSectionInterface.get_number_layers_insulation(); ++layerIndex) {
@@ -1459,9 +1462,9 @@ bool Coil::calculate_insulation(bool simpleMode) {
                 }
 
                 layer.set_filling_factor(1);
-                _insulationLayers[windingsMapKey].push_back(layer);
+                _insulationInterSectionsLayers[windingsMapKey].push_back(layer);
             }
-            // _insulationLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
+            // _insulationInterSectionsLayersLog[windingsMapKey] = "Adding " + std::to_string(coilSectionInterface.get_number_layers_insulation()) + " insulation layers, as we need a thickness of " + std::to_string(smallestInsulationThicknessCoveringRemaining * 1000) + " mm to achieve " + neededInsulationTypeString + " insulation";
 
             Section section;
             section.set_name("temp");
@@ -2400,6 +2403,11 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight + _marginsPerSection[sectionIndex][0], currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight);
                     numberLayers = aux.first;
                     currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+
+                    if (_insulationInterLayers.contains(windingIndex)) {
+                        auto insulationLayer = _insulationInterLayers[windingIndex];
+                        currentSectionRadialHeight += (numberLayers - 1) * insulationLayer.get_dimensions()[0];
+                    }
                 }
                 else {
                     while (numberLayers != prevNumberLayers) {
@@ -2889,13 +2897,56 @@ bool Coil::wind_by_rectangular_layers() {
                     remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
                 }
 
+                if (layerIndex == numberLayers - 1) {
+                    break;
+                }
+
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight, 9);
+                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight / 2, 9);
                 }
                 else {
-                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth, 9);
+                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth / 2, 9);
+                }
+
+                if (_insulationInterLayers.contains(windingIndex)) {
+     
+                    auto insulationLayer = _insulationInterLayers[windingIndex];
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                    }
+                    else {
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+
+                    insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                    insulationLayer.set_section(sections[sectionIndex].get_name());
+                    insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
+                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        insulationLayer.set_dimensions(std::vector<double>{layerWidth, insulationLayer.get_dimensions()[1]});
+                    }
+                    else {
+                        insulationLayer.set_dimensions(std::vector<double>{insulationLayer.get_dimensions()[0], layerHeight});
+                    }
+                    layers.push_back(insulationLayer);
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                        currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - insulationLayer.get_dimensions()[1] / 2, 9);
+                    }
+                    else {
+                        currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+
+                }
+
+                if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
+                    currentLayerCenterHeight = roundFloat(currentLayerCenterHeight - layerHeight / 2, 9);
+                }
+                else {
+                    currentLayerCenterWidth = roundFloat(currentLayerCenterWidth + layerWidth / 2, 9);
                 }
             }
+
         }
         else {
             if (sectionIndex == 0) {
@@ -2919,12 +2970,12 @@ bool Coil::wind_by_rectangular_layers() {
             auto nextWindingIndex = get_winding_index_by_name(nextPartialWinding.get_winding());
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
-            if (!_insulationLayers.contains(windingsMapKey)) {
-                log(_insulationLayersLog[windingsMapKey]);
+            if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
+                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
 
-            auto insulationLayers = _insulationLayers[windingsMapKey];
+            auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
             if (insulationLayers.size() == 0) {
                 throw std::runtime_error("There must be at least one insulation layer between layers");
             }
@@ -2946,7 +2997,7 @@ bool Coil::wind_by_rectangular_layers() {
                 auto insulationLayer = insulationLayers[layerIndex];
                 insulationLayer.set_coordinate_system(CoordinateSystem::CARTESIAN);
                 insulationLayer.set_section(sections[sectionIndex].get_name());
-                insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+                insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterWidth, currentLayerCenterHeight, 0});
                 layers.push_back(insulationLayer);
 
@@ -3135,8 +3186,48 @@ bool Coil::wind_by_round_layers() {
                     remainingParallelsProportionInSection[parallelIndex] -= layerParallelsProportion[parallelIndex];
                 }
 
+
+                if (layerIndex == numberLayers - 1) {
+                    break;
+                }
+
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight, 9);
+                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight / 2, 9);
+                }
+                else {
+                    throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                }
+
+
+                if (_insulationInterLayers.contains(windingIndex)) {
+     
+                    auto insulationLayer = _insulationInterLayers[windingIndex];
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                        currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+                    else {
+                        throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                    }
+
+                    insulationLayer.set_section(sections[sectionIndex].get_name());
+                    insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
+                    insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
+                    insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerAngle});
+                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
+                    layers.push_back(insulationLayer);
+
+                    if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                        currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + insulationLayer.get_dimensions()[0] / 2, 9);
+                    }
+                    else {
+                        throw std::invalid_argument("Only overlapping layers allowed in toroids");
+                    }
+
+                }
+
+                if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+                    currentLayerCenterRadialHeight = roundFloat(currentLayerCenterRadialHeight + layerRadialHeight / 2, 9);
                 }
                 else {
                     throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -3171,12 +3262,12 @@ bool Coil::wind_by_round_layers() {
             }
 
             auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
-            if (!_insulationLayers.contains(windingsMapKey)) {
-                log(_insulationLayersLog[windingsMapKey]);
+            if (!_insulationInterSectionsLayers.contains(windingsMapKey)) {
+                log(_insulationInterSectionsLayersLog[windingsMapKey]);
                 continue;
             }
 
-            auto insulationLayers = _insulationLayers[windingsMapKey];
+            auto insulationLayers = _insulationInterSectionsLayers[windingsMapKey];
             if (insulationLayers.size() == 0) {
                 throw std::runtime_error("There must be at least one insulation layer between layers");
             }
@@ -3197,7 +3288,7 @@ bool Coil::wind_by_round_layers() {
                 auto insulationLayer = insulationLayers[layerIndex];
                 insulationLayer.set_section(sections[sectionIndex].get_name());
                 insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
-                insulationLayer.set_name(sections[sectionIndex].get_name() +  " layer " + std::to_string(layerIndex));
+                insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
                 insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
                 layers.push_back(insulationLayer);
 
@@ -3429,6 +3520,8 @@ bool Coil::wind_by_rectangular_turns() {
                         turn.set_dimensions(std::vector<double>{wireWidth, wireHeight});
                         turn.set_rotation(0);
                         turn.set_coordinate_system(CoordinateSystem::CARTESIAN);
+                        if (turn.get_name() == "winding 1 parallel 1 turn 0") {
+                        }
 
                         turns.push_back(turn);
                         currentTurnCenterWidth += currentTurnWidthIncrement;
@@ -3561,7 +3654,7 @@ bool Coil::wind_by_round_turns() {
             }
             double wireAngle = wound_distance_to_angle(wireHeight, wireRadius);
             if (_strict && (wireRadius <= 0 || wireAngle > 180 || std::isnan(wireAngle))) {
-                // Turns won't fit
+                // Turns won't fit 
                 return false;
             }
 
@@ -3927,7 +4020,7 @@ bool Coil::wind_toroidal_additional_turns() {
     auto layers = get_layers_description().value();
     auto turns = get_turns_description().value();
     double currentBaseRadialHeight = -bobbinColumnWidth * 2;
-    std::map<size_t, double> maximumAdditionalRadialHeightPerSectionByIndex;
+    std::vector<std::pair<Layer, double>> maximumAdditionalRadialHeightPerInsulationLayerByIndex;
     auto windingOrientation = get_winding_orientation();
 
     for (auto section : sections) { 
@@ -3946,246 +4039,263 @@ bool Coil::wind_toroidal_additional_turns() {
                 currentBaseRadialHeight = -bobbinColumnWidth * 2 - turnsInSection[0].get_dimensions().value()[0] / 2;
             }
             double currentSectionMaximumAdditionalRadialHeight = 0;
-            for (auto turn : turnsInSection) {
-                auto turnIndex = get_turn_index_by_name(turn.get_name());
-                std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
+            double currentBaseRadialHeightForLayers = currentBaseRadialHeight + turnsInSection[0].get_dimensions().value()[0] / 2;
 
-                // If the turn is not on the first layer of the section, we try to place it in a slot there
-                if (roundFloat(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2, 9) > 0) {
-                    std::vector<double> newCoordinates = {additionalCoordinates[0], additionalCoordinates[1]};
-                    newCoordinates[0] = currentBaseRadialHeight;
-                    auto collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
+            auto layersThisSection = get_layers_by_section(section.get_name());
+            bool areLayersTaped = layersThisSection.size() > 1;
+            for (size_t layerIndex = 0; layerIndex < layersThisSection.size() - 1; ++layerIndex) {
+                if (layersThisSection[layerIndex].get_type() == ElectricalType::CONDUCTION && layersThisSection[layerIndex + 1].get_type() == ElectricalType::CONDUCTION) {
+                    areLayersTaped = false;
+                }
+            }
+            for (auto layer : layersThisSection) {
+                if (layer.get_type() == ElectricalType::CONDUCTION) {
+                    auto turnsThisLayer = get_turns_by_layer(layer.get_name());
+                    for (auto turn : turnsThisLayer) {
+                        auto turnIndex = get_turn_index_by_name(turn.get_name());
+                        std::vector<double> additionalCoordinates = {-bobbinColumnWidth * 2 - turn.get_coordinates()[0], turn.get_coordinates()[1]};
 
-                    if (collisions.size() > 0) {
-                        bool tryAngularMove = collisions.size() > 0;
-                        bool tryReversedAngularMove = collisions.size() > 0;
-                        bool previouslyAdditionAngularMovement = false;
-                        bool try0Degrees = true;
-                        bool tryMinus0Degrees = true;
-                        bool try30Degrees = true;
-                        bool tryMinus30Degrees = true;
-                        bool try45Degrees = true;
-                        bool tryMinus45Degrees = true;
-                        bool try60Degrees = true;
-                        bool tryMinus60Degrees = true;
-                        bool tryAvoidingCollisionDistance = true;
-                        double previousCollisionDistance = 0;
-                        std::vector<double> originalCollidedCoordinate;
-                        double restoredHeightAfter60Degrees = 0;
+                        if (!areLayersTaped) {
 
-                        double collisionDistance = collisions[0].first;
-                        auto collidedCoordinate = collisions[0].second;
+                            // If the turn is not on the first layer of the section, we try to place it in a slot there
+                            if (roundFloat(turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2, 9) > 0) {
+                                std::vector<double> newCoordinates = {additionalCoordinates[0], additionalCoordinates[1]};
+                                newCoordinates[0] = currentBaseRadialHeight;
+                                auto collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
 
-                        uint64_t timeout = 1000;
-                        while (newCoordinates[0] > additionalCoordinates[0]) {
-                            timeout--;
-                            if (timeout == 0) {
-                                throw std::runtime_error("timeout in wind_toroidal_additional_turns");
-                            }
-                            if (tryAvoidingCollisionDistance && collisionDistance < 1e-6) {
-                                tryAvoidingCollisionDistance = false;
-                                if (collidedCoordinate[1] > newCoordinates[1]) {
-                                    newCoordinates[1] -= ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
-                                }
-                                else {
-                                    newCoordinates[1] += ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
-                                }
-                            }
-                            else if (tryAngularMove) {
-                                tryAngularMove = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                double increment = ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
-                                if (collidedCoordinate[1] > newCoordinates[1]) {
-                                    previouslyAdditionAngularMovement = false;
-                                    if (newCoordinates[1] - increment > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
-                                        newCoordinates[1] -= increment;
-                                }
-                                else {
-                                    previouslyAdditionAngularMovement = true;
-                                    if (newCoordinates[1] + increment < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
-                                        newCoordinates[1] += increment;
-                                }
-                            }
-                            else if (tryReversedAngularMove) {
-                                tryReversedAngularMove = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                double currentAngleCollision = ceilFloat(wound_distance_to_angle(previousCollisionDistance, currentRadius), 3);
-                                double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
-                                double currentAngleMovement = currentWireAngle + (currentWireAngle - currentAngleCollision);
+                                if (collisions.size() > 0) {
+                                    bool tryAngularMove = collisions.size() > 0;
+                                    bool tryReversedAngularMove = collisions.size() > 0;
+                                    bool previouslyAdditionAngularMovement = false;
+                                    bool try0Degrees = true;
+                                    bool tryMinus0Degrees = true;
+                                    bool try30Degrees = true;
+                                    bool tryMinus30Degrees = true;
+                                    bool try45Degrees = true;
+                                    bool tryMinus45Degrees = true;
+                                    bool try60Degrees = true;
+                                    bool tryMinus60Degrees = true;
+                                    bool tryAvoidingCollisionDistance = true;
+                                    double previousCollisionDistance = 0;
+                                    std::vector<double> originalCollidedCoordinate;
+                                    double restoredHeightAfter60Degrees = 0;
 
-                                if (previouslyAdditionAngularMovement) {
-                                    if (newCoordinates[1] - currentAngleMovement > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
-                                        newCoordinates[1] -= currentAngleMovement;
-                                }
-                                else {
-                                    if (newCoordinates[1] + currentAngleMovement < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
-                                        newCoordinates[1] += currentAngleMovement;
-                                }
-                            }
-                            else if (try0Degrees) {
-                                try0Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                restoredHeightAfter60Degrees = newCoordinates[0];
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(0);
-                                newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(0), currentRadius), 3);
-                            }
-                            else if (tryMinus0Degrees) {
-                                tryMinus0Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(0);
-                                newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(0), currentRadius), 3);
-                            }
-                            else if (try30Degrees) {
-                                try30Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 6);
-                                newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 6), currentRadius), 3);
-                            }
-                            else if (tryMinus30Degrees) {
-                                tryMinus30Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 6);
-                                newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 6), currentRadius), 3);
-                            }
-                            else if (try45Degrees) {
-                                try45Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 4);
-                                newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 4), currentRadius), 3);
-                            }
-                            else if (tryMinus45Degrees) {
-                                tryMinus45Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 4);
-                                newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 4), currentRadius), 3);
-                            }
-                            else if (try60Degrees) {
-                                try60Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 3);
-                                newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 3), currentRadius), 3);
-                            }
-                            else if (tryMinus60Degrees) {
-                                tryMinus60Degrees = false;
-                                double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                                newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 3);
-                                newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 3), currentRadius), 3);
-                            }
-                            else {
-                                try0Degrees = true;
-                                tryMinus0Degrees = true;
-                                try30Degrees = true;
-                                tryMinus30Degrees = true;
-                                try45Degrees = true;
-                                tryMinus45Degrees = true;
-                                try60Degrees = true;
-                                tryMinus60Degrees = true;
-                                tryAngularMove = true;
-                                tryAvoidingCollisionDistance = true;
-                                previousCollisionDistance = 0;
-                                if (restoredHeightAfter60Degrees != 0) {
-                                    newCoordinates[0] = restoredHeightAfter60Degrees;
-                                    restoredHeightAfter60Degrees = 0;
-                                }
-                                newCoordinates[0] -= turn.get_dimensions().value()[0] / 2;
-                                newCoordinates[1] = additionalCoordinates[1];
-                            }
-                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
-                            double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+                                    double collisionDistance = collisions[0].first;
+                                    auto collidedCoordinate = collisions[0].second;
 
-                            if (newCoordinates[1] - currentWireAngle / 2 < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2)) {
-                                newCoordinates[1] = additionalCoordinates[1];
-                            }
-                            if (newCoordinates[1] + currentWireAngle / 2 > (section.get_coordinates()[1] + section.get_dimensions()[1] / 2)) {
-                                newCoordinates[1] = additionalCoordinates[1];
-                            }
+                                    uint64_t timeout = 1000;
+                                    while (newCoordinates[0] > additionalCoordinates[0]) {
+                                        timeout--;
+                                        if (timeout == 0) {
+                                            throw std::runtime_error("timeout in wind_toroidal_additional_turns");
+                                        }
+                                        if (tryAvoidingCollisionDistance && collisionDistance < 1e-6) {
+                                            tryAvoidingCollisionDistance = false;
+                                            if (collidedCoordinate[1] > newCoordinates[1]) {
+                                                newCoordinates[1] -= ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
+                                            }
+                                            else {
+                                                newCoordinates[1] += ceilFloat(collisionDistance / std::numbers::pi * 180, 3);
+                                            }
+                                        }
+                                        else if (tryAngularMove) {
+                                            tryAngularMove = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            double increment = ceilFloat(wound_distance_to_angle(collisionDistance, currentRadius), 3);
+                                            if (collidedCoordinate[1] > newCoordinates[1]) {
+                                                previouslyAdditionAngularMovement = false;
+                                                if (newCoordinates[1] - increment > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                    newCoordinates[1] -= increment;
+                                            }
+                                            else {
+                                                previouslyAdditionAngularMovement = true;
+                                                if (newCoordinates[1] + increment < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                    newCoordinates[1] += increment;
+                                            }
+                                        }
+                                        else if (tryReversedAngularMove) {
+                                            tryReversedAngularMove = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            double currentAngleCollision = ceilFloat(wound_distance_to_angle(previousCollisionDistance, currentRadius), 3);
+                                            double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+                                            double currentAngleMovement = currentWireAngle + (currentWireAngle - currentAngleCollision);
 
-                            collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
-                            if (collisions.size() == 0) {
-                                break;
+                                            if (previouslyAdditionAngularMovement) {
+                                                if (newCoordinates[1] - currentAngleMovement > (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                    newCoordinates[1] -= currentAngleMovement;
+                                            }
+                                            else {
+                                                if (newCoordinates[1] + currentAngleMovement < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2))
+                                                    newCoordinates[1] += currentAngleMovement;
+                                            }
+                                        }
+                                        else if (try0Degrees) {
+                                            try0Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            restoredHeightAfter60Degrees = newCoordinates[0];
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(0);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(0), currentRadius), 3);
+                                        }
+                                        else if (tryMinus0Degrees) {
+                                            tryMinus0Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(0);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(0), currentRadius), 3);
+                                        }
+                                        else if (try30Degrees) {
+                                            try30Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 6);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 6), currentRadius), 3);
+                                        }
+                                        else if (tryMinus30Degrees) {
+                                            tryMinus30Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 6);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 6), currentRadius), 3);
+                                        }
+                                        else if (try45Degrees) {
+                                            try45Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 4);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 4), currentRadius), 3);
+                                        }
+                                        else if (tryMinus45Degrees) {
+                                            tryMinus45Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 4);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 4), currentRadius), 3);
+                                        }
+                                        else if (try60Degrees) {
+                                            try60Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 3);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] + ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 3), currentRadius), 3);
+                                        }
+                                        else if (tryMinus60Degrees) {
+                                            tryMinus60Degrees = false;
+                                            double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                            newCoordinates[0] = originalCollidedCoordinate[0] - wireHeight * sin(std::numbers::pi / 3);
+                                            newCoordinates[1] = originalCollidedCoordinate[1] - ceilFloat(wound_distance_to_angle(wireHeight * cos(std::numbers::pi / 3), currentRadius), 3);
+                                        }
+                                        else {
+                                            try0Degrees = true;
+                                            tryMinus0Degrees = true;
+                                            try30Degrees = true;
+                                            tryMinus30Degrees = true;
+                                            try45Degrees = true;
+                                            tryMinus45Degrees = true;
+                                            try60Degrees = true;
+                                            tryMinus60Degrees = true;
+                                            tryAngularMove = true;
+                                            tryAvoidingCollisionDistance = true;
+                                            previousCollisionDistance = 0;
+                                            if (restoredHeightAfter60Degrees != 0) {
+                                                newCoordinates[0] = restoredHeightAfter60Degrees;
+                                                restoredHeightAfter60Degrees = 0;
+                                            }
+                                            newCoordinates[0] -= turn.get_dimensions().value()[0] / 2;
+                                            newCoordinates[1] = additionalCoordinates[1];
+                                        }
+                                        double currentRadius = windingWindowRadialHeight - currentBaseRadialHeight;
+                                        double currentWireAngle = ceilFloat(wound_distance_to_angle(wireHeight, currentRadius), 3);
+
+                                        if (newCoordinates[1] - currentWireAngle / 2 < (section.get_coordinates()[1] - section.get_dimensions()[1] / 2)) {
+                                            newCoordinates[1] = additionalCoordinates[1];
+                                        }
+                                        if (newCoordinates[1] + currentWireAngle / 2 > (section.get_coordinates()[1] + section.get_dimensions()[1] / 2)) {
+                                            newCoordinates[1] = additionalCoordinates[1];
+                                        }
+
+                                        collisions = get_collision_distances(newCoordinates, placedTurnsCoordinates, wireHeight);
+                                        if (collisions.size() == 0) {
+                                            break;
+                                        }
+                                        collidedCoordinate = collisions[0].second;
+                                        if (previousCollisionDistance == 0) {
+                                            originalCollidedCoordinate = collidedCoordinate;
+                                        }
+                                        previousCollisionDistance = collisionDistance;
+                                        collisionDistance = collisions[0].first;
+                                    }
+                                }
+                                additionalCoordinates = newCoordinates;
                             }
-                            collidedCoordinate = collisions[0].second;
-                            if (previousCollisionDistance == 0) {
-                                originalCollidedCoordinate = collidedCoordinate;
-                            }
-                            previousCollisionDistance = collisionDistance;
-                            collisionDistance = collisions[0].first;
                         }
-                    }
-                    additionalCoordinates = newCoordinates;
-                }
-                currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
-                turn.set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
+                        currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
+                        turn.set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
 
-                if (bobbinColumnShape == ColumnShape::ROUND) {
-                    double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
-                    double a = turn.get_coordinates()[0];
-                    // Ramanujan  approximation for ellipse perimeter
-                    double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)));
-                    turns[turnIndex].set_length(perimeter);
-                    if (turns[turnIndex].get_length() < 0) {
-                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
-                    }
-                }
-                else if (bobbinColumnShape == ColumnShape::OBLONG) {
-                    double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
-                    double a = turn.get_coordinates()[0];
-                    // Ramanujan  approximation for ellipse perimeter
-                    double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b))) + 4 * (bobbinColumnDepth - bobbinColumnWidth);
-                    turns[turnIndex].set_length(perimeter);
-                    if (turns[turnIndex].get_length() < 0) {
-                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
-                    }
-                }
-                else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
-                    double currentInternalTurnCornerRadius = turns[turnIndex].get_coordinates()[0];
-                    double currentExternalTurnCornerRadius = -turn.get_additional_coordinates().value()[0][0] - 2 * bobbinColumnWidth;
-                    double maximumVerticalDistance = currentInternalTurnCornerRadius * 2 + 2 * bobbinColumnDepth;
-                    double externalVerticalStraightDistance = maximumVerticalDistance - 2 * currentExternalTurnCornerRadius;
-                    turns[turnIndex].set_length(2 * bobbinColumnDepth + 4 * bobbinColumnWidth + externalVerticalStraightDistance + std::numbers::pi * currentInternalTurnCornerRadius + std::numbers::pi * currentExternalTurnCornerRadius);
+                        if (bobbinColumnShape == ColumnShape::ROUND) {
+                            double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
+                            double a = turn.get_coordinates()[0];
+                            // Ramanujan  approximation for ellipse perimeter
+                            double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b)));
+                            turns[turnIndex].set_length(perimeter);
+                            if (turns[turnIndex].get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::OBLONG) {
+                            double b = (turn.get_coordinates()[0] - turn.get_additional_coordinates().value()[0][0]) / 2;
+                            double a = turn.get_coordinates()[0];
+                            // Ramanujan  approximation for ellipse perimeter
+                            double perimeter = std::numbers::pi * (3 * (a + b) - sqrt((3 * a + b) * (a + 3 * b))) + 4 * (bobbinColumnDepth - bobbinColumnWidth);
+                            turns[turnIndex].set_length(perimeter);
+                            if (turns[turnIndex].get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " turns[turnIndex].get_coordinates()[0]: " + std::to_string(turns[turnIndex].get_coordinates()[0]));
+                            }
+                        }
+                        else if (bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
+                            double currentInternalTurnCornerRadius = turns[turnIndex].get_coordinates()[0];
+                            double currentExternalTurnCornerRadius = -turn.get_additional_coordinates().value()[0][0] - 2 * bobbinColumnWidth;
+                            double maximumVerticalDistance = currentInternalTurnCornerRadius * 2 + 2 * bobbinColumnDepth;
+                            double externalVerticalStraightDistance = maximumVerticalDistance - 2 * currentExternalTurnCornerRadius;
+                            turns[turnIndex].set_length(2 * bobbinColumnDepth + 4 * bobbinColumnWidth + externalVerticalStraightDistance + std::numbers::pi * currentInternalTurnCornerRadius + std::numbers::pi * currentExternalTurnCornerRadius);
 
-                    if (turns[turnIndex].get_length() < 0) {
-                        throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentExternalTurnCornerRadius: " + std::to_string(currentExternalTurnCornerRadius));
+                            if (turns[turnIndex].get_length() < 0) {
+                                throw std::runtime_error("Something wrong happened in turn length 1: " + std::to_string(turns[turnIndex].get_length()) + " bobbinColumnDepth: " + std::to_string(bobbinColumnDepth)  + " bobbinColumnWidth: " + std::to_string(bobbinColumnWidth)  + " currentExternalTurnCornerRadius: " + std::to_string(currentExternalTurnCornerRadius));
+                            }
+                        }
+                        else {
+                            throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                        }
+
+                        turns[turnIndex] = turn;
+                        placedTurnsCoordinates.push_back(additionalCoordinates);
                     }
+                    currentBaseRadialHeightForLayers -= turnsInSection[0].get_dimensions().value()[0];
                 }
                 else {
-                    throw std::runtime_error("only round or rectangular columns supported for bobbins");
+                    maximumAdditionalRadialHeightPerInsulationLayerByIndex.push_back({layer, currentBaseRadialHeightForLayers});
+                    currentBaseRadialHeightForLayers -= layer.get_dimensions()[0];
                 }
-
-                turns[turnIndex] = turn;
-                placedTurnsCoordinates.push_back(additionalCoordinates);
             }
 
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
                 currentSectionMaximumAdditionalRadialHeight -= turnsInSection[0].get_dimensions().value()[0] / 2;
-                auto sectionIndex = get_section_index_by_name(section.get_name());
                 currentBaseRadialHeight = currentSectionMaximumAdditionalRadialHeight;
-                if (sectionIndex < sections.size() - 1) {
-                    maximumAdditionalRadialHeightPerSectionByIndex[sectionIndex + 1] = currentBaseRadialHeight;
-                }
             }
         }
         else {
             if (windingOrientation == WindingOrientation::OVERLAPPING) {
-                currentBaseRadialHeight -= section.get_dimensions()[0];
+                auto layersThisSection = get_layers_by_section(section.get_name());
+                for (auto layer : layersThisSection) {
+                    maximumAdditionalRadialHeightPerInsulationLayerByIndex.push_back({layer, currentBaseRadialHeight});
+                    currentBaseRadialHeight -= layer.get_dimensions()[0];
+                }
             }
         }
 
     }
     set_turns_description(turns);
 
-    for (auto [sectionIndex, radialHeight] : maximumAdditionalRadialHeightPerSectionByIndex) {
-        auto layersInSection = get_layers_by_section(sections[sectionIndex].get_name());
-
-        double currentRadialHeight = radialHeight;
-        for (auto layer : layersInSection) {
-            if (layer.get_type() == ElectricalType::INSULATION) {
-                auto layerIndex = get_layer_index_by_name(layer.get_name());
-                currentRadialHeight -= layer.get_dimensions()[0] / 2;
-                std::vector<double> additionalCoordinates = {currentRadialHeight, layer.get_coordinates()[1]};
-                layers[layerIndex].set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
-                currentRadialHeight -= layer.get_dimensions()[0] / 2;
-            }
+    for (auto [layer, currentRadialHeight] : maximumAdditionalRadialHeightPerInsulationLayerByIndex) {
+        if (layer.get_type() == ElectricalType::INSULATION) {
+            auto layerIndex = get_layer_index_by_name(layer.get_name());
+            currentRadialHeight -= layer.get_dimensions()[0] / 2;
+            std::vector<double> additionalCoordinates = {currentRadialHeight, layer.get_coordinates()[1]};
+            layers[layerIndex].set_additional_coordinates(std::vector<std::vector<double>>{additionalCoordinates});
+            currentRadialHeight -= layer.get_dimensions()[0] / 2;
         }
     }
     set_layers_description(layers);
@@ -4577,6 +4687,7 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
 }
 
 bool Coil::delimit_and_compact() {
+
     auto bobbin = resolve_bobbin();
 
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
@@ -4603,7 +4714,6 @@ WiringTechnology Coil::get_coil_type(size_t groupIndex) {
 
 bool Coil::delimit_and_compact_rectangular_window() {
     // Delimit
-        
     auto groupType = get_coil_type();
 
     if (!get_sections_description()) {
@@ -4631,7 +4741,14 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                                                layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
                     layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
                                                                currentLayerMaximumHeight - currentLayerMinimumHeight}));
-
+                    if (i < layers.size() - 1) {
+                        layerCoordinates = layers[i + 1].get_coordinates();
+                        if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
+                            layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                                       layerCoordinates[1]}));
+                            layers[i + 1].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth, layers[i + 1].get_dimensions()[1]}));
+                        }
+                    }
                 }
                 set_layers_description(layers);
             }
@@ -4651,11 +4768,14 @@ bool Coil::delimit_and_compact_rectangular_window() {
                 double currentSectionMinimumHeight = (layersInSection[0].get_coordinates()[1] - sectionCoordinates[1]) - layersInSection[0].get_dimensions()[1] / 2;
 
                 for (auto& layer : layersInSection) {
-                    currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) + layer.get_dimensions()[0] / 2);
-                    currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
-                    currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
-                    currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
+                    if (layer.get_type() == ElectricalType::CONDUCTION) {
+                        currentSectionMaximumWidth = std::max(currentSectionMaximumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) + layer.get_dimensions()[0] / 2);
+                        currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
+                        currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
+                        currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
+                    }
                 }
+
                 sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0] + (currentSectionMaximumWidth + currentSectionMinimumWidth) / 2,
                                                            sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
                 sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
@@ -4766,8 +4886,12 @@ bool Coil::delimit_and_compact_rectangular_window() {
                             layers[layerIndex].get_coordinates()[1] - compactingShiftHeight
                         }));
                         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+
                             if (turns[turnIndex].get_layer().value() == layers[layerIndex].get_name()){
 
+
+                                turns[turnIndex].set_coordinate_system(CoordinateSystem::CARTESIAN);
+        
                                 if (bobbinColumnShape == ColumnShape::ROUND || bobbinColumnShape == ColumnShape::OBLONG || bobbinColumnShape == ColumnShape::RECTANGULAR || bobbinColumnShape == ColumnShape::IRREGULAR) {
                                     if (turns[turnIndex].get_coordinates()[0] < compactingShiftWidth) {
                                         throw std::runtime_error("Something wrong happened with compactingShiftWidth: " + std::to_string(compactingShiftWidth) +
@@ -5132,7 +5256,7 @@ bool Coil::delimit_and_compact_round_window() {
             set_layers_description(layers);
         }
         set_sections_description(sections);
-
+        
         if (settings->get_coil_include_additional_coordinates()) {
             wind_toroidal_additional_turns();
         }
@@ -5887,6 +6011,182 @@ bool Coil::is_edge_wound_coil() {
 
     return true;
 }
+
+void Coil::set_interlayer_insulation(double layerThickness, std::optional<std::string> material, std::optional<std::string> windingName, bool autowind) {
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto layersOrientation = _layersOrientation;
+
+    // TODO: Properly think about insulation layers with weird windings
+    auto windingOrientation = get_winding_orientation();
+
+    Layer layer;
+    layer.set_partial_windings(std::vector<PartialWinding>{});
+    layer.set_type(ElectricalType::INSULATION);
+    layer.set_name("custom thickness temp");
+    layer.set_orientation(layersOrientation);
+    layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
+
+    if (material) {
+        layer.set_insulation_material(material.value());
+    }
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (layersOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowHeight});
+        }
+        else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
+            layer.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness});
+        }
+    }
+    else {
+        layer.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        layer.set_dimensions(std::vector<double>{layerThickness, windingWindowAngle});
+    }
+    layer.set_filling_factor(1);
+
+    if (windingName) {
+        auto windingIndex = get_winding_index_by_name(windingName.value());
+        _insulationInterLayers[windingIndex] = layer;
+    }
+    else {
+        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+            _insulationInterLayers[windingIndex] = layer;
+        }
+    }
+
+    if (autowind) {
+        wind();
+    }
+
+}
+
+void Coil::set_intersection_insulation(double layerThickness, size_t numberInsulationLayers, std::optional<std::string> material, std::optional<std::pair<std::string, std::string>> windingNames, bool autowind) {
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto layersOrientation = _layersOrientation;
+
+    // TODO: Properly think about insulation layers with weird windings
+    auto windingOrientation = get_winding_orientation();
+
+    if (windingOrientation == WindingOrientation::CONTIGUOUS && _layersOrientation == WindingOrientation::OVERLAPPING) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::CONTIGUOUS;
+        }
+    }
+    if (windingOrientation == WindingOrientation::OVERLAPPING && _layersOrientation == WindingOrientation::CONTIGUOUS) {
+        if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+            layersOrientation = WindingOrientation::OVERLAPPING;
+        }
+    }
+
+    std::vector<Layer> insulationLayers;
+    Layer layer;
+    layer.set_partial_windings(std::vector<PartialWinding>{});
+    layer.set_type(ElectricalType::INSULATION);
+    layer.set_name("custom thickness temp");
+    layer.set_orientation(layersOrientation);
+    layer.set_turns_alignment(CoilAlignment::SPREAD); // HARDCODED, maybe in the future configure for shields made of turns?
+
+    if (material) {
+        layer.set_insulation_material(material.value());
+    }
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        layer.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (layersOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowHeight});
+        }
+        else if (layersOrientation == WindingOrientation::CONTIGUOUS) {
+            layer.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness});
+        }
+    }
+    else {
+        layer.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            layer.set_dimensions(std::vector<double>{layerThickness, windingWindowAngle});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            double tapeThicknessInAngle = wound_distance_to_angle(layerThickness, windingWindowRadialHeight);
+            layer.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+        }
+    }
+    layer.set_filling_factor(1);
+    for (size_t layerIndex = 0; layerIndex < numberInsulationLayers; ++layerIndex) {
+        insulationLayers.push_back(layer);
+    }
+
+    Section section;
+    section.set_name("custom thickness temp");
+    section.set_partial_windings(std::vector<PartialWinding>{});
+    section.set_layers_orientation(layersOrientation);
+    section.set_type(ElectricalType::INSULATION);
+
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        double windingWindowHeight = windingWindows[0].get_height().value();
+        double windingWindowWidth = windingWindows[0].get_width().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            section.set_dimensions(std::vector<double>{layerThickness * numberInsulationLayers, windingWindowHeight});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            section.set_dimensions(std::vector<double>{windingWindowWidth, layerThickness * numberInsulationLayers});
+        }
+    }
+    else {
+        section.set_coordinate_system(CoordinateSystem::POLAR);
+        double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
+        double windingWindowAngle = windingWindows[0].get_angle().value();
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            section.set_dimensions(std::vector<double>{layerThickness * numberInsulationLayers, windingWindowAngle});
+        }
+        else if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+            double tapeThicknessInAngle = wound_distance_to_angle(layerThickness * numberInsulationLayers, windingWindowRadialHeight);
+            section.set_dimensions(std::vector<double>{windingWindowRadialHeight, tapeThicknessInAngle});
+        }
+    }
+    section.set_filling_factor(1);
+
+    if (windingNames) {
+        auto windingIndex = get_winding_index_by_name(windingNames->first);
+        auto nextWindingIndex = get_winding_index_by_name(windingNames->second);
+
+        {
+            auto windingsMapKey = std::pair<size_t, size_t>{windingIndex, nextWindingIndex};
+            _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+            _insulationSections[windingsMapKey] = section;
+        }
+        {
+            auto windingsMapKey = std::pair<size_t, size_t>{nextWindingIndex, windingIndex};
+            _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+            _insulationSections[windingsMapKey] = section;
+        }
+    }
+    else {
+        for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+            for (size_t nextWindingIndex = 0; nextWindingIndex < get_functional_description().size(); ++nextWindingIndex) {
+                auto windingsMapKey = std::pair<size_t, size_t>{nextWindingIndex, windingIndex};
+                _insulationInterSectionsLayers[windingsMapKey] = insulationLayers;
+                _insulationSections[windingsMapKey] = section;
+            }
+        }
+    }
+
+    if (autowind) {
+        wind();
+    }
+}
+
 
 
 } // namespace OpenMagnetics

@@ -21,11 +21,13 @@
 #include "Cache.h"
 
 
+        
 extern OpenMagnetics::Defaults defaults;
 extern OpenMagnetics::Constants constants;
 extern OpenMagnetics::Settings *settings;
 extern std::string _log;
 extern uint8_t _logVerbosity;
+extern std::map<OpenMagnetics::MagneticFilters, std::map<std::string, double>> _scorings;
 
 extern std::vector<OpenMagnetics::Core> coreDatabase;
 extern std::map<std::string, MAS::CoreMaterial> coreMaterialDatabase;
@@ -73,6 +75,10 @@ extern OpenMagnetics::MagneticsCache magneticsCache;
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+void add_scoring(std::string name, OpenMagnetics::MagneticFilters filter, double scoring);
+void clear_scoring();
+std::optional<double> get_scoring(std::string name, OpenMagnetics::MagneticFilters filter);
 
 void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
 std::string read_log();

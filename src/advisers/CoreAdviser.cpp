@@ -671,6 +671,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             if (core.get_type() == CoreType::TOROIDAL) {
                 continue;
             }
+            if (core.get_columns().size() == 2) {
+                continue;
+            }
             auto windingWindow = core.get_winding_window();
             if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
                 continue;
@@ -764,6 +767,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             if (core.get_type() == CoreType::TOROIDAL) {
                 continue;
             }
+            if (core.get_columns().size() == 2) {
+                continue;
+            }
             auto windingWindow = core.get_winding_window();
             if (windingWindow.get_height().value() > windingWindow.get_width().value()) {
                 continue;
@@ -786,8 +792,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         }
 
         if (includeStacks && globalIncludeStacks && (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C)) {
-            for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i)
-            {
+            for (size_t i = 0; i < defaults.coreAdviserMaximumNumberStacks; ++i) {
                 core.get_mutable_functional_description().set_number_stacks(1 + i);
                 core.scale_to_stacks(1 + i);
                 // core.process_gap();
@@ -811,6 +816,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
         }
     }
+    std::cout << "magnetics.size(): " << magnetics.size() << std::endl;
 
     return magnetics;
 }
@@ -1486,8 +1492,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterFringingFactor.set_filter_configuration(&_filterConfiguration);
     filterFringingFactor.set_cache_usage(false);
 
-    std::vector<std::pair<Magnetic, double>> magneticsWithScoring;
-    magneticsWithScoring = filterAreaProduct.filter_magnetics(magnetics, inputs, 1, true);
+    std::cout << "magnetics->size(): " << magnetics->size() << std::endl;
+    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     bool usingPowderCores = should_include_powder(inputs);
     if (usingPowderCores) {
@@ -1496,30 +1502,43 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     if (magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
         magneticsWithScoring = std::vector<std::pair<Magnetic, double>>(magneticsWithScoring.begin(), magneticsWithScoring.end() - (magneticsWithScoring.size() - maximumMagneticsAfterFiltering));
+        logEntry("Reducing to " + std::to_string(magneticsWithScoring.size()) + " of ferrite material.", "CoreAdviser");
     }
 
     std::vector<std::pair<Magnetic, double>> ungappedmagneticsWithScoring;
     if (should_include_powder(inputs)) {
         std::copy(magneticsWithScoring.begin(), magneticsWithScoring.end(), std::back_inserter(ungappedmagneticsWithScoring));
         ungappedmagneticsWithScoring = add_powder_materials(&ungappedmagneticsWithScoring, inputs);
+        logEntry("Adding " + std::to_string(ungappedmagneticsWithScoring.size()) + " magnetics with powder material.", "CoreAdviser");
     }
 
     add_gapping(&magneticsWithScoring, inputs);
     magneticsWithScoring = filterFringingFactor.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " ferrite magnetics after the Fringing Factor filter.", "CoreAdviser");
 
     if (usingPowderCores) {
         ungappedmagneticsWithScoring = filterEnergyStored.filter_magnetics(&ungappedmagneticsWithScoring, inputs, 1, true);
+        logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " powder magnetics after the Energy Stored filter.", "CoreAdviser");
 
         std::copy(ungappedmagneticsWithScoring.begin(), ungappedmagneticsWithScoring.end(), std::back_inserter(magneticsWithScoring));
     }
 
+
+
     magneticsWithScoring = filterDimensions.filter_magnetics(&magneticsWithScoring, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Dimension filter.", "CoreAdviser");
 
     magneticsWithScoring = add_ferrite_materials_by_losses(&magneticsWithScoring, inputs);
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after assigning concrete ferrite material.", "CoreAdviser");
+
+    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Area Product filter.", "CoreAdviser");
 
     magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0.1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Magnetizing Inductance filter.", "CoreAdviser");
     magneticsWithScoring = filterLosses.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    logEntry("There are " + std::to_string(magneticsWithScoring.size()) + " magnetics after the Losses filter.", "CoreAdviser");
 
     if (magneticsWithScoring.size() == 0) {
         return {};

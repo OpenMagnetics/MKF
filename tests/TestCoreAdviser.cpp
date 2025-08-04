@@ -1804,7 +1804,7 @@ SUITE(CoreAdviserStandardCores) {
         }
     }
 
-    TEST(Test_CoreAdviserStandardCores_Planar) {
+    TEST(Test_CoreAdviserStandardCores_Planar_Inductor) {
         settings->reset();
         clear_databases();
         load_core_shapes();
@@ -1837,6 +1837,51 @@ SUITE(CoreAdviserStandardCores) {
                 CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives());
                 CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
                 if (mas.get_magnetic().get_core().get_name() == "95 PQ 32/15 gapped 0.06 mm") {
+                    if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
+                        found = true;
+                    }
+                }
+            }
+            CHECK(found);
+        }
+    }
+
+    TEST(Test_CoreAdviserStandardCores_Planar_Transformer) {
+        settings->reset();
+        clear_databases();
+        load_core_shapes();
+        double voltagePeakToPeak = 600;
+        double dcCurrent = 0;
+        double ambientTemperature = 25;
+        double frequency = 100000;
+        double desiredMagnetizingInductance = 10e-5;
+        std::vector<double> turnsRatios = {1};
+        OpenMagnetics::Inputs inputs;
+
+        prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+        inputs.get_mutable_design_requirements().set_wiring_technology(MAS::WiringTechnology::PRINTED);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+        inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+
+        OperatingPoint operatingPoint;
+        CoreAdviser coreAdviser;
+        std::vector<MAS::CoreShape> shapes;
+        for (auto [name, shape] : coreShapeDatabase) {
+            shapes.push_back(shape);
+        }
+        coreAdviser.set_unique_core_shapes(true);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
+
+        {
+            bool found = false;
+            for (auto [mas, scoring] : masMagnetics) {
+                auto windingWindow = mas.get_mutable_magnetic().get_mutable_core().get_winding_window();
+                CHECK(windingWindow.get_height() < windingWindow.get_width());
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives());
+                CHECK(mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_alternatives()->size() > 0);
+                if (mas.get_magnetic().get_core().get_name() == "98 PQ 32/15 ungapped") {
                     if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
                         found = true;
                     }

@@ -14,7 +14,6 @@ namespace OpenMagnetics {
 class MagneticAdviser{
     public:
 
-        std::map<MagneticFilters, std::map<std::string, double>> _scorings;
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
         std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
@@ -43,12 +42,6 @@ class MagneticAdviser{
             _simulateResults = simulateResults;
         }
 
-        void add_scoring(std::string name, MagneticFilters filter, double scoring) {
-            if (scoring != -1) {
-                _scorings[filter][name] = scoring;
-            }
-        }
-        
         void set_unique_core_shapes(bool value);
         bool get_unique_core_shapes();
         void set_application(Application value);
