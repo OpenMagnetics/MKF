@@ -164,6 +164,7 @@ double angle_to_wound_distance(double angle, double radius);
 
 
 bool check_collisions(std::map<std::string, std::vector<double>> dimensionsByName, std::map<std::string, std::vector<double>> coordinatesByName, bool roundTurn = false);
+std::vector<IsolationSide> get_ordered_isolation_sides();
 IsolationSide get_isolation_side_from_index(size_t index);
 std::string get_isolation_side_name_from_index(size_t index);
 
