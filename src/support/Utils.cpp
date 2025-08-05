@@ -1226,7 +1226,16 @@ IsolationSide get_isolation_side_from_index(size_t index) {
 std::string get_isolation_side_name_from_index(size_t index) {
     auto isolationSide = get_isolation_side_from_index(index);
     std::string isolationSideString = std::string{magic_enum::enum_name(isolationSide)};
+    std::transform(isolationSideString.begin(), isolationSideString.end(), isolationSideString.begin(), ::tolower);
     return isolationSideString;
+}
+
+std::vector<IsolationSide> get_ordered_isolation_sides() {
+    std::vector<IsolationSide> orderedIsolationSides;
+    for (size_t index = 0; index < magic_enum::enum_count<OrderedIsolationSide>(); ++index) {
+        orderedIsolationSides.push_back(get_isolation_side_from_index(index));
+    }
+    return orderedIsolationSides;
 }
 
 double comp_ellint_1(double x) {

@@ -28,12 +28,52 @@ enum class DimensionalValues : int {
     MINIMUM
 };
 
+void from_json(const json & j, DimensionalValues & x);
+void to_json(json & j, const DimensionalValues & x);
+
+inline void from_json(const json & j, DimensionalValues & x) {
+    if (j == "maximum") x = DimensionalValues::MAXIMUM;
+    else if (j == "nominal") x = DimensionalValues::NOMINAL;
+    else if (j == "minimum") x = DimensionalValues::MINIMUM;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const DimensionalValues & x) {
+    switch (x) {
+        case DimensionalValues::MAXIMUM: j = "maximum"; break;
+        case DimensionalValues::NOMINAL: j = "nominal"; break;
+        case DimensionalValues::MINIMUM: j = "minimum"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"DimensionalValues\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
 enum class GappingType : int {
     GROUND,
     SPACER,
     RESIDUAL,
     DISTRIBUTED
 };
+
+void from_json(const json & j, GappingType & x);
+void to_json(json & j, const GappingType & x);
+
+inline void from_json(const json & j, GappingType & x) {
+    if (j == "ground") x = GappingType::GROUND;
+    else if (j == "spacer") x = GappingType::SPACER;
+    else if (j == "residual") x = GappingType::RESIDUAL;
+    else if (j == "distributed") x = GappingType::DISTRIBUTED;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const GappingType & x) {
+    switch (x) {
+        case GappingType::GROUND: j = "ground"; break;
+        case GappingType::SPACER: j = "spacer"; break;
+        case GappingType::RESIDUAL: j = "residual"; break;
+        case GappingType::DISTRIBUTED: j = "distributed"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"GappingType\": " + std::to_string(static_cast<int>(x)));
+    }
+}
 
 enum class OrderedIsolationSide : int { 
     PRIMARY,
@@ -50,11 +90,68 @@ enum class OrderedIsolationSide : int {
     DUODENARY
 };
 
+void from_json(const json & j, OrderedIsolationSide & x);
+void to_json(json & j, const OrderedIsolationSide & x);
+
+inline void from_json(const json & j, OrderedIsolationSide & x) {
+    if (j == "primary") x = OrderedIsolationSide::PRIMARY;
+    else if (j == "secondary") x = OrderedIsolationSide::SECONDARY;
+    else if (j == "tertiary") x = OrderedIsolationSide::TERTIARY;
+    if (j == "quaternary") x = OrderedIsolationSide::QUATERNARY;
+    else if (j == "quinary") x = OrderedIsolationSide::QUINARY;
+    else if (j == "senary") x = OrderedIsolationSide::SENARY;
+    if (j == "septenary") x = OrderedIsolationSide::SEPTENARY;
+    else if (j == "octonary") x = OrderedIsolationSide::OCTONARY;
+    else if (j == "nonary") x = OrderedIsolationSide::NONARY;
+    if (j == "denary") x = OrderedIsolationSide::DENARY;
+    else if (j == "undenary") x = OrderedIsolationSide::UNDENARY;
+    else if (j == "duodenary") x = OrderedIsolationSide::DUODENARY;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const OrderedIsolationSide & x) {
+    switch (x) {
+        case OrderedIsolationSide::PRIMARY: j = "primary"; break;
+        case OrderedIsolationSide::SECONDARY: j = "secondary"; break;
+        case OrderedIsolationSide::TERTIARY: j = "tertiary"; break;
+        case OrderedIsolationSide::QUATERNARY: j = "quaternary"; break;
+        case OrderedIsolationSide::QUINARY: j = "quinary"; break;
+        case OrderedIsolationSide::SENARY: j = "senary"; break;
+        case OrderedIsolationSide::SEPTENARY: j = "septenary"; break;
+        case OrderedIsolationSide::OCTONARY: j = "octonary"; break;
+        case OrderedIsolationSide::NONARY: j = "nonary"; break;
+        case OrderedIsolationSide::DENARY: j = "denary"; break;
+        case OrderedIsolationSide::UNDENARY: j = "undenary"; break;
+        case OrderedIsolationSide::DUODENARY: j = "duodenary"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"OrderedIsolationSide\": " + std::to_string(static_cast<int>(x)));
+    }
+}
+
+
 enum class PainterModes : int {
     CONTOUR,
     QUIVER,
     SCATTER,
 };
+
+void from_json(const json & j, PainterModes & x);
+void to_json(json & j, const PainterModes & x);
+
+inline void from_json(const json & j, PainterModes & x) {
+    if (j == "contour") x = PainterModes::CONTOUR;
+    else if (j == "quiver") x = PainterModes::QUIVER;
+    else if (j == "scatter") x = PainterModes::SCATTER;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const PainterModes & x) {
+    switch (x) {
+        case PainterModes::CONTOUR: j = "contour"; break;
+        case PainterModes::QUIVER: j = "quiver"; break;
+        case PainterModes::SCATTER: j = "scatter"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"PainterModes\": " + std::to_string(static_cast<int>(x)));
+    }
+}
 
 
 class Curve2D {
