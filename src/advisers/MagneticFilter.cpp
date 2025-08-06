@@ -36,6 +36,11 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             if (!inputs) {
                 throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES");
             }
+            return std::make_shared<MagneticFilterCoreDcAndSkinLosses>(inputs.value());
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter CORE_DC_AND_SKIN_LOSSES");
+            }
             return std::make_shared<MagneticFilterCoreAndDcLosses>(inputs.value());
         case MagneticFilters::LOSSES:
             return std::make_shared<MagneticFilterLosses>();
@@ -95,8 +100,18 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
                 throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE");
             }
             return std::make_shared<MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise>();
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME");
+            }
+            return std::make_shared<MagneticFilterCoreDcAndSkinLossesTimesVolume>();
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE");
+            }
+            return std::make_shared<MagneticFilterCoreDcAndSkinLossesTimesVolumeTimesTemperatureRise>();
         default:
-            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, CORE_AND_DC_LOSSES_TIMES_VOLUME, CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE}");
+            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, CORE_AND_DC_LOSSES_TIMES_VOLUME, CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE}");
     }
 }
 
