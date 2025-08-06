@@ -202,6 +202,7 @@ enum class MagneticFilters : int {
     CORE_AND_DC_LOSSES,
     CORE_DC_AND_SKIN_LOSSES,
     LOSSES,
+    LOSSES_NO_PROXIMITY,
     DIMENSIONS,
     CORE_MINIMUM_IMPEDANCE,
     AREA_NO_PARALLELS,
@@ -222,13 +223,11 @@ enum class MagneticFilters : int {
     AREA,
     HEIGHT,
     TEMPERATURE_RISE,
-    LOSSES_TIMES_VOLUME,
     VOLUME_TIMES_TEMPERATURE_RISE,
+    LOSSES_TIMES_VOLUME,
     LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
-    CORE_AND_DC_LOSSES_TIMES_VOLUME,
-    CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
-    CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME,
-    CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE
+    LOSSES_NO_PROXIMITY_TIMES_VOLUME,
+    LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
 };
 
 class MagneticFilterOperation {
@@ -280,6 +279,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Core And DC Losses") x = MagneticFilters::CORE_AND_DC_LOSSES;
     else if (j == "Core DC And Skin Losses") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES;
     else if (j == "Losses") x = MagneticFilters::LOSSES;
+    else if (j == "Losses No Proximity") x = MagneticFilters::LOSSES_NO_PROXIMITY;
     else if (j == "Dimensions") x = MagneticFilters::DIMENSIONS;
     else if (j == "Core Minimum Impedance") x = MagneticFilters::CORE_MINIMUM_IMPEDANCE;
     else if (j == "Area No Parallels") x = MagneticFilters::AREA_NO_PARALLELS;
@@ -303,10 +303,8 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Losses Times Volume") x = MagneticFilters::LOSSES_TIMES_VOLUME;
     else if (j == "Volume Times Temperature Rise") x = MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE;
     else if (j == "Losses Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
-    else if (j == "Core And DC Losses Times Volume") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME;
-    else if (j == "Core And DC Losses Times Volume Times Temperature Rise") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
-    else if (j == "Core DC And Skin Losses Times Volume") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME;
-    else if (j == "Core DC And Skin Losses Times Volume Times Temperature Rise") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
+    else if (j == "Losses No Proximity Times Volume") x = MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME;
+    else if (j == "Losses No Proximity Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -319,6 +317,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::CORE_AND_DC_LOSSES: j = "Core And DC Losses"; break;
         case MagneticFilters::CORE_DC_AND_SKIN_LOSSES: j = "Core DC And Skin Losses"; break;
         case MagneticFilters::LOSSES: j = "Losses"; break;
+        case MagneticFilters::LOSSES_NO_PROXIMITY: j = "Losses No Proximity"; break;
         case MagneticFilters::DIMENSIONS: j = "Dimensions"; break;
         case MagneticFilters::CORE_MINIMUM_IMPEDANCE: j = "Core Minimum Impedance"; break;
         case MagneticFilters::AREA_NO_PARALLELS: j = "Area No Parallels"; break;
@@ -342,10 +341,8 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::LOSSES_TIMES_VOLUME: j = "Losses Times Volume"; break;
         case MagneticFilters::VOLUME_TIMES_TEMPERATURE_RISE: j = "Volume Times Temperature Rise"; break;
         case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses Times Volume Times Temperature Rise"; break;
-        case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME: j = "Core And DC Losses Times Volume"; break;
-        case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Core And DC Losses Times Volume Times Temperature Rise"; break;
-        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME: j = "Core DC And Skin Losses Times Volume"; break;
-        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Core DC And Skin Losses Times Volume Times Temperature Rise"; break;
+        case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME: j = "Losses No Proximity Times Volume"; break;
+        case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses No Proximity Times Volume Times Temperature Rise"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }
