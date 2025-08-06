@@ -605,7 +605,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             }
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-                windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, temperature);
+                windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
                 ohmicLosses = windingLossesOutput.get_winding_losses();
                 newTotalLosses = coreLosses + ohmicLosses;
                 if (ohmicLosses < 0) {
@@ -829,8 +829,8 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
-                auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, temperature);
-                windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(coil, temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
+                auto windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
+                windingLossesOutput = _windingSkinEffectLosses.calculate_skin_effect_losses(coil, temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
 
                 ohmicAndSkinEffectLosses = windingLossesOutput.get_winding_losses();
                 newTotalLosses = coreLosses + ohmicAndSkinEffectLosses;
