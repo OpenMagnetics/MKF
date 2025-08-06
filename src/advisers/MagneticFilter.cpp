@@ -36,12 +36,12 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             if (!inputs) {
                 throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES");
             }
-            return std::make_shared<MagneticFilterCoreDcAndSkinLosses>(inputs.value());
+            return std::make_shared<MagneticFilterCoreAndDcLosses>(inputs.value());
         case MagneticFilters::CORE_DC_AND_SKIN_LOSSES:
             if (!inputs) {
                 throw std::runtime_error("Inputs needed for filter CORE_DC_AND_SKIN_LOSSES");
             }
-            return std::make_shared<MagneticFilterCoreAndDcLosses>(inputs.value());
+            return std::make_shared<MagneticFilterCoreDcAndSkinLosses>(inputs.value());
         case MagneticFilters::LOSSES:
             return std::make_shared<MagneticFilterLosses>();
         case MagneticFilters::DIMENSIONS:
