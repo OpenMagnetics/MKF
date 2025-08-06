@@ -200,6 +200,7 @@ enum class MagneticFilters : int {
     ESTIMATED_COST,
     COST,
     CORE_AND_DC_LOSSES,
+    CORE_DC_AND_SKIN_LOSSES,
     LOSSES,
     DIMENSIONS,
     CORE_MINIMUM_IMPEDANCE,
@@ -225,7 +226,9 @@ enum class MagneticFilters : int {
     VOLUME_TIMES_TEMPERATURE_RISE,
     LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
     CORE_AND_DC_LOSSES_TIMES_VOLUME,
-    CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE
+    CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
+    CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME,
+    CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE
 };
 
 class MagneticFilterOperation {
@@ -275,6 +278,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Cost") x = MagneticFilters::COST;
     else if (j == "Estimated Cost") x = MagneticFilters::ESTIMATED_COST;
     else if (j == "Core And DC Losses") x = MagneticFilters::CORE_AND_DC_LOSSES;
+    else if (j == "Core DC And Skin Losses") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES;
     else if (j == "Losses") x = MagneticFilters::LOSSES;
     else if (j == "Dimensions") x = MagneticFilters::DIMENSIONS;
     else if (j == "Core Minimum Impedance") x = MagneticFilters::CORE_MINIMUM_IMPEDANCE;
@@ -301,6 +305,8 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Losses Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else if (j == "Core And DC Losses Times Volume") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME;
     else if (j == "Core And DC Losses Times Volume Times Temperature Rise") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
+    else if (j == "Core DC And Skin Losses Times Volume") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME;
+    else if (j == "Core DC And Skin Losses Times Volume Times Temperature Rise") x = MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -311,6 +317,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::COST: j = "Cost"; break;
         case MagneticFilters::ESTIMATED_COST: j = "Estimated Cost"; break;
         case MagneticFilters::CORE_AND_DC_LOSSES: j = "Core And DC Losses"; break;
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES: j = "Core DC And Skin Losses"; break;
         case MagneticFilters::LOSSES: j = "Losses"; break;
         case MagneticFilters::DIMENSIONS: j = "Dimensions"; break;
         case MagneticFilters::CORE_MINIMUM_IMPEDANCE: j = "Core Minimum Impedance"; break;
@@ -337,6 +344,8 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses Times Volume Times Temperature Rise"; break;
         case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME: j = "Core And DC Losses Times Volume"; break;
         case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Core And DC Losses Times Volume Times Temperature Rise"; break;
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME: j = "Core DC And Skin Losses Times Volume"; break;
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Core DC And Skin Losses Times Volume Times Temperature Rise"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }

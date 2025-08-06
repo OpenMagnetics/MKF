@@ -81,7 +81,6 @@ class MagneticFilterEstimatedCost : public MagneticFilter {
 class MagneticFilterCoreAndDcLosses : public MagneticFilter {
     private:
         MagnetizingInductance _magnetizingInductance;
-        WindingOhmicLosses _windingOhmicLosses;
         std::map<std::string, std::string> _models;
         std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
         std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
@@ -91,6 +90,21 @@ class MagneticFilterCoreAndDcLosses : public MagneticFilter {
         MagneticFilterCoreAndDcLosses();
         MagneticFilterCoreAndDcLosses(Inputs inputs);
         MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
+class MagneticFilterCoreDcAndSkinLosses : public MagneticFilter {
+    private:
+        MagnetizingInductance _magnetizingInductance;
+        std::map<std::string, std::string> _models;
+        std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
+        std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+        double _maximumPowerMean = 0;
+    public:
+
+        MagneticFilterCoreDcAndSkinLosses();
+        MagneticFilterCoreDcAndSkinLosses(Inputs inputs);
+        MagneticFilterCoreDcAndSkinLosses(Inputs inputs, std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
@@ -293,6 +307,26 @@ class MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise : public Magn
     public:
         MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise() {};
         MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
+
+class MagneticFilterCoreDcAndSkinLossesTimesVolume : public MagneticFilter {
+    private:
+        MagneticFilterCoreDcAndSkinLosses _magneticFilterCoreDcAndSkinLosses;
+    public:
+        MagneticFilterCoreDcAndSkinLossesTimesVolume() {};
+        MagneticFilterCoreDcAndSkinLossesTimesVolume(Inputs inputs);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
+class MagneticFilterCoreDcAndSkinLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+    private:
+        MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
+        MagneticFilterCoreDcAndSkinLosses _magneticFilterCoreDcAndSkinLosses;
+    public:
+        MagneticFilterCoreDcAndSkinLossesTimesVolumeTimesTemperatureRise() {};
+        MagneticFilterCoreDcAndSkinLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
