@@ -58,7 +58,7 @@ WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLosse
     return windingLossesThisElement;
 }
 
-WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput, Coil coil) {
+WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windingLossesOutput, Coil coil) {
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
     auto layers = coil.get_layers_description_conduction();
 

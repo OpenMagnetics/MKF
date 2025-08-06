@@ -25,6 +25,7 @@ class WindingLosses
         }
 
         WindingLossesOutput calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature);
+        static WindingLossesOutput combine_turn_losses(WindingLossesOutput windingLossesOutput, Coil coil);
         static double calculate_effective_resistance_of_winding(Magnetic magnetic, size_t windingIndex, double frequency, double temperature);
         ResistanceMatrixAtFrequency calculate_resistance_matrix(Magnetic magnetic, double temperature, double frequency);
         static double calculate_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
