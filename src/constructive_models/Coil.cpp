@@ -1072,8 +1072,14 @@ double Coil::calculate_filling_factor(size_t groupIndex) {
 
     double area = 0;
     double availableArea = windingWindows[0].get_area().value();
+    double maximumLayerFillingFactor = 0;
 
     for (auto layer : layers) {
+        if (layer.get_filling_factor()) {
+            if (layer.get_filling_factor().value() > 1) {
+                maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
+            }
+        }
         if (layer.get_type() == ElectricalType::CONDUCTION) {
             auto turns = get_turns_by_layer(layer.get_name());
             for (auto turn : turns) {
@@ -1086,7 +1092,7 @@ double Coil::calculate_filling_factor(size_t groupIndex) {
     }
 
     double areaFillingFactor = area / availableArea;
-    return areaFillingFactor;
+    return std::max(maximumLayerFillingFactor, areaFillingFactor);
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 
