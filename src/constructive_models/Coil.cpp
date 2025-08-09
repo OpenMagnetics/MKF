@@ -1053,7 +1053,7 @@ double Coil::contiguous_filling_factor(Section section) {
     }
 }
 
-std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
+double Coil::calculate_filling_factor(size_t groupIndex) {
     double fillingFactor = 1;
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
@@ -1064,76 +1064,29 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
     if (!get_layers_description()) {
         throw std::runtime_error("Missing layers to calculate the filling factor.");
     }
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns to calculate the filling factor.");
+    }
 
-    auto groups = get_groups_description().value();
-    auto group = groups[groupIndex];
+    auto layers = get_layers_description().value();
 
-    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        auto sections = get_sections_by_group(group.get_name());
-        double windingWindowHeight = windingWindows[0].get_height().value();
-        double windingWindowWidth = windingWindows[0].get_width().value();
-        double horizontalFillingFactor = 0;
-        double verticalFillingFactor = 0;
+    double area = 0;
+    double availableArea = windingWindows[0].get_area().value();
 
-        for (auto section : sections) {
-            auto layers = get_layers_by_section(section.get_name());
-            if (section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                for (auto layer : layers) {
-                    verticalFillingFactor += layer.get_dimensions()[1];
-                    if (layer.get_filling_factor()) {
-                       horizontalFillingFactor += layer.get_filling_factor().value() * layer.get_dimensions()[0];
-                    }
-                    else {
-                       horizontalFillingFactor += layer.get_dimensions()[0];
-                    }
-                }
-            }
-            else {
-                for (auto layer : layers) {
-                    horizontalFillingFactor += layer.get_dimensions()[0];
-                    if (layer.get_filling_factor()) {
-                       verticalFillingFactor += layer.get_filling_factor().value() * layer.get_dimensions()[1];
-                    }
-                    else {
-                       verticalFillingFactor += layer.get_dimensions()[1];
-                    }
-                }
+    for (auto layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            auto turns = get_turns_by_layer(layer.get_name());
+            for (auto turn : turns) {
+                area += turn.get_dimensions().value()[0] * turn.get_dimensions().value()[1];
             }
         }
-        horizontalFillingFactor /= windingWindowWidth;
-        verticalFillingFactor /= windingWindowHeight;
-        auto fillingFactor = horizontalFillingFactor * verticalFillingFactor;
-        return {fillingFactor, {horizontalFillingFactor, verticalFillingFactor}};
-    }
-    else {
-        auto sections = get_sections_by_group(group.get_name());
-        double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
-        double windingWindowAngle = windingWindows[0].get_angle().value();
-        double radialHeightFillingFactor = 0;
-        double angleFillingFactor = 0;
-
-        for (auto section : sections) {
-            auto layers = get_layers_by_section(section.get_name());
-            if (section.get_layers_orientation() == WindingOrientation::CONTIGUOUS) {
-                throw std::runtime_error("Toroidal cores cannot have contiguous layers");
-            }
-            else {
-                for (auto layer : layers) {
-                    radialHeightFillingFactor += layer.get_dimensions()[0];
-                    if (layer.get_filling_factor()) {
-                       angleFillingFactor += layer.get_filling_factor().value() * layer.get_dimensions()[1];
-                    }
-                    else {
-                       angleFillingFactor += layer.get_dimensions()[1];
-                    }
-                }
-            }
+        else {
+            area += layer.get_dimensions()[0] * layer.get_dimensions()[1];
         }
-        radialHeightFillingFactor /= windingWindowRadialHeight;
-        angleFillingFactor /= windingWindowAngle;
-        auto fillingFactor = radialHeightFillingFactor * angleFillingFactor;
-        return {fillingFactor, {radialHeightFillingFactor, angleFillingFactor}};
     }
+
+    double areaFillingFactor = area / availableArea;
+    return areaFillingFactor;
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 
