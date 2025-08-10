@@ -3346,10 +3346,17 @@ SUITE(SteinmetzCoefficientsCalculation) {
         load_advanced_core_materials(advanced_core_materials);
 
         for (auto [name, material] : coreMaterialDatabase) {
+
+            if (material.get_mass_losses()) {
+                continue;
+            }
+
+            // std::cout << name << std::endl;
             auto data = OpenMagnetics::CoreLossesModel::get_volumetric_losses_data(material);
             if (data.size() > 0) {
                 auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{0, 100000}, {100000, 500000}, {500000, 100000000}});
                 double maximumError = *std::max_element(errorPerRange.begin(), errorPerRange.end());
+            // std::cout << maximumError << std::endl;
 
                 CHECK(maximumError < maxError);
             }

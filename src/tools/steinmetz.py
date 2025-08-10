@@ -1,8 +1,14 @@
 from scipy.optimize import curve_fit
 import numpy
 import json
+import math
 import pandas
 import pathlib
+
+
+def steinmetz_equation(f, B, T, k, alpha, beta, ct0, ct1, ct2):
+    temp_coeff = ct2 * T**2 - ct1 * T + ct0
+    return k * pow(f, alpha) * pow(B, beta) * temp_coeff
 
 
 def calculate_steinmetz_coefficients(data):
@@ -19,6 +25,20 @@ def calculate_steinmetz_coefficients(data):
     return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta), 'ct0': float(ct0), 'ct1': float(ct1), 'ct2': float(ct2)}
 
 
+def calculate_steinmetz_coefficients_only_temp(data, k, alpha, beta):
+    def steinmetz_fitting_equation(log_f_B_T, ct0, ct1, ct2):
+        log_f, log_B, T = log_f_B_T
+        temp_coeff = ct2 * T**2 - ct1 * T + ct0
+        if (temp_coeff < 0).any():
+            return log_k + alpha * log_f + beta * log_B
+        else:
+            return log_k + alpha * log_f + beta * log_B + numpy.log10(temp_coeff)
+
+    log_k = math.log10(k)
+    [ct0, ct1, ct2], pcov = curve_fit(steinmetz_fitting_equation, (numpy.log10(data['frequency']), numpy.log10(data['magneticFluxDensityPeak']), data['temperature']), numpy.log10(data['volumetricLosses']), [0.001, 1e-06, 1e-08])
+    return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta), 'ct0': float(ct0), 'ct1': float(ct1), 'ct2': float(ct2)}
+
+
 def calculate_steinmetz_coefficients_no_temp(data):
     def steinmetz_fitting_equation(log_f_B_T, log_k, alpha, beta):
         log_f, log_B, T = log_f_B_T
@@ -27,12 +47,11 @@ def calculate_steinmetz_coefficients_no_temp(data):
         return log_k + alpha * log_f + beta * log_B
 
     [log_k, alpha, beta], pcov = curve_fit(steinmetz_fitting_equation, (numpy.log10(data['frequency']), numpy.log10(data['magneticFluxDensityPeak']), data['temperature']), numpy.log10(data['volumetricLosses']), [0.4, 1.5, 2])
-    print(log_k)
     k = 10**log_k
     return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta)}
 
 
-def fit(material, frequency):
+def fit(material, frequency, temperature_dependence=True, with_error=False):
 
     data_path = pathlib.Path(__file__).parent.resolve().joinpath('../../../MAS/data/advanced_core_materials.ndjson')
     all_data = pandas.read_json(data_path, lines=True)
@@ -79,11 +98,27 @@ def fit(material, frequency):
                     data = data.drop('magneticFluxDensity', axis=1)
                     data = data.drop('origin', axis=1)
 
-                    coefficients = calculate_steinmetz_coefficients(data)
-                    # coefficients = calculate_steinmetz_coefficients_no_temp(data)
+                    data_25C = data[data["temperature"] == 25]
+                    # coefficients = calculate_steinmetz_coefficients(data)
+                    if temperature_dependence:
+                        coefficients = calculate_steinmetz_coefficients_no_temp(data_25C)
+                        coefficients = calculate_steinmetz_coefficients_only_temp(data, coefficients["k"], coefficients["alpha"], coefficients["beta"])
+                    else:
+                        coefficients = calculate_steinmetz_coefficients_no_temp(data)
                     coefficients["minimumFrequency"] = minimumFrequency
                     coefficients["maximumFrequency"] = maximumFrequency
 
+                    data["calculated_volumetric_losses"] = data.apply(lambda row: steinmetz_equation(f=row["frequency"],
+                                                                                                     B=row["magneticFluxDensityPeak"],
+                                                                                                     T=row["temperature"],
+                                                                                                     k=coefficients["k"],
+                                                                                                     alpha=coefficients["alpha"],
+                                                                                                     beta=coefficients["beta"],
+                                                                                                     ct0=coefficients["ct0"],
+                                                                                                     ct1=coefficients["ct1"],
+                                                                                                     ct2=coefficients["ct2"]), axis=1)
+
+                    data["error"] = (data["calculated_volumetric_losses"] - data["volumetricLosses"]) / data["volumetricLosses"]
                     # if coefficients['alpha'] < 1:
                     #     number_rows += 100
                     #     print(f"Retrying with number_rows {number_rows}")
@@ -92,7 +127,10 @@ def fit(material, frequency):
                     #     number_rows += 100
                     #     print(f"Retrying with number_rows {number_rows}")
                     #     continue
-                    return coefficients
+                    if with_error:
+                        return coefficients, data["error"].mean()
+                    else:
+                        return coefficients
                 except RuntimeError:
                     number_rows += 100
                     print(f"Retrying with number_rows {number_rows}")
@@ -150,7 +188,7 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("R10KZ", [1, 200000]), fit("R10KZ", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR50", [1, 200000]), fit("DMR50", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR50B", [1, 200000]), fit("DMR50B", [200000, 600000000])]})
-    print({"method": "steinmetz", "ranges": [fit("DMR51", [1, 200000]), fit("DMR51", [200000, 600000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("DMR51", [1, 200000]), fit("DMR51", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR52", [1, 200000]), fit("DMR52", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN30B", [1, 200000]), fit("DN30B", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN40B", [1, 200000]), fit("DN40B", [200000, 600000000])]})
@@ -167,7 +205,7 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("R5KC", [1, 200000]), fit("R5KC", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("R5KZ", [1, 200000]), fit("R5KZ", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("R10KC", [1, 200000]), fit("R10KC", [200000, 600000000])]})
-    # print({"method": "steinmetz", "ranges": [fit("DMR51W", [1, 1600000]), fit("DMR51W", [1600000, 600000000])]})
+    print({"method": "steinmetz", "ranges": [fit("DMR51W", [1, 1600000]), fit("DMR51W", [1600000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR52W", [1, 3100000]), fit("DMR52W", [3100000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN15P", [1, 200000]), fit("DN15P", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN20F", [1, 200000]), fit("DN20F", [200000, 600000000])]})
