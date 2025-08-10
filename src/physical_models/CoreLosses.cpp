@@ -562,6 +562,7 @@ double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMat
     double beta = steinmetzDatum.get_beta();
     double volumetricLosses;
 
+
     if (beta > 2) {
         volumetricLosses = k * pow(frequency, alpha) * pow(mainHarmonicMagneticFluxDensityAcPeak, beta - 2) * pow(magneticFluxDensityAcPeak, 2);
     }
