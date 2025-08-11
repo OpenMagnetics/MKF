@@ -62,7 +62,7 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::ROSHEN)) {
             models.push_back(CoreLossesModels::ROSHEN);
         }
-        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MAGNETICS) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MICROMETALS) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::POCO)) {
+        if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MAGNETICS) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::MICROMETALS) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::POCO) || std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::TDG)) {
             models.push_back(CoreLossesModels::PROPRIETARY);
         }
         if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
@@ -1345,13 +1345,21 @@ double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreM
             volumetricLosses = a * pow(magneticFluxDensityAcPeak, b) * pow(frequency, c);
         }
     }
-
     else if (coreMaterial.get_manufacturer_info().get_name() == "Poco") {
         auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "poco");
         double a = magneticsData.get_a().value();
         double b = magneticsData.get_b().value();
         double c = magneticsData.get_c().value();
         volumetricLosses = 1000 * (a * pow(magneticFluxDensityAcPeak * 10, b) * frequency / 1000 + c * pow(magneticFluxDensityAcPeak * 10 * frequency / 1000, 2));
+    }
+
+    else if (coreMaterial.get_manufacturer_info().get_name() == "TDG") {
+        auto magneticsData = CoreLossesModel::get_method_data(coreMaterial, "tdg");
+        double a = magneticsData.get_a().value();
+        double b = magneticsData.get_b().value();
+        double c = magneticsData.get_c().value();
+        double d = magneticsData.get_d().value();
+        volumetricLosses = 1000 * pow(magneticFluxDensityAcPeak * 10, a) * (b * frequency / 1000 + c * pow(frequency / 1000, d));
     }
     else {
         // throw std::invalid_argument("No volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
@@ -1371,6 +1379,9 @@ std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetr
     else if (coreMaterial.get_manufacturer_info().get_name() == "Poco") {
         equations["volumetricCoreLosses"] = "1000 * (a * f / 1000 * (B * 10)^b + c * (B * 10 * f / 1000)^2)";
     }
+    else if (coreMaterial.get_manufacturer_info().get_name() == "TDG") {
+        equations["volumetricCoreLosses"] = "1000 * ((B * 10)^a) * (b * f / 1000 + c * (f / 1000)^d)";
+    }
     else {
         throw std::invalid_argument("No volumetric losses method for manufacturer: " + coreMaterial.get_manufacturer_info().get_name());
     }
@@ -1388,6 +1399,9 @@ std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetr
     }
     else if (coreLossesMethodData.get_method() == VolumetricCoreLossesMethodType::POCO) {
         equations["volumetricCoreLosses"] = "1000 * (a * f / 1000 * (B * 10)^b + c * (B * 10 * f / 1000)^2)";
+    }
+    else if (coreLossesMethodData.get_method() == VolumetricCoreLossesMethodType::TDG) {
+        equations["volumetricCoreLosses"] = "1000 * ((B * 10)^a) * (b * f / 1000 + c * (f / 1000)^d)";
     }
     else {
         throw std::invalid_argument("No volumetric losses method for method: " + std::string{magic_enum::enum_name(coreLossesMethodData.get_method())});
@@ -1621,6 +1635,10 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
         double auxB = a * pow(magneticFluxDensityAcPeak * 10, b);
         double auxC = -volumetricLosses / 1000;
         frequency = 1000 * (-auxB + sqrt(pow(auxB, 2) - 4 * auxA * auxC)) / (2 * auxA);
+    }
+
+    if (materialData.get_manufacturer_info().get_name() == "TDG") {
+        throw std::runtime_error("Not implemented fot TDG");
     }
 
     if (materialData.get_manufacturer_info().get_name() == "Magnetec") {
