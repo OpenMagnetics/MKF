@@ -1053,7 +1053,7 @@ double Coil::contiguous_filling_factor(Section section) {
     }
 }
 
-double Coil::calculate_filling_factor(size_t groupIndex) {
+std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
     double fillingFactor = 1;
     auto bobbin = resolve_bobbin();
     auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
@@ -1069,10 +1069,40 @@ double Coil::calculate_filling_factor(size_t groupIndex) {
     }
 
     auto layers = get_layers_description().value();
+    auto sections = get_sections_description().value();
 
     double area = 0;
     double availableArea = windingWindows[0].get_area().value();
+    double availableContiguousDimension;
+    double availableOverlappingDimension;
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        availableContiguousDimension = windingWindows[0].get_height().value();
+        availableOverlappingDimension = windingWindows[0].get_width().value();
+    }
+    else {
+        availableContiguousDimension = windingWindows[0].get_radial_height().value();
+        availableOverlappingDimension = windingWindows[0].get_angle().value();
+    }
     double maximumLayerFillingFactor = 0;
+    double contiguousDimension = 0;
+    double overlappingDimension = 0;
+
+    for (auto section : sections) {
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                contiguousDimension = std::max(contiguousDimension, section.get_dimensions()[1]);
+            }
+            overlappingDimension += section.get_dimensions()[0];
+        }
+        else {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                overlappingDimension = std::max(overlappingDimension, section.get_dimensions()[0]);
+            }
+            contiguousDimension += section.get_dimensions()[1];
+
+        }
+    }
+
 
     for (auto layer : layers) {
         if (layer.get_filling_factor()) {
@@ -1092,7 +1122,10 @@ double Coil::calculate_filling_factor(size_t groupIndex) {
     }
 
     double areaFillingFactor = area / availableArea;
-    return std::max(maximumLayerFillingFactor, areaFillingFactor);
+    areaFillingFactor = std::max(maximumLayerFillingFactor, areaFillingFactor);
+    double contiguousFillingFactor = contiguousDimension / availableContiguousDimension;
+    double overlappingFillingFactor = overlappingDimension / availableOverlappingDimension;
+    return {areaFillingFactor, {overlappingFillingFactor, contiguousFillingFactor}};
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 
