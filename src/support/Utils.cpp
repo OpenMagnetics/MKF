@@ -1862,6 +1862,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration) {
             bobbin = magnetic.get_mutable_coil().resolve_bobbin();
         }
     }
+    else {
+        bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+    }
 
     if (!bobbin.get_functional_description() && !bobbin.get_processed_description()) {
         if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET && magnetic.get_wire(0).get_type() != WireType::RECTANGULAR && magnetic.get_wire(0).get_type() != WireType::PLANAR) {

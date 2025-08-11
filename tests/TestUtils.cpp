@@ -725,4 +725,15 @@ SUITE(Utils) {
         CHECK(autocompletedMagnetic.get_core().get_geometrical_description().value()[0].get_machining().value()[0].get_length() > 0);
         CHECK(!autocompletedMagnetic.get_core().get_geometrical_description().value()[1].get_machining());
     }
+
+    TEST(Test_Mas_Autocomplete_Web_1) {
+        std::string file_path = __FILE__;
+        auto path = file_path.substr(0, file_path.rfind("/")).append("/testData/bobbinBug.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+
+        auto autocompletedMagnetic = magnetic_autocomplete(magnetic);
+
+        CHECK_EQUAL(magnetic.get_mutable_coil().resolve_bobbin().get_processed_description()->get_column_thickness(), autocompletedMagnetic.get_mutable_coil().resolve_bobbin().get_processed_description()->get_column_thickness());
+    }
 }
