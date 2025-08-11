@@ -288,6 +288,9 @@ double steinmetz_equation_with_temperature_and_log(double x[], double logK, doub
 
 
 double steinmetz_equation_log(double x[], double frequency, double magneticFluxDensityAcPeak) {
+    if (x[1] < 0 || x[2] < 0) {
+        return 0;
+    }
     return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2];
 }
 
