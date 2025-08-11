@@ -3172,6 +3172,32 @@ SUITE(FrequencyFromCoreLosses) {
         CHECK_CLOSE(excitation.get_frequency(), frequencyFromCoreLosses, frequencyFromCoreLosses * maxError);
 
     }
+    TEST(Frequency_From_Losses_TDG) {
+        auto models =
+            json::parse(R"({"coreLosses": "PROPRIETARY", "coreTemperature": "MANIKTALA", "gapReluctance": "ZHANG"})");
+        auto core = Core(json::parse(
+            R"({"functionalDescription": {"gapping": [{"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 0.001, "sectionDimensions": null, "shape": null, "type": "subtractive"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}, {"area": null, "coordinates": null, "distanceClosestNormalSurface": null, "distanceClosestParallelSurface": null, "length": 1e-05, "sectionDimensions": null, "shape": null, "type": "residual"}], "material": "TMH 90", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": 0.0391, "B": 0.0198, "C": 0.0125, "D": 0.0146, "E": 0.030100000000000002, "F": 0.0125, "G": 0.0, "H": 0.0}, "family": "etd", "familySubtype": "1", "magneticCircuit": null, "name": "ETD 39/20/13", "type": "standard"}, "type": "two-piece set"}, "manufacturerInfo": null, "name": "My Core"})"));
+        auto winding = OpenMagnetics::Coil(json::parse(
+            R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 43, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+        auto operatingPoint = OperatingPoint(json::parse(
+            R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
+        OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, 50000);
+
+        MagnetizingInductance magnetizingInductanceModel(std::string{models["gapReluctance"]});
+
+        OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+
+        auto magneticFluxDensity =
+            magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, winding, &operatingPoint).second;
+
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+
+        auto coreLossesModel = CoreLossesModel::factory(models);
+        auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
+        double expectedLosses = 35;
+        CHECK_CLOSE(coreLosses.get_core_losses(), expectedLosses, expectedLosses * maxError);
+    }
 }
 
 SUITE(MagneticFluxDensityFromCoreLosses) {
