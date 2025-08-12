@@ -1103,6 +1103,16 @@ std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size
         }
     }
 
+    for (auto section : sections) {
+        if (section.get_margin()) {
+            if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[0];
+            }
+            else {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[1];
+            }
+        }
+    }
 
     for (auto layer : layers) {
         if (layer.get_filling_factor()) {
