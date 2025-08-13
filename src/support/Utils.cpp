@@ -2064,6 +2064,23 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
     return normalizedScorings;
 }
 
+
+void normalize_scoring(std::vector<std::pair<Mas, double>>* masesWithScoring, std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
+    auto normalizedScorings = OpenMagnetics::normalize_scoring(scoring, weight, filterConfiguration);
+
+    for (size_t i = 0; i < (*masesWithScoring).size(); ++i) {
+        (*masesWithScoring)[i].second += normalizedScorings[i];
+    }
+}
+
+void normalize_scoring(std::vector<std::pair<Mas, double>>* masesWithScoring, std::vector<double> scoring, MagneticFilterOperation filterConfiguration) {
+    auto normalizedScorings = OpenMagnetics::normalize_scoring(scoring, filterConfiguration);
+
+    for (size_t i = 0; i < (*masesWithScoring).size(); ++i) {
+        (*masesWithScoring)[i].second += normalizedScorings[i];
+    }
+}
+
 std::string generate_random_string(size_t length) {
     std::mt19937 generator(std::random_device{}());
     std::string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

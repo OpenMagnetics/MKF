@@ -128,7 +128,8 @@ enum class MagneticFilters : int {
     VOLUME_TIMES_TEMPERATURE_RISE,
     LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
     CORE_AND_DC_LOSSES_TIMES_VOLUME,
-    CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE
+    CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE,
+    MAGNETOMOTIVE_FORCE
 };
 
 class MagneticFilterOperation {
@@ -204,6 +205,7 @@ inline void from_json(const json & j, MagneticFilters & x) {
     else if (j == "Losses Times Volume Times Temperature Rise") x = MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
     else if (j == "Core And DC Losses Times Volume") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME;
     else if (j == "Core And DC Losses Times Volume Times Temperature Rise") x = MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE;
+    else if (j == "MagnetomotiveForce") x = MagneticFilters::MAGNETOMOTIVE_FORCE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFilters schema!"); }
 }
 
@@ -240,6 +242,7 @@ inline void to_json(json & j, const MagneticFilters & x) {
         case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Losses Times Volume Times Temperature Rise"; break;
         case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME: j = "Core And DC Losses Times Volume"; break;
         case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE: j = "Core And DC Losses Times Volume Times Temperature Rise"; break;
+        case MagneticFilters::MAGNETOMOTIVE_FORCE: j = "MagnetomotiveForce"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"[object Object]\": " + std::to_string(static_cast<int>(x)));
     }
 }
