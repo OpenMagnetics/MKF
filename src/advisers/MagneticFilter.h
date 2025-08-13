@@ -94,6 +94,23 @@ class MagneticFilterCoreAndDcLosses : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+class MagneticFilterCoreDcAndSkinLosses : public MagneticFilter {
+    private:
+        MagnetizingInductance _magnetizingInductance;
+        WindingOhmicLosses _windingOhmicLosses;
+        WindingSkinEffectLosses _windingSkinEffectLosses;
+        std::map<std::string, std::string> _models;
+        std::shared_ptr<CoreLossesModel> _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "STEINMETZ"}}));
+        std::shared_ptr<CoreLossesModel> _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+        double _maximumPowerMean = 0;
+    public:
+
+        MagneticFilterCoreDcAndSkinLosses();
+        MagneticFilterCoreDcAndSkinLosses(Inputs inputs);
+        MagneticFilterCoreDcAndSkinLosses(Inputs inputs, std::map<std::string, std::string> models);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 class MagneticFilterLosses : public MagneticFilter {
     private:
         std::map<std::string, std::string> _models;
@@ -101,6 +118,18 @@ class MagneticFilterLosses : public MagneticFilter {
     public:
         MagneticFilterLosses() {};
         MagneticFilterLosses(std::map<std::string, std::string> models);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
+class MagneticFilterLossesNoProximity : public MagneticFilter {
+    private:
+        std::map<std::string, std::string> _models;
+        WindingOhmicLosses _windingOhmicLosses;
+        WindingSkinEffectLosses _windingSkinEffectLosses;
+        MagneticSimulator _magneticSimulator;
+    public:
+        MagneticFilterLossesNoProximity() {};
+        MagneticFilterLossesNoProximity(std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
@@ -246,10 +275,9 @@ class MagneticFilterHeight : public MagneticFilter {
 
 class MagneticFilterTemperatureRise : public MagneticFilter {
     private:
-        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
+        MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
     public:
         MagneticFilterTemperatureRise() {};
-        MagneticFilterTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
@@ -264,7 +292,6 @@ class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilter {
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
         MagneticFilterVolumeTimesTemperatureRise() {};
-        MagneticFilterVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
@@ -273,26 +300,23 @@ class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilte
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
         MagneticFilterLossesTimesVolumeTimesTemperatureRise() {};
-        MagneticFilterLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterCoreAndDcLossesTimesVolume : public MagneticFilter {
+class MagneticFilterLossesNoProximityTimesVolume : public MagneticFilter {
     private:
-        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
+        MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
     public:
-        MagneticFilterCoreAndDcLossesTimesVolume() {};
-        MagneticFilterCoreAndDcLossesTimesVolume(Inputs inputs);
+        MagneticFilterLossesNoProximityTimesVolume() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+class MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise : public MagneticFilter {
     private:
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
-        MagneticFilterCoreAndDcLosses _magneticFilterCoreAndDcLosses;
+        MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
     public:
-        MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise() {};
-        MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise(Inputs inputs);
+        MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 

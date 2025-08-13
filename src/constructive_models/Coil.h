@@ -241,6 +241,7 @@ class Coil : public MAS::Coil {
         double overlapping_filling_factor(Section section);
 
         double contiguous_filling_factor(Section section);
+        std::pair<double, std::pair<double, double>> calculate_filling_factor(size_t groupIndex = 0);
 
         static Bobbin resolve_bobbin(Coil coil);
         Bobbin resolve_bobbin();

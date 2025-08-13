@@ -1053,6 +1053,91 @@ double Coil::contiguous_filling_factor(Section section) {
     }
 }
 
+std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
+    double fillingFactor = 1;
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto windingOrientation = get_winding_orientation();
+
+    if (!get_layers_description()) {
+        throw std::runtime_error("Missing layers to calculate the filling factor.");
+    }
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns to calculate the filling factor.");
+    }
+
+    auto layers = get_layers_description().value();
+    auto sections = get_sections_description().value();
+
+    double area = 0;
+    double availableArea = windingWindows[0].get_area().value();
+    double availableContiguousDimension;
+    double availableOverlappingDimension;
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        availableContiguousDimension = windingWindows[0].get_height().value();
+        availableOverlappingDimension = windingWindows[0].get_width().value();
+    }
+    else {
+        availableContiguousDimension = windingWindows[0].get_radial_height().value();
+        availableOverlappingDimension = windingWindows[0].get_angle().value();
+    }
+    double maximumLayerFillingFactor = 0;
+    double contiguousDimension = 0;
+    double overlappingDimension = 0;
+
+    for (auto section : sections) {
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                contiguousDimension = std::max(contiguousDimension, section.get_dimensions()[1]);
+            }
+            overlappingDimension += section.get_dimensions()[0];
+        }
+        else {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                overlappingDimension = std::max(overlappingDimension, section.get_dimensions()[0]);
+            }
+            contiguousDimension += section.get_dimensions()[1];
+
+        }
+    }
+
+    for (auto section : sections) {
+        if (section.get_margin()) {
+            if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[0];
+            }
+            else {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[1];
+            }
+        }
+    }
+
+    for (auto layer : layers) {
+        if (layer.get_filling_factor()) {
+            if (layer.get_filling_factor().value() > 1) {
+                maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
+            }
+        }
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            auto turns = get_turns_by_layer(layer.get_name());
+            for (auto turn : turns) {
+                area += turn.get_dimensions().value()[0] * turn.get_dimensions().value()[1];
+            }
+        }
+        else {
+            area += layer.get_dimensions()[0] * layer.get_dimensions()[1];
+        }
+    }
+
+    double areaFillingFactor = area / availableArea;
+    areaFillingFactor = std::max(maximumLayerFillingFactor, areaFillingFactor);
+    double contiguousFillingFactor = contiguousDimension / availableContiguousDimension;
+    double overlappingFillingFactor = overlappingDimension / availableOverlappingDimension;
+    return {areaFillingFactor, {overlappingFillingFactor, contiguousFillingFactor}};
+}
+
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 
                                                                    std::vector<double> remainingParallelsProportion, WindingStyle windByConsecutiveTurns,
                                                                    std::vector<double> totalParallelsProportion, double slotRelativeProportion=1,
@@ -5582,7 +5667,8 @@ void Coil::try_rewind() {
             throw std::runtime_error("newProportionGottenByThisWinding cannot be negative or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
         if (roundFloat(newProportionGottenByThisWinding, 6) > 1 || std::isnan(newProportionGottenByThisWinding)) {
-            throw std::runtime_error("newProportionGottenByThisWinding cannot be greater than 1 or nan: " + std::to_string(newProportionGottenByThisWinding));
+            return;
+            // throw std::runtime_error("newProportionGottenByThisWinding cannot be greater than 1 or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
 
         newProportions.push_back(newProportionGottenByThisWinding);

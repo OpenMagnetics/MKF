@@ -37,8 +37,15 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
                 throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES");
             }
             return std::make_shared<MagneticFilterCoreAndDcLosses>(inputs.value());
+        case MagneticFilters::CORE_DC_AND_SKIN_LOSSES:
+            if (!inputs) {
+                throw std::runtime_error("Inputs needed for filter CORE_DC_AND_SKIN_LOSSES");
+            }
+            return std::make_shared<MagneticFilterCoreDcAndSkinLosses>(inputs.value());
         case MagneticFilters::LOSSES:
             return std::make_shared<MagneticFilterLosses>();
+        case MagneticFilters::LOSSES_NO_PROXIMITY:
+            return std::make_shared<MagneticFilterLossesNoProximity>();
         case MagneticFilters::DIMENSIONS:
             return std::make_shared<MagneticFilterDimensions>();
         case MagneticFilters::CORE_MINIMUM_IMPEDANCE:
@@ -85,20 +92,20 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             return std::make_shared<MagneticFilterVolumeTimesTemperatureRise>();
         case MagneticFilters::LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE:
             return std::make_shared<MagneticFilterLossesTimesVolumeTimesTemperatureRise>();
-        case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME:
+        case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME:
             if (!inputs) {
-                throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES_TIMES_VOLUME");
+                throw std::runtime_error("Inputs needed for filter LOSSES_NO_PROXIMITY_TIMES_VOLUME");
             }
-            return std::make_shared<MagneticFilterCoreAndDcLossesTimesVolume>();
-        case MagneticFilters::CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE:
+            return std::make_shared<MagneticFilterLossesNoProximityTimesVolume>();
+        case MagneticFilters::LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE:
             if (!inputs) {
-                throw std::runtime_error("Inputs needed for filter CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE");
+                throw std::runtime_error("Inputs needed for filter LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE");
             }
-            return std::make_shared<MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise>();
+            return std::make_shared<MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise>();
         case MagneticFilters::MAGNETOMOTIVE_FORCE:
             return std::make_shared<MagnetomotiveForce>();
         default:
-            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, LOSSES, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, CORE_AND_DC_LOSSES_TIMES_VOLUME, CORE_AND_DC_LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE}");
+            throw std::runtime_error("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE}");
     }
 }
 
@@ -448,9 +455,9 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses() {
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
-    _windingOhmicLosses = WindingOhmicLosses();
     _models = models;
 }
+
 MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std::map<std::string, std::string> models) {
     bool largeWaveform = false;
 
@@ -487,7 +494,6 @@ MagneticFilterCoreAndDcLosses::MagneticFilterCoreAndDcLosses(Inputs inputs, std:
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
 
     _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
-    _windingOhmicLosses = WindingOhmicLosses();
     _models = models;
 }
 
@@ -653,6 +659,232 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
     return {valid, meanTotalLosses};
 }
 
+MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs) {
+    std::map<std::string, std::string> models;
+    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+    MagneticFilterCoreDcAndSkinLosses(inputs, models);
+}
+
+MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses() {
+    std::map<std::string, std::string> models;
+    models["gapReluctance"] = magic_enum::enum_name(defaults.reluctanceModelDefault);
+    models["coreLosses"] = magic_enum::enum_name(defaults.coreLossesModelDefault);
+    models["coreTemperature"] = magic_enum::enum_name(defaults.coreTemperatureModelDefault);
+
+    _maximumPowerMean = 0;
+
+    _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+
+    _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
+    _models = models;
+}
+
+MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inputs, std::map<std::string, std::string> models) {
+    bool largeWaveform = false;
+
+    std::vector<double> powerMeans(inputs.get_operating_points().size(), 0);
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        auto voltageWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_voltage().value().get_waveform().value();
+        auto currentWaveform = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_current().value().get_waveform().value();
+        double frequency = Inputs::get_primary_excitation(inputs.get_operating_point(operatingPointIndex)).get_frequency();
+
+        if (voltageWaveform.get_data().size() != currentWaveform.get_data().size()) {
+            voltageWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+            currentWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency, std::max(voltageWaveform.get_data().size(), currentWaveform.get_data().size()));
+        }
+        std::vector<double> voltageWaveformData = voltageWaveform.get_data();
+        std::vector<double> currentWaveformData = currentWaveform.get_data();
+        if (currentWaveformData.size() > settings->get_inputs_number_points_sampled_waveforms() * 2) {
+            largeWaveform = true;
+        }
+        for (size_t i = 0; i < voltageWaveformData.size(); ++i)
+        {
+            powerMeans[operatingPointIndex] += fabs(voltageWaveformData[i] * currentWaveformData[i]);
+        }
+        powerMeans[operatingPointIndex] /= voltageWaveformData.size();
+    }
+
+
+    if (largeWaveform) {
+        models["coreLosses"] = magic_enum::enum_name(CoreLossesModels::STEINMETZ);
+    }
+
+    _maximumPowerMean = *max_element(powerMeans.begin(), powerMeans.end());
+
+    _coreLossesModelSteinmetz = CoreLossesModel::factory(models);
+    _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "PROPRIETARY"}}));
+
+    _magnetizingInductance = MagnetizingInductance(models["gapReluctance"]);
+    _models = models;
+}
+
+std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    auto core = magnetic->get_core();
+
+    std::string shapeName = core.get_shape_name();
+    if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+        auto bobbin = Bobbin::create_quick_bobbin(core);
+        magnetic->get_mutable_coil().set_bobbin(bobbin);
+        auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+
+        if (windingWindows[0].get_width()) {
+            if ((windingWindows[0].get_width().value() < 0) || (windingWindows[0].get_width().value() > 1)) {
+                throw std::runtime_error("Something wrong happened in bobbins 1:   windingWindows[0].get_width(): " + std::to_string(static_cast<int>(bool(windingWindows[0].get_width()))) +
+                                         " windingWindows[0].get_width().value(): " + std::to_string(windingWindows[0].get_width().value()) + 
+                                         " shapeName: " + shapeName
+                                         );
+            }
+        }
+    }
+
+    auto currentNumberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
+    NumberTurns numberTurns(currentNumberTurns);
+    std::vector<double> totalLossesPerOperatingPoint;
+    std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
+    std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
+    double currentTotalLosses = DBL_MAX;
+    double coreLosses = DBL_MAX;
+    CoreLossesOutput coreLossesOutput;
+    double ohmicAndSkinEffectLosses = DBL_MAX;
+    WindingLossesOutput windingLossesOutput;
+    windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    double newTotalLosses = DBL_MAX;
+    auto previousNumberTurnsPrimary = currentNumberTurns;
+
+    size_t iteration = 10;
+
+    Coil coil = magnetic->get_coil();
+
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+        auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+        size_t numberTimeouts = 0;
+        do {
+            currentTotalLosses = newTotalLosses;
+            auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            coil.get_mutable_functional_description()[0].set_number_turns(numberTurnsCombination[0]);
+            // coil = Coil(coil);
+            settings->set_coil_delimit_and_compact(false);
+            coil.fast_wind();
+
+            auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+
+            if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
+                if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
+                    coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    // coil = Coil(coil);
+                    settings->set_coil_delimit_and_compact(false);
+                    coil.fast_wind();
+                    break;
+                }
+            }
+            else {
+                previousNumberTurnsPrimary = numberTurnsCombination[0];
+            }
+
+            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                if (!coil.get_turns_description()) {
+                    newTotalLosses = coreLosses;
+                    break;
+                }
+            }
+
+            excitation.set_magnetic_flux_density(magneticFluxDensity);
+            auto coreLossesMethods = core.get_available_core_losses_methods(); 
+            if (std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end()) {
+                coreLossesOutput = _coreLossesModelSteinmetz->get_core_losses(core, excitation, temperature);
+                coreLosses = coreLossesOutput.get_core_losses();
+            }
+            else {
+                coreLossesOutput = _coreLossesModelProprietary->get_core_losses(core, excitation, temperature);
+                coreLosses = coreLossesOutput.get_core_losses();
+                if (coreLosses < 0) {
+                    break;
+                }
+            }
+
+            if (coreLosses < 0) {
+                throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
+            }
+
+            if (!coil.get_turns_description()) {
+                newTotalLosses = coreLosses;
+                break;
+            }
+
+            if (!((shapeName.rfind("PQI", 0) == 0) || (shapeName.rfind("UI ", 0) == 0))) {
+                windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
+                windingLossesOutput = _windingSkinEffectLosses.calculate_skin_effect_losses(coil, temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
+
+                ohmicAndSkinEffectLosses = windingLossesOutput.get_winding_losses();
+                newTotalLosses = coreLosses + ohmicAndSkinEffectLosses;
+                if (ohmicAndSkinEffectLosses < 0) {
+                    throw std::runtime_error("Something wrong happend in ohmic losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value() + " ohmicAndSkinEffectLosses: " + std::to_string(ohmicAndSkinEffectLosses));
+                }
+            }
+            else {
+                newTotalLosses = coreLosses;
+                break;
+            }
+
+            if (newTotalLosses == DBL_MAX) {
+                throw std::runtime_error("Too large losses");
+            }
+
+            iteration--;
+            if (iteration <=0) {
+                numberTimeouts++;
+                break;
+            }
+        }
+        while(newTotalLosses < currentTotalLosses * defaults.coreAdviserThresholdValidity);
+
+
+        if (coreLosses < DBL_MAX && coreLosses > 0) {
+            magnetic->set_coil(coil);
+
+            currentTotalLosses = newTotalLosses;
+            totalLossesPerOperatingPoint.push_back(currentTotalLosses);
+            coreLossesPerOperatingPoint.push_back(coreLossesOutput);
+            windingLossesPerOperatingPoint.push_back(windingLossesOutput);
+        }
+    }
+
+    bool valid = false;
+    double meanTotalLosses = 0;
+    if (totalLossesPerOperatingPoint.size() < inputs->get_operating_points().size()) {
+        return {false, 0.0};
+    }
+    else {
+
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+            meanTotalLosses += totalLossesPerOperatingPoint[operatingPointIndex];
+        }
+        if (meanTotalLosses > DBL_MAX / 2) {
+            throw std::runtime_error("Something wrong happend in core losses calculation for magnetic: " + magnetic->get_manufacturer_info().value().get_reference().value());
+        }
+        meanTotalLosses /= inputs->get_operating_points().size();
+
+        valid = meanTotalLosses < _maximumPowerMean * defaults.coreAdviserMaximumPercentagePowerCoreLosses / defaults.coreAdviserThresholdValidity;
+    }
+
+    if (outputs != nullptr) {
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+            if (outputs->size() < operatingPointIndex + 1) {
+                outputs->push_back(Outputs());
+            }
+            (*outputs)[operatingPointIndex].set_core_losses(coreLossesPerOperatingPoint[operatingPointIndex]);
+            (*outputs)[operatingPointIndex].set_winding_losses(windingLossesPerOperatingPoint[operatingPointIndex]);
+        }
+    }
+
+    return {valid, meanTotalLosses};
+}
+
 MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> models) {
     _models = models;
 }
@@ -665,6 +897,40 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
         auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature);
         auto windingLossesValue = windingLosses.get_winding_losses();
+        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic);
+        auto coreLossesValue = coreLosses.get_core_losses();
+        scoring += windingLossesValue + coreLossesValue;
+
+        if (outputs != nullptr) {
+            if (outputs->size() < operatingPointIndex + 1) {
+                outputs->push_back(Outputs());
+            }
+            (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
+            (*outputs)[operatingPointIndex].set_winding_losses(windingLosses);
+        }
+    }
+
+    scoring /= inputs->get_operating_points().size();
+
+    return {true, scoring};
+}
+
+MagneticFilterLossesNoProximity::MagneticFilterLossesNoProximity(std::map<std::string, std::string> models) {
+    _models = models;
+}
+
+std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    double scoring = 0;
+
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+        auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
+        auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        auto windingLosses = _windingOhmicLosses.calculate_ohmic_losses(magnetic->get_coil(), operatingPoint, temperature);
+        windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
+        windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
+        windingLosses = WindingLosses::combine_turn_losses(windingLosses, magnetic->get_coil());
+        double windingLossesValue = windingLosses.get_winding_losses();
+
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic);
         auto coreLossesValue = coreLosses.get_core_losses();
         scoring += windingLossesValue + coreLossesValue;
@@ -1214,7 +1480,6 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     return {valid, scoring};
 }
 
-
 std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
@@ -1301,14 +1566,12 @@ std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(Magne
     return {valid, scoring};
 }
 
-
 std::pair<bool, double> MagneticFilterSkinLossesDensity::evaluate_magnetic(CoilFunctionalDescription winding, SignalDescriptor current, double temperature) {
     auto wire = Coil::resolve_wire(winding);
     double skinEffectLossesPerMeter = WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature).first;
     double valid = true;
     return {valid, skinEffectLossesPerMeter};
 }
-
 
 std::pair<bool, double> MagneticFilterVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto maximumDimensions = magnetic->get_maximum_dimensions();
@@ -1328,20 +1591,15 @@ std::pair<bool, double> MagneticFilterHeight::evaluate_magnetic(Magnetic* magnet
     return {true, height};
 }
 
-MagneticFilterTemperatureRise::MagneticFilterTemperatureRise(Inputs inputs) {
-    _magneticFilterCoreAndDcLosses = MagneticFilterCoreAndDcLosses(inputs);
-}
-
 std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    MagneticSimulator _magneticSimulator;
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES);
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
     double losses = 0;
 
     if (previousLosses) {
         losses = previousLosses.value();
     }
     else {
-        auto aux = _magneticFilterCoreAndDcLosses.evaluate_magnetic(magnetic, inputs, outputs);
+        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
         losses = aux.second;
     }
 
@@ -1366,10 +1624,6 @@ std::pair<bool, double> MagneticFilterLossesTimesVolume::evaluate_magnetic(Magne
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring};
 }
-
-MagneticFilterVolumeTimesTemperatureRise::MagneticFilterVolumeTimesTemperatureRise(Inputs inputs) {
-    _magneticFilterTemperatureRise = MagneticFilterTemperatureRise(inputs);
-}
  
 std::pair<bool, double> MagneticFilterVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
@@ -1384,11 +1638,6 @@ std::pair<bool, double> MagneticFilterVolumeTimesTemperatureRise::evaluate_magne
 
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, volumeScoring * temperature};
-
-}
-
-MagneticFilterLossesTimesVolumeTimesTemperatureRise::MagneticFilterLossesTimesVolumeTimesTemperatureRise(Inputs inputs) {
-    _magneticFilterTemperatureRise = MagneticFilterTemperatureRise(inputs);
 }
 
 std::pair<bool, double> MagneticFilterLossesTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
@@ -1415,37 +1664,28 @@ std::pair<bool, double> MagneticFilterLossesTimesVolumeTimesTemperatureRise::eva
     return {true, losses * volumeScoring * temperature};
 }
 
-MagneticFilterCoreAndDcLossesTimesVolume::MagneticFilterCoreAndDcLossesTimesVolume(Inputs inputs) {
-    _magneticFilterCoreAndDcLosses = MagneticFilterCoreAndDcLosses(inputs);
-}
-
-std::pair<bool, double> MagneticFilterCoreAndDcLossesTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::CORE_AND_DC_LOSSES);
+std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolume::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
     double losses = 0;
     if (previousLosses) {
         losses = previousLosses.value();
     }
     else {
-        auto aux = _magneticFilterCoreAndDcLosses.evaluate_magnetic(magnetic, inputs, outputs);
+        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
         losses = aux.second;
     }
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring};
 }
 
-MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise::MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise(Inputs inputs) {
-    _magneticFilterTemperatureRise = MagneticFilterTemperatureRise(inputs);
-    _magneticFilterCoreAndDcLosses = MagneticFilterCoreAndDcLosses(inputs);
-}
-
-std::pair<bool, double> MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
-    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::CORE_AND_DC_LOSSES);
+std::pair<bool, double> MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    auto previousLosses = get_scoring(magnetic->get_reference(), MagneticFilters::LOSSES_NO_PROXIMITY);
     double losses = 0;
     if (previousLosses) {
         losses = previousLosses.value();
     }
     else {
-        auto aux = _magneticFilterCoreAndDcLosses.evaluate_magnetic(magnetic, inputs, outputs);
+        auto aux = _magneticFilterLossesNoProximity.evaluate_magnetic(magnetic, inputs, outputs);
         losses = aux.second;
     }
     auto previousTemperatureRise = get_scoring(magnetic->get_reference(), MagneticFilters::TEMPERATURE_RISE);
@@ -1461,7 +1701,6 @@ std::pair<bool, double> MagneticFilterCoreAndDcLossesTimesVolumeTimesTemperature
     auto [volumeValid, volumeScoring] = MagneticFilterVolume().evaluate_magnetic(magnetic, inputs, outputs);
     return {true, losses * volumeScoring * temperature};
 }
-
 
 std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto coil = magnetic->get_coil();
@@ -1519,6 +1758,5 @@ std::pair<bool, double> MagnetomotiveForce::evaluate_magnetic(Magnetic* magnetic
     }
     return {true, maximumMagnetomotiveForce};
 }
-
 
 } // namespace OpenMagnetics
