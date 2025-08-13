@@ -25,7 +25,7 @@ struct Defaults {
     const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 500;
     const uint64_t coreAdviserMaximumNumberStacks = 4;
     const double maximumCurrentDensity = 7000000;
-    const double maximumCurrentDensityPlanar = 20000000;
+    const double maximumCurrentDensityPlanar = 2000000;
     const double maximumEffectiveCurrentDensity = 12000000;
     const double maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;

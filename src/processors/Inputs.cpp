@@ -1974,7 +1974,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
         voltage = standardize_waveform(voltage, frequency);
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
-            auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
+            auto current = calculate_magnetizing_current(excitation, magnetizingInductance * pow(turnsRatio, 2), true, dcCurrent);
             excitation.set_current(current);
             excitation.set_magnetizing_current(current);
         }
