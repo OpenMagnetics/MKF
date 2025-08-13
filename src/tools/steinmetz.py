@@ -1,8 +1,14 @@
 from scipy.optimize import curve_fit
 import numpy
 import json
+import math
 import pandas
 import pathlib
+
+
+def steinmetz_equation(f, B, T, k, alpha, beta, ct0, ct1, ct2):
+    temp_coeff = ct2 * T**2 - ct1 * T + ct0
+    return k * pow(f, alpha) * pow(B, beta) * temp_coeff
 
 
 def calculate_steinmetz_coefficients(data):
@@ -19,9 +25,25 @@ def calculate_steinmetz_coefficients(data):
     return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta), 'ct0': float(ct0), 'ct1': float(ct1), 'ct2': float(ct2)}
 
 
+def calculate_steinmetz_coefficients_only_temp(data, k, alpha, beta):
+    def steinmetz_fitting_equation(log_f_B_T, ct0, ct1, ct2):
+        log_f, log_B, T = log_f_B_T
+        temp_coeff = ct2 * T**2 - ct1 * T + ct0
+        if (temp_coeff < 0).any():
+            return log_k + alpha * log_f + beta * log_B
+        else:
+            return log_k + alpha * log_f + beta * log_B + numpy.log10(temp_coeff)
+
+    log_k = math.log10(k)
+    [ct0, ct1, ct2], pcov = curve_fit(steinmetz_fitting_equation, (numpy.log10(data['frequency']), numpy.log10(data['magneticFluxDensityPeak']), data['temperature']), numpy.log10(data['volumetricLosses']), [0.001, 1e-06, 1e-08])
+    return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta), 'ct0': float(ct0), 'ct1': float(ct1), 'ct2': float(ct2)}
+
+
 def calculate_steinmetz_coefficients_no_temp(data):
     def steinmetz_fitting_equation(log_f_B_T, log_k, alpha, beta):
         log_f, log_B, T = log_f_B_T
+        # if abs(log_k) > 10:
+        #     return 0
         return log_k + alpha * log_f + beta * log_B
 
     [log_k, alpha, beta], pcov = curve_fit(steinmetz_fitting_equation, (numpy.log10(data['frequency']), numpy.log10(data['magneticFluxDensityPeak']), data['temperature']), numpy.log10(data['volumetricLosses']), [0.4, 1.5, 2])
@@ -29,11 +51,15 @@ def calculate_steinmetz_coefficients_no_temp(data):
     return {'k': float(k), 'alpha': float(alpha), 'beta': float(beta)}
 
 
-def fit(material, frequency):
+def fit(material, frequency, temperature_dependence=True, with_error=False):
 
     data_path = pathlib.Path(__file__).parent.resolve().joinpath('../../../MAS/data/advanced_core_materials.ndjson')
     all_data = pandas.read_json(data_path, lines=True)
-    data = all_data[all_data['name'] == material]['volumetricLosses'].iloc[0]
+    data = all_data[all_data['name'] == material]['volumetricLosses']
+    if data.empty:
+        return {}
+
+    data = data.iloc[0]
     for method in data['default']:
         if isinstance(method, list):
             if len(method) == 0:
@@ -72,11 +98,27 @@ def fit(material, frequency):
                     data = data.drop('magneticFluxDensity', axis=1)
                     data = data.drop('origin', axis=1)
 
+                    data_25C = data[data["temperature"] == 25]
                     # coefficients = calculate_steinmetz_coefficients(data)
-                    coefficients = calculate_steinmetz_coefficients_no_temp(data)
+                    if temperature_dependence:
+                        coefficients = calculate_steinmetz_coefficients_no_temp(data_25C)
+                        coefficients = calculate_steinmetz_coefficients_only_temp(data, coefficients["k"], coefficients["alpha"], coefficients["beta"])
+                    else:
+                        coefficients = calculate_steinmetz_coefficients_no_temp(data)
                     coefficients["minimumFrequency"] = minimumFrequency
                     coefficients["maximumFrequency"] = maximumFrequency
 
+                    data["calculated_volumetric_losses"] = data.apply(lambda row: steinmetz_equation(f=row["frequency"],
+                                                                                                     B=row["magneticFluxDensityPeak"],
+                                                                                                     T=row["temperature"],
+                                                                                                     k=coefficients["k"],
+                                                                                                     alpha=coefficients["alpha"],
+                                                                                                     beta=coefficients["beta"],
+                                                                                                     ct0=coefficients["ct0"],
+                                                                                                     ct1=coefficients["ct1"],
+                                                                                                     ct2=coefficients["ct2"]), axis=1)
+
+                    data["error"] = (data["calculated_volumetric_losses"] - data["volumetricLosses"]) / data["volumetricLosses"]
                     # if coefficients['alpha'] < 1:
                     #     number_rows += 100
                     #     print(f"Retrying with number_rows {number_rows}")
@@ -85,7 +127,10 @@ def fit(material, frequency):
                     #     number_rows += 100
                     #     print(f"Retrying with number_rows {number_rows}")
                     #     continue
-                    return coefficients
+                    if with_error:
+                        return coefficients, data["error"].mean()
+                    else:
+                        return coefficients
                 except RuntimeError:
                     number_rows += 100
                     print(f"Retrying with number_rows {number_rows}")
@@ -120,7 +165,7 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("SMP51", [300000, 1000000]), fit("SMP51", [1000000, 5000000])]})
     # print({"method": "steinmetz", "ranges": [fit("SMP53", [300000, 1000000]), fit("SMP53", [1000000, 5000000])]})
 
-    print({"method": "steinmetz", "ranges": [fit("X-Indmix A", [1, 600000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("X-Indmix A", [1, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR25", [1, 200000]), fit("DMR25", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR24", [1, 200000]), fit("DMR24", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DMR44", [1, 200000]), fit("DMR44", [200000, 600000000])]})
@@ -160,8 +205,8 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("R5KC", [1, 200000]), fit("R5KC", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("R5KZ", [1, 200000]), fit("R5KZ", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("R10KC", [1, 200000]), fit("R10KC", [200000, 600000000])]})
-    # print({"method": "steinmetz", "ranges": [fit("DMR51W", [1, 200000]), fit("DMR51W", [200000, 600000000])]})
-    # print({"method": "steinmetz", "ranges": [fit("DMR52W", [1, 200000]), fit("DMR52W", [200000, 600000000])]})
+    print({"method": "steinmetz", "ranges": [fit("DMR51W", [1, 1600000]), fit("DMR51W", [1600000, 600000000])]})
+    # print({"method": "steinmetz", "ranges": [fit("DMR52W", [1, 3100000]), fit("DMR52W", [3100000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN15P", [1, 200000]), fit("DN15P", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN20F", [1, 200000]), fit("DN20F", [200000, 600000000])]})
     # print({"method": "steinmetz", "ranges": [fit("DN2S", [1, 200000]), fit("DN2S", [200000, 600000000])]})
@@ -200,3 +245,116 @@ if __name__ == '__main__':  # pragma: no cover
     # print({"method": "steinmetz", "ranges": [fit("T57", [1, 200000]), fit("T57", [200000, 60000000])]})
     # print({"method": "steinmetz", "ranges": [fit("T65", [1, 200000]), fit("T65", [200000, 60000000])]})
     # print({"method": "steinmetz", "ranges": [fit("T66", [1, 200000]), fit("T66", [200000, 60000000])]})
+
+    # print("A064")
+    # print({"method": "steinmetz", "ranges": [fit("A064", [1, 200000]), fit("A064", [200000, 600000])]})
+    # print("A103")
+    # print({"method": "steinmetz", "ranges": [fit("A103", [1, 200000]), fit("A103", [200000, 600000])]})
+    # print("D30")
+    # print({"method": "steinmetz", "ranges": [fit("D30", [1, 200000]), fit("D30", [200000, 600000])]})
+    # print("D35")
+    # print({"method": "steinmetz", "ranges": [fit("D35", [1, 200000]), fit("D35", [200000, 600000])]})
+    # print("A151")
+    # print({"method": "steinmetz", "ranges": [fit("A151", [1, 200000]), fit("A151", [200000, 600000])]})
+    # print("D37")
+    # print({"method": "steinmetz", "ranges": [fit("D37", [1, 200000]), fit("D37", [200000, 600000])]})
+    # print("P491")
+    # print({"method": "steinmetz", "ranges": [fit("P491", [1, 200000]), fit("P491", [200000, 600000])]})
+    # print("N43")
+    # print({"method": "steinmetz", "ranges": [fit("N43", [1, 200000]), fit("N43", [200000, 600000])]})
+    # print("A13")
+    # print({"method": "steinmetz", "ranges": [fit("A13", [1, 200000]), fit("A13", [200000, 600000])]})
+    # print("N5")
+    # print({"method": "steinmetz", "ranges": [fit("N5", [1, 200000]), fit("N5", [200000, 600000])]})
+    # print("A05")
+    # print({"method": "steinmetz", "ranges": [fit("A05", [1, 200000]), fit("A05", [200000, 600000])]})
+    # print("P452")
+    # print({"method": "steinmetz", "ranges": [fit("P452", [1, 200000]), fit("P452", [200000, 600000])]})
+    # print("A06")
+    # print({"method": "steinmetz", "ranges": [fit("A06", [1, 200000]), fit("A06", [200000, 600000])]})
+    # print("K081")
+    # print({"method": "steinmetz", "ranges": [fit("K081", [1, 200000]), fit("K081", [200000, 600000])]})
+    # print("P61")
+    # print({"method": "steinmetz", "ranges": [fit("P61", [1, 200000]), fit("P61", [200000, 600000])]})
+    # print("K12")
+    # print({"method": "steinmetz", "ranges": [fit("K12", [1, 200000]), fit("K12", [200000, 600000])]})
+    # print("A071")
+    # print({"method": "steinmetz", "ranges": [fit("A071", [1, 200000]), fit("A071", [200000, 600000])]})
+    # print("P451")
+    # print({"method": "steinmetz", "ranges": [fit("P451", [1, 200000]), fit("P451", [200000, 600000])]})
+    # print("D1C")
+    # print({"method": "steinmetz", "ranges": [fit("D1C", [1, 200000]), fit("D1C", [200000, 600000])]})
+    # print("N10")
+    # print({"method": "steinmetz", "ranges": [fit("N10", [1, 200000]), fit("N10", [200000, 600000])]})
+    # print("K13")
+    # print({"method": "steinmetz", "ranges": [fit("K13", [1, 200000]), fit("K13", [200000, 600000])]})
+    # print("N07")
+    # print({"method": "steinmetz", "ranges": [fit("N07", [1, 200000]), fit("N07", [200000, 600000])]})
+    # print("N42")
+    # print({"method": "steinmetz", "ranges": [fit("N42", [1, 200000]), fit("N42", [200000, 600000])]})
+    # print("K10")
+    # print({"method": "steinmetz", "ranges": [fit("K10", [1, 200000]), fit("K10", [200000, 600000])]})
+    # print("P4")
+    # print({"method": "steinmetz", "ranges": [fit("P4", [1, 200000]), fit("P4", [200000, 600000])]})
+    # print("P41")
+    # print({"method": "steinmetz", "ranges": [fit("P41", [1, 200000]), fit("P41", [200000, 600000])]})
+    # print("A102")
+    # print({"method": "steinmetz", "ranges": [fit("A102", [1, 200000]), fit("A102", [200000, 600000])]})
+    # print("N4")
+    # print({"method": "steinmetz", "ranges": [fit("N4", [1, 200000]), fit("N4", [200000, 600000])]})
+    # print("A043")
+    # print({"method": "steinmetz", "ranges": [fit("A043", [1, 200000]), fit("A043", [200000, 600000])]})
+    # print("P45")
+    # print({"method": "steinmetz", "ranges": [fit("P45", [1, 200000]), fit("P45", [200000, 600000])]})
+    # print("K151")
+    # print({"method": "steinmetz", "ranges": [fit("K151", [1, 200000]), fit("K151", [200000, 600000])]})
+    # print("K20")
+    # print({"method": "steinmetz", "ranges": [fit("K20", [1, 200000]), fit("K20", [200000, 600000])]})
+    # print("P48")
+    # print({"method": "steinmetz", "ranges": [fit("P48", [1, 200000]), fit("P48", [200000, 600000])]})
+    # print("P51")
+    # print({"method": "steinmetz", "ranges": [fit("P51", [1, 200000]), fit("P51", [200000, 600000])]})
+    # print("P492")
+    # print({"method": "steinmetz", "ranges": [fit("P492", [1, 200000]), fit("P492", [200000, 600000])]})
+    # print("P47")
+    # print({"method": "steinmetz", "ranges": [fit("P47", [1, 200000]), fit("P47", [200000, 600000])]})
+    # print("P63")
+    # print({"method": "steinmetz", "ranges": [fit("P63", [1, 200000]), fit("P63", [200000, 600000])]})
+    # print("D25")
+    # print({"method": "steinmetz", "ranges": [fit("D25", [1, 200000]), fit("D25", [200000, 600000])]})
+    # print("D28")
+    # print({"method": "steinmetz", "ranges": [fit("D28", [1, 200000]), fit("D28", [200000, 600000])]})
+    # print("D27")
+    # print({"method": "steinmetz", "ranges": [fit("D27", [1, 200000]), fit("D27", [200000, 600000])]})
+    # print("A044")
+    # print({"method": "steinmetz", "ranges": [fit("A044", [1, 200000]), fit("A044", [200000, 600000])]})
+    # print("A072")
+    # print({"method": "steinmetz", "ranges": [fit("A072", [1, 200000]), fit("A072", [200000, 600000])]})
+    # print("K25")
+    # print({"method": "steinmetz", "ranges": [fit("K25", [1, 200000]), fit("K25", [200000, 600000])]})
+    # print("P42")
+    # print({"method": "steinmetz", "ranges": [fit("P42", [1, 200000]), fit("P42", [200000, 600000])]})
+    # print("P5")
+    # print({"method": "steinmetz", "ranges": [fit("P5", [1, 200000]), fit("P5", [200000, 600000])]})
+    # print("P49")
+    # print({"method": "steinmetz", "ranges": [fit("P49", [1, 200000]), fit("P49", [200000, 600000])]})
+    # print("P53")
+    # print({"method": "steinmetz", "ranges": [fit("P53", [1, 200000]), fit("P53", [200000, 600000])]})
+    # print("A121")
+    # print({"method": "steinmetz", "ranges": [fit("A121", [1, 200000]), fit("A121", [200000, 600000])]})
+    # print("K15")
+    # print({"method": "steinmetz", "ranges": [fit("K15", [1, 200000]), fit("K15", [200000, 600000])]})
+    # print("A104")
+    # print({"method": "steinmetz", "ranges": [fit("A104", [1, 200000]), fit("A104", [200000, 600000])]})
+    # print("P52")
+    # print({"method": "steinmetz", "ranges": [fit("P52", [1, 200000]), fit("P52", [200000, 600000])]})
+    # print("A10")
+    # print({"method": "steinmetz", "ranges": [fit("A10", [1, 200000]), fit("A10", [200000, 600000])]})
+    # print("D40")
+    # print({"method": "steinmetz", "ranges": [fit("D40", [1, 200000]), fit("D40", [200000, 600000])]})
+    # print("A062")
+    # print({"method": "steinmetz", "ranges": [fit("A062", [1, 200000]), fit("A062", [200000, 600000])]})
+    # print("A07")
+    # print({"method": "steinmetz", "ranges": [fit("A07", [1, 200000]), fit("A07", [200000, 600000])]})
+    # print("A061")
+    # print({"method": "steinmetz", "ranges": [fit("A061", [1, 200000]), fit("A061", [200000, 600000])]})
