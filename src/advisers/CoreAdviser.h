@@ -190,5 +190,23 @@ class CoreAdviser {
 
 };
 
+void from_json(const json & j, CoreAdviser::CoreAdviserModes & x);
+void to_json(json & j, const CoreAdviser::CoreAdviserModes & x);
+
+inline void from_json(const json & j, CoreAdviser::CoreAdviserModes & x) {
+    if (j == "available cores") x = CoreAdviser::CoreAdviserModes::AVAILABLE_CORES;
+    else if (j == "standard cores") x = CoreAdviser::CoreAdviserModes::STANDARD_CORES;
+    else if (j == "custom cores") x = CoreAdviser::CoreAdviserModes::CUSTOM_CORES;
+    else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+}
+
+inline void to_json(json & j, const CoreAdviser::CoreAdviserModes & x) {
+    switch (x) {
+        case CoreAdviser::CoreAdviserModes::AVAILABLE_CORES: j = "available cores"; break;
+        case CoreAdviser::CoreAdviserModes::STANDARD_CORES: j = "standard cores"; break;
+        case CoreAdviser::CoreAdviserModes::CUSTOM_CORES: j = "custom cores"; break;
+        default: throw std::runtime_error("Unexpected value in enumeration \"CoreAdviser::CoreAdviserModes\": " + std::to_string(static_cast<int>(x)));
+    }
+}
 
 } // namespace OpenMagnetics
