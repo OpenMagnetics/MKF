@@ -677,6 +677,74 @@ SUITE(CoilWeb) {
         to_json(result, coil);
         std::cout << bool(coil.get_turns_description()) << std::endl;
     }
+
+    TEST(Test_Coil_Json_11) {
+        std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.006175,"columnShape":"round","columnThickness":0,"columnWidth":0.006175,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":null,"area":0.000041283000000000004,"coordinates":[0.0098875,0,0],"height":0.00556,"radialHeight":null,"sectionsAlignment":"inner or top","sectionsOrientation":"contiguous","shape":"rectangular","width":0.007425000000000001}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":5,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2293100000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 52.20 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"standard":"IPC-6012","standardName":"1.5 oz.","strand":null,"type":"planar"}},{"connections":null,"isolationSide":"secondary","name":"SECONDARY","numberParallels":1,"numberTurns":3,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2449700000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 34.80 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"standard":"IPC-6012","standardName":"1 oz.","strand":null,"type":"planar"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread","spread","spread","spread"],"_layersOrientation":["contiguous","contiguous","contiguous","contiguous"],"_interlayerInsulationThickness":0,"_intersectionInsulationThickness":0.0001})";
+
+        std::vector<size_t> pattern = {0, 1, 0, 1};
+        std::vector<double> proportionPerWinding = {0.5, 0.5};
+        size_t repetitions = 1;
+
+        auto coilJson = json::parse(coilString);
+
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+
+        if (coilJson["_layersOrientation"].is_object()) {
+            auto layersOrientationPerSection = std::map<std::string, WindingOrientation>(coilJson["_layersOrientation"]);
+            for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
+                coil.set_layers_orientation(layerOrientation, sectionName);
+            }
+        }
+        else if (coilJson["_layersOrientation"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto layersOrientationPerSection = std::vector<WindingOrientation>(coilJson["_layersOrientation"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < layersOrientationPerSection.size()) {
+                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
+            coil.set_layers_orientation(layerOrientation);
+
+        }
+        if (coilJson["_turnsAlignment"].is_object()) {
+            auto turnsAlignmentPerSection = std::map<std::string, CoilAlignment>(coilJson["_turnsAlignment"]);
+            for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
+                coil.set_turns_alignment(turnsAlignment, sectionName);
+            }
+        }
+        else if (coilJson["_turnsAlignment"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto turnsAlignmentPerSection = std::vector<CoilAlignment>(coilJson["_turnsAlignment"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < turnsAlignmentPerSection.size()) {
+                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
+            coil.set_turns_alignment(turnsAlignment);
+        }
+ 
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.wind();
+        CHECK(bool(coil.get_sections_description()));
+        CHECK(bool(coil.get_layers_description()));
+        CHECK(bool(coil.get_turns_description()));
+    }
 }
 
 SUITE(CoilSectionsDescriptionMargins) {
@@ -9864,6 +9932,7 @@ SUITE(PlanarCoil) {
         coil.wind_by_planar_sections(stackUp, 0);
         coil.wind_by_planar_layers();
         coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         auto turnsDescription = coil.get_turns_description().value();
         CHECK_EQUAL(turnsDescription.size(), 7);
@@ -10005,6 +10074,7 @@ SUITE(PlanarCoil) {
                 magnetic.set_coil(coil);
                 painter.paint_core(magnetic);
                 // painter.paint_coil_sections(magnetic);
+                // painter.paint_coil_layers(magnetic);
                 painter.paint_coil_turns(magnetic);
                 painter.export_svg();
             }
