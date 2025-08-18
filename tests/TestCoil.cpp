@@ -10081,4 +10081,60 @@ SUITE(PlanarCoil) {
         }
     }
 
+    TEST(Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        std::vector<size_t> stackUp = {0};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.0005);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, 0.0001, 0.001);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0, 0.0002);
+        coil.delimit_and_compact();
+        CHECK(coil.get_turns_description());
+        auto turnsDescription = coil.get_turns_description().value();
+        CHECK_EQUAL(turnsDescription.size(), 7);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
 }

@@ -1955,13 +1955,13 @@ bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    group.set_coordinates({coreToLayerDistance / 2 + windingWindows[0].get_coordinates().value()[0], windingWindows[0].get_coordinates().value()[1]});
+    group.set_coordinates({windingWindows[0].get_coordinates().value()[0], windingWindows[0].get_coordinates().value()[1]});
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        group.set_dimensions(std::vector<double>{windingWindows[0].get_width().value() - coreToLayerDistance, windingWindows[0].get_height().value()});
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_width().value() - coreToLayerDistance * 2, windingWindows[0].get_height().value()});
         group.set_coordinate_system(CoordinateSystem::CARTESIAN);
     }
     else {
-        group.set_dimensions(std::vector<double>{windingWindows[0].get_radial_height().value() - coreToLayerDistance, windingWindows[0].get_angle().value()});
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_radial_height().value() - coreToLayerDistance * 2, windingWindows[0].get_angle().value()});
         group.set_coordinate_system(CoordinateSystem::POLAR);
     }
     group.set_name("Default group");
@@ -2721,7 +2721,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         auto numberSections = numberSectionsPerWinding[windingIndex];
         auto winding = get_functional_description()[windingIndex];
         auto sectionIndex = currentSectionIndexPerwinding[windingIndex];
-        double sectionWidth = sectionWidthPerWinding[windingIndex] - coreToLayerDistance * 2;
+        double sectionWidth = sectionWidthPerWinding[windingIndex];
         double sectionHeight = sectionHeightPerWinding[windingIndex];
         currentSectionCenterHeight -= sectionHeight / 2;
 
