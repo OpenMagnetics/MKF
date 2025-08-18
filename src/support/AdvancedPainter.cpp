@@ -1791,6 +1791,7 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
             layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] + layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
             layerPoints.push_back(std::vector<double>({layers[i].get_coordinates()[0] - layers[i].get_dimensions()[0] / 2, layers[i].get_coordinates()[1] - layers[i].get_dimensions()[1] / 2}));
 
+
             std::vector<double> x, y;
             for (auto& point : layerPoints) {
                 x.push_back(point[0] + _offsetForColorBar);
@@ -1799,7 +1800,7 @@ void AdvancedPainter::paint_two_piece_set_winding_turns(Magnetic magnetic) {
             if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                 matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_copper()));
             }
-            else {
+            else if (!_addProportionForColorBar) {
                 matplot::fill(x, y)->fill(true).line_width(0.0).color(matplot::to_array(settings->get_painter_color_insulation()));
             }
         }
