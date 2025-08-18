@@ -1,6 +1,6 @@
 [submodule "MAS"]
 	path = MAS
-	url = https://github.com/OpenMagnetics/MAS.git
+	url = https://github.com/jalinei/MAS.git
 [submodule "cci_coords"]
 	path = cci_coords
 	url = https://github.com/OpenMagnetics/cci_coords.git
