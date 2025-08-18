@@ -3517,9 +3517,9 @@ SUITE(CoilPainter) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0001, 0.0001);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
 
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, turnsRatios);

@@ -92,9 +92,9 @@ class Coil : public MAS::Coil {
         bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
 
     public:
-        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
+        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
-        bool wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance);
+        bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
 
         Coil(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
@@ -111,7 +111,7 @@ class Coil : public MAS::Coil {
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
-        bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::optional<double> wireToWireDistance = std::nullopt, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
+        bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();

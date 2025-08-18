@@ -9577,7 +9577,7 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
         CHECK_EQUAL(layersDescription.size(), 1);
@@ -9615,10 +9615,10 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(layersDescription.size(), 2);
+        CHECK_EQUAL(layersDescription.size(), 3);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings) {
@@ -9653,18 +9653,18 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(2U, layersDescription.size());
+        CHECK_EQUAL(3U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(1, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved) {
@@ -9699,26 +9699,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(0.5, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(0.5, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(0.5, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(0.5, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd_Turns) {
@@ -9753,26 +9753,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns) {
@@ -9807,26 +9807,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(2.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation) {
@@ -9929,9 +9929,9 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         auto turnsDescription = coil.get_turns_description().value();
@@ -9991,9 +9991,9 @@ SUITE(PlanarCoil) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0005, 0.0005);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0005}}, 0.0005);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         if (coil.get_turns_description()) {
@@ -10055,9 +10055,9 @@ SUITE(PlanarCoil) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0001, 0.0001);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         if (coil.get_turns_description()) {
@@ -10114,9 +10114,9 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0.0001, 0.001);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.001);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0, 0.0002);
+        coil.wind_by_planar_turns(0, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         auto turnsDescription = coil.get_turns_description().value();
@@ -10176,9 +10176,9 @@ SUITE(PlanarCoil) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0001, 0.0001);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         if (coil.get_turns_description()) {
