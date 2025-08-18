@@ -645,7 +645,7 @@ namespace OpenMagnetics {
             stackUpString.pop_back();
 
             // TODO: calculate clearances
-            wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, 0.0001);
+            wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, 0.0001);
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
