@@ -449,7 +449,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     return are_sections_and_layers_fitting() && get_turns_description();
 }
 
-bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
+bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings->get_coil_delimit_and_compact();
     std::string bobbinName = "";
@@ -480,7 +480,6 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
-            std::optional<std::map<size_t, double>> wireToWireDistance;
 
             if (_inputs) {
                 if (_inputs->get_design_requirements().get_insulation()) {
@@ -490,9 +489,9 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
                     if (!borderToWireDistance) {
                         borderToWireDistance = std::max(defaults.minimumBorderToWireDistance, clearance);
                     }
-                    if (!wireToWireDistance) {
-                        for (size_t i = 0; i < get_functional_description().size(); ++i) {
-                            wireToWireDistance.value()[i] = std::max(defaults.minimumWireToWireDistance, clearance);
+                    for (size_t i = 0; i < get_functional_description().size(); ++i) {
+                        if (!wireToWireDistance.count(i)) {
+                            wireToWireDistance[i] = std::max(defaults.minimumWireToWireDistance, clearance);
                         }
                     }
                 }
@@ -501,10 +500,10 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             if (!borderToWireDistance) {
                 borderToWireDistance = defaults.minimumBorderToWireDistance;
             }
-            if (!wireToWireDistance) {
-                for (size_t i = 0; i < get_functional_description().size(); ++i) {
-                    wireToWireDistance.value()[i] = defaults.minimumWireToWireDistance;
-                }
+            for (size_t i = 0; i < get_functional_description().size(); ++i) {
+                if (!wireToWireDistance.count(i)) {
+                    wireToWireDistance[i] = defaults.minimumWireToWireDistance;
+                } 
             }
 
             logEntry("Winding by sections", "Coil", 2);
@@ -518,7 +517,7 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
 
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
                 logEntry("Winding by turns", "Coil", 2);
-                result = wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance.value());
+                result = wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance);
                 if (delimitAndCompact) {
                     logEntry("Delimiting and compacting", "Coil", 2);
                     delimit_and_compact();
