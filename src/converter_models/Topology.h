@@ -175,7 +175,9 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
  *  ------------------
  * */
 
-class TwoLevelInverter  : public MAS::TwoLevelInverterOperatingPoint {
+class TwoLevelInverterOperatingPoint;
+
+class TwoLevelInverter  : public MAS::Inverter {
   private:
     DimensionWithTolerance dcBusVoltage;
     double switchingFrequency;
@@ -208,7 +210,7 @@ class TwoLevelInverter  : public MAS::TwoLevelInverterOperatingPoint {
     std::vector<OperatingPoint> process_operating_points();
 };
 
-class TwoLevelInverterOperatingPoint : public MAS::TwoLevelInverterOperatingPoint {
+class TwoLevelInverterOperatingPoint : public MAS::InverterOperatingPoint {
   private:
     double fundamentalFrequency;
     std::optional<double> outputPower;
@@ -231,14 +233,14 @@ void to_json(json& j, const TwoLevelInverterOperatingPoint& x);
 inline void from_json(const json& j, TwoLevelInverterOperatingPoint& x) {
     x.set_fundamental_frequency(j.at("fundamentalFrequency").get<double>());
     x.set_output_power(get_stack_optional<double>(j, "outputPower"));
-    x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
+    // x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
 }
 
 inline void to_json(json& j, const TwoLevelInverterOperatingPoint& x) {
     j = json::object();
     j["fundamentalFrequency"] = x.get_fundamental_frequency();
     j["outputPower"] = x.get_output_power();
-    j["ambientTemperature"] = x.get_ambient_temperature();
+    // j["ambientTemperature"] = x.get_ambient_temperature();
 }
 
 void from_json(const json& j, TwoLevelInverter& x);

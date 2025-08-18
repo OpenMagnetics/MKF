@@ -670,14 +670,7 @@ namespace OpenMagnetics {
 
     std::vector<OperatingPoint> TwoLevelInverter::process_operating_points() {
         std::vector<OperatingPoint> operatingPointsResult;
-        for (const auto& op : get_operating_points()) {
-            OperatingPoint operatingPoint;
-            operatingPoint.set_ambient_temperature(op.get_ambient_temperature());
-            OperatingPointExcitation excitation;
-            excitation.set_frequency(op.get_fundamental_frequency());
-            operatingPoint.set_primary(excitation);
-            operatingPointsResult.push_back(operatingPoint);
-        }
+
         return operatingPointsResult;
     }
 
