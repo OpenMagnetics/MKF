@@ -310,6 +310,7 @@ inline void from_json(const json & j, Coil& x) {
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
+    x.set_groups_description(get_stack_optional<std::vector<Group>>(j, "groupsDescription"));
 }
 
 inline void from_json(const json & j, CoilFunctionalDescription& x) {
@@ -328,6 +329,7 @@ inline void to_json(json & j, const Coil & x) {
     j["layersDescription"] = x.get_layers_description();
     j["sectionsDescription"] = x.get_sections_description();
     j["turnsDescription"] = x.get_turns_description();
+    j["groupsDescription"] = x.get_groups_description();
 }
 
 inline void to_json(json & j, const CoilFunctionalDescription & x) {
