@@ -169,4 +169,94 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
     j["efficiency"] = x.get_efficiency();
     j["currentRippleRatio"] = x.get_current_ripple_ratio();
 }
+
+/** ------------------
+ *  Inverter topology
+ *  ------------------
+ * */
+
+class TwoLevelInverter  : public MAS::TwoLevelInverterOperatingPoint {
+  private:
+    DimensionWithTolerance dcBusVoltage;
+    double switchingFrequency;
+    std::optional<double> deadTime;
+    std::vector<TwoLevelInverterOperatingPoint> operatingPoints;
+
+  public:
+    bool _assertErrors = false;
+
+    TwoLevelInverter() = default;
+    TwoLevelInverter(const json& j);
+
+    const DimensionWithTolerance& get_dc_bus_voltage() const { return dcBusVoltage; }
+    void set_dc_bus_voltage(const DimensionWithTolerance& value) { this->dcBusVoltage = value; }
+
+    const double& get_switching_frequency() const { return switchingFrequency; }
+    void set_switching_frequency(const double& value) { this->switchingFrequency = value; }
+
+    std::optional<double> get_dead_time() const { return deadTime; }
+    void set_dead_time(std::optional<double> value) { this->deadTime = value; }
+
+    const std::vector<TwoLevelInverterOperatingPoint>& get_operating_points() const { return operatingPoints; }
+    void set_operating_points(const std::vector<TwoLevelInverterOperatingPoint>& value) {
+        this->operatingPoints = value;
+    }
+
+    bool run_checks(bool assert = false);
+    Inputs process();
+    DesignRequirements process_design_requirements();
+    std::vector<OperatingPoint> process_operating_points();
+};
+
+class TwoLevelInverterOperatingPoint : public MAS::TwoLevelInverterOperatingPoint {
+  private:
+    double fundamentalFrequency;
+    std::optional<double> outputPower;
+    double ambientTemperature;
+
+  public:
+    const double& get_fundamental_frequency() const { return fundamentalFrequency; }
+    void set_fundamental_frequency(const double& value) { this->fundamentalFrequency = value; }
+
+    std::optional<double> get_output_power() const { return outputPower; }
+    void set_output_power(std::optional<double> value) { this->outputPower = value; }
+
+    const double& get_ambient_temperature() const { return ambientTemperature; }
+    void set_ambient_temperature(const double& value) { this->ambientTemperature = value; }
+};
+
+void from_json(const json& j, TwoLevelInverterOperatingPoint& x);
+void to_json(json& j, const TwoLevelInverterOperatingPoint& x);
+
+inline void from_json(const json& j, TwoLevelInverterOperatingPoint& x) {
+    x.set_fundamental_frequency(j.at("fundamentalFrequency").get<double>());
+    x.set_output_power(get_stack_optional<double>(j, "outputPower"));
+    x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
+}
+
+inline void to_json(json& j, const TwoLevelInverterOperatingPoint& x) {
+    j = json::object();
+    j["fundamentalFrequency"] = x.get_fundamental_frequency();
+    j["outputPower"] = x.get_output_power();
+    j["ambientTemperature"] = x.get_ambient_temperature();
+}
+
+void from_json(const json& j, TwoLevelInverter& x);
+void to_json(json& j, const TwoLevelInverter& x);
+
+inline void from_json(const json& j, TwoLevelInverter& x) {
+    x.set_dc_bus_voltage(j.at("dcBusVoltage").get<DimensionWithTolerance>());
+    x.set_switching_frequency(j.at("switchingFrequency").get<double>());
+    x.set_dead_time(get_stack_optional<double>(j, "deadTime"));
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<TwoLevelInverterOperatingPoint>>());
+}
+
+inline void to_json(json& j, const TwoLevelInverter& x) {
+    j = json::object();
+    j["dcBusVoltage"] = x.get_dc_bus_voltage();
+    j["switchingFrequency"] = x.get_switching_frequency();
+    j["deadTime"] = x.get_dead_time();
+    j["operatingPoints"] = x.get_operating_points();
+}
+
 } // namespace OpenMagnetics

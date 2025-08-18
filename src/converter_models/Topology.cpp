@@ -649,4 +649,48 @@ namespace OpenMagnetics {
         return inputs;
     }
 
+/** ------------------
+ *  Inverter topology
+ *  ------------------
+ * */
+
+    TwoLevelInverter::TwoLevelInverter(const json& j) {
+        from_json(j, *this);
+    }
+
+    bool TwoLevelInverter::run_checks(bool assert) {
+        (void) assert;
+        return true;
+    }
+
+    DesignRequirements TwoLevelInverter::process_design_requirements() {
+        DesignRequirements designRequirements;
+        return designRequirements;
+    }
+
+    std::vector<OperatingPoint> TwoLevelInverter::process_operating_points() {
+        std::vector<OperatingPoint> operatingPointsResult;
+        for (const auto& op : get_operating_points()) {
+            OperatingPoint operatingPoint;
+            operatingPoint.set_ambient_temperature(op.get_ambient_temperature());
+            OperatingPointExcitation excitation;
+            excitation.set_frequency(op.get_fundamental_frequency());
+            operatingPoint.set_primary(excitation);
+            operatingPointsResult.push_back(operatingPoint);
+        }
+        return operatingPointsResult;
+    }
+
+    Inputs TwoLevelInverter::process() {
+        if (!run_checks(_assertErrors)) {
+            throw std::runtime_error("Configuration checks failed");
+        }
+        Inputs inputs;
+        auto designRequirements = process_design_requirements();
+        auto operatingPoints = process_operating_points();
+        inputs.set_design_requirements(designRequirements);
+        inputs.set_operating_points(operatingPoints);
+        return inputs;
+    }
+
 } // namespace OpenMagnetics
