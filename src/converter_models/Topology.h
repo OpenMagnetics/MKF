@@ -175,29 +175,30 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
  *  ------------------
  * */
 
-class TwoLevelInverterOperatingPoint;
-
-class TwoLevelInverter  : public MAS::Inverter {
+class MyInverter  : public MAS::Inverter {
   private:
-    DimensionWithTolerance dcBusVoltage;
-    double switchingFrequency;
-    std::optional<double> deadTime;
-    std::vector<TwoLevelInverterOperatingPoint> operatingPoints;
+    std::complex<double>  Zgrid;
+    std::complex<double>  Zfilter;
+    struct ABCVoltages {
+        double Va;
+        double Vb;
+        double Vc;
+    };
+    struct PwmSignals {
+        bool Sa;  // Leg A upper switch
+        bool Sb;  // Leg B upper switch
+        bool Sc;  // Leg C upper switch
+    };
+    struct Inductor1State {
+        std::complex<double> vL1;  // Voltage across L1
+        std::complex<double> iL1;  // Current through L1
+    };
 
   public:
     bool _assertErrors = false;
 
-    TwoLevelInverter() = default;
-    TwoLevelInverter(const json& j);
-
-    const DimensionWithTolerance& get_dc_bus_voltage() const { return dcBusVoltage; }
-    void set_dc_bus_voltage(const DimensionWithTolerance& value) { this->dcBusVoltage = value; }
-
-    const double& get_switching_frequency() const { return switchingFrequency; }
-    void set_switching_frequency(const double& value) { this->switchingFrequency = value; }
-
-    std::optional<double> get_dead_time() const { return deadTime; }
-    void set_dead_time(std::optional<double> value) { this->deadTime = value; }
+    MyInverter() = default;
+    MyInverter(const json& j);
 
     const std::vector<TwoLevelInverterOperatingPoint>& get_operating_points() const { return operatingPoints; }
     void set_operating_points(const std::vector<TwoLevelInverterOperatingPoint>& value) {
@@ -205,60 +206,204 @@ class TwoLevelInverter  : public MAS::Inverter {
     }
 
     bool run_checks(bool assert = false);
+    compute_inverter_reference(const InverterLoad& load,
+                                    const InverterOperatingPoint& op,
+                                    const DimensionWithTolerance& vdc,
+                                    double power);
+    
+    // ---- Impedances ----
+    Impedance compute_load_impedance(const InverterLoad& load);
+    Impedance compute_filter_impedance(const InverterDownstreamFilter& filter);
+
+    
+    SignalDescriptor compute_switching_node_voltage(const Modulation& modulation,
+                                                    const Signal& inverter_voltage_reference);
+
+
+    // ---- Currents ----
+    SignalDescriptor compute_inductor_current();
+
     Inputs process();
     DesignRequirements process_design_requirements();
     std::vector<OperatingPoint> process_operating_points();
 };
 
-class TwoLevelInverterOperatingPoint : public MAS::InverterOperatingPoint {
-  private:
-    double fundamentalFrequency;
-    std::optional<double> outputPower;
-    double ambientTemperature;
 
-  public:
-    const double& get_fundamental_frequency() const { return fundamentalFrequency; }
-    void set_fundamental_frequency(const double& value) { this->fundamentalFrequency = value; }
-
-    std::optional<double> get_output_power() const { return outputPower; }
-    void set_output_power(std::optional<double> value) { this->outputPower = value; }
-
-    const double& get_ambient_temperature() const { return ambientTemperature; }
-    void set_ambient_temperature(const double& value) { this->ambientTemperature = value; }
-};
-
-void from_json(const json& j, TwoLevelInverterOperatingPoint& x);
-void to_json(json& j, const TwoLevelInverterOperatingPoint& x);
-
-inline void from_json(const json& j, TwoLevelInverterOperatingPoint& x) {
+inline void from_json(const json& j, MAS::InverterOperatingPoint& x) {
     x.set_fundamental_frequency(j.at("fundamentalFrequency").get<double>());
     x.set_output_power(get_stack_optional<double>(j, "outputPower"));
-    // x.set_ambient_temperature(j.at("ambientTemperature").get<double>());
+    x.set_operating_temperature(get_stack_optional<double>(j, "operatingTemperature"));
+    x.set_power_factor(get_stack_optional<double>(j, "powerFactor"));
+    x.set_current_phase_angle(get_stack_optional<double>(j, "currentPhaseAngle"));
+    x.set_load(j.at("load").get<MAS::InverterLoad>());
 }
 
-inline void to_json(json& j, const TwoLevelInverterOperatingPoint& x) {
+inline void to_json(json& j, const MAS::InverterOperatingPoint& x) {
     j = json::object();
     j["fundamentalFrequency"] = x.get_fundamental_frequency();
     j["outputPower"] = x.get_output_power();
-    // j["ambientTemperature"] = x.get_ambient_temperature();
+    j["operatingTemperature"] = x.get_operating_temperature();
+    j["powerFactor"] = x.get_power_factor();
+    j["currentPhaseAngle"] = x.get_current_phase_angle();
+    j["load"] = x.get_load();
 }
 
-void from_json(const json& j, TwoLevelInverter& x);
-void to_json(json& j, const TwoLevelInverter& x);
-
-inline void from_json(const json& j, TwoLevelInverter& x) {
+inline void from_json(const json& j, MyInverter& x) {
     x.set_dc_bus_voltage(j.at("dcBusVoltage").get<DimensionWithTolerance>());
-    x.set_switching_frequency(j.at("switchingFrequency").get<double>());
-    x.set_dead_time(get_stack_optional<double>(j, "deadTime"));
-    x.set_operating_points(j.at("operatingPoints").get<std::vector<TwoLevelInverterOperatingPoint>>());
+    x.set_vdc_ripple(get_stack_optional<DimensionWithTolerance>(j, "vdcRipple"));
+    x.set_inverter_leg_power_rating(j.at("inverterLegPowerRating").get<double>());
+    x.set_line_rms_current(j.at("lineRmsCurrent").get<DimensionWithTolerance>());
+    x.set_downstream_filter(get_stack_optional<MAS::InverterDownstreamFilter>(j, "downstreamFilter"));
+    x.set_modulation(get_stack_optional<MAS::Modulation>(j, "modulation"));
+    x.set_operating_points(j.at("operatingPoints").get<std::vector<MAS::InverterOperatingPoint>>());
 }
 
-inline void to_json(json& j, const TwoLevelInverter& x) {
+inline void to_json(json& j, const MyInverter& x) {
     j = json::object();
     j["dcBusVoltage"] = x.get_dc_bus_voltage();
-    j["switchingFrequency"] = x.get_switching_frequency();
-    j["deadTime"] = x.get_dead_time();
+    j["vdcRipple"] = x.get_vdc_ripple();
+    j["inverterLegPowerRating"] = x.get_inverter_leg_power_rating();
+    j["lineRmsCurrent"] = x.get_line_rms_current();
+    j["downstreamFilter"] = x.get_downstream_filter();
+    j["modulation"] = x.get_modulation();
     j["operatingPoints"] = x.get_operating_points();
 }
+
+inline void from_json(const json& j, MAS::InverterDownstreamFilter& x) {
+    // filterTopology
+    x.set_filter_topology(j.at("filterTopology").get<MAS::FilterTopologies>());
+
+    // inductor (required)
+    x.set_inductor(j.at("inductor").get<MAS::Inductor>());
+
+    // capacitor (optional, required only for LC or LCL)
+    if (j.contains("capacitor")) {
+        x.set_capacitor(j.at("capacitor").get<MAS::Capacitor>());
+    }
+
+    // inductor2 (optional, required only for LCL)
+    if (j.contains("inductor2")) {
+        x.set_inductor2(j.at("inductor2").get<MAS::Inductor2>());
+    }
+}
+
+inline void to_json(json& j, const MAS::InverterDownstreamFilter& x) {
+    j = json::object();
+
+    j["filterTopology"] = x.get_filter_topology();
+    j["inductor"] = x.get_inductor();
+
+    if (x.get_capacitor().has_value()) {
+        j["capacitor"] = x.get_capacitor().value();
+    }
+
+    if (x.get_inductor2().has_value()) {
+        j["inductor2"] = x.get_inductor2().value();
+    }
+}
+
+inline void from_json(const json& j, MAS::InverterLoad& x) {
+    x.set_load_type(j.at("loadType").get<MAS::LoadType>());
+    x.set_resistance(get_stack_optional<double>(j, "resistance"));
+    x.set_inductance(get_stack_optional<double>(j, "inductance"));
+    x.set_phase_voltage(get_stack_optional<double>(j, "phaseVoltage"));
+    x.set_grid_frequency(get_stack_optional<double>(j, "gridFrequency"));
+    x.set_grid_resistance(get_stack_optional<double>(j, "gridResistance"));
+    x.set_grid_inductance(get_stack_optional<double>(j, "gridInductance"));
+}
+
+inline void to_json(json& j, const MAS::InverterLoad& x) {
+    j = json::object();
+    j["loadType"] = x.get_load_type();
+    j["resistance"] = x.get_resistance();
+    j["inductance"] = x.get_inductance();
+    j["phaseVoltage"] = x.get_phase_voltage();
+    j["gridFrequency"] = x.get_grid_frequency();
+    j["gridResistance"] = x.get_grid_resistance();
+    j["gridInductance"] = x.get_grid_inductance();
+}
+
+inline void from_json(const json& j, MAS::Modulation& x) {
+    x.set_switching_frequency(j.at("switchingFrequency").get<double>());
+    x.set_pwm_type(j.at("pwmType").get<MAS::PwmType>());
+    x.set_modulation_strategy(j.at("modulationStrategy").get<MAS::ModulationStrategy>());
+    x.set_modulation_depth(j.at("modulationDepth").get<double>());
+    x.set_rise_time(get_stack_optional<double>(j, "riseTime"));
+    x.set_deadtime(get_stack_optional<double>(j, "deadtime"));
+    x.set_third_harmonic_injection_coefficient(
+        get_stack_optional<double>(j, "thirdHarmonicInjectionCoefficient"));
+}
+
+inline void to_json(json& j, const MAS::Modulation& x) {
+    j = json::object();
+    j["switchingFrequency"] = x.get_switching_frequency();
+    j["pwmType"] = x.get_pwm_type();
+    j["modulationStrategy"] = x.get_modulation_strategy();
+    j["modulationDepth"] = x.get_modulation_depth();
+    j["riseTime"] = x.get_rise_time();
+    j["deadtime"] = x.get_deadtime();
+    j["thirdHarmonicInjectionCoefficient"] = x.get_third_harmonic_injection_coefficient();
+}
+
+inline void from_json(const json& j, MAS::ModulationStrategy& x) {
+    std::string s = j.get<std::string>();
+    if (s == "SPWM")    x = MAS::ModulationStrategy::SPWM;
+    else if (s == "SVPWM") x = MAS::ModulationStrategy::SVPWM;
+    else if (s == "THIPWM") x = MAS::ModulationStrategy::THIPWM;
+    else throw std::invalid_argument("Invalid ModulationStrategy: " + s);
+}
+
+inline void to_json(json& j, const MAS::ModulationStrategy& x) {
+    switch (x) {
+        case MAS::ModulationStrategy::SPWM:   j = "SPWM"; break;
+        case MAS::ModulationStrategy::SVPWM:  j = "SVPWM"; break;
+        case MAS::ModulationStrategy::THIPWM: j = "THIPWM"; break;
+    }
+}
+
+inline void from_json(const json& j, MAS::PwmType& x) {
+    std::string s = j.get<std::string>();
+    if (s == "sawtooth")   x = MAS::PwmType::SAWTOOTH;
+    else if (s == "triangular") x = MAS::PwmType::TRIANGULAR;
+    else throw std::invalid_argument("Invalid PwmType: " + s);
+}
+
+inline void to_json(json& j, const MAS::PwmType& x) {
+    switch (x) {
+        case MAS::PwmType::SAWTOOTH:   j = "sawtooth"; break;
+        case MAS::PwmType::TRIANGULAR: j = "triangular"; break;
+    }
+}
+
+inline void from_json(const json& j, MAS::LoadType& x) {
+    std::string s = j.get<std::string>();
+    if (s == "grid")   x = MAS::LoadType::GRID;
+    else if (s == "R-L") x = MAS::LoadType::R_L;
+    else throw std::invalid_argument("Invalid LoadType: " + s);
+}
+
+inline void to_json(json& j, const MAS::LoadType& x) {
+    switch (x) {
+        case MAS::LoadType::GRID: j = "grid"; break;
+        case MAS::LoadType::R_L:  j = "R-L"; break;
+    }
+}
+
+inline void from_json(const json& j, MAS::FilterTopologies& x) {
+    std::string s = j.get<std::string>();
+    if (s == "L")       x = MAS::FilterTopologies::L;
+    else if (s == "LC") x = MAS::FilterTopologies::LC;
+    else if (s == "LCL")x = MAS::FilterTopologies::LCL;
+    else throw std::invalid_argument("Invalid FilterTopologies: " + s);
+}
+
+inline void to_json(json& j, const MAS::FilterTopologies& x) {
+    switch (x) {
+        case MAS::FilterTopologies::L:   j = "L"; break;
+        case MAS::FilterTopologies::LC:  j = "LC"; break;
+        case MAS::FilterTopologies::LCL: j = "LCL"; break;
+    }
+}
+
 
 } // namespace OpenMagnetics

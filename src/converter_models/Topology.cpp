@@ -654,27 +654,393 @@ namespace OpenMagnetics {
  *  ------------------
  * */
 
-    TwoLevelInverter::TwoLevelInverter(const json& j) {
+    MyInverter::MyInverter(const json& j) {
         from_json(j, *this);
     }
 
-    bool TwoLevelInverter::run_checks(bool assert) {
+    bool MyInverter::run_checks(bool assert) {
         (void) assert;
         return true;
     }
 
-    DesignRequirements TwoLevelInverter::process_design_requirements() {
+    DesignRequirements MyInverter::process_design_requirements() {
         DesignRequirements designRequirements;
+        designRequirements.set_magnetizing_inductance();
+        designRequirements.set_operating_temperature();
         return designRequirements;
     }
 
-    std::vector<OperatingPoint> TwoLevelInverter::process_operating_points() {
+
+
+    std::complex<double> compute_load_impedance(const InverterLoad& load, double omega) {
+        using namespace std::complex_literals;
+
+        auto type = load.get_load_type();
+
+        switch (type) {
+            case LoadType::GRID: {
+                // Grid modeled as R + jωL
+                double R = load.get_grid_resistance().value_or(0.0);
+                double L = load.get_grid_inductance().value_or(0.0);
+                return std::complex<double>(R, omega * L);
+            }
+
+            case LoadType::R_L: {
+                // General load R + jωL
+                double R = load.get_resistance().value_or(0.0);
+                double L = load.get_inductance().value_or(0.0);
+                return std::complex<double>(R, omega * L);
+            }
+
+            default:
+                throw std::runtime_error("Unknown load type");
+        }
+    }
+
+
+    std::complex<double> compute_filter_impedance(const InverterDownstreamFilter& filter, double omega) {
+        using namespace std::complex_literals;
+
+        auto topology = filter.get_filter_topology();
+
+        // === Build element impedances with ESR ===
+
+        // Inductor 1
+        double L1 = filter.get_inductor().get_inductance();
+        double ESR_L1 = filter.get_inductor().get_esr().value_or(0.0);
+        std::complex<double> ZL1(ESR_L1, omega * L1);
+
+        // Capacitor (if present)
+        std::complex<double> ZC;
+        if (filter.get_capacitor()) {
+            double C = filter.get_capacitor()->get_capacitance();
+            double ESR_C = filter.get_capacitor()->get_esr().value_or(0.0);
+            // Capacitor ESR is in series with reactive part
+            ZC = std::complex<double>(ESR_C, -1.0 / (omega * C));
+        }
+
+        // Inductor 2 (if present)
+        std::complex<double> ZL2;
+        if (filter.get_inductor2()) {
+            double L2 = filter.get_inductor2()->get_inductance();
+            double ESR_L2 = filter.get_inductor2()->get_esr().value_or(0.0);
+            ZL2 = std::complex<double>(ESR_L2, omega * L2);
+        }
+
+        // === Switch based on topology ===
+        switch (topology) {
+            case FilterTopologies::L:
+                // Just series L1
+                return ZL1;
+
+            case FilterTopologies::LC:
+                if (!filter.get_capacitor()) {
+                    throw std::runtime_error("LC topology requires a capacitor");
+                }
+                // L1 in series with capacitor to ground (parallel branch)
+                return (ZL1 * ZC) / (ZL1 + ZC);
+
+            case FilterTopologies::LCL:
+                if (!filter.get_capacitor() || !filter.get_inductor2()) {
+                    throw std::runtime_error("LCL topology requires capacitor and second inductor");
+                }
+                // L1 in series with (ZC || ZL2)
+                return ZL1 + (ZC * ZL2) / (ZC + ZL2);
+
+            default:
+                throw std::runtime_error("Unknown filter topology");
+        }
+    }
+
+    /// Helper: dq -> abc transformation
+    ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta) {
+        // Vdq = Vd + jVq
+        double Vd = Vdq.real();
+        double Vq = Vdq.imag();
+
+        // Inverse Park transform
+        double Va = Vd * cos(theta) - Vq * sin(theta);
+        double Vb = Vd * cos(theta - 2.0*M_PI/3.0) - Vq * sin(theta - 2.0*M_PI/3.0);
+        double Vc = Vd * cos(theta + 2.0*M_PI/3.0) - Vq * sin(theta + 2.0*M_PI/3.0);
+
+        return {Va, Vb, Vc};
+    }
+
+        /// Clarke transform: abc -> alpha-beta
+    std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v) {
+        double v_alpha = (2.0/3.0) * (v.Va - 0.5*v.Vb - 0.5*v.Vc);
+        double v_beta  = (2.0/3.0) * ((sqrt(3)/2.0) * (v.Vb - v.Vc));
+        return {v_alpha, v_beta};
+    }
+
+    /// SVPWM modulation: compute duty cycles for abc legs
+    ABCVoltages svpwm_modulation(const ABCVoltages& Vabc,
+                                double ma,
+                                double Vdc,
+                                double fsw) {
+        auto [v_alpha, v_beta] = abc_to_alphabeta(Vabc);
+
+        // Scale with modulation index
+        v_alpha *= ma;
+        v_beta  *= ma;
+
+        double Ts = 1.0 / fsw;
+
+        // Reference angle
+        double theta = atan2(v_beta, v_alpha);
+        if (theta < 0) theta += 2*M_PI;
+
+        // Sector detection (1–6, each 60°)
+        int sector = int(theta / (M_PI/3.0)) + 1;
+        if (sector > 6) sector = 6;
+
+        // Magnitude
+        double Vref = sqrt(v_alpha*v_alpha + v_beta*v_beta);
+
+        // Compute T1, T2 using standard SVPWM geometry
+        double T1, T2;
+        double angle = theta - (sector-1)*(M_PI/3.0);
+
+        T1 = (Ts * sqrt(3) * Vref / Vdc) * sin(M_PI/3.0 - angle);
+        T2 = (Ts * sqrt(3) * Vref / Vdc) * sin(angle);
+        double T0 = Ts - T1 - T2;
+
+        if (T0 < 0) T0 = 0; // clamp
+
+        // Duty cycles depend on sector
+        double Ta, Tb, Tc;
+        switch (sector) {
+            case 1: Ta = (T1+T2+T0/2)/Ts; Tb = (T2+T0/2)/Ts; Tc = T0/2/Ts; break;
+            case 2: Ta = (T1+T0/2)/Ts; Tb = (T1+T2+T0/2)/Ts; Tc = T0/2/Ts; break;
+            case 3: Ta = T0/2/Ts; Tb = (T1+T2+T0/2)/Ts; Tc = (T2+T0/2)/Ts; break;
+            case 4: Ta = T0/2/Ts; Tb = (T1+T0/2)/Ts; Tc = (T1+T2+T0/2)/Ts; break;
+            case 5: Ta = (T2+T0/2)/Ts; Tb = T0/2/Ts; Tc = (T1+T2+T0/2)/Ts; break;
+            case 6: Ta = (T1+T2+T0/2)/Ts; Tb = T0/2/Ts; Tc = (T1+T0/2)/Ts; break;
+            default: Ta=Tb=Tc=0.5; break;
+        }
+
+        // Return equivalent duty values as "abc voltages"
+        return {Ta, Tb, Tc};
+    }
+
+    ABCVoltages compute_voltage_references(const Inverter& inverter,
+                                        const InverterOperatingPoint& op_point,
+                                        const Modulation& modulation,
+                                        double grid_angle_rad) {
+        using namespace std::complex_literals;
+
+        const InverterLoad& load = op_point.get_load();
+        double omega = 2.0 * M_PI * op_point.get_fundamental_frequency();
+
+        std::complex<double> Vref_dq;
+
+        // --- Step 1: dq reference (same as before) ---
+        switch (load.get_load_type()) {
+            case LoadType::GRID: {
+                double Vg_rms = load.get_phase_voltage().value_or(230.0);
+                std::complex<double> Vg = std::complex<double>(Vg_rms, 0.0);
+                std::complex<double> Zg = std::complex<double>(
+                    load.get_grid_resistance().value_or(0.0),
+                    omega * load.get_grid_inductance().value_or(0.0)
+                );
+                double P = op_point.get_output_power().value_or(0.0);
+                double pf = op_point.get_power_factor().value_or(1.0);
+                double phi = acos(pf);
+                std::complex<double> Iph = (P / (Vg_rms * pf)) * (cos(-phi) + 1i*sin(-phi));
+                Vref_dq = Vg - Iph * Zg;
+                break;
+            }
+            case LoadType::R_L: {
+                std::complex<double> Zload = std::complex<double>(
+                    load.get_resistance().value_or(0.0),
+                    omega * load.get_inductance().value_or(0.0)
+                );
+                double P = op_point.get_output_power().value_or(0.0);
+                double pf = op_point.get_power_factor().value_or(1.0);
+                double phi = acos(pf);
+                std::complex<double> Iph = (P / pf) / inverter.get_line_rms_current().get_nominal()
+                                        * (cos(-phi) + 1i*sin(-phi));
+                Vref_dq = Iph * Zload;
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown load type");
+        }
+
+        // --- Step 2: dq -> abc ---
+        ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
+
+        // --- Step 3: Modulation strategy ---
+        double ma = modulation.get_modulation_depth();
+        switch (modulation.get_modulation_strategy()) {
+            case ModulationStrategy::SPWM: {
+                Vabc.Va *= ma;
+                Vabc.Vb *= ma;
+                Vabc.Vc *= ma;
+                break;
+            }
+            case ModulationStrategy::THIPWM: {
+                double k = modulation.get_third_harmonic_injection_coefficient().value_or(1.0/6.0);
+                Vabc.Va = ma * (Vabc.Va + k * sin(3.0 * grid_angle_rad));
+                Vabc.Vb = ma * (Vabc.Vb + k * sin(3.0 * grid_angle_rad - 2.0*M_PI/3.0));
+                Vabc.Vc = ma * (Vabc.Vc + k * sin(3.0 * grid_angle_rad + 2.0*M_PI/3.0));
+                break;
+            }
+            case ModulationStrategy::SVPWM: {
+                Vabc = svpwm_modulation(Vabc, ma,
+                                        inverter.get_dc_bus_voltage().get_nominal(),
+                                        modulation.get_switching_frequency());
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown modulation strategy");
+        }
+
+        return Vabc;
+    }
+
+    double compute_carrier(const Modulation& modulation, double t) {
+        double fsw = modulation.get_switching_frequency();
+        double Ts = 1.0 / fsw;
+
+        // Normalize time within switching period
+        double tau = fmod(t, Ts) / Ts;  // [0,1)
+
+        switch (modulation.get_pwm_type()) {
+            case PwmType::SAWTOOTH: {
+                // Linear ramp: -1 → +1
+                return 2.0 * tau - 1.0;
+            }
+
+            case PwmType::TRIANGULAR: {
+                // Symmetric triangular: -1 → +1 → -1
+                if (tau < 0.5) {
+                    return 4.0 * tau - 1.0;    // ramp -1 → +1
+                } else {
+                    return -4.0 * tau + 3.0;   // ramp +1 → -1
+                }
+            }
+
+            default:
+                throw std::runtime_error("Unknown PWM carrier type");
+        }
+    }
+
+    PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
+                                    double carrier,
+                                    double Vdc,
+                                    const Modulation& modulation) {
+        // Normalize into duty cycles [0,1]
+        double d_a = 0.5 * (Vabc.Va / (Vdc / 2.0) + 1.0);
+        double d_b = 0.5 * (Vabc.Vb / (Vdc / 2.0) + 1.0);
+        double d_c = 0.5 * (Vabc.Vc / (Vdc / 2.0) + 1.0);
+
+        // Clamp to [0,1]
+        d_a = std::clamp(d_a, 0.0, 1.0);
+        d_b = std::clamp(d_b, 0.0, 1.0);
+        d_c = std::clamp(d_c, 0.0, 1.0);
+
+        // Apply deadtime correction (if set)
+        if (modulation.get_deadtime()) {
+            double t_dead = *modulation.get_deadtime();
+            double Ts = 1.0 / modulation.get_switching_frequency();
+            double delta_d = t_dead / Ts;  // fraction of duty cycle lost to deadtime
+
+            d_a = std::clamp(d_a - delta_d, 0.0, 1.0);
+            d_b = std::clamp(d_b - delta_d, 0.0, 1.0);
+            d_c = std::clamp(d_c - delta_d, 0.0, 1.0);
+        }
+
+        // Apply rise time correction (if set)
+        if (modulation.get_rise_time()) {
+            double t_rise = *modulation.get_rise_time();
+            double Ts = 1.0 / modulation.get_switching_frequency();
+            double delta_d = t_rise / Ts;
+
+            d_a = std::clamp(d_a - delta_d/2, 0.0, 1.0);
+            d_b = std::clamp(d_b - delta_d/2, 0.0, 1.0);
+            d_c = std::clamp(d_c - delta_d/2, 0.0, 1.0);
+        }
+
+        // Carrier comparison (carrier is [-1,1], convert duty back to same scale)
+        double Va_norm = 2.0*d_a - 1.0;
+        double Vb_norm = 2.0*d_b - 1.0;
+        double Vc_norm = 2.0*d_c - 1.0;
+
+        bool Sa = (Va_norm > carrier);
+        bool Sb = (Vb_norm > carrier);
+        bool Sc = (Vc_norm > carrier);
+
+        return {Sa, Sb, Sc};
+    }
+
+    Inductor1State compute_L1_state(const InverterDownstreamFilter& filter,
+                                    const InverterLoad& load,
+                                    double omega,
+                                    std::complex<double> Vinv) {
+        using namespace std::complex_literals;
+
+        // Build element impedances
+        std::complex<double> ZL1(filter.get_inductor().get_esr().value_or(0.0),
+                                omega * filter.get_inductor().get_inductance());
+
+        std::complex<double> ZC(1e9, 0.0); // open if no C
+        if (filter.get_capacitor()) {
+            double C = filter.get_capacitor()->get_capacitance();
+            double ESRc = filter.get_capacitor()->get_esr().value_or(0.0);
+            ZC = std::complex<double>(ESRc, -1.0/(omega*C));
+        }
+
+        std::complex<double> ZL2(1e9, 0.0); // open if no L2
+        if (filter.get_inductor2()) {
+            double L2 = filter.get_inductor2()->get_inductance();
+            double ESR2 = filter.get_inductor2()->get_esr().value_or(0.0);
+            ZL2 = std::complex<double>(ESR2, omega * L2);
+        }
+
+        std::complex<double> Zload = compute_load_impedance(load, omega);
+
+        std::complex<double> vNode;
+
+        switch (filter.get_filter_topology()) {
+            case FilterTopologies::L: {
+                vNode = Vinv * (Zload / (ZL1 + Zload));
+                break;
+            }
+            case FilterTopologies::LC: {
+                std::complex<double> Zeq = (ZC * Zload) / (ZC + Zload);
+                vNode = Vinv * (Zeq / (ZL1 + Zeq));
+                break;
+            }
+            case FilterTopologies::LCL: {
+                std::complex<double> Zeq = (ZC * (ZL2 + Zload)) / (ZC + ZL2 + Zload);
+                vNode = Vinv * (Zeq / (ZL1 + Zeq));
+                break;
+            }
+            default:
+                throw std::runtime_error("Unknown filter topology");
+        }
+
+        std::complex<double> vL1 = Vinv - vNode;
+        std::complex<double> iL1 = vL1 / ZL1;
+
+        return {vL1, iL1};
+    }
+
+    std::vector<OperatingPoint> MyInverter::process_operating_points() {
         std::vector<OperatingPoint> operatingPointsResult;
 
+        Harmonics voltageHarmonics;
+        Harmonics currentHarmonics;
+        SignalDescriptor voltageSig;
+        SignalDescriptor currentSig;
+        OperatingPointExcitation excitation;
+        excitation.set_current(currentSig);
+        excitation.set_voltage(voltageSig);
         return operatingPointsResult;
     }
 
-    Inputs TwoLevelInverter::process() {
+    Inputs MyInverter::process() {
         if (!run_checks(_assertErrors)) {
             throw std::runtime_error("Configuration checks failed");
         }
