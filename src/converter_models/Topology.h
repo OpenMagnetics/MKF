@@ -184,15 +184,51 @@ class MyInverter  : public MAS::Inverter {
         double Vb;
         double Vc;
     };
+
     struct PwmSignals {
         bool Sa;  // Leg A upper switch
         bool Sb;  // Leg B upper switch
         bool Sc;  // Leg C upper switch
     };
-    struct Inductor1State {
-        std::complex<double> vL1;  // Voltage across L1
-        std::complex<double> iL1;  // Current through L1
+
+    struct NodeResult {
+        std::complex<double> vNode; // filter output node voltage
+        std::complex<double> vL1;   // voltage across L1
+        std::complex<double> iL1;   // current in L1
     };
+
+    struct HarmonicsBundle {
+        Harmonics Vharm;
+        Harmonics Iharm;
+    };
+
+    std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal);
+    ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
+    std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v);
+    ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
+    ABCVoltages compute_voltage_references(const Inverter& inverter,
+                                           const InverterOperatingPoint& op_point,
+                                           const Modulation& modulation,
+                                           double grid_angle_rad);
+    double compute_carrier(const Modulation& modulation, double t);
+    PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
+                                    double carrier,
+                                    double Vdc,
+                                    const Modulation& modulation);
+    NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
+                                        const InverterLoad& load,
+                                        double omega,
+                                        std::complex<double> Vinv);
+    HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                        const ABCVoltages& Vabc,
+                                        double Vdc,
+                                        std::complex<double> fundamental_phasor,
+                                        double f1,
+                                        int Nperiods = 5,
+                                        int samplesPerPeriod = 200);
+    // ---- Impedances ----
+    std::complex<double> compute_load_impedance(const InverterLoad& load, double omega);
+    std::complex<double> compute_filter_impedance(const InverterDownstreamFilter& filter, double omega);
 
   public:
     bool _assertErrors = false;
@@ -200,29 +236,12 @@ class MyInverter  : public MAS::Inverter {
     MyInverter() = default;
     MyInverter(const json& j);
 
-    const std::vector<TwoLevelInverterOperatingPoint>& get_operating_points() const { return operatingPoints; }
-    void set_operating_points(const std::vector<TwoLevelInverterOperatingPoint>& value) {
+    const std::vector<InverterOperatingPoint>& get_operating_points() const { return operatingPoints; }
+    void set_operating_points(const std::vector<InverterOperatingPoint>& value) {
         this->operatingPoints = value;
     }
 
     bool run_checks(bool assert = false);
-    compute_inverter_reference(const InverterLoad& load,
-                                    const InverterOperatingPoint& op,
-                                    const DimensionWithTolerance& vdc,
-                                    double power);
-    
-    // ---- Impedances ----
-    Impedance compute_load_impedance(const InverterLoad& load);
-    Impedance compute_filter_impedance(const InverterDownstreamFilter& filter);
-
-    
-    SignalDescriptor compute_switching_node_voltage(const Modulation& modulation,
-                                                    const Signal& inverter_voltage_reference);
-
-
-    // ---- Currents ----
-    SignalDescriptor compute_inductor_current();
-
     Inputs process();
     DesignRequirements process_design_requirements();
     std::vector<OperatingPoint> process_operating_points();

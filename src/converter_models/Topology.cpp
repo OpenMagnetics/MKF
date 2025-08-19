@@ -667,9 +667,10 @@ namespace OpenMagnetics {
         DesignRequirements designRequirements;
         designRequirements.set_magnetizing_inductance();
         designRequirements.set_operating_temperature();
+        designRequirements.set_application(1);      //POWER
+        designRequirements.set_sub_application(3); //POWER_FILTERING
         return designRequirements;
     }
-
 
 
     std::complex<double> compute_load_impedance(const InverterLoad& load, double omega) {
@@ -750,6 +751,22 @@ namespace OpenMagnetics {
             default:
                 throw std::runtime_error("Unknown filter topology");
         }
+    }
+
+    /// --- FFT (simple DFT for clarity, can be optimized) ---
+    std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal) {
+        int N = signal.size();
+        std::vector<std::complex<double>> spectrum(N);
+
+        for (int k = 0; k < N; ++k) {
+            std::complex<double> sum = 0.0;
+            for (int n = 0; n < N; ++n) {
+                double angle = -2.0 * M_PI * k * n / N;
+                sum += signal[n] * std::exp(std::complex<double>(0, angle));
+            }
+            spectrum[k] = sum / (double)N;
+        }
+        return spectrum;
     }
 
     /// Helper: dq -> abc transformation
@@ -974,13 +991,14 @@ namespace OpenMagnetics {
         return {Sa, Sb, Sc};
     }
 
-    Inductor1State compute_L1_state(const InverterDownstreamFilter& filter,
+    NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
                                     const InverterLoad& load,
                                     double omega,
-                                    std::complex<double> Vinv) {
+                                    std::complex<double> Vinv)
+    {
         using namespace std::complex_literals;
 
-        // Build element impedances
+        // --- Build element impedances ---
         std::complex<double> ZL1(filter.get_inductor().get_esr().value_or(0.0),
                                 omega * filter.get_inductor().get_inductance());
 
@@ -1000,8 +1018,8 @@ namespace OpenMagnetics {
 
         std::complex<double> Zload = compute_load_impedance(load, omega);
 
+        // --- Solve depending on topology ---
         std::complex<double> vNode;
-
         switch (filter.get_filter_topology()) {
             case FilterTopologies::L: {
                 vNode = Vinv * (Zload / (ZL1 + Zload));
@@ -1024,19 +1042,148 @@ namespace OpenMagnetics {
         std::complex<double> vL1 = Vinv - vNode;
         std::complex<double> iL1 = vL1 / ZL1;
 
-        return {vL1, iL1};
+        return {vNode, vL1, iL1};
+    }
+
+    HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                    const ABCVoltages& Vabc,
+                                    double Vdc,
+                                    std::complex<double> Vfund,
+                                    std::complex<double> Ifund,
+                                    double f1,
+                                    const InverterDownstreamFilter& filter,
+                                    const InverterLoad& load,
+                                    int Nperiods = 5,
+                                    int samplesPerPeriod = 200) {
+        double fsw = modulation.get_switching_frequency();
+        double Ts = 1.0 / fsw;
+        double fs = fsw * samplesPerPeriod;
+
+        // --- 1. Generate switching waveform (leg A as example) ---
+        std::vector<double> waveform;
+        int Nsamples = Nperiods * samplesPerPeriod;
+        for (int n = 0; n < Nsamples; ++n) {
+            double t = n * Ts / samplesPerPeriod;
+            double carrier = compute_carrier(modulation, t);
+            PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
+
+            double vA = gates.Sa ? +Vdc/2.0 : -Vdc/2.0;
+            waveform.push_back(vA);
+        }
+
+        // --- 2. FFT ---
+        auto spectrum = compute_fft(waveform);
+        int N = spectrum.size();
+
+        // --- 3. Build harmonics up to 5*fsw ---
+        HarmonicsBundle bundle;
+        double fmax = 5.0 * fsw;
+
+        for (int k = 0; k < N/2; ++k) {
+            double f = k * fs / N;
+            if (f <= fmax) {
+                double omega_k = 2.0 * M_PI * f;
+
+                std::complex<double> Vph = spectrum[k];
+
+                // Use the *same filter equations* as fundamental, but per harmonic
+                NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
+
+                std::complex<double> Iph = node.iL1;
+
+                bundle.Vharm.push_back({f, Vph});
+                bundle.Iharm.push_back({f, Iph});
+            }
+        }
+
+        // --- 4. Override fundamental bins with clean phasors ---
+        auto vIt = std::min_element(bundle.Vharm.begin(), bundle.Vharm.end(),
+            [f1](const HarmonicComponent& a, const HarmonicComponent& b) {
+                return std::abs(a.frequency - f1) < std::abs(b.frequency - f1);
+            });
+        if (vIt != bundle.Vharm.end()) {
+            vIt->phasor = Vfund;
+            vIt->frequency = f1;
+        }
+
+        auto iIt = std::min_element(bundle.Iharm.begin(), bundle.Iharm.end(),
+            [f1](const HarmonicComponent& a, const HarmonicComponent& b) {
+                return std::abs(a.frequency - f1) < std::abs(b.frequency - f1);
+            });
+        if (iIt != bundle.Iharm.end()) {
+            iIt->phasor = Ifund;
+            iIt->frequency = f1;
+        }
+
+        return bundle;
     }
 
     std::vector<OperatingPoint> MyInverter::process_operating_points() {
         std::vector<OperatingPoint> operatingPointsResult;
 
-        Harmonics voltageHarmonics;
-        Harmonics currentHarmonics;
-        SignalDescriptor voltageSig;
-        SignalDescriptor currentSig;
-        OperatingPointExcitation excitation;
-        excitation.set_current(currentSig);
-        excitation.set_voltage(voltageSig);
+        for (auto& op_point : this->operatingPoints) {
+            double f1 = op_point.get_fundamental_frequency();
+            double omega = 2.0 * M_PI * f1;
+
+            // --- Step 1: Compute dq reference → abc
+            ABCVoltages Vabc = compute_voltage_references(
+                *this,
+                op_point,
+                op_point.get_modulation(),
+                op_point.get_grid_angle()
+            );
+
+            // --- Step 2: Fundamental phasors (clean values)
+            std::complex<double> Vfund = std::polar(
+                op_point.get_phase_voltage().value_or(230.0),
+                op_point.get_grid_angle()
+            );
+
+            // Solve full filter/load topology at fundamental
+            NodeResult node = solve_filter_topology(
+                op_point.get_filter(),
+                op_point.get_load(),
+                omega,
+                Vfund
+            );
+
+            std::complex<double> Ifund = node.iL1;
+
+            // --- Step 3: Harmonic analysis (both V and I at once)
+            HarmonicsBundle bundle = compute_harmonics(
+                op_point.get_modulation(),
+                Vabc,
+                this->get_dc_bus_voltage().get_nominal(),
+                Vfund,
+                Ifund,
+                f1,
+                op_point.get_filter(),
+                op_point.get_load()
+            );
+
+            // --- Step 4: Signal descriptors
+            SignalDescriptor voltageSig;
+            voltageSig.set_fundamental_frequency(f1);
+            voltageSig.set_harmonics(bundle.Vharm);
+            voltageSig.set_rms(compute_rms_from_harmonics(bundle.Vharm));
+
+            SignalDescriptor currentSig;
+            currentSig.set_fundamental_frequency(f1);
+            currentSig.set_harmonics(bundle.Iharm);
+            currentSig.set_rms(compute_rms_from_harmonics(bundle.Iharm));
+
+            // --- Step 5: Assemble excitation
+            OperatingPointExcitation excitation;
+            excitation.set_voltage(voltageSig);
+            excitation.set_current(currentSig);
+
+            // --- Step 6: Build operating point result
+            OperatingPoint result;
+            result.set_excitation(excitation);
+
+            operatingPointsResult.push_back(result);
+        }
+
         return operatingPointsResult;
     }
 
