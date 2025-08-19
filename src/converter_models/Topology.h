@@ -3,6 +3,7 @@
 #include <MAS.hpp>
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
+#include <complex>
 
 using namespace MAS;
 
@@ -176,9 +177,7 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
  * */
 
 class MyInverter  : public MAS::Inverter {
-  private:
-    std::complex<double>  Zgrid;
-    std::complex<double>  Zfilter;
+  public: 
     struct ABCVoltages {
         double Va;
         double Vb;
@@ -202,30 +201,39 @@ class MyInverter  : public MAS::Inverter {
         Harmonics Iharm;
     };
 
+  private:
+    std::vector<MAS::InverterOperatingPoint> inverterOperatingPoints;
+
+    std::complex<double>  Zgrid;
+    std::complex<double>  Zfilter;
+
     std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal);
-    ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
-    std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v);
-    ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
-    ABCVoltages compute_voltage_references(const Inverter& inverter,
+    MyInverter::ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
+    std::pair<double,double> abc_to_alphabeta(const MyInverter::ABCVoltages& v);
+    MyInverter::ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
+    MyInverter::ABCVoltages compute_voltage_references(const Inverter& inverter,
                                            const InverterOperatingPoint& op_point,
                                            const Modulation& modulation,
                                            double grid_angle_rad);
     double compute_carrier(const Modulation& modulation, double t);
-    PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
+    MyInverter::PwmSignals compare_with_carrier(const MyInverter::ABCVoltages& Vabc,
                                     double carrier,
                                     double Vdc,
                                     const Modulation& modulation);
-    NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
+    MyInverter::NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
                                         const InverterLoad& load,
                                         double omega,
                                         std::complex<double> Vinv);
-    HarmonicsBundle compute_harmonics(const Modulation& modulation,
-                                        const ABCVoltages& Vabc,
-                                        double Vdc,
-                                        std::complex<double> fundamental_phasor,
-                                        double f1,
-                                        int Nperiods = 5,
-                                        int samplesPerPeriod = 200);
+    MyInverter::HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                    const MyInverter::ABCVoltages& Vabc,
+                                    double Vdc,
+                                    std::complex<double> Vfund,
+                                    std::complex<double> Ifund,
+                                    double f1,
+                                    const InverterDownstreamFilter& filter,
+                                    const InverterLoad& load,
+                                    int Nperiods = 5,
+                                    int samplesPerPeriod = 200);
     // ---- Impedances ----
     std::complex<double> compute_load_impedance(const InverterLoad& load, double omega);
     std::complex<double> compute_filter_impedance(const InverterDownstreamFilter& filter, double omega);
@@ -236,9 +244,9 @@ class MyInverter  : public MAS::Inverter {
     MyInverter() = default;
     MyInverter(const json& j);
 
-    const std::vector<InverterOperatingPoint>& get_operating_points() const { return operatingPoints; }
+    const std::vector<InverterOperatingPoint>& get_operating_points() const { return inverterOperatingPoints; }
     void set_operating_points(const std::vector<InverterOperatingPoint>& value) {
-        this->operatingPoints = value;
+        this->inverterOperatingPoints = value;
     }
 
     bool run_checks(bool assert = false);

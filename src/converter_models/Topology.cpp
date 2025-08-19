@@ -665,10 +665,21 @@ namespace OpenMagnetics {
 
     DesignRequirements MyInverter::process_design_requirements() {
         DesignRequirements designRequirements;
-        designRequirements.set_magnetizing_inductance();
-        designRequirements.set_operating_temperature();
-        designRequirements.set_application(1);      //POWER
-        designRequirements.set_sub_application(3); //POWER_FILTERING
+        DimensionWithTolerance inductanceWithTolerance;
+        DimensionWithTolerance operatingTemp;
+
+        for (size_t inverterOperatingPointsIndex = 0; inverterOperatingPointsIndex < get_operating_points().size(); ++inverterOperatingPointsIndex) {
+            auto inverterOperatingPoint = get_operating_points()[inverterOperatingPointsIndex];
+            operatingTemp.set_nominal(inverterOperatingPoint.get_operating_temperature());
+        }
+
+        if (auto filter = this->get_downstream_filter()) {
+            inductanceWithTolerance.set_nominal(filter->get_inductor().get_desired_inductance().get_nominal());
+        }
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        designRequirements.set_operating_temperature(operatingTemp);
+        designRequirements.set_application(Application::POWER);
+        designRequirements.set_sub_application(SubApplication::POWER_FILTERING);
         return designRequirements;
     }
 
@@ -707,15 +718,15 @@ namespace OpenMagnetics {
         // === Build element impedances with ESR ===
 
         // Inductor 1
-        double L1 = filter.get_inductor().get_inductance();
-        double ESR_L1 = filter.get_inductor().get_esr().value_or(0.0);
+        double L1 = filter.get_inductor().get_desired_inductance().get_nominal().value();
+        double ESR_L1 = filter.get_inductor().get_resistance().value_or(0.0);
         std::complex<double> ZL1(ESR_L1, omega * L1);
 
         // Capacitor (if present)
         std::complex<double> ZC;
         if (filter.get_capacitor()) {
-            double C = filter.get_capacitor()->get_capacitance();
-            double ESR_C = filter.get_capacitor()->get_esr().value_or(0.0);
+            double C = filter.get_capacitor()->get_desired_capacitance();
+            double ESR_C = filter.get_capacitor()->get_resistance().value_or(0.0);
             // Capacitor ESR is in series with reactive part
             ZC = std::complex<double>(ESR_C, -1.0 / (omega * C));
         }
@@ -723,8 +734,8 @@ namespace OpenMagnetics {
         // Inductor 2 (if present)
         std::complex<double> ZL2;
         if (filter.get_inductor2()) {
-            double L2 = filter.get_inductor2()->get_inductance();
-            double ESR_L2 = filter.get_inductor2()->get_esr().value_or(0.0);
+            double L2 = filter.get_inductor2()->get_desired_inductance2().get_nominal().value();
+            double ESR_L2 = filter.get_inductor2()->get_resistance().value_or(0.0);
             ZL2 = std::complex<double>(ESR_L2, omega * L2);
         }
 
@@ -770,7 +781,7 @@ namespace OpenMagnetics {
     }
 
     /// Helper: dq -> abc transformation
-    ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta) {
+    MyInverter::ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta) {
         // Vdq = Vd + jVq
         double Vd = Vdq.real();
         double Vq = Vdq.imag();
@@ -784,14 +795,14 @@ namespace OpenMagnetics {
     }
 
         /// Clarke transform: abc -> alpha-beta
-    std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v) {
+    std::pair<double,double> abc_to_alphabeta(const MyInverter::ABCVoltages& v) {
         double v_alpha = (2.0/3.0) * (v.Va - 0.5*v.Vb - 0.5*v.Vc);
         double v_beta  = (2.0/3.0) * ((sqrt(3)/2.0) * (v.Vb - v.Vc));
         return {v_alpha, v_beta};
     }
 
     /// SVPWM modulation: compute duty cycles for abc legs
-    ABCVoltages svpwm_modulation(const ABCVoltages& Vabc,
+    MyInverter::ABCVoltages svpwm_modulation(const MyInverter::ABCVoltages& Vabc,
                                 double ma,
                                 double Vdc,
                                 double fsw) {
@@ -840,7 +851,7 @@ namespace OpenMagnetics {
         return {Ta, Tb, Tc};
     }
 
-    ABCVoltages compute_voltage_references(const Inverter& inverter,
+    MyInverter::ABCVoltages compute_voltage_references(const Inverter& inverter,
                                         const InverterOperatingPoint& op_point,
                                         const Modulation& modulation,
                                         double grid_angle_rad) {
@@ -875,7 +886,7 @@ namespace OpenMagnetics {
                 double P = op_point.get_output_power().value_or(0.0);
                 double pf = op_point.get_power_factor().value_or(1.0);
                 double phi = acos(pf);
-                std::complex<double> Iph = (P / pf) / inverter.get_line_rms_current().get_nominal()
+                std::complex<double> Iph = (P / pf) / inverter.get_line_rms_current().get_nominal().value()
                                         * (cos(-phi) + 1i*sin(-phi));
                 Vref_dq = Iph * Zload;
                 break;
@@ -885,7 +896,7 @@ namespace OpenMagnetics {
         }
 
         // --- Step 2: dq -> abc ---
-        ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
+        MyInverter::ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
 
         // --- Step 3: Modulation strategy ---
         double ma = modulation.get_modulation_depth();
@@ -905,7 +916,7 @@ namespace OpenMagnetics {
             }
             case ModulationStrategy::SVPWM: {
                 Vabc = svpwm_modulation(Vabc, ma,
-                                        inverter.get_dc_bus_voltage().get_nominal(),
+                                        inverter.get_dc_bus_voltage().get_nominal().value(),
                                         modulation.get_switching_frequency());
                 break;
             }
@@ -943,7 +954,7 @@ namespace OpenMagnetics {
         }
     }
 
-    PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
+    MyInverter::PwmSignals compare_with_carrier(const MyInverter::ABCVoltages& Vabc,
                                     double carrier,
                                     double Vdc,
                                     const Modulation& modulation) {
@@ -991,7 +1002,7 @@ namespace OpenMagnetics {
         return {Sa, Sb, Sc};
     }
 
-    NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
+    MyInverter::NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
                                     const InverterLoad& load,
                                     double omega,
                                     std::complex<double> Vinv)
@@ -999,20 +1010,20 @@ namespace OpenMagnetics {
         using namespace std::complex_literals;
 
         // --- Build element impedances ---
-        std::complex<double> ZL1(filter.get_inductor().get_esr().value_or(0.0),
-                                omega * filter.get_inductor().get_inductance());
+        std::complex<double> ZL1(filter.get_inductor().get_resistance().value_or(0.0),
+                                omega * filter.get_inductor().get_desired_inductance().get_nominal().value());
 
         std::complex<double> ZC(1e9, 0.0); // open if no C
         if (filter.get_capacitor()) {
-            double C = filter.get_capacitor()->get_capacitance();
-            double ESRc = filter.get_capacitor()->get_esr().value_or(0.0);
+            double C = filter.get_capacitor()->get_desired_capacitance();
+            double ESRc = filter.get_capacitor()->get_resistance().value_or(0.0);
             ZC = std::complex<double>(ESRc, -1.0/(omega*C));
         }
 
         std::complex<double> ZL2(1e9, 0.0); // open if no L2
         if (filter.get_inductor2()) {
-            double L2 = filter.get_inductor2()->get_inductance();
-            double ESR2 = filter.get_inductor2()->get_esr().value_or(0.0);
+            double L2 = filter.get_inductor2()->get_desired_inductance2().get_nominal().value();
+            double ESR2 = filter.get_inductor2()->get_resistance().value_or(0.0);
             ZL2 = std::complex<double>(ESR2, omega * L2);
         }
 
@@ -1045,8 +1056,8 @@ namespace OpenMagnetics {
         return {vNode, vL1, iL1};
     }
 
-    HarmonicsBundle compute_harmonics(const Modulation& modulation,
-                                    const ABCVoltages& Vabc,
+    MyInverter::HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                    const MyInverter::ABCVoltages& Vabc,
                                     double Vdc,
                                     std::complex<double> Vfund,
                                     std::complex<double> Ifund,
@@ -1065,7 +1076,7 @@ namespace OpenMagnetics {
         for (int n = 0; n < Nsamples; ++n) {
             double t = n * Ts / samplesPerPeriod;
             double carrier = compute_carrier(modulation, t);
-            PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
+            MyInverter::PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
 
             double vA = gates.Sa ? +Vdc/2.0 : -Vdc/2.0;
             waveform.push_back(vA);
@@ -1076,7 +1087,7 @@ namespace OpenMagnetics {
         int N = spectrum.size();
 
         // --- 3. Build harmonics up to 5*fsw ---
-        HarmonicsBundle bundle;
+        MyInverter::HarmonicsBundle bundle;
         double fmax = 5.0 * fsw;
 
         for (int k = 0; k < N/2; ++k) {
@@ -1087,32 +1098,44 @@ namespace OpenMagnetics {
                 std::complex<double> Vph = spectrum[k];
 
                 // Use the *same filter equations* as fundamental, but per harmonic
-                NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
+                MyInverter::NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
 
                 std::complex<double> Iph = node.iL1;
+                bundle.Vharm.get_mutable_frequencies().push_back(f);
+                bundle.Vharm.get_mutable_amplitudes().push_back(std::abs(Vph));
 
-                bundle.Vharm.push_back({f, Vph});
-                bundle.Iharm.push_back({f, Iph});
+                bundle.Iharm.get_mutable_frequencies().push_back(f);
+                bundle.Iharm.get_mutable_amplitudes().push_back(std::abs(Iph));
             }
         }
 
         // --- 4. Override fundamental bins with clean phasors ---
-        auto vIt = std::min_element(bundle.Vharm.begin(), bundle.Vharm.end(),
-            [f1](const HarmonicComponent& a, const HarmonicComponent& b) {
-                return std::abs(a.frequency - f1) < std::abs(b.frequency - f1);
-            });
-        if (vIt != bundle.Vharm.end()) {
-            vIt->phasor = Vfund;
-            vIt->frequency = f1;
+        auto& freqs = bundle.Vharm.get_mutable_frequencies();
+        auto& vamps = bundle.Vharm.get_mutable_amplitudes();
+
+        if (!freqs.empty()) {
+            auto vIt = std::min_element(freqs.begin(), freqs.end(),
+                [f1](double a, double b) {
+                    return std::abs(a - f1) < std::abs(b - f1);
+                });
+            if (vIt != freqs.end()) {
+                size_t idx = std::distance(freqs.begin(), vIt);
+                vamps[idx] = std::abs(Vfund); // replace with clean phasor amplitude
+            }
         }
 
-        auto iIt = std::min_element(bundle.Iharm.begin(), bundle.Iharm.end(),
-            [f1](const HarmonicComponent& a, const HarmonicComponent& b) {
-                return std::abs(a.frequency - f1) < std::abs(b.frequency - f1);
-            });
-        if (iIt != bundle.Iharm.end()) {
-            iIt->phasor = Ifund;
-            iIt->frequency = f1;
+        auto& ifreqs = bundle.Iharm.get_mutable_frequencies();
+        auto& iamps = bundle.Iharm.get_mutable_amplitudes();
+
+        if (!ifreqs.empty()) {
+            auto iIt = std::min_element(ifreqs.begin(), ifreqs.end(),
+                [f1](double a, double b) {
+                    return std::abs(a - f1) < std::abs(b - f1);
+                });
+            if (iIt != ifreqs.end()) {
+                size_t idx = std::distance(ifreqs.begin(), iIt);
+                iamps[idx] = std::abs(Ifund);
+            }
         }
 
         return bundle;
@@ -1121,7 +1144,7 @@ namespace OpenMagnetics {
     std::vector<OperatingPoint> MyInverter::process_operating_points() {
         std::vector<OperatingPoint> operatingPointsResult;
 
-        for (auto& op_point : this->operatingPoints) {
+        for (auto& op_point : this->inverterOperatingPoints) {
             double f1 = op_point.get_fundamental_frequency();
             double omega = 2.0 * M_PI * f1;
 
@@ -1129,19 +1152,19 @@ namespace OpenMagnetics {
             ABCVoltages Vabc = compute_voltage_references(
                 *this,
                 op_point,
-                op_point.get_modulation(),
-                op_point.get_grid_angle()
+                this->get_modulation().value(),
+                op_point.get_current_phase_angle().value()
             );
 
             // --- Step 2: Fundamental phasors (clean values)
             std::complex<double> Vfund = std::polar(
-                op_point.get_phase_voltage().value_or(230.0),
-                op_point.get_grid_angle()
+                op_point.get_load().get_phase_voltage().value_or(230.0),
+                op_point.get_current_phase_angle().value_or(0.0)
             );
 
             // Solve full filter/load topology at fundamental
             NodeResult node = solve_filter_topology(
-                op_point.get_filter(),
+                this->get_downstream_filter().value(),
                 op_point.get_load(),
                 omega,
                 Vfund
@@ -1151,26 +1174,22 @@ namespace OpenMagnetics {
 
             // --- Step 3: Harmonic analysis (both V and I at once)
             HarmonicsBundle bundle = compute_harmonics(
-                op_point.get_modulation(),
+                this->get_modulation().value(),
                 Vabc,
-                this->get_dc_bus_voltage().get_nominal(),
+                this->get_dc_bus_voltage().get_nominal().value(),
                 Vfund,
                 Ifund,
                 f1,
-                op_point.get_filter(),
+                this->get_downstream_filter().value(),  // filter
                 op_point.get_load()
             );
 
             // --- Step 4: Signal descriptors
             SignalDescriptor voltageSig;
-            voltageSig.set_fundamental_frequency(f1);
             voltageSig.set_harmonics(bundle.Vharm);
-            voltageSig.set_rms(compute_rms_from_harmonics(bundle.Vharm));
 
             SignalDescriptor currentSig;
-            currentSig.set_fundamental_frequency(f1);
             currentSig.set_harmonics(bundle.Iharm);
-            currentSig.set_rms(compute_rms_from_harmonics(bundle.Iharm));
 
             // --- Step 5: Assemble excitation
             OperatingPointExcitation excitation;
@@ -1179,8 +1198,7 @@ namespace OpenMagnetics {
 
             // --- Step 6: Build operating point result
             OperatingPoint result;
-            result.set_excitation(excitation);
-
+            result.set_excitations_per_winding({excitation});
             operatingPointsResult.push_back(result);
         }
 
