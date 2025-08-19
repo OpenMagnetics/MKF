@@ -230,7 +230,7 @@ namespace OpenMagnetics {
             }
         }
 
-        auto result = coil.wind_by_planar_sections(stackUp);
+        auto result = coil.wind_by_planar_sections(stackUp, {}, defaults.coreToLayerDistance);
         if (result) {
             coil.set_strict(true);
         }
@@ -528,6 +528,7 @@ namespace OpenMagnetics {
         if (sections.size() == 0) {
             return {};
         }
+
         coil.set_sections_description(sections);
 
         if (!mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_current()) {
@@ -645,7 +646,7 @@ namespace OpenMagnetics {
             stackUpString.pop_back();
 
             // TODO: calculate clearances
-            wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, 0.0001);
+            wound = mas.get_mutable_magnetic().get_mutable_coil().wind_planar(stackUp, std::nullopt, {}, {}, defaults.coreToLayerDistance);
 
             if (wound) {
                 mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();

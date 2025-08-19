@@ -49,9 +49,10 @@ struct Defaults {
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
     const WiringTechnology wiringTechnology = WiringTechnology::WOUND;
-    const double pcbInsulationThickness = 0.00157;
+    const double pcbInsulationThickness = 100e-6;
     const double minimumWireToWireDistance = 90e-6;
     const double minimumBorderToWireDistance = 90e-6;
+    const double coreToLayerDistance = 250e-6;
 };
 } // namespace OpenMagnetics
 
