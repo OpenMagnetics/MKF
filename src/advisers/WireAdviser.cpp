@@ -336,7 +336,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                 coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
             }
         }
-
     }
 
     // Paralells
@@ -363,8 +362,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                 }
             }
         }
-
-
     }
     return coilFunctionalDescriptions;
 }
@@ -448,7 +445,6 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
         //     throw std::runtime_error("areaProportion cannot be bigger than 1");
         // }
     }
-
 }
 
 std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_planar_wire(CoilFunctionalDescription coilFunctionalDescription,
