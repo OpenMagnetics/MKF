@@ -176,8 +176,9 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
  *  ------------------
  * */
 
-class MyInverter  : public MAS::TwoLevelInverter {
-  public: 
+
+class MyInverter : public MAS::TwoLevelInverter {
+public:
     struct ABCVoltages {
         double Va;
         double Vb;
@@ -201,29 +202,30 @@ class MyInverter  : public MAS::TwoLevelInverter {
         Harmonics Iharm;
     };
 
-  private:
+private:
     std::vector<MAS::InverterOperatingPoint> inverterOperatingPoints;
 
-    std::complex<double>  Zgrid;
-    std::complex<double>  Zfilter;
+    std::complex<double> Zgrid;
+    std::complex<double> Zfilter;
 
+    // Helpers
     std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal);
     ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
     std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v);
     ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
     ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
-                                           const InverterOperatingPoint& op_point,
-                                           const Modulation& modulation,
-                                           double grid_angle_rad);
+                                        const InverterOperatingPoint& op_point,
+                                        const Modulation& modulation,
+                                        double grid_angle_rad);
     double compute_carrier(const Modulation& modulation, double t);
     PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
                                     double carrier,
                                     double Vdc,
                                     const Modulation& modulation);
     NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
-                                        const InverterLoad& load,
-                                        double omega,
-                                        std::complex<double> Vinv);
+                                    const InverterLoad& load,
+                                    double omega,
+                                    std::complex<double> Vinv);
     HarmonicsBundle compute_harmonics(const Modulation& modulation,
                                     const ABCVoltages& Vabc,
                                     double Vdc,
@@ -234,19 +236,19 @@ class MyInverter  : public MAS::TwoLevelInverter {
                                     const InverterLoad& load,
                                     int Nperiods = 5,
                                     int samplesPerPeriod = 200);
-    // ---- Impedances ----
+    // Impedances
     std::complex<double> compute_load_impedance(const InverterLoad& load, double omega);
     std::complex<double> compute_filter_impedance(const InverterDownstreamFilter& filter, double omega);
 
-  public:
+public:
     bool _assertErrors = false;
 
     MyInverter() = default;
-    MyInverter(const json& j);
+    explicit MyInverter(const json& j);
 
     const std::vector<InverterOperatingPoint>& get_operating_points() const { return inverterOperatingPoints; }
     void set_operating_points(const std::vector<InverterOperatingPoint>& value) {
-        this->inverterOperatingPoints = value;
+        inverterOperatingPoints = value;
     }
 
     bool run_checks(bool assert = false);
@@ -254,7 +256,6 @@ class MyInverter  : public MAS::TwoLevelInverter {
     DesignRequirements process_design_requirements();
     std::vector<OperatingPoint> process_operating_points();
 };
-
 
 inline void from_json(const json& j, MAS::InverterOperatingPoint& x) {
     x.set_fundamental_frequency(j.at("fundamentalFrequency").get<double>());
@@ -289,13 +290,24 @@ inline void from_json(const json& j, MyInverter& x) {
 inline void to_json(json& j, const MyInverter& x) {
     j = json::object();
     j["dcBusVoltage"] = x.get_dc_bus_voltage();
-    j["DcBusCapacitor"] = x.get_dc_bus_capacitor();
+    j["dcBusCapacitor"] = x.get_dc_bus_capacitor();
     j["numberOfLegs"] = x.get_number_of_legs();
     j["inverterLegPowerRating"] = x.get_inverter_leg_power_rating();
     j["lineRmsCurrent"] = x.get_line_rms_current();
     j["downstreamFilter"] = x.get_downstream_filter();
     j["modulation"] = x.get_modulation();
     j["operatingPoints"] = x.get_operating_points();
+}
+
+inline void from_json(const json& j, DcBusCapacitor& x) {
+    x.set_capacitance(j.at("capacitance").get<double>());
+    x.set_resistance(get_stack_optional<double>(j, "resistance"));
+}
+
+inline void to_json(json& j, const DcBusCapacitor& x) {
+    j = json::object();
+    j["capacitance"] = x.get_capacitance();
+    j["resistance"]  = x.get_resistance();
 }
 
 inline void from_json(const json& j, MAS::InverterDownstreamFilter& x) {

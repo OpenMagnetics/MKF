@@ -687,6 +687,16 @@ namespace OpenMagnetics {
         return designRequirements;
     }
 
+    inline std::complex<double> Zdc(const DcBusCapacitor& Capacitor, double omega,
+                                    double Rs_supply = 0.0, double ESL = 0.0) {
+        
+        const std::complex<double> jω(0.0, omega);
+        const double ESR = Capacitor.get_resistance().value_or(0.0);
+        const double C   = Capacitor.get_capacitance();
+        const std::complex<double> zC = (omega == 0.0) ? std::complex<double>(1e9, 0.0) : 1.0 / (jω * C);
+        const std::complex<double> zL = jω * ESL;
+        return std::complex<double>(Rs_supply + ESR, 0.0) + zL + zC; // series model
+    }
 
     std::complex<double> MyInverter::compute_load_impedance(const InverterLoad& load, double omega) {
         using namespace std::complex_literals;
@@ -782,6 +792,20 @@ namespace OpenMagnetics {
             spectrum[k] = sum / (double)N;
         }
         return spectrum;
+    }
+
+    inline std::vector<std::complex<double>> compute_inverse_fft(const std::vector<std::complex<double>>& X) {
+        const int N = static_cast<int>(X.size());
+        std::vector<std::complex<double>> x(N);
+        for (int n = 0; n < N; ++n) {
+            std::complex<double> acc = 0.0;
+            for (int k = 0; k < N; ++k) {
+                double angle =  2.0 * M_PI * k * n / N;
+                acc += X[k] * std::exp(std::complex<double>(0.0, angle));
+            }
+            x[n] = acc; // forward had 1/N, so inverse has no 1/N
+        }
+        return x;
     }
 
     /// Helper: dq -> abc transformation
@@ -895,6 +919,11 @@ namespace OpenMagnetics {
         // --- Step 2: dq -> abc ---
         ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
 
+        if (inverter.get_number_of_legs() == 2) {
+            Vabc.Vb = -Vabc.Va;
+            Vabc.Vc = 0.0;
+        }
+        
         // --- Step 3: Modulation strategy ---
         double ma = modulation.get_modulation_depth();
         switch (modulation.get_modulation_strategy()) {
@@ -1042,85 +1071,191 @@ namespace OpenMagnetics {
     }
 
     HarmonicsBundle MyInverter::compute_harmonics(const Modulation& modulation,
-                                                const MyInverter::ABCVoltages& Vabc,
-                                                double Vdc,
+                                                const ABCVoltages& Vabc_ref,
+                                                double Vdc_nom,
                                                 std::complex<double> Vfund,
                                                 std::complex<double> Ifund,
                                                 double f1,
                                                 const InverterDownstreamFilter& filter,
                                                 const InverterLoad& load,
                                                 int Nperiods,
-                                                int samplesPerPeriod) {
-        double fsw = modulation.get_switching_frequency();
-        double Ts = 1.0 / fsw;
-        double fs = fsw * samplesPerPeriod;
+                                                int samplesPerPeriod)
+    {
+        const double fsw = modulation.get_switching_frequency();
+        const double Ts  = 1.0 / fsw;
+        const int    N   = Nperiods * samplesPerPeriod;
+        const double fs  = fsw * samplesPerPeriod;   // simulation sample rate
 
-        // --- 1. Generate switching waveform (leg A as example) ---
-        std::vector<double> waveform;
-        int Nsamples = Nperiods * samplesPerPeriod;
-        for (int n = 0; n < Nsamples; ++n) {
+        // --- 0) Build switching functions sa/sb/sc ∈ {+1,-1} and initial pole voltages ---
+        std::vector<int>    sa(N), sb(N), sc(N);
+        std::vector<double> va(N), vb(N), vc(N);
+
+        // We’ll generate reference leg “voltages” from Vabc_ref but clamp to duty via compare_with_carrier.
+        // For a 2-leg single-phase full bridge, mirror B = -A, ignore C.
+        ABCVoltages Vabc_use = Vabc_ref;
+        if (get_number_of_legs() == 2) {
+            Vabc_use.Vb = -Vabc_use.Va;
+            Vabc_use.Vc = 0.0;
+        }
+
+        for (int n = 0; n < N; ++n) {
             double t = n * Ts / samplesPerPeriod;
             double carrier = compute_carrier(modulation, t);
-            PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
+            PwmSignals gates = compare_with_carrier(Vabc_use, carrier, Vdc_nom, modulation);
 
-            double vA = gates.gateUpperAOn ? +Vdc/2.0 : -Vdc/2.0;
-            waveform.push_back(vA);
+            sa[n] = gates.gateUpperAOn ? +1 : -1;
+            sb[n] = gates.gateUpperBOn ? +1 : -1;
+            sc[n] = gates.gateUpperCOn ? +1 : -1;
+
+            va[n] = 0.5 * Vdc_nom * sa[n];
+            vb[n] = 0.5 * Vdc_nom * sb[n];
+            vc[n] = 0.5 * Vdc_nom * sc[n];
         }
 
-        // --- 2. FFT ---
-        auto spectrum = compute_fft(waveform);
-        int N = spectrum.size();
+        // --- 1) FFT of pole voltages ---
+        auto Va = compute_fft(va);
+        auto Vb = compute_fft(vb);
+        auto Vc = compute_fft(vc);
 
-        // --- 3. Build harmonics up to 5*fsw ---
-        HarmonicsBundle bundle;
-        double fmax = 5.0 * fsw;
-
-        for (int k = 0; k < N/2; ++k) {
-            double f = k * fs / N;
-            if (f <= fmax) {
-                double omega_k = 2.0 * M_PI * f;
-
-                std::complex<double> Vph = spectrum[k];
-
-                // Use the *same filter equations* as fundamental, but per harmonic
-                NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
-
-                std::complex<double> Iph = node.iL1;
-                bundle.Vharm.get_mutable_frequencies().push_back(f);
-                bundle.Vharm.get_mutable_amplitudes().push_back(std::abs(Vph));
-
-                bundle.Iharm.get_mutable_frequencies().push_back(f);
-                bundle.Iharm.get_mutable_amplitudes().push_back(std::abs(Iph));
+        // --- 2) Build per-phase inverter input spectra (what L1 sees) ---
+        // 3φ: phase-to-“neutral” using common-mode removal: v_aN = Va - (Va+Vb+Vc)/3
+        // 1φ (2 legs): use half of line voltage: v_phase = 0.5*(Va - Vb)
+        std::vector<std::complex<double>> Vin_a(N), Vin_b(N), Vin_c(N);
+        if (get_number_of_legs() == 3) {
+            for (int k = 0; k < N; ++k) {
+                auto V0 = (Va[k] + Vb[k] + Vc[k]) / 3.0;
+                Vin_a[k] = Va[k] - V0;
+                Vin_b[k] = Vb[k] - V0;
+                Vin_c[k] = Vc[k] - V0;
+            }
+        } else { // 2 legs (single-phase full bridge)
+            for (int k=0; k<N; ++k) {
+                auto Vhalf = 0.5 * (Va[k] - Vb[k]); // +½ v_ab
+                Vin_a[k] =  Vhalf;
+                Vin_b[k] = -Vhalf;                   // -½ v_ab
+                Vin_c[k] = std::complex<double>(0.0, 0.0);
             }
         }
 
-        // --- 4. Override fundamental bins with clean phasors ---
+        // --- 3) Solve filter per harmonic to get L1 current spectra (phase A/B/C) ---
+        std::vector<std::complex<double>> IL1_a(N), IL1_b(N), IL1_c(N);
+        for (int k = 0; k < N; ++k) {
+            double f     = k * fs / N;
+            double omega = 2.0 * M_PI * f;
+
+            // phase A
+            NodeResult na = solve_filter_topology(filter, load, omega, Vin_a[k]);
+            IL1_a[k] = na.iL1;
+
+            if (get_number_of_legs() == 3) {
+                NodeResult nb = solve_filter_topology(filter, load, omega, Vin_b[k]);
+                NodeResult nc = solve_filter_topology(filter, load, omega, Vin_c[k]);
+                IL1_b[k] = nb.iL1;
+                IL1_c[k] = nc.iL1;
+            } else {
+                IL1_b[k] = -IL1_a[k];                 // series loop: equal & opposite
+                IL1_c[k] = std::complex<double>(0.0, 0.0);
+            }
+        }
+
+        // --- 4) Inverse FFT currents to time domain, build instantaneous input power p(t) ---
+        auto iLa_t_c = compute_inverse_fft(IL1_a);
+        auto iLb_t_c = compute_inverse_fft(IL1_b);
+        auto iLc_t_c = compute_inverse_fft(IL1_c);
+
+        std::vector<double> p_t(N);
+        if (get_number_of_legs() == 3) {
+            for (int n = 0; n < N; ++n) {
+                // instantaneous input power ≈ sum( v_pole * i_L1_phase ) at the inverter side
+                // (this places the power at the DC link correctly for both 1φ and 3φ)
+                double pin = va[n] * iLa_t_c[n].real()
+                        + vb[n] * iLb_t_c[n].real()
+                        + vc[n] * iLc_t_c[n].real();
+                p_t[n] = pin;
+            }
+        } else {
+            for (int n=0; n<N; ++n) {
+                double v_ab = va[n] - vb[n];
+                double i_line = iLa_t_c[n].real();   // IL1_b ~= -IL1_a
+                p_t[n] = v_ab * i_line;              // equivalent to va*ia + vb*ib
+            }
+        }
+        
+        // remove average (k=0)
+        double p_avg = std::accumulate(p_t.begin(), p_t.end(), 0.0) / N;
+        for (auto& x : p_t) x -= p_avg;
+
+        // --- 5) Map to DC voltage ripple via Zdc(jω): idc~ = p~/Vdc_nom, Vdc~ = Zdc * Idc~ ---
+        auto Pfft = compute_fft(p_t); // complex spectrum of p~
+        std::vector<std::complex<double>> Idc(N), Vdc_fft(N);
+        for (int k = 0; k < N; ++k) {
+            double f     = k * fs / N;
+            double omega = 2.0 * M_PI * f;
+            if (k == 0) { Idc[k] = Vdc_fft[k] = std::complex<double>(0.0, 0.0); continue; }
+            Idc[k]     = Pfft[k] / std::complex<double>(Vdc_nom, 0.0);
+            Vdc_fft[k] = Zdc(get_dc_bus_capacitor(), omega) * Idc[k];
+        }
+        auto vdc_t_c = compute_inverse_fft(Vdc_fft); // complex, but should be ~real
+        std::vector<double> vdc_t(N);
+        for (int n = 0; n < N; ++n) vdc_t[n] = vdc_t_c[n].real();
+
+        // --- 6) Remodulate pole voltages with DC ripple and re-FFT ---
+        for (int n = 0; n < N; ++n) {
+            va[n] = 0.5 * (Vdc_nom + vdc_t[n]) * sa[n];
+            vb[n] = 0.5 * (Vdc_nom + vdc_t[n]) * sb[n];
+            vc[n] = 0.5 * (Vdc_nom + vdc_t[n]) * sc[n];
+        }
+        Va = compute_fft(va);
+        Vb = compute_fft(vb);
+        Vc = compute_fft(vc);
+
+        // Rebuild Vin_a/b/c (same rules as step 2)
+        if (get_number_of_legs() == 3) {
+            for (int k = 0; k < N; ++k) {
+                auto V0 = (Va[k] + Vb[k] + Vc[k]) / 3.0;
+                Vin_a[k] = Va[k] - V0;
+                Vin_b[k] = Vb[k] - V0;
+                Vin_c[k] = Vc[k] - V0;
+            }
+        } else {
+            for (int k = 0; k < N; ++k) {
+                Vin_a[k] = 0.5 * (Va[k] - Vb[k]);
+                Vin_b[k] = Vin_c[k] = std::complex<double>(0.0, 0.0);
+            }
+        }
+
+        // --- 7) Final per-harmonic solve → fill bundle (magnitudes) ---
+        HarmonicsBundle bundle;
+        const double fmax = 5.0 * fsw; // same as before; adjust if desired
+        for (int k = 0; k < N/2; ++k) {
+            double f     = k * fs / N;
+            if (f > fmax) break;
+            double omega = 2.0 * M_PI * f;
+
+            NodeResult na = solve_filter_topology(filter, load, omega, Vin_a[k]);
+            // choose phase A as representative (or average magnitudes if you prefer)
+            bundle.Vharm.get_mutable_frequencies().push_back(f);
+            bundle.Vharm.get_mutable_amplitudes().push_back(std::abs(na.vNode));
+
+            bundle.Iharm.get_mutable_frequencies().push_back(f);
+            bundle.Iharm.get_mutable_amplitudes().push_back(std::abs(na.iL1));
+        }
+
+        // --- 8) Override the fundamental bins with the clean phasors you already have ---
         auto& freqs = bundle.Vharm.get_mutable_frequencies();
         auto& vamps = bundle.Vharm.get_mutable_amplitudes();
-
         if (!freqs.empty()) {
             auto vIt = std::min_element(freqs.begin(), freqs.end(),
-                [f1](double a, double b) {
-                    return std::abs(a - f1) < std::abs(b - f1);
-                });
-            if (vIt != freqs.end()) {
-                size_t idx = std::distance(freqs.begin(), vIt);
-                vamps[idx] = std::abs(Vfund); // replace with clean phasor amplitude
-            }
+                [f1](double a, double b) { return std::abs(a - f1) < std::abs(b - f1); });
+            if (vIt != freqs.end()) vamps[std::distance(freqs.begin(), vIt)] = std::abs(Vfund);
         }
 
         auto& ifreqs = bundle.Iharm.get_mutable_frequencies();
         auto& iamps = bundle.Iharm.get_mutable_amplitudes();
-
         if (!ifreqs.empty()) {
             auto iIt = std::min_element(ifreqs.begin(), ifreqs.end(),
-                [f1](double a, double b) {
-                    return std::abs(a - f1) < std::abs(b - f1);
-                });
-            if (iIt != ifreqs.end()) {
-                size_t idx = std::distance(ifreqs.begin(), iIt);
-                iamps[idx] = std::abs(Ifund);
-            }
+                [f1](double a, double b) { return std::abs(a - f1) < std::abs(b - f1); });
+            if (iIt != ifreqs.end()) iamps[std::distance(ifreqs.begin(), iIt)] = std::abs(Ifund);
         }
 
         return bundle;
