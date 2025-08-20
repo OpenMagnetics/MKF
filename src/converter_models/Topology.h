@@ -176,7 +176,7 @@ inline void to_json(json & j, const AdvancedFlyback & x) {
  *  ------------------
  * */
 
-class MyInverter  : public MAS::Inverter {
+class MyInverter  : public MAS::TwoLevelInverter {
   public: 
     struct ABCVoltages {
         double Va;
@@ -211,7 +211,7 @@ class MyInverter  : public MAS::Inverter {
     MyInverter::ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
     std::pair<double,double> abc_to_alphabeta(const MyInverter::ABCVoltages& v);
     MyInverter::ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
-    MyInverter::ABCVoltages compute_voltage_references(const Inverter& inverter,
+    MyInverter::ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
                                            const InverterOperatingPoint& op_point,
                                            const Modulation& modulation,
                                            double grid_angle_rad);
@@ -277,7 +277,8 @@ inline void to_json(json& j, const MAS::InverterOperatingPoint& x) {
 
 inline void from_json(const json& j, MyInverter& x) {
     x.set_dc_bus_voltage(j.at("dcBusVoltage").get<DimensionWithTolerance>());
-    x.set_vdc_ripple(get_stack_optional<DimensionWithTolerance>(j, "vdcRipple"));
+    x.set_dc_bus_capacitor(j.at("dcBusCapacitor").get<DcBusCapacitor>());
+    x.set_number_of_legs(j.at("numberOfLegs").get<int64_t>());
     x.set_inverter_leg_power_rating(j.at("inverterLegPowerRating").get<double>());
     x.set_line_rms_current(j.at("lineRmsCurrent").get<DimensionWithTolerance>());
     x.set_downstream_filter(get_stack_optional<MAS::InverterDownstreamFilter>(j, "downstreamFilter"));
@@ -288,7 +289,8 @@ inline void from_json(const json& j, MyInverter& x) {
 inline void to_json(json& j, const MyInverter& x) {
     j = json::object();
     j["dcBusVoltage"] = x.get_dc_bus_voltage();
-    j["vdcRipple"] = x.get_vdc_ripple();
+    j["DcBusCapacitor"] = x.get_dc_bus_capacitor();
+    j["numberOfLegs"] = x.get_number_of_legs();
     j["inverterLegPowerRating"] = x.get_inverter_leg_power_rating();
     j["lineRmsCurrent"] = x.get_line_rms_current();
     j["downstreamFilter"] = x.get_downstream_filter();

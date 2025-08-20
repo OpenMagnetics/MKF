@@ -851,7 +851,7 @@ namespace OpenMagnetics {
         return {Ta, Tb, Tc};
     }
 
-    MyInverter::ABCVoltages compute_voltage_references(const Inverter& inverter,
+    MyInverter::ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
                                         const InverterOperatingPoint& op_point,
                                         const Modulation& modulation,
                                         double grid_angle_rad) {
