@@ -185,9 +185,9 @@ class MyInverter  : public MAS::TwoLevelInverter {
     };
 
     struct PwmSignals {
-        bool Sa;  // Leg A upper switch
-        bool Sb;  // Leg B upper switch
-        bool Sc;  // Leg C upper switch
+        bool gateUpperAOn;  // Leg A upper switch
+        bool gateUpperBOn;  // Leg B upper switch
+        bool gateUpperCOn;  // Leg C upper switch
     };
 
     struct NodeResult {
@@ -208,24 +208,24 @@ class MyInverter  : public MAS::TwoLevelInverter {
     std::complex<double>  Zfilter;
 
     std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal);
-    MyInverter::ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
-    std::pair<double,double> abc_to_alphabeta(const MyInverter::ABCVoltages& v);
-    MyInverter::ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
-    MyInverter::ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
+    ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta);
+    std::pair<double,double> abc_to_alphabeta(const ABCVoltages& v);
+    ABCVoltages svpwm_modulation(const ABCVoltages& Vabc, double ma, double Vdc, double fsw);
+    ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
                                            const InverterOperatingPoint& op_point,
                                            const Modulation& modulation,
                                            double grid_angle_rad);
     double compute_carrier(const Modulation& modulation, double t);
-    MyInverter::PwmSignals compare_with_carrier(const MyInverter::ABCVoltages& Vabc,
+    PwmSignals compare_with_carrier(const ABCVoltages& Vabc,
                                     double carrier,
                                     double Vdc,
                                     const Modulation& modulation);
-    MyInverter::NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
+    NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
                                         const InverterLoad& load,
                                         double omega,
                                         std::complex<double> Vinv);
-    MyInverter::HarmonicsBundle compute_harmonics(const Modulation& modulation,
-                                    const MyInverter::ABCVoltages& Vabc,
+    HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                    const ABCVoltages& Vabc,
                                     double Vdc,
                                     std::complex<double> Vfund,
                                     std::complex<double> Ifund,

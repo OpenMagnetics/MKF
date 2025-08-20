@@ -653,6 +653,10 @@ namespace OpenMagnetics {
  *  Inverter topology
  *  ------------------
  * */
+    using ABCVoltages     = MyInverter::ABCVoltages;
+    using PwmSignals      = MyInverter::PwmSignals;
+    using NodeResult      = MyInverter::NodeResult;
+    using HarmonicsBundle = MyInverter::HarmonicsBundle;
 
     MyInverter::MyInverter(const json& j) {
         from_json(j, *this);
@@ -684,7 +688,7 @@ namespace OpenMagnetics {
     }
 
 
-    std::complex<double> compute_load_impedance(const InverterLoad& load, double omega) {
+    std::complex<double> MyInverter::compute_load_impedance(const InverterLoad& load, double omega) {
         using namespace std::complex_literals;
 
         auto type = load.get_load_type();
@@ -710,7 +714,7 @@ namespace OpenMagnetics {
     }
 
 
-    std::complex<double> compute_filter_impedance(const InverterDownstreamFilter& filter, double omega) {
+    std::complex<double> MyInverter::compute_filter_impedance(const InverterDownstreamFilter& filter, double omega) {
         using namespace std::complex_literals;
 
         auto topology = filter.get_filter_topology();
@@ -765,7 +769,7 @@ namespace OpenMagnetics {
     }
 
     /// --- FFT (simple DFT for clarity, can be optimized) ---
-    std::vector<std::complex<double>> compute_fft(const std::vector<double>& signal) {
+    std::vector<std::complex<double>> MyInverter::compute_fft(const std::vector<double>& signal) {
         int N = signal.size();
         std::vector<std::complex<double>> spectrum(N);
 
@@ -781,7 +785,7 @@ namespace OpenMagnetics {
     }
 
     /// Helper: dq -> abc transformation
-    MyInverter::ABCVoltages dq_to_abc(const std::complex<double>& Vdq, double theta) {
+    ABCVoltages MyInverter::dq_to_abc(const std::complex<double>& Vdq, double theta) {
         // Vdq = Vd + jVq
         double Vd = Vdq.real();
         double Vq = Vdq.imag();
@@ -795,66 +799,59 @@ namespace OpenMagnetics {
     }
 
         /// Clarke transform: abc -> alpha-beta
-    std::pair<double,double> abc_to_alphabeta(const MyInverter::ABCVoltages& v) {
+    std::pair<double,double> MyInverter::abc_to_alphabeta(const MyInverter::ABCVoltages& v) {
         double v_alpha = (2.0/3.0) * (v.Va - 0.5*v.Vb - 0.5*v.Vc);
         double v_beta  = (2.0/3.0) * ((sqrt(3)/2.0) * (v.Vb - v.Vc));
         return {v_alpha, v_beta};
     }
 
-    /// SVPWM modulation: compute duty cycles for abc legs
-    MyInverter::ABCVoltages svpwm_modulation(const MyInverter::ABCVoltages& Vabc,
-                                double ma,
-                                double Vdc,
-                                double fsw) {
-        auto [v_alpha, v_beta] = abc_to_alphabeta(Vabc);
+    ABCVoltages MyInverter::svpwm_modulation(const MyInverter::ABCVoltages& Vabc,
+                                            double ma,
+                                            double Vdc,
+                                            double fsw) {
+        auto [alphaRef, betaRef] = abc_to_alphabeta(Vabc);
 
-        // Scale with modulation index
-        v_alpha *= ma;
-        v_beta  *= ma;
+        alphaRef *= ma;
+        betaRef  *= ma;
 
-        double Ts = 1.0 / fsw;
+        const double switchingPeriod = 1.0 / fsw;
 
-        // Reference angle
-        double theta = atan2(v_beta, v_alpha);
-        if (theta < 0) theta += 2*M_PI;
+        // Reference vector angle (rad) and magnitude
+        double refAngleRad = std::atan2(betaRef, alphaRef);
+        if (refAngleRad < 0) refAngleRad += 2.0 * M_PI;
 
-        // Sector detection (1–6, each 60°)
-        int sector = int(theta / (M_PI/3.0)) + 1;
+        int sector = int(refAngleRad / (M_PI / 3.0)) + 1;
         if (sector > 6) sector = 6;
 
-        // Magnitude
-        double Vref = sqrt(v_alpha*v_alpha + v_beta*v_beta);
+        const double refMagnitude = std::hypot(alphaRef, betaRef);
+        const double angleInSector = refAngleRad - (sector - 1) * (M_PI / 3.0);
 
-        // Compute T1, T2 using standard SVPWM geometry
-        double T1, T2;
-        double angle = theta - (sector-1)*(M_PI/3.0);
+        // SVPWM dwell times (T)
+        double tVec1 = (switchingPeriod * std::sqrt(3.0) * refMagnitude / Vdc) * std::sin(M_PI/3.0 - angleInSector);
+        double tVec2 = (switchingPeriod * std::sqrt(3.0) * refMagnitude / Vdc) * std::sin(angleInSector);
+        double tZero = switchingPeriod - tVec1 - tVec2;
+        if (tZero < 0) tZero = 0;
 
-        T1 = (Ts * sqrt(3) * Vref / Vdc) * sin(M_PI/3.0 - angle);
-        T2 = (Ts * sqrt(3) * Vref / Vdc) * sin(angle);
-        double T0 = Ts - T1 - T2;
-
-        if (T0 < 0) T0 = 0; // clamp
-
-        // Duty cycles depend on sector
-        double Ta, Tb, Tc;
+        // Map dwell times to leg duty cycles per sector
+        double dutyA, dutyB, dutyC;
         switch (sector) {
-            case 1: Ta = (T1+T2+T0/2)/Ts; Tb = (T2+T0/2)/Ts; Tc = T0/2/Ts; break;
-            case 2: Ta = (T1+T0/2)/Ts; Tb = (T1+T2+T0/2)/Ts; Tc = T0/2/Ts; break;
-            case 3: Ta = T0/2/Ts; Tb = (T1+T2+T0/2)/Ts; Tc = (T2+T0/2)/Ts; break;
-            case 4: Ta = T0/2/Ts; Tb = (T1+T0/2)/Ts; Tc = (T1+T2+T0/2)/Ts; break;
-            case 5: Ta = (T2+T0/2)/Ts; Tb = T0/2/Ts; Tc = (T1+T2+T0/2)/Ts; break;
-            case 6: Ta = (T1+T2+T0/2)/Ts; Tb = T0/2/Ts; Tc = (T1+T0/2)/Ts; break;
-            default: Ta=Tb=Tc=0.5; break;
+            case 1: dutyA = (tVec1+tVec2+tZero/2)/switchingPeriod; dutyB = (tVec2+tZero/2)/switchingPeriod;       dutyC = (tZero/2)/switchingPeriod; break;
+            case 2: dutyA = (tVec1+tZero/2)/switchingPeriod;       dutyB = (tVec1+tVec2+tZero/2)/switchingPeriod; dutyC = (tZero/2)/switchingPeriod; break;
+            case 3: dutyA = (tZero/2)/switchingPeriod;             dutyB = (tVec1+tVec2+tZero/2)/switchingPeriod; dutyC = (tVec2+tZero/2)/switchingPeriod; break;
+            case 4: dutyA = (tZero/2)/switchingPeriod;             dutyB = (tVec1+tZero/2)/switchingPeriod;       dutyC = (tVec1+tVec2+tZero/2)/switchingPeriod; break;
+            case 5: dutyA = (tVec2+tZero/2)/switchingPeriod;       dutyB = (tZero/2)/switchingPeriod;             dutyC = (tVec1+tVec2+tZero/2)/switchingPeriod; break;
+            case 6: dutyA = (tVec1+tVec2+tZero/2)/switchingPeriod; dutyB = (tZero/2)/switchingPeriod;             dutyC = (tVec1+tZero/2)/switchingPeriod; break;
+            default: dutyA = dutyB = dutyC = 0.5; break;
         }
 
-        // Return equivalent duty values as "abc voltages"
-        return {Ta, Tb, Tc};
+        // Return “duty-as-voltages”
+        return { dutyA, dutyB, dutyC };
     }
 
-    MyInverter::ABCVoltages compute_voltage_references(const TwoLevelInverter& inverter,
-                                        const InverterOperatingPoint& op_point,
-                                        const Modulation& modulation,
-                                        double grid_angle_rad) {
+    ABCVoltages MyInverter::compute_voltage_references(const TwoLevelInverter& inverter,
+                                            const InverterOperatingPoint& op_point,
+                                            const Modulation& modulation,
+                                            double grid_angle_rad) {
         using namespace std::complex_literals;
 
         const InverterLoad& load = op_point.get_load();
@@ -896,7 +893,7 @@ namespace OpenMagnetics {
         }
 
         // --- Step 2: dq -> abc ---
-        MyInverter::ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
+        ABCVoltages Vabc = dq_to_abc(Vref_dq, grid_angle_rad);
 
         // --- Step 3: Modulation strategy ---
         double ma = modulation.get_modulation_depth();
@@ -927,82 +924,70 @@ namespace OpenMagnetics {
         return Vabc;
     }
 
-    double compute_carrier(const Modulation& modulation, double t) {
-        double fsw = modulation.get_switching_frequency();
-        double Ts = 1.0 / fsw;
+    double MyInverter::compute_carrier(const Modulation& modulation, double t) {
+        const double switchingFrequency = modulation.get_switching_frequency();
+        const double switchingPeriod    = 1.0 / switchingFrequency;
 
-        // Normalize time within switching period
-        double tau = fmod(t, Ts) / Ts;  // [0,1)
+        // phase inside the present PWM period, in [0,1)
+        const double phaseInPeriod = std::fmod(t, switchingPeriod) / switchingPeriod;
 
         switch (modulation.get_pwm_type()) {
-            case PwmType::SAWTOOTH: {
-                // Linear ramp: -1 → +1
-                return 2.0 * tau - 1.0;
-            }
-
-            case PwmType::TRIANGULAR: {
-                // Symmetric triangular: -1 → +1 → -1
-                if (tau < 0.5) {
-                    return 4.0 * tau - 1.0;    // ramp -1 → +1
-                } else {
-                    return -4.0 * tau + 3.0;   // ramp +1 → -1
-                }
-            }
-
+            case PwmType::SAWTOOTH:
+                return 2.0 * phaseInPeriod - 1.0;   // -1 → +1
+            case PwmType::TRIANGULAR:
+                return (phaseInPeriod < 0.5)
+                    ?  4.0 * phaseInPeriod - 1.0   // -1 → +1
+                    : -4.0 * phaseInPeriod + 3.0;  // +1 → -1
             default:
                 throw std::runtime_error("Unknown PWM carrier type");
         }
     }
 
-    MyInverter::PwmSignals compare_with_carrier(const MyInverter::ABCVoltages& Vabc,
-                                    double carrier,
-                                    double Vdc,
-                                    const Modulation& modulation) {
-        // Normalize into duty cycles [0,1]
-        double d_a = 0.5 * (Vabc.Va / (Vdc / 2.0) + 1.0);
-        double d_b = 0.5 * (Vabc.Vb / (Vdc / 2.0) + 1.0);
-        double d_c = 0.5 * (Vabc.Vc / (Vdc / 2.0) + 1.0);
+    PwmSignals MyInverter::compare_with_carrier(const MyInverter::ABCVoltages& Vabc,
+                                                double carrier,
+                                                double Vdc,
+                                                const Modulation& modulation) {
+        // ---- Duty cycles (D) ----
+        auto toDuty = [&](double v_leg)->double {
+            // map leg ref to [0,1] duty wrt ±Vdc/2
+            double duty = 0.5 * (v_leg / (Vdc / 2.0) + 1.0);
+            return std::clamp(duty, 0.0, 1.0);
+        };
 
-        // Clamp to [0,1]
-        d_a = std::clamp(d_a, 0.0, 1.0);
-        d_b = std::clamp(d_b, 0.0, 1.0);
-        d_c = std::clamp(d_c, 0.0, 1.0);
+        double dutyA = toDuty(Vabc.Va);
+        double dutyB = toDuty(Vabc.Vb);
+        double dutyC = toDuty(Vabc.Vc);
 
-        // Apply deadtime correction (if set)
+        // Deadtime & rise-time corrections expressed as duty fractions
+        const double switchingPeriod = 1.0 / modulation.get_switching_frequency();
+
         if (modulation.get_deadtime()) {
-            double t_dead = *modulation.get_deadtime();
-            double Ts = 1.0 / modulation.get_switching_frequency();
-            double delta_d = t_dead / Ts;  // fraction of duty cycle lost to deadtime
-
-            d_a = std::clamp(d_a - delta_d, 0.0, 1.0);
-            d_b = std::clamp(d_b - delta_d, 0.0, 1.0);
-            d_c = std::clamp(d_c - delta_d, 0.0, 1.0);
+            const double deadtimeFraction = *modulation.get_deadtime() / switchingPeriod;
+            dutyA = std::clamp(dutyA - deadtimeFraction, 0.0, 1.0);
+            dutyB = std::clamp(dutyB - deadtimeFraction, 0.0, 1.0);
+            dutyC = std::clamp(dutyC - deadtimeFraction, 0.0, 1.0);
         }
-
-        // Apply rise time correction (if set)
         if (modulation.get_rise_time()) {
-            double t_rise = *modulation.get_rise_time();
-            double Ts = 1.0 / modulation.get_switching_frequency();
-            double delta_d = t_rise / Ts;
-
-            d_a = std::clamp(d_a - delta_d/2, 0.0, 1.0);
-            d_b = std::clamp(d_b - delta_d/2, 0.0, 1.0);
-            d_c = std::clamp(d_c - delta_d/2, 0.0, 1.0);
+            const double riseFraction = *modulation.get_rise_time() / switchingPeriod;
+            dutyA = std::clamp(dutyA - 0.5*riseFraction, 0.0, 1.0);
+            dutyB = std::clamp(dutyB - 0.5*riseFraction, 0.0, 1.0);
+            dutyC = std::clamp(dutyC - 0.5*riseFraction, 0.0, 1.0);
         }
 
-        // Carrier comparison (carrier is [-1,1], convert duty back to same scale)
-        double Va_norm = 2.0*d_a - 1.0;
-        double Vb_norm = 2.0*d_b - 1.0;
-        double Vc_norm = 2.0*d_c - 1.0;
+        // ---- Comparator inputs (normalized back to [-1, +1]) ----
+        const double compA = 2.0 * dutyA - 1.0;
+        const double compB = 2.0 * dutyB - 1.0;
+        const double compC = 2.0 * dutyC - 1.0;
 
-        bool Sa = (Va_norm > carrier);
-        bool Sb = (Vb_norm > carrier);
-        bool Sc = (Vc_norm > carrier);
+        // ---- Switch states (S) for *upper* devices ----
+        const bool gateUpperAOn = (compA > carrier);
+        const bool gateUpperBOn = (compB > carrier);
+        const bool gateUpperCOn = (compC > carrier);
 
-        return {Sa, Sb, Sc};
+        return { gateUpperAOn, gateUpperBOn, gateUpperCOn };
     }
 
-    MyInverter::NodeResult solve_filter_topology(const InverterDownstreamFilter& filter,
+    NodeResult MyInverter::solve_filter_topology(const InverterDownstreamFilter& filter,
                                     const InverterLoad& load,
                                     double omega,
                                     std::complex<double> Vinv)
@@ -1056,16 +1041,16 @@ namespace OpenMagnetics {
         return {vNode, vL1, iL1};
     }
 
-    MyInverter::HarmonicsBundle compute_harmonics(const Modulation& modulation,
-                                    const MyInverter::ABCVoltages& Vabc,
-                                    double Vdc,
-                                    std::complex<double> Vfund,
-                                    std::complex<double> Ifund,
-                                    double f1,
-                                    const InverterDownstreamFilter& filter,
-                                    const InverterLoad& load,
-                                    int Nperiods = 5,
-                                    int samplesPerPeriod = 200) {
+    HarmonicsBundle MyInverter::compute_harmonics(const Modulation& modulation,
+                                                const MyInverter::ABCVoltages& Vabc,
+                                                double Vdc,
+                                                std::complex<double> Vfund,
+                                                std::complex<double> Ifund,
+                                                double f1,
+                                                const InverterDownstreamFilter& filter,
+                                                const InverterLoad& load,
+                                                int Nperiods,
+                                                int samplesPerPeriod) {
         double fsw = modulation.get_switching_frequency();
         double Ts = 1.0 / fsw;
         double fs = fsw * samplesPerPeriod;
@@ -1076,9 +1061,9 @@ namespace OpenMagnetics {
         for (int n = 0; n < Nsamples; ++n) {
             double t = n * Ts / samplesPerPeriod;
             double carrier = compute_carrier(modulation, t);
-            MyInverter::PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
+            PwmSignals gates = compare_with_carrier(Vabc, carrier, Vdc, modulation);
 
-            double vA = gates.Sa ? +Vdc/2.0 : -Vdc/2.0;
+            double vA = gates.gateUpperAOn ? +Vdc/2.0 : -Vdc/2.0;
             waveform.push_back(vA);
         }
 
@@ -1087,7 +1072,7 @@ namespace OpenMagnetics {
         int N = spectrum.size();
 
         // --- 3. Build harmonics up to 5*fsw ---
-        MyInverter::HarmonicsBundle bundle;
+        HarmonicsBundle bundle;
         double fmax = 5.0 * fsw;
 
         for (int k = 0; k < N/2; ++k) {
@@ -1098,7 +1083,7 @@ namespace OpenMagnetics {
                 std::complex<double> Vph = spectrum[k];
 
                 // Use the *same filter equations* as fundamental, but per harmonic
-                MyInverter::NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
+                NodeResult node = solve_filter_topology(filter, load, omega_k, Vph);
 
                 std::complex<double> Iph = node.iL1;
                 bundle.Vharm.get_mutable_frequencies().push_back(f);
