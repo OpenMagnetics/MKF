@@ -227,6 +227,7 @@ private:
                                     double omega,
                                     std::complex<double> Vinv);
     HarmonicsBundle compute_harmonics(const Modulation& modulation,
+                                    const InverterOperatingPoint& op_point,
                                     const ABCVoltages& Vabc,
                                     double Vdc,
                                     std::complex<double> Vfund,

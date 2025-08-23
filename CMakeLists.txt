@@ -236,6 +236,12 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests UnitTest++)
 endif(INCLUDE_MKF_TESTS)
 
+option(DEBUG_PLOTS "Enable detailed debug plots" OFF)
+
+if(DEBUG_PLOTS)
+    add_definitions(-DDEBUG_PLOTS)
+endif()
+
 if(INCLUDE_PYMKF)
         FetchContent_Declare(pybind11
                 GIT_REPOSITORY https://github.com/pybind/pybind11.git)
