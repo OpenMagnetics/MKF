@@ -1193,4 +1193,17 @@ SUITE(CircuitSimulationReader) {
 
         CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
     }
+
+    TEST(Test_Import_Csv_Web_3) {
+        std::string file_path = __FILE__;
+        auto simulation_path = file_path.substr(0, file_path.rfind("/")).append("/testData/test_web_3.csv");
+
+        double frequency = 50e3;
+        auto reader = CircuitSimulationReader(simulation_path);
+        auto operatingPoint = reader.extract_operating_point(2, frequency);
+
+        operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 10e-6);
+
+        CHECK(operatingPoint.get_excitations_per_winding().size() == 2);
+    }
 }
