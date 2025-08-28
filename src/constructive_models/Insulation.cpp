@@ -65,7 +65,8 @@ size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire
         }
 
         if (!coating.get_breakdown_voltage()) {
-            throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
+            return 0;
+            // throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
         }
         if (coating.get_breakdown_voltage().value() > withstandVoltage) {
             if (coating.get_number_layers()) {
@@ -90,7 +91,8 @@ size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire
         }
 
         if (!coating.get_breakdown_voltage()) {
-            throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
+            return 0;
+            // throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
         }
 
         if (coating.get_breakdown_voltage().value() > withstandVoltage) {
@@ -121,7 +123,8 @@ double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, doub
         }
 
         if (!coating.get_breakdown_voltage()) {
-            throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
+            return 0;
+            // throw std::runtime_error("Wire " + leftWire.get_name().value() + " is missing breakdown voltage");
         }
 
         if (coating.get_breakdown_voltage().value() > withstandVoltage) {
@@ -144,7 +147,8 @@ double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, doub
         }
 
         if (!coating.get_breakdown_voltage()) {
-            throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
+            return 0;
+            // throw std::runtime_error("Wire " + rightWire.get_name().value() + " is missing breakdown voltage");
         }
 
         if (coating.get_breakdown_voltage().value() > withstandVoltage) {

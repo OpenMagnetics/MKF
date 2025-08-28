@@ -1283,7 +1283,8 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_magn
     }
 
     if (!coating.get_breakdown_voltage()) {
-        throw std::runtime_error("Wire " + wire.get_name().value() + " is missing breakdown voltage");
+        return {false, 0.0};
+        // throw std::runtime_error("Wire " + wire.get_name().value() + " is missing breakdown voltage");
     }
 
     if (coating.get_breakdown_voltage().value() < wireSolidInsulationRequirements.get_minimum_breakdown_voltage()) {
