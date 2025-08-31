@@ -44,17 +44,17 @@ class WindingProximityEffectLosses {
 };
 
 // Based on Measurement and Characterization of High Frequency Losses in Nonideal Litz Wires by Hans Rossmanith
-// https://sci-hub.wf/10.1109/tpel.2011.2143729
+// https://sci-hub.st/10.1109/tpel.2011.2143729
 class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Rossmanith";
-    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 
 };
 
 // Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
-// https://sci-hub.wf/10.1109/ECCE.2018.8558397
+// https://sci-hub.st/10.1109/ECCE.2018.8558397
 class WindingProximityEffectLossesWangModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Wang";
@@ -66,7 +66,7 @@ class WindingProximityEffectLossesWangModel : public WindingProximityEffectLosse
 class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Ferreira";
-    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
@@ -84,7 +84,7 @@ class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLos
 class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Lammeraner";
-    double calculate_proximity_factor(Wire wire, double frequency, double temperature);
+    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
     double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 

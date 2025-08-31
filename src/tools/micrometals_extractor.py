@@ -5,7 +5,7 @@ import numpy
 import math
 
 
-spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/mmcurvefitcoefficientsall.xlsx"
+spreadsheet_path = "/mnt/c/Users/Alfon/Downloads/mmcurvefitcoefficientsall.xlsx"
 
 
 def autocomplete_materials(data, column):
@@ -131,9 +131,9 @@ permeability_vs_b_peak_data['d'] = permeability_vs_b_peak_data.apply(lambda row:
 
 materials = []
 advanced_materials = []
-materials_to_ignore = ["Mix 5", "SM 14", "SM 90", "SP 14", "SP 26", "SP 40", "SP 60", "SP 75", "SP 90"]
+materials_to_ignore = ["SM 14", "SM 90", "SP 14", "SP 40", "SP 75"] 
 
-materials_file = open(f"{pathlib.Path(__file__).parent.parent.parent.resolve()}/MAS/data/core_materials.ndjson", "r")
+materials_file = open(f"{pathlib.Path(__file__).parent.parent.parent.resolve()}/../MAS/data/core_materials.ndjson", "r")
 current_materials = ndjson.load(materials_file)
 
 for row_index, row in permeability_vs_bias_data.iterrows():
