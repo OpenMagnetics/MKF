@@ -1112,7 +1112,7 @@ std::map<std::string, double> get_major_loop_parameters(double saturationMagneti
     return majorLoopParameters;
 }
 
-double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
+std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
     double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
     double saturationMagneticFluxDensity = parameters["saturationMagneticFluxDensity"];
@@ -1141,7 +1141,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
     auto calculate_magnetic_flux_density = [&](double magneticFieldStrength, bool loop_is_upper = true) {
         double magneticFluxDensity;
         if (loop_is_upper) {
-            if (-saturationMagneticFieldStrength <= magneticFieldStrength && magneticFieldStrength < -coerciveForce) {
+            if (magneticFieldStrength < -coerciveForce) {
                 magneticFluxDensity = bh_curve_half_loop(magneticFieldStrength, a1, b2);
             }
             else {
@@ -1149,7 +1149,7 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
             }
         }
         else {
-            if (-saturationMagneticFieldStrength <= magneticFieldStrength && magneticFieldStrength < coerciveForce) {
+            if (magneticFieldStrength < coerciveForce) {
                 magneticFluxDensity = -bh_curve_half_loop(-magneticFieldStrength, a1, b1);
             }
             else {
@@ -1208,6 +1208,16 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         abs_tol += timeout * 0.0001;
     }
 
+    auto closestBIndex = find_closest_index(upperMagneticFluxDensityWaveform, magneticFluxDensityAcPeak);
+    std::cout << "************************************************" << std::endl;
+    std::cout << "magneticFluxDensityAcPeak: " << magneticFluxDensityAcPeak << std::endl;
+    std::cout << "closestBIndex: " << closestBIndex << std::endl;
+    std::cout << "coerciveForce: " << coerciveForce << std::endl;
+    std::cout << "magneticFieldStrengthPoints[closestBIndex]: " << magneticFieldStrengthPoints[closestBIndex] << std::endl;
+    double calculatedHValue = sqrt((2 * a1 * coerciveForce + pow(coerciveForce, 2) * (b1 - b2)) / (b1 - b2));
+    std::cout << "calculatedHValue: " << calculatedHValue << std::endl;
+
+
     std::vector<double> cutUpperMagneticFluxDensityWaveform;
     std::vector<double> cutLowerMagneticFluxDensityWaveform;
     for (auto& elem : upperMagneticFluxDensityWaveform) {
@@ -1222,9 +1232,13 @@ double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string
         }
     }
 
-    // _hysteresisMinorLoopTop = cutUpperMagneticFluxDensityWaveform;
-    // _hysteresisMinorLoopBottom = cutLowerMagneticFluxDensityWaveform;
+    return std::pair<std::vector<double>, std::vector<double>>(cutUpperMagneticFluxDensityWaveform, cutLowerMagneticFluxDensityWaveform);
+}
 
+double CoreLossesRoshenModel::get_hysteresis_losses_density(std::map<std::string, double> parameters,
+                                                            OperatingPointExcitation excitation) {
+    double frequency = excitation.get_frequency();
+    auto [cutUpperMagneticFluxDensityWaveform, cutLowerMagneticFluxDensityWaveform] = get_bh_loop(parameters, excitation);
     size_t minimum_length =
         std::min(cutUpperMagneticFluxDensityWaveform.size(), cutLowerMagneticFluxDensityWaveform.size());
     double bhArea = 0;

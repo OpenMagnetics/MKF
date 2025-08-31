@@ -191,5 +191,9 @@ void normalize_scoring(std::vector<std::pair<Mas, double>>* masesWithScoring, st
 
 std::string generate_random_string(size_t length = 8);
 
+size_t find_closest_index(std::vector<double> vector, double value);
+double get_closest(double val1, double val2, double value);
+
+
 } // namespace OpenMagnetics
 

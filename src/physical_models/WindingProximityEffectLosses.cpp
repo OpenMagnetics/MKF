@@ -39,18 +39,19 @@ std::shared_ptr<WindingProximityEffectLossesModel>  WindingProximityEffectLosses
 std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses::get_model(WireType wireType) {
     switch(wireType) {
         case WireType::ROUND: {
-            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::LAMMERANER);
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
         case WireType::LITZ: {
             return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
         }
-        case WireType::PLANAR:
-        case WireType::RECTANGULAR:
-        {
-            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::ALBACH);
+        case WireType::PLANAR: {
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::WANG);
+        }
+        case WireType::RECTANGULAR: {
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::WANG);
         }
         case WireType::FOIL: {
-            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::FERREIRA);
+            return WindingProximityEffectLossesModel::factory(WindingProximityEffectLossesModels::WANG);
         }
         default:
             throw std::runtime_error("Unknown type of wire");
@@ -266,26 +267,38 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses(Wire wire, d
     }
 
     double Hx1 = 0, Hx2 = 0, Hy1 = 0, Hy2 = 0;
+    double nonPlanarHe = 0;
     for (auto& datum : data) {
         if (!datum.get_label()) {
             throw std::runtime_error("Missing label in induced point");
         }
-        if (datum.get_label().value() == "top") {
-            Hx2 = datum.get_real();
+        else if (datum.get_label().value() == "top") {
+            nonPlanarHe += datum.get_imaginary(); 
+            Hx2 += datum.get_real();
         }
         else if (datum.get_label().value() == "bottom") {
-            Hx1 = datum.get_real();
+            nonPlanarHe += datum.get_imaginary(); 
+            Hx1 += datum.get_real();
         }
         else if (datum.get_label().value() == "right") {
-            Hy2 = datum.get_imaginary();
+            nonPlanarHe += datum.get_real(); 
+            Hy2 += datum.get_imaginary();
         }
         else if (datum.get_label().value() == "left") {
-            Hy1 = datum.get_imaginary();
+            nonPlanarHe += datum.get_real(); 
+            Hy1 += datum.get_imaginary();
         }
     }
 
+
     double turnLosses = c * h * resistivity / skinDepth * pow((Hx2 + Hx1) / 2, 2) * (sinh(h / skinDepth) - sin(h / skinDepth)) / (cosh(h / skinDepth) + cos(h / skinDepth));
     turnLosses += h * c * resistivity / skinDepth * pow((Hy2 + Hy1) / 2, 2) * (sinh(c / skinDepth) - sin(c / skinDepth)) / (cosh(c / skinDepth) + cos(c / skinDepth));
+
+    // For the H field not planned for in Wang's model, we use Ferreira's
+    if (nonPlanarHe != 0) {
+        double proximityFactor = WindingProximityEffectLossesFerreiraModel::calculate_proximity_factor(wire, frequency, temperature);
+        turnLosses += proximityFactor * pow(nonPlanarHe, 2);
+    }
 
     turnLosses *= wire.get_number_conductors().value();
 
@@ -381,7 +394,8 @@ double WindingProximityEffectLossesAlbachModel::calculate_turn_losses(Wire wire,
         c = resolve_dimensional_values(wire.get_conducting_height().value());
     }
     else {
-        throw std::runtime_error("Model not implemented for ROUND and LITZ");
+        d = resolve_dimensional_values(wire.get_conducting_diameter().value());
+        c = resolve_dimensional_values(wire.get_conducting_diameter().value());
     }
     std::complex<double> alpha(1, 1);
     alpha /= skinDepth;

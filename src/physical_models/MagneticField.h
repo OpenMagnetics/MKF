@@ -65,11 +65,21 @@ class MagneticField {
 
 
 
-// Based on Effects of eddy currents in transformer windings by P. L. Dowell.
-// https://sci-hub.wf/10.1049/piee.1966.0236
-class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
+// // Based on Effects of eddy currents in transformer windings by P. L. Dowell.
+// // https://sci-hub.wf/10.1049/piee.1966.0236
+// class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
+//     public:
+//         std::string methodName = "Dowell";
+//         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
+// };
+
+
+
+// Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
+// https://sci-hub.wf/10.1109/ECCE.2018.8558397
+class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
     public:
-        std::string methodName = "Dowell";
+        std::string methodName = "Wang";
         ComplexFieldPoint get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire = std::nullopt);
 };
 
@@ -94,7 +104,7 @@ class MagneticFieldStrengthLammeranerModel : public MagneticFieldStrengthModel {
 
 
 // Based on Fringing Field Formulas and Winding Loss Due to an Air Gap by Waseem A. Roshen
-// https://sci-hub.wf/10.1109/tmag.2007.898908
+// https://sci-hub.st/10.1109/tmag.2007.898908
 // https://sci-hub.st/10.1109/tmag.2008.2002302
 class MagneticFieldStrengthRoshenModel : public MagneticFieldStrengthFringingEffectModel {
     public:

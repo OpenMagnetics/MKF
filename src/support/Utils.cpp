@@ -2101,4 +2101,57 @@ std::string generate_random_string(size_t length) {
     return characters.substr(0, length);
 }
 
+size_t find_closest_index(std::vector<double> vector, double value) {
+    // Corner cases
+    if (value <= vector.front())
+        return 0;
+    if (value >= vector.back())
+        return vector.size() - 1;
+
+    // Doing binary search
+    size_t i = 0, j = vector.size(), mid = 0;
+    while (i < j) {
+        mid = (i + j) / 2;
+
+        if (vector[mid] == value)
+            return mid;
+
+        /* If value is less than vectoray element,
+            then search in left */
+
+        if (value < vector[mid]) {
+
+            // If value is greater than previous
+            // to mid, return closest of two
+            if (mid > 0 && value > vector[mid - 1])
+                if (value - vector[mid - 1] >= vector[mid] - value) {
+                    return mid;
+                }
+
+            /* Repeat for left half */
+            j = mid;
+        }
+
+        // If value is greater than mid
+        else {
+            if (mid < vector.size() - 1 && value < vector[mid + 1])
+                if (value - vector[mid] >= vector[mid + 1] - value) {
+                    return mid + 1;
+                }
+            // update i
+            i = mid + 1; 
+        }
+    }
+
+    // Only single element left after search
+    return mid;
+}
+
+double get_closest(double val1, double val2, double value) {
+    if (value - val1 >= val2 - value)
+        return val2;
+    else
+        return val1;
+}
+
 } // namespace OpenMagnetics
