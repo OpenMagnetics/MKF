@@ -307,6 +307,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
                                                                         double coreLosses) {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
+    std::pair<std::vector<double>, std::vector<double>> get_bh_loop(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
     double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
     double get_eddy_current_losses_density(Core core, OperatingPointExcitation excitation, double resistivity);
     double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,

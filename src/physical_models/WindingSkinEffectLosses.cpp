@@ -46,7 +46,9 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
         case WireType::LITZ: {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
         }
-        case WireType::PLANAR:
+        case WireType::PLANAR: {
+            return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::ALBACH);
+        }
         case WireType::RECTANGULAR:
         {
             return WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels::KUTKUT);

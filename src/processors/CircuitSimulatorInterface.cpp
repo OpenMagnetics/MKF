@@ -1117,7 +1117,7 @@ char CircuitSimulationReader::guess_separator(std::string line){
             numberColumns++;
         }
 
-        if (numberColumns >= 2 && numberColumns <= 30) {
+        if (numberColumns >= 2) {
             return separator;
         }
     }

@@ -136,6 +136,39 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     windingLossesOutput = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings->get_harmonic_amplitude_threshold());
 
+    auto isPlanar = true;
+    auto isRectangular = true;
+    auto isFoil = true;
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::PLANAR) {
+            isPlanar = false;
+            break;
+        }
+    }
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::RECTANGULAR) {
+            isRectangular = false;
+            break;
+        }
+    }
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() != WireType::FOIL) {
+            isFoil = false;
+            break;
+        }
+    }
+    if (isPlanar) {
+        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::WANG;
+    }
+    else if (isRectangular) {
+        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    }
+    else if (isFoil) {
+        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::WANG;
+    }
+    else {
+        _magneticFieldStrengthModel = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
+    }
     MagneticField magneticField(_magneticFieldStrengthModel, OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN);
 
     int64_t totalNumberPhysicalTurns = 0;

@@ -25,7 +25,7 @@ struct Defaults {
     const uint64_t coreAdviserMaximumMagneticsAfterFiltering = 500;
     const uint64_t coreAdviserMaximumNumberStacks = 4;
     const double maximumCurrentDensity = 7000000;
-    const double maximumCurrentDensityPlanar = 20000000;
+    const double maximumCurrentDensityPlanar = 2000000;
     const double maximumEffectiveCurrentDensity = 12000000;
     const double maximumNumberParallels = 5;
     const double magneticFluxDensitySaturation = 0.5;
@@ -49,9 +49,10 @@ struct Defaults {
     const double overlappingFactorSurroundingTurns = 0.7;
     const WireStandard commonWireStandard = WireStandard::NEMA_MW_1000_C;
     const WiringTechnology wiringTechnology = WiringTechnology::WOUND;
-    const double pcbInsulationThickness = 0.00157;
+    const double pcbInsulationThickness = 100e-6;
     const double minimumWireToWireDistance = 90e-6;
     const double minimumBorderToWireDistance = 90e-6;
+    const double coreToLayerDistance = 250e-6;
 };
 } // namespace OpenMagnetics
 

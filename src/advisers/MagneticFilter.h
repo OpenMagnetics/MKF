@@ -320,6 +320,12 @@ class MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise : public Ma
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+class MagnetomotiveForce : public MagneticFilter {
+    public:
+        MagnetomotiveForce() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+};
+
 
 // // Nice to have in the future
 // class MagneticFilterMaximumWeight : public MagneticFilter {

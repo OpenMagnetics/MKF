@@ -816,7 +816,6 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             magnetics.push_back(std::pair<Magnetic, double>{magnetic, 0});
         }
     }
-    std::cout << "magnetics.size(): " << magnetics.size() << std::endl;
 
     return magnetics;
 }
@@ -907,7 +906,14 @@ std::vector<std::pair<Magnetic, double>> add_initial_turns_by_impedance(std::vec
             core.process_data();
             core.process_gap();
         }
-        magnetic.get_mutable_coil().set_bobbin(Bobbin::create_quick_bobbin(core));
+        Bobbin bobbin;
+        if (inputs.get_wiring_technology() == WiringTechnology::PRINTED) {
+            bobbin = Bobbin::create_quick_bobbin(core, true);
+        }
+        else {
+            bobbin = Bobbin::create_quick_bobbin(core);
+        }
+        magnetic.get_mutable_coil().set_bobbin(bobbin);
 
         double initialNumberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
 
@@ -1224,7 +1230,14 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
         NumberTurns numberTurns(coil.get_number_turns(0), inputs.get_design_requirements());
         auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
 
-        (*magneticsWithScoring)[i].first.get_mutable_coil().set_bobbin(Bobbin::create_quick_bobbin((*magneticsWithScoring)[i].first.get_core()));
+        Bobbin bobbin;
+        if (inputs.get_wiring_technology() == WiringTechnology::PRINTED) {
+            bobbin = Bobbin::create_quick_bobbin((*magneticsWithScoring)[i].first.get_core(), true);
+        }
+        else {
+            bobbin = Bobbin::create_quick_bobbin((*magneticsWithScoring)[i].first.get_core());
+        }
+        (*magneticsWithScoring)[i].first.get_mutable_coil().set_bobbin(bobbin);
         for (size_t windingIndex = 1; windingIndex < numberTurnsCombination.size(); ++windingIndex) {
             auto winding = coil.get_functional_description()[0];
             winding.set_number_turns(numberTurnsCombination[windingIndex]);
@@ -1492,7 +1505,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterFringingFactor.set_filter_configuration(&_filterConfiguration);
     filterFringingFactor.set_cache_usage(false);
 
-    std::cout << "magnetics->size(): " << magnetics->size() << std::endl;
     std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
 
     bool usingPowderCores = should_include_powder(inputs);

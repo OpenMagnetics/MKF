@@ -1741,7 +1741,11 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             excitation.set_voltage(voltageExcitation);
         }
         else {
-            if (operatingPoint.get_excitations_per_winding().size() == 2 && windingIndex == 1 && operatingPoint.get_excitations_per_winding()[0].get_voltage() && turnsRatios) {
+            if (operatingPoint.get_excitations_per_winding().size() == 1 && excitation.get_current()) {
+                auto voltageExcitation = calculate_induced_voltage(excitation, magnetizingInductance);
+                excitation.set_voltage(voltageExcitation);
+            }
+            else if (operatingPoint.get_excitations_per_winding().size() == 2 && windingIndex == 1 && operatingPoint.get_excitations_per_winding()[0].get_voltage() && turnsRatios) {
                 auto turnsRatio = turnsRatios.value()[0];
                 auto voltageExcitation = reflect_waveform(operatingPoint.get_excitations_per_winding()[0].get_voltage().value(), 1 / turnsRatio);
                 auto waveform = voltageExcitation.get_waveform().value();
@@ -1974,7 +1978,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
         voltage = standardize_waveform(voltage, frequency);
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
-            auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
+            auto current = calculate_magnetizing_current(excitation, magnetizingInductance * pow(turnsRatio, 2), true, dcCurrent);
             excitation.set_current(current);
             excitation.set_magnetizing_current(current);
         }
@@ -2417,17 +2421,17 @@ WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
     }
 }
 
-void Inputs::scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
+void Inputs::scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool ){
     for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
         Inputs::scale_time_to_frequency(operatingPoint, newFrequency, cleanFrequencyDependentFields, processSignals);
     }}
 
-void Inputs::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
+void Inputs::scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
     for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
         scale_time_to_frequency(excitation, newFrequency, cleanFrequencyDependentFields, processSignals);
     }}
 
-void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals){
+void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
     excitation.set_frequency(newFrequency);
     if (excitation.get_current() && excitation.get_current()->get_waveform()) {
         auto current = excitation.get_current().value();
@@ -2450,6 +2454,12 @@ void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, doubl
         excitation.set_voltage(voltage);
     }
     if (cleanFrequencyDependentFields) {
+        if (useCurrentAsBase) {
+            excitation.set_voltage(std::nullopt);
+        }
+        else {
+            excitation.set_current(std::nullopt);
+        }
         excitation.set_magnetizing_current(std::nullopt);
         excitation.set_magnetic_flux_density(std::nullopt);
         excitation.set_magnetic_field_strength(std::nullopt);
