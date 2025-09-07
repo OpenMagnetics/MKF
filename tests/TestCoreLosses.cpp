@@ -3384,6 +3384,9 @@ SUITE(SteinmetzCoefficientsCalculation) {
                 double maximumError = *std::max_element(errorPerRange.begin(), errorPerRange.end());
             // std::cout << maximumError << std::endl;
 
+                if (name == "3C94") {
+                    std::cout << maximumError << std::endl;
+                }
                 CHECK(maximumError < maxError);
             }
         }
