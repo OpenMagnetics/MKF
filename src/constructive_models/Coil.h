@@ -304,11 +304,17 @@ struct adl_serializer<std::variant<OpenMagnetics::Wire, std::string>> {
 
 namespace OpenMagnetics {
 inline void from_json(const json & j, Coil& x) {
+    std::cout << "Mierda 0" << std::endl;
     x.set_bobbin(j.at("bobbin").get<OpenMagnetics::BobbinDataOrNameUnion>());
+    std::cout << "Mierda 1" << std::endl;
     x.set_functional_description(j.at("functionalDescription").get<std::vector<CoilFunctionalDescription>>());
+    std::cout << "Mierda 2" << std::endl;
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
+    std::cout << "Mierda 3" << std::endl;
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
+    std::cout << "Mierda 4" << std::endl;
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
+    std::cout << "Mierda 5" << std::endl;
 }
 
 inline void from_json(const json & j, CoilFunctionalDescription& x) {
