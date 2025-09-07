@@ -186,7 +186,14 @@ std::vector<double> normalize_scoring(std::vector<double> scoring, double weight
 std::vector<double> normalize_scoring(std::vector<double> scoring, double weight, bool invert, bool log);
 std::map<std::string, double> normalize_scoring(std::map<std::string, double> scoring, OpenMagnetics::MagneticFilterOperation filterConfiguration);
 std::vector<double> normalize_scoring(std::vector<double> scoring, OpenMagnetics::MagneticFilterOperation filterConfiguration);
+void normalize_scoring(std::vector<std::pair<Mas, double>>* masesWithScoring, std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration);
+void normalize_scoring(std::vector<std::pair<Mas, double>>* masesWithScoring, std::vector<double> scoring, MagneticFilterOperation filterConfiguration);
+
 std::string generate_random_string(size_t length = 8);
+
+size_t find_closest_index(std::vector<double> vector, double value);
+double get_closest(double val1, double val2, double value);
+
 
 } // namespace OpenMagnetics
 

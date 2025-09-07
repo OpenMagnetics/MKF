@@ -677,6 +677,74 @@ SUITE(CoilWeb) {
         to_json(result, coil);
         std::cout << bool(coil.get_turns_description()) << std::endl;
     }
+
+    TEST(Test_Coil_Json_11) {
+        std::string coilString = R"({"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.006175,"columnShape":"round","columnThickness":0,"columnWidth":0.006175,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":null,"area":0.000041283000000000004,"coordinates":[0.0098875,0,0],"height":0.00556,"radialHeight":null,"sectionsAlignment":"inner or top","sectionsOrientation":"contiguous","shape":"rectangular","width":0.007425000000000001}]}},"functionalDescription":[{"connections":null,"isolationSide":"primary","name":"primary","numberParallels":1,"numberTurns":5,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2293100000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 52.20 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000522},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0023550000000000008},"standard":"IPC-6012","standardName":"1.5 oz.","strand":null,"type":"planar"}},{"connections":null,"isolationSide":"secondary","name":"SECONDARY","numberParallels":1,"numberTurns":3,"wire":{"coating":null,"conductingArea":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":1.2449700000000003e-7},"conductingDiameter":null,"conductingHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"conductingWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"edgeRadius":null,"manufacturerInfo":null,"material":"copper","name":"Planar 34.80 µm","numberConductors":1,"outerDiameter":null,"outerHeight":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0000348},"outerWidth":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.003577500000000001},"standard":"IPC-6012","standardName":"1 oz.","strand":null,"type":"planar"}}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null,"_turnsAlignment":["spread","spread","spread","spread"],"_layersOrientation":["contiguous","contiguous","contiguous","contiguous"],"_interlayerInsulationThickness":0,"_intersectionInsulationThickness":0.0001})";
+
+        std::vector<size_t> pattern = {0, 1, 0, 1};
+        std::vector<double> proportionPerWinding = {0.5, 0.5};
+        size_t repetitions = 1;
+
+        auto coilJson = json::parse(coilString);
+
+        auto coilFunctionalDescription = std::vector<OpenMagnetics::CoilFunctionalDescription>(coilJson["functionalDescription"]);
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+
+        if (coilJson["_layersOrientation"].is_object()) {
+            auto layersOrientationPerSection = std::map<std::string, WindingOrientation>(coilJson["_layersOrientation"]);
+            for (auto [sectionName, layerOrientation] : layersOrientationPerSection) {
+                coil.set_layers_orientation(layerOrientation, sectionName);
+            }
+        }
+        else if (coilJson["_layersOrientation"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto layersOrientationPerSection = std::vector<WindingOrientation>(coilJson["_layersOrientation"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < layersOrientationPerSection.size()) {
+                        coil.set_layers_orientation(layersOrientationPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            WindingOrientation layerOrientation(coilJson["_layersOrientation"]);
+            coil.set_layers_orientation(layerOrientation);
+
+        }
+        if (coilJson["_turnsAlignment"].is_object()) {
+            auto turnsAlignmentPerSection = std::map<std::string, CoilAlignment>(coilJson["_turnsAlignment"]);
+            for (auto [sectionName, turnsAlignment] : turnsAlignmentPerSection) {
+                coil.set_turns_alignment(turnsAlignment, sectionName);
+            }
+        }
+        else if (coilJson["_turnsAlignment"].is_array()) {
+            coil.wind_by_sections(proportionPerWinding, pattern, repetitions);
+            if (coil.get_sections_description()) {
+                auto sections = coil.get_sections_description_conduction();
+                auto turnsAlignmentPerSection = std::vector<CoilAlignment>(coilJson["_turnsAlignment"]);
+                for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+                    if (sectionIndex < turnsAlignmentPerSection.size()) {
+                        coil.set_turns_alignment(turnsAlignmentPerSection[sectionIndex], sections[sectionIndex].get_name());
+                    }
+                }
+            }
+        }
+        else {
+            CoilAlignment turnsAlignment(coilJson["_turnsAlignment"]);
+            coil.set_turns_alignment(turnsAlignment);
+        }
+ 
+        coil.set_bobbin(coilJson["bobbin"]);
+        coil.set_functional_description(coilFunctionalDescription);
+        coil.wind();
+        CHECK(bool(coil.get_sections_description()));
+        CHECK(bool(coil.get_layers_description()));
+        CHECK(bool(coil.get_turns_description()));
+    }
 }
 
 SUITE(CoilSectionsDescriptionMargins) {
@@ -9509,7 +9577,7 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
         CHECK_EQUAL(layersDescription.size(), 1);
@@ -9547,10 +9615,10 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(layersDescription.size(), 2);
+        CHECK_EQUAL(layersDescription.size(), 3);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings) {
@@ -9585,18 +9653,18 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(2U, layersDescription.size());
+        CHECK_EQUAL(3U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(1, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved) {
@@ -9631,26 +9699,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(0.5, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(0.5, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(0.5, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(0.5, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(0.5, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_No_Interleaved_Odd_Turns) {
@@ -9685,26 +9753,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(2.0 / 3, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns) {
@@ -9739,26 +9807,26 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
         auto layersDescription = coil.get_layers_description().value();
-        CHECK_EQUAL(4U, layersDescription.size());
+        CHECK_EQUAL(7U, layersDescription.size());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings().size());
         CHECK_EQUAL("PRIMARY", layersDescription[0].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[0].get_partial_windings()[0].get_parallels_proportion().size());
         CHECK_EQUAL(2.0 / 3, layersDescription[0].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[1].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[1].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(2.0 / 3, layersDescription[1].get_partial_windings()[0].get_parallels_proportion()[0]);
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings().size());
-        CHECK_EQUAL("PRIMARY", layersDescription[2].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL("SECONDARY", layersDescription[2].get_partial_windings()[0].get_winding());
         CHECK_EQUAL(1U, layersDescription[2].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings().size());
-        CHECK_EQUAL("SECONDARY", layersDescription[3].get_partial_windings()[0].get_winding());
-        CHECK_EQUAL(1U, layersDescription[3].get_partial_windings()[0].get_parallels_proportion().size());
-        CHECK_EQUAL(1.0 / 3, layersDescription[3].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(2.0 / 3, layersDescription[2].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings().size());
+        CHECK_EQUAL("PRIMARY", layersDescription[4].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[4].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[4].get_partial_windings()[0].get_parallels_proportion()[0]);
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings().size());
+        CHECK_EQUAL("SECONDARY", layersDescription[6].get_partial_windings()[0].get_winding());
+        CHECK_EQUAL(1U, layersDescription[6].get_partial_windings()[0].get_parallels_proportion().size());
+        CHECK_EQUAL(1.0 / 3, layersDescription[6].get_partial_windings()[0].get_parallels_proportion()[0]);
     }
 
     TEST(Test_Wind_By_Layers_Planar_Two_Windings_Two_Layers_Interleaved_Odd_Turns_With_Insulation) {
@@ -9861,9 +9929,10 @@ SUITE(PlanarCoil) {
         }
         coil.set_bobbin(bobbin);
 
-        coil.wind_by_planar_sections(stackUp, 0);
+        coil.wind_by_planar_sections(stackUp, {});
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}});
+        coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         auto turnsDescription = coil.get_turns_description().value();
         CHECK_EQUAL(turnsDescription.size(), 7);
@@ -9922,9 +9991,9 @@ SUITE(PlanarCoil) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0005, 0.0005);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0005}}, 0.0005);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         if (coil.get_turns_description()) {
@@ -9986,9 +10055,9 @@ SUITE(PlanarCoil) {
         coil.set_bobbin(bobbin);
         coil.set_strict(false);
 
-        coil.wind_by_planar_sections(stackUp, 0.0001, 0.0001);
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
         coil.wind_by_planar_layers();
-        coil.wind_by_planar_turns(0.0002, 0.0002);
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
         coil.delimit_and_compact();
         CHECK(coil.get_turns_description());
         if (coil.get_turns_description()) {
@@ -10005,6 +10074,131 @@ SUITE(PlanarCoil) {
                 magnetic.set_coil(coil);
                 painter.paint_core(magnetic);
                 // painter.paint_coil_sections(magnetic);
+                // painter.paint_coil_layers(magnetic);
+                painter.paint_coil_turns(magnetic);
+                painter.export_svg();
+            }
+        }
+    }
+
+    TEST(Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {7};
+        std::vector<int64_t> numberParallels = {1};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY};
+        std::vector<size_t> stackUp = {0};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 32/6/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.0005);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.001);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0, {{0, 0.0002}, {1, 0.0002}});
+        coil.delimit_and_compact();
+        CHECK(coil.get_turns_description());
+        auto turnsDescription = coil.get_turns_description().value();
+        CHECK_EQUAL(turnsDescription.size(), 7);
+        if (plot) {
+            auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+            auto outFile = outputFilePath;
+            outFile.append("Test_Wind_By_Turns_Planar_One_Layer_Distance_To_Core.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            painter.paint_core(magnetic);
+            // painter.paint_coil_sections(magnetic);
+            painter.paint_coil_turns(magnetic);
+            painter.export_svg();
+        }
+    }
+
+    TEST(Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field) {
+        settings->set_coil_wind_even_if_not_fit(false);
+        settings->set_coil_try_rewind(false);
+
+        std::vector<int64_t> numberTurns = {20, 5};
+        std::vector<int64_t> numberParallels = {4, 4};
+        std::vector<IsolationSide> isolationSides = {IsolationSide::PRIMARY, IsolationSide::SECONDARY};
+        std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+        double bobbinHeight = 0.01;
+        double bobbinWidth = 0.02;
+        std::vector<double> bobbinCenterCoodinates = {0.01, 0, 0};
+        auto core = OpenMagneticsTesting::get_quick_core("ELP 38/8/25", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.0008);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::RECTANGULAR);
+        wires.push_back(wire);
+        wire.set_nominal_value_conducting_width(0.0032);
+        wire.set_nominal_value_conducting_height(0.000076);
+        wires.push_back(wire);
+
+        OpenMagnetics::Coil coil;
+        for (size_t windingIndex = 0; windingIndex < numberTurns.size(); ++windingIndex) {
+            OpenMagnetics::CoilFunctionalDescription coilFunctionalDescription; 
+            coilFunctionalDescription.set_number_turns(numberTurns[windingIndex]);
+            coilFunctionalDescription.set_number_parallels(numberParallels[windingIndex]);
+            coilFunctionalDescription.set_name(std::string{magic_enum::enum_name(isolationSides[windingIndex])});
+            coilFunctionalDescription.set_isolation_side(isolationSides[windingIndex]);
+            coilFunctionalDescription.set_wire(wires[windingIndex]);
+            coil.get_mutable_functional_description().push_back(coilFunctionalDescription);
+        }
+        coil.set_bobbin(bobbin);
+        coil.set_strict(false);
+
+        coil.wind_by_planar_sections(stackUp, {{{0, 1}, 0.0001}}, 0.0001);
+        coil.wind_by_planar_layers();
+        coil.wind_by_planar_turns(0.0002, {{0, 0.0002}, {1, 0.0002}});
+        coil.delimit_and_compact();
+        CHECK(coil.get_turns_description());
+        if (coil.get_turns_description()) {
+            auto turnsDescription = coil.get_turns_description().value();
+            CHECK_EQUAL(turnsDescription.size(), 100);
+            if (plot) {
+                double voltagePeakToPeak = 2000;
+                auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(125000, 0.001, 25, WaveformLabel::TRIANGULAR, voltagePeakToPeak, 0.5, 0, {double(numberTurns[0]) / numberTurns[1]});
+                auto outputFilePath = std::filesystem::path{ __FILE__ }.parent_path().append("..").append("output");
+                auto outFile = outputFilePath;
+                outFile.append("Test_Wind_By_Turns_Planar_Many_Layers_Magnetic_Field.svg");
+                std::filesystem::remove(outFile);
+                Painter painter(outFile, true);
+                OpenMagnetics::Magnetic magnetic;
+                magnetic.set_core(core);
+                magnetic.set_coil(coil);
+                painter.paint_magnetic_field(inputs.get_operating_point(0), magnetic);
+                painter.paint_core(magnetic);
+                // painter.paint_coil_sections(magnetic);
+                // painter.paint_coil_layers(magnetic);
                 painter.paint_coil_turns(magnetic);
                 painter.export_svg();
             }

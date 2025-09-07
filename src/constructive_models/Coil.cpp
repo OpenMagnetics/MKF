@@ -449,7 +449,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     return are_sections_and_layers_fitting() && get_turns_description();
 }
 
-bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::optional<double> wireToWireDistance, std::optional<double> insulationThickness, double coreToLayerDistance) {
+bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
     bool windEvenIfNotFit = settings->get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings->get_coil_delimit_and_compact();
     std::string bobbinName = "";
@@ -489,8 +489,10 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
                     if (!borderToWireDistance) {
                         borderToWireDistance = std::max(defaults.minimumBorderToWireDistance, clearance);
                     }
-                    if (!wireToWireDistance) {
-                        wireToWireDistance = std::max(defaults.minimumBorderToWireDistance, clearance);
+                    for (size_t i = 0; i < get_functional_description().size(); ++i) {
+                        if (!wireToWireDistance.count(i)) {
+                            wireToWireDistance[i] = std::max(defaults.minimumWireToWireDistance, clearance);
+                        }
                     }
                 }
             }
@@ -498,8 +500,10 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             if (!borderToWireDistance) {
                 borderToWireDistance = defaults.minimumBorderToWireDistance;
             }
-            if (!wireToWireDistance) {
-                wireToWireDistance = defaults.minimumWireToWireDistance;
+            for (size_t i = 0; i < get_functional_description().size(); ++i) {
+                if (!wireToWireDistance.count(i)) {
+                    wireToWireDistance[i] = defaults.minimumWireToWireDistance;
+                } 
             }
 
             logEntry("Winding by sections", "Coil", 2);
@@ -513,7 +517,7 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
 
             if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
                 logEntry("Winding by turns", "Coil", 2);
-                result = wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance.value());
+                result = wind_by_planar_turns(borderToWireDistance.value(), wireToWireDistance);
                 if (delimitAndCompact) {
                     logEntry("Delimiting and compacting", "Coil", 2);
                     delimit_and_compact();
@@ -1051,6 +1055,91 @@ double Coil::contiguous_filling_factor(Section section) {
         return layersAngle / sectionAngle;
 
     }
+}
+
+std::pair<double, std::pair<double, double>> Coil::calculate_filling_factor(size_t groupIndex) {
+    double fillingFactor = 1;
+    auto bobbin = resolve_bobbin();
+    auto windingWindows = bobbin.get_processed_description().value().get_winding_windows();
+    auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
+
+    auto windingOrientation = get_winding_orientation();
+
+    if (!get_layers_description()) {
+        throw std::runtime_error("Missing layers to calculate the filling factor.");
+    }
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns to calculate the filling factor.");
+    }
+
+    auto layers = get_layers_description().value();
+    auto sections = get_sections_description().value();
+
+    double area = 0;
+    double availableArea = windingWindows[0].get_area().value();
+    double availableContiguousDimension;
+    double availableOverlappingDimension;
+    if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
+        availableContiguousDimension = windingWindows[0].get_height().value();
+        availableOverlappingDimension = windingWindows[0].get_width().value();
+    }
+    else {
+        availableContiguousDimension = windingWindows[0].get_radial_height().value();
+        availableOverlappingDimension = windingWindows[0].get_angle().value();
+    }
+    double maximumLayerFillingFactor = 0;
+    double contiguousDimension = 0;
+    double overlappingDimension = 0;
+
+    for (auto section : sections) {
+        if (windingOrientation == WindingOrientation::OVERLAPPING) {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                contiguousDimension = std::max(contiguousDimension, section.get_dimensions()[1]);
+            }
+            overlappingDimension += section.get_dimensions()[0];
+        }
+        else {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                overlappingDimension = std::max(overlappingDimension, section.get_dimensions()[0]);
+            }
+            contiguousDimension += section.get_dimensions()[1];
+
+        }
+    }
+
+    for (auto section : sections) {
+        if (section.get_margin()) {
+            if (windingOrientation == WindingOrientation::OVERLAPPING) {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[0];
+            }
+            else {
+                area += (section.get_margin().value()[0] + section.get_margin().value()[1]) * section.get_dimensions()[1];
+            }
+        }
+    }
+
+    for (auto layer : layers) {
+        if (layer.get_filling_factor()) {
+            if (layer.get_filling_factor().value() > 1) {
+                maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
+            }
+        }
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            auto turns = get_turns_by_layer(layer.get_name());
+            for (auto turn : turns) {
+                area += turn.get_dimensions().value()[0] * turn.get_dimensions().value()[1];
+            }
+        }
+        else {
+            area += layer.get_dimensions()[0] * layer.get_dimensions()[1];
+        }
+    }
+
+    double areaFillingFactor = area / availableArea;
+    areaFillingFactor = std::max(maximumLayerFillingFactor, areaFillingFactor);
+    double contiguousFillingFactor = contiguousDimension / availableContiguousDimension;
+    double overlappingFillingFactor = overlappingDimension / availableOverlappingDimension;
+    return {areaFillingFactor, {overlappingFillingFactor, contiguousFillingFactor}};
 }
 
 std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIndex, size_t slots, uint64_t numberTurns, uint64_t numberParallels, 
@@ -1865,18 +1954,18 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding) {
     return wind_by_sections(proportionPerWinding, pattern, _interleavingLevel);
 }
 
-bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType) {
+bool Coil::create_default_group(Bobbin bobbin, WiringTechnology coilType, double coreToLayerDistance) {
     Group group;
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
     auto bobbinWindingWindowShape = bobbin.get_winding_window_shape();
     auto windingWindows = bobbinProcessedDescription.get_winding_windows();
-    group.set_coordinates(windingWindows[0].get_coordinates().value());
+    group.set_coordinates({windingWindows[0].get_coordinates().value()[0], windingWindows[0].get_coordinates().value()[1]});
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-        group.set_dimensions(std::vector<double>{windingWindows[0].get_width().value(), windingWindows[0].get_height().value()});
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_width().value() - coreToLayerDistance * 2, windingWindows[0].get_height().value()});
         group.set_coordinate_system(CoordinateSystem::CARTESIAN);
     }
     else {
-        group.set_dimensions(std::vector<double>{windingWindows[0].get_radial_height().value(), windingWindows[0].get_angle().value()});
+        group.set_dimensions(std::vector<double>{windingWindows[0].get_radial_height().value() - coreToLayerDistance * 2, windingWindows[0].get_angle().value()});
         group.set_coordinate_system(CoordinateSystem::POLAR);
     }
     group.set_name("Default group");
@@ -2556,23 +2645,23 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     return true;
 }
 
-bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::optional<double> insulationThickness, double coreToLayerDistance) {
+bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
     // In planar coils each section will have only one layer
     set_layers_description(std::nullopt);
     std::vector<Section> sections;
 
-    if (!insulationThickness) {
-        insulationThickness = defaults.pcbInsulationThickness;
-    }
-
     auto bobbin = resolve_bobbin();
     if (!get_groups_description()) {
-        create_default_group(bobbin, WiringTechnology::PRINTED);
+        create_default_group(bobbin, WiringTechnology::PRINTED, coreToLayerDistance);
     }
 
     if (!get_groups_description()) {
         throw std::runtime_error("At least default group must be defined at this point.");
     }
+
+    set_winding_orientation(WindingOrientation::CONTIGUOUS);
+    set_section_alignment(CoilAlignment::CENTERED);
+    set_turns_alignment(CoilAlignment::SPREAD);
 
     auto groups = get_groups_description().value();
     if (groups.size() > 1) {
@@ -2607,15 +2696,35 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
     std::vector<double> sectionWidthPerWinding;
     std::vector<double> sectionHeightPerWinding;
     double totalSectionHeight = 0;
+    double totalAvailableHeight = group.get_dimensions()[1];
+    for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
+        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+            std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
+            if (insulationThickness.count(key)) {
+                totalAvailableHeight -= insulationThickness[key];
+            }
+            else {
+                totalAvailableHeight -= defaults.pcbInsulationThickness;
+            }
+        }
+    }
 
     for (size_t stackUpIndex = 0; stackUpIndex < stackUpForThisGroup.size(); ++stackUpIndex) {
         auto windingIndex = stackUpForThisGroup[stackUpIndex];
         sectionWidthPerWinding.push_back(group.get_dimensions()[0]);
-        double sectionHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+        // double sectionHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
+        double sectionHeight = totalAvailableHeight / stackUpForThisGroup.size();
         sectionHeightPerWinding.push_back(sectionHeight);
         totalSectionHeight += sectionHeight;
+
         if (stackUpIndex < stackUpForThisGroup.size() - 1) {
-            totalSectionHeight += insulationThickness.value();
+            std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
+            if (insulationThickness.count(key)) {
+                totalSectionHeight += insulationThickness[key];
+            }
+            else {
+                totalSectionHeight += defaults.pcbInsulationThickness;
+            }
         }
     }
     double currentSectionCenterWidth = roundFloat(group.get_coordinates()[0], 9);
@@ -2629,7 +2738,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         auto numberSections = numberSectionsPerWinding[windingIndex];
         auto winding = get_functional_description()[windingIndex];
         auto sectionIndex = currentSectionIndexPerwinding[windingIndex];
-        double sectionWidth = sectionWidthPerWinding[windingIndex] - coreToLayerDistance * 2;
+        double sectionWidth = sectionWidthPerWinding[windingIndex];
         double sectionHeight = sectionHeightPerWinding[windingIndex];
         currentSectionCenterHeight -= sectionHeight / 2;
 
@@ -2670,6 +2779,8 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         section.set_dimensions(std::vector<double>{sectionWidth, sectionHeight});
         section.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
         section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        section.set_margin(std::vector<double>{0, 0});
+
 
         section.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisSection) / (sectionWidth * sectionHeight));
         section.set_winding_style(windByConsecutiveTurns);
@@ -2682,19 +2793,28 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         currentSectionCenterHeight = roundFloat(currentSectionCenterHeight -= sectionHeight / 2, 9);
         currentSectionIndexPerwinding[windingIndex]++;
 
-        if (stackUpIndex < stackUpForThisGroup.size() - 1 && insulationThickness.value() > 0) {
-            currentSectionCenterHeight -= insulationThickness.value() / 2;
+        if (stackUpIndex < stackUpForThisGroup.size() - 1) {
+            std::pair key = {stackUpForThisGroup[stackUpIndex], stackUpForThisGroup[stackUpIndex + 1]};
+            double insulationThicknessThisLayer;
+            if (insulationThickness.count(key)) {
+                insulationThicknessThisLayer = insulationThickness[key];
+            }
+            else {
+                insulationThicknessThisLayer = defaults.pcbInsulationThickness;
+            }
+            currentSectionCenterHeight -= insulationThicknessThisLayer / 2;
 
             Section insulationSection;
             insulationSection.set_type(ElectricalType::INSULATION);
             insulationSection.set_name("Insulation section between stack index" + std::to_string(stackUpIndex) + " and " + std::to_string(stackUpIndex + 1));
-            insulationSection.set_dimensions(std::vector<double>{sectionWidth, insulationThickness.value()});
+            insulationSection.set_dimensions(std::vector<double>{sectionWidth, insulationThicknessThisLayer});
             insulationSection.set_coordinates(std::vector<double>{currentSectionCenterWidth, currentSectionCenterHeight, 0});
             insulationSection.set_coordinate_system(CoordinateSystem::CARTESIAN);
             insulationSection.set_layers_orientation(WindingOrientation::CONTIGUOUS);
             insulationSection.set_filling_factor(1);
+            insulationSection.set_margin(std::vector<double>{0, 0});
             sections.push_back(insulationSection);
-            currentSectionCenterHeight -= insulationThickness.value() / 2;
+            currentSectionCenterHeight -= insulationThicknessThisLayer / 2;
         }
 
     }
@@ -3800,7 +3920,7 @@ bool Coil::wind_by_round_turns() {
     return true;
 }
 
-bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance) {
+bool Coil::wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance) {
     set_turns_description(std::nullopt);
     if (!get_layers_description()) {
         return false;
@@ -3834,7 +3954,6 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
                 return false;
             }
         }
-
     }
 
     std::vector<Turn> turns;
@@ -3851,7 +3970,15 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
             double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
             double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
             auto physicalTurnsInLayer = get_number_turns(layer);
-            double currentTurnWidthIncrement = wireWidth + wireToWireDistance;
+            double layerTurnsClearance;
+
+            if (wireToWireDistance.count(windingIndex)) {
+                layerTurnsClearance = wireToWireDistance[windingIndex];
+            }
+            else {
+                layerTurnsClearance = defaults.minimumWireToWireDistance;
+            }
+            double currentTurnWidthIncrement = wireWidth + layerTurnsClearance;
             double currentTurnHeightIncrement = 0;
             double currentTurnCenterWidth = roundFloat(layer.get_coordinates()[0] - layer.get_dimensions()[0] / 2 + wireWidth / 2, 9) + borderToWireDistance;
             double currentTurnCenterHeight = roundFloat(layer.get_coordinates()[1], 9);
@@ -3865,7 +3992,7 @@ bool Coil::wind_by_planar_turns(double borderToWireDistance, double wireToWireDi
             if (layer.get_winding_style().value() == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
                 for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
                     int64_t numberTurns = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
-                    double totalWidthNeeded = borderToWireDistance * 2 + numberTurns * wireWidth + (numberTurns - 1) * wireToWireDistance;
+                    double totalWidthNeeded = borderToWireDistance * 2 + numberTurns * wireWidth + (numberTurns - 1) * layerTurnsClearance;
                     if(_strict && totalWidthNeeded > layer.get_dimensions()[0]) {
                         return false;
                     }
@@ -4722,7 +4849,7 @@ bool Coil::delimit_and_compact_rectangular_window() {
 
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
-        if (get_turns_description() && groupType == WiringTechnology::WOUND) {
+        if (get_turns_description()) {
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
                     auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
@@ -4737,10 +4864,18 @@ bool Coil::delimit_and_compact_rectangular_window() {
                         currentLayerMaximumHeight = std::max(currentLayerMaximumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) + turn.get_dimensions().value()[1] / 2);
                         currentLayerMinimumHeight = std::min(currentLayerMinimumHeight, (turn.get_coordinates()[1] - layerCoordinates[1]) - turn.get_dimensions().value()[1] / 2);
                     }
-                    layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
-                                                               layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
-                    layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
-                                                               currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                    if (groupType == WiringTechnology::PRINTED) {
+                        layers[i].set_coordinates(std::vector<double>({layerCoordinates[0],
+                                                                   layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                        layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0],
+                                                                   currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                    }
+                    else {
+                        layers[i].set_coordinates(std::vector<double>({layerCoordinates[0] + (currentLayerMaximumWidth + currentLayerMinimumWidth) / 2,
+                                                                   layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                        layers[i].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth,
+                                                                   currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                    }
                     if (i < layers.size() - 1) {
                         layerCoordinates = layers[i + 1].get_coordinates();
                         if (layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::CONTIGUOUS) {
@@ -4776,38 +4911,25 @@ bool Coil::delimit_and_compact_rectangular_window() {
                     }
                 }
 
-                sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0] + (currentSectionMaximumWidth + currentSectionMinimumWidth) / 2,
-                                                           sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
-                sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
-                                                       currentSectionMaximumHeight - currentSectionMinimumHeight}));
+                if (groupType == WiringTechnology::PRINTED) {
+                    sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0],
+                                                               sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
+                    sections[i].set_dimensions(std::vector<double>({sections[i].get_dimensions()[0],
+                                                                    currentSectionMaximumHeight - currentSectionMinimumHeight}));
+                }
+                else {
+                    sections[i].set_coordinates(std::vector<double>({sectionCoordinates[0] + (currentSectionMaximumWidth + currentSectionMinimumWidth) / 2,
+                                                               sectionCoordinates[1] + (currentSectionMaximumHeight + currentSectionMinimumHeight) / 2}));
+                    sections[i].set_dimensions(std::vector<double>({currentSectionMaximumWidth - currentSectionMinimumWidth,
+                                                                    currentSectionMaximumHeight - currentSectionMinimumHeight}));
+                }
             }
         }
         set_sections_description(sections);
-
-        if (get_groups_description() && groupType == WiringTechnology::PRINTED) {
-            auto groups = get_groups_description().value();
-            for (size_t i = 0; i < groups.size(); ++i) {
-                auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
-                if (sectionsInGroup.size() == 0) {
-                    throw std::runtime_error("No sections in group: " + groups[i].get_name());
-                }
-                auto groupCoordinates = groups[i].get_coordinates();
-                double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
-                double currentGroupMinimumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) - sectionsInGroup[0].get_dimensions()[1] / 2;
-
-                for (auto& section : sectionsInGroup) {
-                    currentGroupMaximumHeight = std::max(currentGroupMaximumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) + section.get_dimensions()[1] / 2);
-                    currentGroupMinimumHeight = std::min(currentGroupMinimumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) - section.get_dimensions()[1] / 2);
-                }
-                groups[i].set_coordinates(std::vector<double>({groupCoordinates[0], groupCoordinates[1] + (currentGroupMaximumHeight + currentGroupMinimumHeight) / 2}));
-                groups[i].set_dimensions(std::vector<double>({groups[i].get_dimensions()[0], currentGroupMaximumHeight - currentGroupMinimumHeight}));
-            }
-            set_groups_description(groups);
-        }
     }
 
      // Compact
-    if (get_sections_description() && groupType == WiringTechnology::WOUND) {
+    if (get_sections_description()) {
         auto sections = get_sections_description().value();
 
         std::vector<std::vector<double>> alignedSectionDimensionsPerSection;
@@ -4874,17 +4996,33 @@ bool Coil::delimit_and_compact_rectangular_window() {
             }
 
             if (compactingShiftWidth != 0 || compactingShiftHeight != 0) {
-                sections[sectionIndex].set_coordinates(std::vector<double>({
-                    sections[sectionIndex].get_coordinates()[0] - compactingShiftWidth,
-                    sections[sectionIndex].get_coordinates()[1] - compactingShiftHeight
-                }));
+                if (groupType == WiringTechnology::PRINTED) {
+                    sections[sectionIndex].set_coordinates(std::vector<double>({
+                        sections[sectionIndex].get_coordinates()[0],
+                        sections[sectionIndex].get_coordinates()[1] - compactingShiftHeight
+                    }));
+                }
+                else {
+                    sections[sectionIndex].set_coordinates(std::vector<double>({
+                        sections[sectionIndex].get_coordinates()[0] - compactingShiftWidth,
+                        sections[sectionIndex].get_coordinates()[1] - compactingShiftHeight
+                    }));
+                }
 
                 for (size_t layerIndex = 0; layerIndex < layers.size(); ++layerIndex) {
                     if (layers[layerIndex].get_section().value() == sections[sectionIndex].get_name()){
-                        layers[layerIndex].set_coordinates(std::vector<double>({
-                            layers[layerIndex].get_coordinates()[0] - compactingShiftWidth,
-                            layers[layerIndex].get_coordinates()[1] - compactingShiftHeight
-                        }));
+                        if (groupType == WiringTechnology::PRINTED) {
+                            layers[layerIndex].set_coordinates(std::vector<double>({
+                                layers[layerIndex].get_coordinates()[0],
+                                layers[layerIndex].get_coordinates()[1] - compactingShiftHeight
+                            }));
+                        }
+                        else {
+                            layers[layerIndex].set_coordinates(std::vector<double>({
+                                layers[layerIndex].get_coordinates()[0] - compactingShiftWidth,
+                                layers[layerIndex].get_coordinates()[1] - compactingShiftHeight
+                            }));
+                        }
                         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
 
                             if (turns[turnIndex].get_layer().value() == layers[layerIndex].get_name()){
@@ -4905,10 +5043,18 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                     throw std::runtime_error("only round or rectangular columns supported for bobbins");
                                 }
 
-                                turns[turnIndex].set_coordinates(std::vector<double>({
-                                    turns[turnIndex].get_coordinates()[0] - compactingShiftWidth,
-                                    turns[turnIndex].get_coordinates()[1] - compactingShiftHeight
-                                }));
+                                if (groupType == WiringTechnology::PRINTED) {
+                                    turns[turnIndex].set_coordinates(std::vector<double>({
+                                        turns[turnIndex].get_coordinates()[0],
+                                        turns[turnIndex].get_coordinates()[1] - compactingShiftHeight
+                                    }));
+                                }
+                                else {
+                                    turns[turnIndex].set_coordinates(std::vector<double>({
+                                        turns[turnIndex].get_coordinates()[0] - compactingShiftWidth,
+                                        turns[turnIndex].get_coordinates()[1] - compactingShiftHeight
+                                    }));
+                                }
 
                                 if (bobbinColumnShape == ColumnShape::ROUND) {
                                     turns[turnIndex].set_length(2 * std::numbers::pi * turns[turnIndex].get_coordinates()[0]);
@@ -4957,6 +5103,31 @@ bool Coil::delimit_and_compact_rectangular_window() {
     // Add extra margin for support if required
     bool fillCoilSectionsWithMarginTape = settings->get_coil_fill_sections_with_margin_tape();
 
+    // Compact groups in planar case
+
+    if (get_layers_description() && groupType == WiringTechnology::PRINTED) {
+
+        if (get_groups_description()) {
+            auto groups = get_groups_description().value();
+            for (size_t i = 0; i < groups.size(); ++i) {
+                auto sectionsInGroup = get_sections_by_group(groups[i].get_name());
+                if (sectionsInGroup.size() == 0) {
+                    throw std::runtime_error("No sections in group: " + groups[i].get_name());
+                }
+                auto groupCoordinates = groups[i].get_coordinates();
+                double currentGroupMaximumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) + sectionsInGroup[0].get_dimensions()[1] / 2;
+                double currentGroupMinimumHeight = (sectionsInGroup[0].get_coordinates()[1] - groupCoordinates[1]) - sectionsInGroup[0].get_dimensions()[1] / 2;
+
+                for (auto& section : sectionsInGroup) {
+                    currentGroupMaximumHeight = std::max(currentGroupMaximumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) + section.get_dimensions()[1] / 2);
+                    currentGroupMinimumHeight = std::min(currentGroupMinimumHeight, (section.get_coordinates()[1] - groupCoordinates[1]) - section.get_dimensions()[1] / 2);
+                }
+                groups[i].set_coordinates(std::vector<double>({groupCoordinates[0], groupCoordinates[1] + (currentGroupMaximumHeight + currentGroupMinimumHeight) / 2}));
+                groups[i].set_dimensions(std::vector<double>({groups[i].get_dimensions()[0], currentGroupMaximumHeight - currentGroupMinimumHeight}));
+            }
+            set_groups_description(groups);
+        }
+    }
 
     if (fillCoilSectionsWithMarginTape) {
         auto bobbin = resolve_bobbin();
@@ -5582,7 +5753,8 @@ void Coil::try_rewind() {
             throw std::runtime_error("newProportionGottenByThisWinding cannot be negative or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
         if (roundFloat(newProportionGottenByThisWinding, 6) > 1 || std::isnan(newProportionGottenByThisWinding)) {
-            throw std::runtime_error("newProportionGottenByThisWinding cannot be greater than 1 or nan: " + std::to_string(newProportionGottenByThisWinding));
+            return;
+            // throw std::runtime_error("newProportionGottenByThisWinding cannot be greater than 1 or nan: " + std::to_string(newProportionGottenByThisWinding));
         }
 
         newProportions.push_back(newProportionGottenByThisWinding);

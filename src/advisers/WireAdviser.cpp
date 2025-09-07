@@ -317,7 +317,7 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
 
     // No paralells
     {
-        auto maximumNumberTurnsPerSection = ceil(coilFunctionalDescription.get_number_turns() / numberSections);
+        auto maximumNumberTurnsPerSection = ceil(double(coilFunctionalDescription.get_number_turns()) / numberSections);
         auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
         if (maximumAvailableWidthForCopper < 0) {
             return coilFunctionalDescriptions;
@@ -336,7 +336,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                 coilFunctionalDescriptions.push_back(std::pair<CoilFunctionalDescription, double>{coilFunctionalDescription, 0});
             }
         }
-
     }
 
     // Paralells
@@ -363,8 +362,6 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::create_pl
                 }
             }
         }
-
-
     }
     return coilFunctionalDescriptions;
 }
@@ -448,7 +445,6 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<CoilFunction
         //     throw std::runtime_error("areaProportion cannot be bigger than 1");
         // }
     }
-
 }
 
 std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advised_planar_wire(CoilFunctionalDescription coilFunctionalDescription,
@@ -462,13 +458,13 @@ std::vector<std::pair<CoilFunctionalDescription, double>> WireAdviser::get_advis
     logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by effective resistance.");
 
     coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by skin losses density.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by skin losses density.");
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.");
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<CoilFunctionalDescription, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));

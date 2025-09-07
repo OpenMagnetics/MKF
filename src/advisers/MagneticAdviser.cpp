@@ -132,16 +132,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
             size_t processedCoils = 0;
             for (auto mas : masMagneticsWithCoreAndCoil) {
-                std::cout << "Mierda 0" << std::endl;
 
                 size_t numberSections = mas.get_magnetic().get_coil().get_sections_description()->size();
-                std::cout << "Mierda 1" << std::endl;
 
                 double margin = 0;
                 if (mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin()) {
                     margin = mas.get_magnetic().get_coil().get_sections_description().value()[0].get_margin().value()[0];
                 }
-                std::cout << "Mierda 2" << std::endl;
                 std::pair<size_t, double> numberSectionsAndMarginCombination = {numberSections, margin};
                 if (std::find(usedNumberSectionsAndMargin.begin(), usedNumberSectionsAndMargin.end(), numberSectionsAndMarginCombination) != usedNumberSectionsAndMargin.end()) {
                     continue;
@@ -292,22 +289,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             return get_advised_magnetic(catalogMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
         }
         return {};
-    }
-}
-
-void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double> scoring, double weight, std::map<std::string, bool> filterConfiguration) {
-    auto normalizedScorings = OpenMagnetics::normalize_scoring(scoring, weight, filterConfiguration);
-
-    for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i) {
-        (*masMagneticsWithScoring)[i].second += normalizedScorings[i];
-    }
-}
-
-void MagneticAdviser::normalize_scoring(std::vector<std::pair<Mas, double>>* masMagneticsWithScoring, std::vector<double> scoring, MagneticFilterOperation filterConfiguration) {
-    auto normalizedScorings = OpenMagnetics::normalize_scoring(scoring, filterConfiguration);
-
-    for (size_t i = 0; i < (*masMagneticsWithScoring).size(); ++i) {
-        (*masMagneticsWithScoring)[i].second += normalizedScorings[i];
     }
 }
 

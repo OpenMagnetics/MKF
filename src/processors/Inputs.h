@@ -139,9 +139,9 @@ class Inputs : public MAS::Inputs {
 
     static double calculate_waveform_coefficient(OperatingPoint* operatingPoint);
 
-    static void scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
-    static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
-    static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false);
+    static void scale_time_to_frequency(Inputs& inputs, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false, bool useCurrentAsBase=true);
+    static void scale_time_to_frequency(OperatingPoint& operatingPoint, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false, bool useCurrentAsBase=true);
+    static void scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields=false, bool processSignals=false, bool useCurrentAsBase=true);
     static Waveform scale_time_to_frequency(Waveform waveform, double newFrequency);
     
     void set_operating_point_by_index(const OperatingPoint& value, size_t index) {

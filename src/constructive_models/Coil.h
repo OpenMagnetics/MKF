@@ -89,12 +89,12 @@ class Coil : public MAS::Coil {
         bool wind_toroidal_additional_turns();
         bool delimit_and_compact_rectangular_window();
         bool delimit_and_compact_round_window();
-        bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND);
+        bool create_default_group(Bobbin bobbin, WiringTechnology coilType = WiringTechnology::WOUND, double coreToLayerDistance = 0);
 
     public:
-        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
+        bool wind_by_planar_sections(std::vector<size_t> stackUp, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         bool wind_by_planar_layers();
-        bool wind_by_planar_turns(double borderToWireDistance, double wireToWireDistance);
+        bool wind_by_planar_turns(double borderToWireDistance, std::map<size_t, double> wireToWireDistance);
 
         Coil(const json& j, size_t interleavingLevel = 1,
                        WindingOrientation windingOrientation = WindingOrientation::OVERLAPPING,
@@ -111,7 +111,7 @@ class Coil : public MAS::Coil {
         bool wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
-        bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::optional<double> wireToWireDistance = std::nullopt, std::optional<double> insulationThickness = std::nullopt, double coreToLayerDistance = 0);
+        bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::map<size_t, double> wireToWireDistance = {}, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
         void try_rewind();
         void clear();
         bool are_sections_and_layers_fitting();
@@ -241,6 +241,7 @@ class Coil : public MAS::Coil {
         double overlapping_filling_factor(Section section);
 
         double contiguous_filling_factor(Section section);
+        std::pair<double, std::pair<double, double>> calculate_filling_factor(size_t groupIndex = 0);
 
         static Bobbin resolve_bobbin(Coil coil);
         Bobbin resolve_bobbin();
@@ -304,17 +305,12 @@ struct adl_serializer<std::variant<OpenMagnetics::Wire, std::string>> {
 
 namespace OpenMagnetics {
 inline void from_json(const json & j, Coil& x) {
-    std::cout << "Mierda 0" << std::endl;
     x.set_bobbin(j.at("bobbin").get<OpenMagnetics::BobbinDataOrNameUnion>());
-    std::cout << "Mierda 1" << std::endl;
     x.set_functional_description(j.at("functionalDescription").get<std::vector<CoilFunctionalDescription>>());
-    std::cout << "Mierda 2" << std::endl;
     x.set_layers_description(get_stack_optional<std::vector<Layer>>(j, "layersDescription"));
-    std::cout << "Mierda 3" << std::endl;
     x.set_sections_description(get_stack_optional<std::vector<Section>>(j, "sectionsDescription"));
-    std::cout << "Mierda 4" << std::endl;
     x.set_turns_description(get_stack_optional<std::vector<Turn>>(j, "turnsDescription"));
-    std::cout << "Mierda 5" << std::endl;
+    x.set_groups_description(get_stack_optional<std::vector<Group>>(j, "groupsDescription"));
 }
 
 inline void from_json(const json & j, CoilFunctionalDescription& x) {
@@ -333,6 +329,7 @@ inline void to_json(json & j, const Coil & x) {
     j["layersDescription"] = x.get_layers_description();
     j["sectionsDescription"] = x.get_sections_description();
     j["turnsDescription"] = x.get_turns_description();
+    j["groupsDescription"] = x.get_groups_description();
 }
 
 inline void to_json(json & j, const CoilFunctionalDescription & x) {

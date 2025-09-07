@@ -132,14 +132,16 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
                 model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
-            case WireType::PLANAR:
-            case WireType::RECTANGULAR:
-            {
-                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+            case WireType::PLANAR: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                break;
+            }
+            case WireType::RECTANGULAR: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
                 break;
             }
             case WireType::FOIL: {
-                model = CoilMesherModel::factory(CoilMesherModels::CENTER);
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
                 break;
             }
             default:
@@ -222,9 +224,11 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
                 model = CoilMesherModel::factory(CoilMesherModels::CENTER);
                 break;
             }
-            case WireType::PLANAR:
-            case WireType::RECTANGULAR:
-            {
+            case WireType::PLANAR: {
+                model = CoilMesherModel::factory(CoilMesherModels::WANG);
+                break;
+            }
+            case WireType::RECTANGULAR: {
                 model = CoilMesherModel::factory(CoilMesherModels::WANG);
                 break;
             }
@@ -384,56 +388,20 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
         fieldPoint.set_turn_index(turnIndex.value());
     }
 
-    // fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
-    // fieldPoint.set_label("right");
-    // fieldPoints.push_back(fieldPoint);
-
-    // fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
-    // fieldPoint.set_label("left");
-    // fieldPoints.push_back(fieldPoint);
-
-    // fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
-    // fieldPoint.set_label("top");
-    // fieldPoints.push_back(fieldPoint);
-
-    // fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
-    // fieldPoint.set_label("bottom");
-    // fieldPoints.push_back(fieldPoint);
-
-    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("top right");
-    fieldPoints.push_back(fieldPoint);
-
-    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("top center");
-    fieldPoints.push_back(fieldPoint);
-
-    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("top center");
-    fieldPoints.push_back(fieldPoint);
-
     fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
-    fieldPoint.set_label("center right");
-    fieldPoints.push_back(fieldPoint);
-
-    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1]});
-    fieldPoint.set_label("center center");
+    fieldPoint.set_label("right");
     fieldPoints.push_back(fieldPoint);
 
     fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1]});
-    fieldPoint.set_label("center center");
+    fieldPoint.set_label("left");
     fieldPoints.push_back(fieldPoint);
 
-    fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("bottom right");
+    fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2});
+    fieldPoint.set_label("top");
     fieldPoints.push_back(fieldPoint);
 
     fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("bottom center");
-    fieldPoints.push_back(fieldPoint);
-
-    fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2, turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2});
-    fieldPoint.set_label("bottom center");
+    fieldPoint.set_label("bottom");
     fieldPoints.push_back(fieldPoint);
 
 
@@ -444,7 +412,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(Turn tur
 std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn turn, Wire wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core core) {
     std::vector<FieldPoint> fieldPoints;
     FieldPoint fieldPoint;
-    fieldPoint.set_value(0.5);
+    fieldPoint.set_value(1);
     double c;
     double h;
 
@@ -454,6 +422,9 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn tu
     if (bobbinColumnShape == WindingWindowShape::ROUND) {
         throw std::runtime_error("Wang Mesher model not implemented yet for toroidal cores");
     }
+    // if (wire.get_type() != WireType::PLANAR) {
+    //     throw std::runtime_error("Wang model only supported for Planar");
+    // }
 
     if (wire.get_type() == WireType::FOIL) {
         c = wire.get_maximum_conducting_height();
@@ -476,16 +447,20 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(Turn tu
 
     if (wire.get_type() == WireType::FOIL) {
         fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] + wire.get_maximum_conducting_height() / 2 - w});
+        fieldPoint.set_label("top");
         fieldPoints.push_back(fieldPoint);
 
         fieldPoint.set_point({turn.get_coordinates()[0], turn.get_coordinates()[1] - wire.get_maximum_conducting_height() / 2 + w});
+        fieldPoint.set_label("bottom");
         fieldPoints.push_back(fieldPoint);
     }
     else if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR) {
         fieldPoint.set_point({turn.get_coordinates()[0] + wire.get_maximum_conducting_width() / 2 - w, turn.get_coordinates()[1]});
+        fieldPoint.set_label("right");
         fieldPoints.push_back(fieldPoint);
 
         fieldPoint.set_point({turn.get_coordinates()[0] - wire.get_maximum_conducting_width() / 2 + w, turn.get_coordinates()[1]});
+        fieldPoint.set_label("left");
         fieldPoints.push_back(fieldPoint);
     }
     else {

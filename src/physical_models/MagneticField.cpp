@@ -118,6 +118,9 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
     else if (modelName == MagneticFieldStrengthModels::LAMMERANER) {
         return std::make_shared<MagneticFieldStrengthLammeranerModel>();
     }
+    else if (modelName == MagneticFieldStrengthModels::WANG) {
+        return std::make_shared<MagneticFieldStrengthWangModel>();
+    }
     else
         throw std::runtime_error("Unknown Magnetic Field Strength model, available options are: {BINNS_LAWRENSON, LAMMERANER}");
 }
@@ -331,6 +334,7 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
                     }
                     double frequency = inducingFields[harmonicIndex].get_frequency();
                     double magneticFieldStrengthGap = get_magnetic_field_strength_gap(operatingPoint, magnetic, frequency);
+
                     for (auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
                         if (gap.get_coordinates().value()[0] < 0) {
                             continue;
@@ -388,6 +392,166 @@ WindingWindowMagneticStrengthFieldOutput MagneticField::calculate_magnetic_field
     return windingWindowMagneticStrengthFieldOutput;
 }
 
+ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
+    double Hx = 0;
+    double Hy = 0;
+    if (!inducingWire) {
+        return MagneticFieldStrengthLammeranerModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
+    }
+    else {
+        auto wire = inducingWire.value();
+        double c = 0;
+        double h = 0;
+        if (wire.get_type() == WireType::FOIL) {
+            c = resolve_dimensional_values(wire.get_conducting_width().value());
+            h = resolve_dimensional_values(wire.get_conducting_height().value());
+        }
+        else {
+            h = resolve_dimensional_values(wire.get_conducting_width().value());
+            c = resolve_dimensional_values(wire.get_conducting_height().value());
+        }
+        double k = c / h;
+        double lambda = 0.01 * k + 0.66;
+
+        if (inducedFieldPoint.get_label() && inducingFieldPoint.get_label()) {
+            auto inducingLabel = inducingFieldPoint.get_label().value();
+            auto inducedLabel = inducedFieldPoint.get_label().value();
+            auto current = inducingFieldPoint.get_value();
+            double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
+            double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
+            double distance = hypot(distanceX, distanceY);
+            if (inducingLabel == "left") {
+                if (inducedLabel == "left") {
+                    double tetha1 = asin(fabs(distanceY) / distance);
+                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "right") {
+                    double tetha2 = asin(fabs(distanceY) / distance);
+                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "top") {
+                    if (distanceY > 0) {
+                        Hx = 0;
+                    }
+                    else {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                }
+                else if (inducedLabel == "bottom") {
+                    if (distanceY > 0) {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                    else {
+                        Hx = 0;
+                    }
+                }
+                else {
+                    throw std::runtime_error("Wrong inducedLabel: " + inducedLabel);
+                }
+            }
+            else if (inducingLabel == "right") {
+                if (inducedLabel == "right") {
+                    double tetha1 = asin(fabs(distanceY) / distance);
+                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "left") {
+                    double tetha2 = asin(fabs(distanceY) / distance);
+                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "bottom") {
+                    if (distanceY > 0) {
+                        Hx = 0;
+                    }
+                    else {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                }
+                else if (inducedLabel == "top") {
+                    if (distanceY > 0) {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                    else {
+                        Hx = 0;
+                    }
+                }
+            }
+            else if (inducingLabel == "bottom") {
+                if (inducedLabel == "bottom") {
+                    double tetha1 = asin(fabs(distanceY) / distance);
+                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "top") {
+                    double tetha2 = asin(fabs(distanceY) / distance);
+                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "right") {
+                    if (distanceY > 0) {
+                        Hx = 0;
+                    }
+                    else {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                }
+                else if (inducedLabel == "left") {
+                    if (distanceY > 0) {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                    else {
+                        Hx = 0;
+                    }
+                }
+                else {
+                    throw std::runtime_error("Wrong inducedLabel: " + inducedLabel);
+                }
+            }
+            else if (inducingLabel == "top") {
+                if (inducedLabel == "top") {
+                    double tetha1 = asin(fabs(distanceY) / distance);
+                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "bottom") {
+                    double tetha2 = asin(fabs(distanceY) / distance);
+                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
+                }
+                else if (inducedLabel == "left") {
+                    if (distanceY > 0) {
+                        Hx = 0;
+                    }
+                    else {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                }
+                else if (inducedLabel == "right") {
+                    if (distanceY > 0) {
+                        Hx = (current - Hy * 2 * h) / (2 * c);
+                    }
+                    else {
+                        Hx = 0;
+                    }
+                }
+            }
+            else {
+                throw std::runtime_error("Wrong inducingLabel: " + inducingLabel);
+            }
+        }
+        else {
+            throw std::runtime_error("Wang Magnetic Field model must be used woth his CoilMesher model");
+        }
+    }
+
+    ComplexFieldPoint complexFieldPoint;
+    complexFieldPoint.set_imaginary(Hy);
+    complexFieldPoint.set_point(inducedFieldPoint.get_point());
+    complexFieldPoint.set_real(Hx);
+    if (inducedFieldPoint.get_turn_index()) {
+        complexFieldPoint.set_turn_index(inducedFieldPoint.get_turn_index().value());
+    }
+    if (inducedFieldPoint.get_turn_length()) {
+        complexFieldPoint.set_turn_length(inducedFieldPoint.get_turn_length().value());
+    }
+    return complexFieldPoint;   
+}
+
 ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_between_two_points(FieldPoint inducingFieldPoint, FieldPoint inducedFieldPoint, std::optional<Wire> inducingWire) {
     double Hx;
     double Hy;
@@ -395,7 +559,7 @@ ComplexFieldPoint MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_s
 
         double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
         double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
-        if (hypot(distanceX, distanceY) < inducingWire.value().get_maximum_outer_width() / 2) {
+        if (inducingWire && hypot(distanceX, distanceY) < inducingWire.value().get_maximum_outer_width() / 2) {
             Hx = 0;
             Hy = 0;
         }
@@ -543,7 +707,7 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         }
         double distance = hypot(inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0]);
         double angle = atan2(inducedFieldPoint.get_point()[0] - inducingFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1] - inducingFieldPoint.get_point()[1]);
-        if (distance < inducingWire.value().get_maximum_outer_width() / 2) {
+        if (inducingWire && distance < inducingWire.value().get_maximum_outer_width() / 2) {
             Hx = 0;
             Hy = 0;
         }
@@ -556,7 +720,7 @@ ComplexFieldPoint MagneticFieldStrengthLammeranerModel::get_magnetic_field_stren
         }
     }
     else {
-        throw std::runtime_error("Rectangular wires not implemented yet");
+        return MagneticFieldStrengthBinnsLawrensonModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
     }
     if (std::isnan(Hx) || std::isnan(Hy)) {
         throw std::runtime_error("NaN found in Lammeraner's model for magnetic field");
@@ -591,9 +755,6 @@ FieldPoint MagneticFieldStrengthAlbachModel::get_equivalent_inducing_point_for_g
         throw std::runtime_error("Something went wrong with Albach method with x");
     }
     double current = (magneticFieldStrengthGap * gap.get_length()) / (0.25 - 1.569 * xi + 4.34 * pow(xi, 2) - 7.042 * pow(xi, 3));
-    if (current < 0) {
-        throw std::runtime_error("Something went wrong with Albach method with current");
-    }
     double eta = x * rc;
 
     if (eta > gap.get_section_dimensions().value()[0] / 2) {
@@ -624,7 +785,7 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
 
     double magneticIntensityXDividend = pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY - halfGapLength, 2);
     double magneticIntensityXDivisor = pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY + halfGapLength, 2);
-    double Hx = -magneticFieldStrengthGap / 2 / std::numbers::pi * log(magneticIntensityXDividend / magneticIntensityXDivisor);
+    double Hx = -0.9 * magneticFieldStrengthGap / 2 / std::numbers::pi * log(magneticIntensityXDividend / magneticIntensityXDivisor);
 
     double m;
     if (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) > pow(halfGapLength, 2)) {
@@ -635,7 +796,7 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
     }
 
     double x = distanceFromCenterEdgeGapX * halfGapLength / (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) - pow(halfGapLength, 2));
-    double Hy = -magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
+    double Hy = -0.9 * magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
 
     ComplexFieldPoint complexFieldPoint;
     complexFieldPoint.set_imaginary(Hy);
