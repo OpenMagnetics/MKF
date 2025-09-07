@@ -213,7 +213,7 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
     }
 }
 
-void load_advanced_core_materials(std::string fileToLoad) {
+void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManufacturer) {
     std::string database = fileToLoad;
 
     std::string delimiter = "\n";
@@ -236,7 +236,18 @@ void load_advanced_core_materials(std::string fileToLoad) {
             if (jf.contains("volumetricLosses")) {
                 std::vector<VolumetricLossesPoint> volumetricLosses;
                 from_json(jf["volumetricLosses"]["default"][0], volumetricLosses);
-                material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
+                if (onlyDataFromManufacturer) {
+                    std::vector<VolumetricLossesPoint> onlyManufacturerVolumetricLosses;
+                    for (auto datum : volumetricLosses) {
+                        if (datum.get_origin() == "manufacturer") {
+                            onlyManufacturerVolumetricLosses.push_back(datum);
+                        }
+                    }
+                    material.get_mutable_volumetric_losses()["default"].push_back(onlyManufacturerVolumetricLosses);
+                }
+                else {
+                    material.get_mutable_volumetric_losses()["default"].push_back(volumetricLosses);
+                }
             }
             if (jf.contains("permeability")) {
                 if (jf["permeability"].contains("amplitude")) {
