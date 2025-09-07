@@ -3386,6 +3386,12 @@ SUITE(SteinmetzCoefficientsCalculation) {
 
                 if (name == "3C94") {
                     std::cout << maximumError << std::endl;
+                    for (auto range : coefficientsPerRange) {
+                        json mierda;
+                        to_json(mierda, range);
+                        std::cout << mierda << std::endl;
+
+                    }
                 }
                 CHECK(maximumError < maxError);
             }
