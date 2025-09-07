@@ -6,6 +6,22 @@ import PyMKF
 import pandas
 import pathlib
 
+
+def delete_none(_dict):
+    """Delete None values recursively from all of the dictionaries, tuples, lists, sets"""
+    if isinstance(_dict, dict):
+        for key, value in list(_dict.items()):
+            if isinstance(value, (list, dict, tuple, set)):
+                _dict[key] = delete_none(value)
+            elif value is None or key is None or value == numpy.nan or key == numpy.nan or (isinstance(value, float) and math.isnan(value)):
+                del _dict[key]
+
+    elif isinstance(_dict, (list, set, tuple)):
+        _dict = type(_dict)(delete_none(item) for item in _dict if item is not None)
+
+    return _dict
+
+
 data_path = pathlib.Path(__file__).parent.resolve().joinpath('../../../MAS/data/advanced_core_materials.ndjson')
 advanced_core_materials = pandas.read_json(data_path, lines=True)
 
@@ -20,7 +36,8 @@ frequencies_ranges = [[[1, 100e3], [100e3, 500e5], [500e5, 1e9]],
                       [[1, 500e3], [500e3, 1e9]],
                       [[1, 1e6], [1e6, 1e9]],
                       [[1, 3e6], [3e6, 1e9]],
-                      [[1, 1e9]]]
+                      [[1, 1e9]]
+                      ]
 
 
 core_materials = core_materials.to_dict("records")
@@ -37,16 +54,20 @@ for core_material_index, core_material in enumerate(core_materials):
     if 'default' not in volumetricLossesData:
         continue
 
-    for method in volumetricLossesData['default']:
-        if isinstance(method, list):
-            if len(method) == 0:
+    for method_data in volumetricLossesData['default']:
+        if isinstance(method_data, list):
+            if len(method_data) == 0:
                 continue
-            # print(core_material["name"])
             
             best_result = None
             best_result_error = math.inf
             for frequencies_range in frequencies_ranges:
-                result = PyMKF.calculate_steinmetz_coefficients_with_error(method, frequencies_range)
+                filter_data = []
+                for datum in method_data:
+                    if datum["origin"] == "manufacturer":
+                        filter_data.append(datum)
+                result = PyMKF.calculate_steinmetz_coefficients_with_error(filter_data, frequencies_range)
+
                 average_error = sum(result["errorPerRange"]) / len(result["errorPerRange"])
 
                 valid = True
@@ -59,7 +80,7 @@ for core_material_index, core_material in enumerate(core_materials):
                 if average_error < best_result_error:
                     best_result = result
                     best_result_error = average_error
-            # print(best_result)
+
             # print(sum(best_result["errorPerRange"]) / len(best_result["errorPerRange"]))
             for method_index, method_aux in enumerate(core_material['volumetricLosses']['default']):
                 if isinstance(method_aux, dict) and method_aux["method"] == "steinmetz":
@@ -76,4 +97,4 @@ for core_material_index, core_material in enumerate(core_materials):
     for key in key_to_remove:
         del core_materials[core_material_index][key]
 
-ndjson.dump(core_materials, open(f"{pathlib.Path(__file__).parent.resolve()}/new_core_materials.ndjson", "w"), ensure_ascii=False)
+ndjson.dump(delete_none(core_materials), open(f"{pathlib.Path(__file__).parent.resolve()}/new_core_materials.ndjson", "w"), ensure_ascii=False)
