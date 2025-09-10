@@ -1469,7 +1469,6 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
                 std::vector<ImpedanceMatrixAtFrequency> impedanceMatrixPerFrequency;
                 impedanceMatrixPerFrequency.push_back(impedanceMatrixAtFrequency);
                 impedanceOutput.set_impedance_matrix(impedanceMatrixPerFrequency);
-                impedanceOutput.set_method_used(_models["gapReluctance"]);
                 impedanceOutput.set_origin(ResultOrigin::SIMULATION);
                 (*outputs)[operatingPointIndex].set_impedance(impedanceOutput);
             }
