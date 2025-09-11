@@ -5449,6 +5449,12 @@ std::vector<Wire> Coil::get_wires() {
     return wirePerWinding;
 }
 
+void Coil::set_wires(std::vector<Wire> wires) {
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        get_mutable_functional_description()[windingIndex].set_wire(wires[windingIndex]);
+    }
+}
+
 Wire Coil::resolve_wire(size_t windingIndex) {
     return resolve_wire(get_functional_description()[windingIndex]);
 }
@@ -6376,25 +6382,38 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
     }
 }
 
-std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> dcResistances) {
+std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> dcResistances, double maxError) {
+    auto oldSetting = settings->get_coil_wind_even_if_not_fit();
+    settings->set_coil_wind_even_if_not_fit(true);
 
-    set_turns_description(std::nullopt);
-    wind();
-    auto calculatedDcResistances = WindingOhmicLosses::calculate_dc_resistance_per_winding(*this, defaults.ambientTemperature);
-    auto wireLengths = get_wires_length();
-    for (size_t index = 0; index < get_functional_description().size(); ++index) {
-        if (fabs(calculatedDcResistances[index] - dcResistances[index]) / dcResistances[index] > 0.1) {
-            auto dcResistancesPerMeter = dcResistances[index] / wireLengths[index];
-            std::cout << "dcResistances[index]: " << dcResistancesPerMeter << std::endl;
-            std::cout << "wireLengths[index]: " << wireLengths[index] << std::endl;
-            std::cout << "dcResistancesPerMeter: " << dcResistancesPerMeter << std::endl;
-            auto newWire = Wire::get_wire_for_dc_resistance_per_meter(dcResistancesPerMeter);
-            std::cout << "newWire.get_name().value(): " << newWire.get_name().value() << std::endl;
-            get_mutable_functional_description()[index].set_wire(newWire);
+    double maximumError = DBL_MAX;
+    while (maximumError > maxError) {
+        auto wireLengths = get_wires_length();
+        maximumError = 0;
+        bool areWiresTheSame = true;
+        auto calculatedDcResistances = WindingOhmicLosses::calculate_dc_resistance_per_winding(*this, defaults.ambientTemperature);
+        for (size_t index = 0; index < get_functional_description().size(); ++index) {
+            double error = fabs(calculatedDcResistances[index] - dcResistances[index]) / dcResistances[index];
+            if (error > maxError) {
+                auto dcResistancesPerMeter = dcResistances[index] / wireLengths[index];
+                auto newWire = Wire::get_wire_for_dc_resistance_per_meter(dcResistancesPerMeter);
+                if (newWire.get_name().value() != get_mutable_functional_description()[index].resolve_wire().get_name().value()) {
+                    areWiresTheSame = false;
+                }
+                get_mutable_functional_description()[index].set_wire(newWire);
+            }
+            maximumError = std::max(maximumError, error);
         }
+        if (areWiresTheSame) {
+            break;
+        }
+        set_turns_description(std::nullopt);
+        unwind();
+        auto result = fast_wind();
     }
 
-    return {};
+    settings->set_coil_wind_even_if_not_fit(oldSetting);
+    return get_wires();
 }
 
 
