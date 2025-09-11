@@ -9541,6 +9541,7 @@ SUITE(CoilTurnsDescriptionToroidalAdditionalCoordinates) {
         OpenMagneticsTesting::check_turns_description(coil);
     }
 }
+
 SUITE(PlanarCoil) {
     bool plot = true;
     auto settings = Settings::GetInstance();
@@ -10204,5 +10205,34 @@ SUITE(PlanarCoil) {
             }
         }
     }
+}
 
+SUITE(CoilTools) {
+    TEST(Test_Get_Round_Wire_From_Dc_Resistance) {
+        clear_databases();
+        settings->set_use_toroidal_cores(true);
+        std::vector<int64_t> numberTurns = {1, 60};
+        std::vector<int64_t> numberParallels = {1, 1};
+        uint8_t interleavingLevel = 1;
+        int64_t numberStacks = 1;
+        std::string coreShape = "EE5";
+        std::string coreMaterial = "3C97"; 
+        auto emptyGapping = json::array();
+        // settings->set_coil_delimit_and_compact(false);
+        settings->set_coil_try_rewind(false);
+        settings->set_coil_wind_even_if_not_fit(true);
+        WindingOrientation sectionOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
+        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
+        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
+
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
+        auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
+
+        std::vector<double> dcResistances = {0.00075, 1.75};
+        auto wires = coil.guess_round_wire_from_dc_resistance(dcResistances);
+        for (auto wire : wires) {
+            std::cout << wire.get_name().value() << std::endl;
+        }
+    }
 }

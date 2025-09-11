@@ -1753,6 +1753,17 @@ namespace OpenMagnetics {
         }
     }
 
+    Wire Wire::get_wire_for_dc_resistance_per_meter(double dcResistancePerMeter, double temperature) {
+        WireMaterial wireMaterial = find_wire_material_by_name(defaults.defaultConductorMaterial);;
+
+        auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
+        auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
+
+        double wireConductingArea = resistivity / dcResistancePerMeter;
+
+        return get_wire_for_conducting_area(wireConductingArea, temperature, false);
+    }
+
 
     Wire Wire::get_equivalent_wire(Wire oldWire, WireType newWireType, double effectiveFrequency, double temperature) {
 

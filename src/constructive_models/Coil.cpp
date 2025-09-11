@@ -12,6 +12,7 @@
 #include "constructive_models/Coil.h"
 #include "json.hpp"
 #include "constructive_models/InsulationMaterial.h"
+#include "physical_models/WindingOhmicLosses.h"
 
 #include <magic_enum.hpp>
 
@@ -5479,6 +5480,22 @@ Wire Coil::resolve_wire(CoilFunctionalDescription coilFunctionalDescription) {
     return coilFunctionalDescription.resolve_wire();
 }
 
+std::vector<double> Coil::get_wires_length() {
+    std::vector<double> wiresLength;
+    if (!get_turns_description()) {
+        throw std::runtime_error("Missing turns");
+    }
+    for (auto winding : get_functional_description()) {
+        auto turns = get_turns_by_winding(winding.get_name());
+        double wireLength = 0;
+        for (auto turn : turns) {
+            wireLength += turn.get_length();
+        }
+        wiresLength.push_back(wireLength);
+    }
+    return wiresLength;
+}
+
 WireType Coil::get_wire_type(CoilFunctionalDescription coilFunctionalDescription) {
     return resolve_wire(coilFunctionalDescription).get_type();
 }
@@ -6359,6 +6376,26 @@ void Coil::set_intersection_insulation(double layerThickness, size_t numberInsul
     }
 }
 
+std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> dcResistances) {
+
+    set_turns_description(std::nullopt);
+    wind();
+    auto calculatedDcResistances = WindingOhmicLosses::calculate_dc_resistance_per_winding(*this, defaults.ambientTemperature);
+    auto wireLengths = get_wires_length();
+    for (size_t index = 0; index < get_functional_description().size(); ++index) {
+        if (fabs(calculatedDcResistances[index] - dcResistances[index]) / dcResistances[index] > 0.1) {
+            auto dcResistancesPerMeter = dcResistances[index] / wireLengths[index];
+            std::cout << "dcResistances[index]: " << dcResistancesPerMeter << std::endl;
+            std::cout << "wireLengths[index]: " << wireLengths[index] << std::endl;
+            std::cout << "dcResistancesPerMeter: " << dcResistancesPerMeter << std::endl;
+            auto newWire = Wire::get_wire_for_dc_resistance_per_meter(dcResistancesPerMeter);
+            std::cout << "newWire.get_name().value(): " << newWire.get_name().value() << std::endl;
+            get_mutable_functional_description()[index].set_wire(newWire);
+        }
+    }
+
+    return {};
+}
 
 
 } // namespace OpenMagnetics

@@ -232,6 +232,7 @@ class Coil : public MAS::Coil {
 
         std::vector<Wire> get_wires();
         WireType get_wire_type(size_t windingIndex);
+        std::vector<double> get_wires_length();
         static WireType get_wire_type(CoilFunctionalDescription coilFunctionalDescription);
         std::string get_wire_name(size_t windingIndex);
         static std::string get_wire_name(CoilFunctionalDescription coilFunctionalDescription);
@@ -276,6 +277,9 @@ class Coil : public MAS::Coil {
         std::pair<std::vector<size_t>, size_t> check_pattern_and_repetitions_integrity(std::vector<size_t> pattern, size_t repetitions);
 
         bool is_edge_wound_coil();
+
+        std::vector<Wire> guess_round_wire_from_dc_resistance(std::vector<double> dcResistances);
+
 
 };
 }

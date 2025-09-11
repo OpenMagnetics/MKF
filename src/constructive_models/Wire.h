@@ -262,6 +262,7 @@ class Wire : public MAS::Wire {
         static Wire get_equivalent_wire(Wire oldWire, WireType newWireType, double effectiveFrequency=200000, double temperature=Defaults().ambientTemperature);
         static Wire get_wire_for_frequency(double effectiveFrequency, double temperature=Defaults().ambientTemperature, bool exact=false);
         static Wire get_wire_for_conducting_area(double conductingArea, double temperature=Defaults().ambientTemperature, bool exact=false);
+        static Wire get_wire_for_dc_resistance_per_meter(double dcResistancePerMeter, double temperature=Defaults().ambientTemperature);
 
 };
 } // namespace OpenMagnetics
