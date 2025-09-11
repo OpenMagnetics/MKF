@@ -10221,16 +10221,18 @@ SUITE(CoilTools) {
         // settings->set_coil_delimit_and_compact(false);
         settings->set_coil_try_rewind(false);
         settings->set_coil_wind_even_if_not_fit(true);
-        WindingOrientation sectionOrientation = WindingOrientation::CONTIGUOUS;
+        WindingOrientation sectionOrientation = WindingOrientation::OVERLAPPING;
         WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-        CoilAlignment sectionsAlignment = CoilAlignment::SPREAD;
-        CoilAlignment turnsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
 
         auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation, turnsAlignment, sectionsAlignment);
         auto core = OpenMagneticsTesting::get_quick_core(coreShape, emptyGapping, numberStacks, coreMaterial);
 
         std::vector<double> dcResistances = {0.00075, 1.75};
-        auto wires = coil.guess_round_wire_from_dc_resistance(dcResistances);
+        auto wires = coil.guess_round_wire_from_dc_resistance(dcResistances, 0.01);
+        CHECK_EQUAL(wires[0].get_name().value(), "Round 0.63 - Grade 1");
+        CHECK_EQUAL(wires[1].get_name().value(), "Round 0.106 - Grade 1");
         for (auto wire : wires) {
             std::cout << wire.get_name().value() << std::endl;
         }

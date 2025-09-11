@@ -937,7 +937,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
                         throw std::runtime_error("Missing conducting diameter in round wire");
                     }
                     auto conductingDiameter = resolve_dimensional_values(wire.get_conducting_diameter().value());
-                    distance = fabs(conductingDiameter - dimension);
+                    distance = fabs(conductingDiameter - dimension) / dimension;
                     break;
                 }
             case WireType::PLANAR:
@@ -947,7 +947,7 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
                         throw std::runtime_error("Missing conducting height in rectangular wire");
                     }
                     auto conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-                    distance = fabs(conductingHeight - dimension);
+                    distance = fabs(conductingHeight - dimension) / dimension;
                     break;
                 }
             case WireType::FOIL:
@@ -956,29 +956,25 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
                         throw std::runtime_error("Missing conducting width in foil wire");
                     }
                     auto conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
-                    distance = fabs(conductingWidth - dimension);
+                    distance = fabs(conductingWidth - dimension) / dimension;
                     break;
                 }
             default:
                 throw std::runtime_error("Unknow type of wire");
         }
-        if (distance == 0 || fabs(distance) <= 0.000000001) {
-            possibleWires.push_back(wire);
-        }
 
         if (distance < minimumDistance) {
+            possibleWires.clear();
             minimumDistance = distance;
             chosenWire = wire;
         }
-        else if (distance == minimumDistance || fabs(distance - minimumDistance) <= 0.000000001) {
-            if (wire.get_maximum_outer_dimension() < minimumDimension) {
-                minimumDimension = wire.get_maximum_outer_dimension();
-                chosenWire = wire;
-            }
+        else if (distance == minimumDistance) {
+            possibleWires.push_back(wire);
         }
     }
 
     double minimumOuterDimension = DBL_MAX;
+
     for (auto wire : possibleWires) {
         if (minimumOuterDimension > wire.get_maximum_outer_dimension()) {
             minimumOuterDimension = wire.get_maximum_outer_dimension();
