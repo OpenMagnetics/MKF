@@ -98,6 +98,23 @@ public:
 };
 
 
+
+class CurrentTransformer : public MAS::CurrentTransformer {
+public:
+    bool _assertErrors = false;
+
+    CurrentTransformer(const json& j);
+    CurrentTransformer() {};
+
+    Inputs process(double turnsRatio, double secondaryDcResistance = 0);
+    Inputs process(Magnetic magnetic);
+    DesignRequirements process_design_requirements(double turnsRatio);
+    DesignRequirements process_design_requirements(Magnetic magnetic);
+    std::vector<OperatingPoint> process_operating_points(double turnsRatio, double secondaryDcResistance = 0);
+    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
+};
+
+
 void from_json(const json & j, FlybackOperatingPoint & x);
 void to_json(json & j, const FlybackOperatingPoint & x);
 
