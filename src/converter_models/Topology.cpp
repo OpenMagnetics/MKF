@@ -658,7 +658,7 @@ namespace OpenMagnetics {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
             throw std::runtime_error("A current transformer must have exactly two windings");
         }
-        double turnsRatio = magnetic.get_coil().get_functional_description()[0].get_number_turns() / magnetic.get_coil().get_functional_description()[1].get_number_turns();
+        double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         return process_design_requirements(turnsRatio);
     }
 
@@ -739,7 +739,7 @@ namespace OpenMagnetics {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
             throw std::runtime_error("A current transformer must have exactly two windings");
         }
-        double turnsRatio = magnetic.get_coil().get_functional_description()[0].get_number_turns() / magnetic.get_coil().get_functional_description()[1].get_number_turns();
+        double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         double secondaryDcResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), get_ambient_temperature())[1];
         return process_operating_points(turnsRatio, secondaryDcResistance);
     }
@@ -760,7 +760,7 @@ namespace OpenMagnetics {
         if (magnetic.get_coil().get_functional_description().size() != 2) {
             throw std::runtime_error("A current transformer must have exactly two windings");
         }
-        double turnsRatio = magnetic.get_coil().get_functional_description()[0].get_number_turns() / magnetic.get_coil().get_functional_description()[1].get_number_turns();
+        double turnsRatio = double(magnetic.get_coil().get_functional_description()[0].get_number_turns()) / magnetic.get_coil().get_functional_description()[1].get_number_turns();
         double secondaryDcResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), get_ambient_temperature())[1];
         return process(turnsRatio, secondaryDcResistance);
     }

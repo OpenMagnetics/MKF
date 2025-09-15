@@ -40,6 +40,11 @@ enum class CoreLossesModels : int {
 };
 
 
+enum class CoreThermalResistanceModels : int {
+    MANIKTALA,
+};
+
+
 enum class CoreTemperatureModels : int {
     KAZIMIERCZUK,
     MANIKTALA,
