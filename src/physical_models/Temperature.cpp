@@ -1,3 +1,4 @@
+#include "physical_models/ThermalResistance.h"
 #include "physical_models/Temperature.h"
 
 namespace OpenMagnetics {
@@ -6,11 +7,17 @@ namespace OpenMagnetics {
     	if (!core.get_processed_description()) {
     		throw std::runtime_error("Core is missing processed description");
     	}
-    	if (!core.get_processed_description()->get_thermal_resistance()) {
-    		throw std::runtime_error("Core is missing thermal resistance");
-    	}
 
-    	return core.get_processed_description()->get_thermal_resistance().value() * totalLosses;
+        double thermalResistance;
+    	if (!core.get_processed_description()->get_thermal_resistance()) {
+            auto thermalResistanceModel = CoreThermalResistanceModel::factory();
+            thermalResistance = thermalResistanceModel->get_core_thermal_resistance_reluctance(core);
+    	}
+        else {
+            thermalResistance = core.get_processed_description()->get_thermal_resistance().value();
+        }
+
+    	return thermalResistance * totalLosses;
     }
     double Temperature::calculate_temperature_from_core_thermal_resistance(double thermalResistance, double totalLosses){
     	return thermalResistance * totalLosses;

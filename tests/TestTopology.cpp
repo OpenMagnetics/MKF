@@ -912,5 +912,6 @@ SUITE(Topology) {
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::SINUSOIDAL);
         CHECK_CLOSE(0, inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), double(currentTransformerInputsJson["maximumPrimaryCurrentPeak"]) * turnsRatio * maximumError * 0.01);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_peak().value() > 0);
     }
 }

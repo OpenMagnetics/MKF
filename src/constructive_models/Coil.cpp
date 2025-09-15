@@ -6387,6 +6387,7 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
     settings->set_coil_wind_even_if_not_fit(true);
 
     double maximumError = DBL_MAX;
+    size_t timeout = 100;
     while (maximumError > maxError) {
         auto wireLengths = get_wires_length();
         maximumError = 0;
@@ -6410,6 +6411,10 @@ std::vector<Wire> Coil::guess_round_wire_from_dc_resistance(std::vector<double> 
         set_turns_description(std::nullopt);
         unwind();
         auto result = fast_wind();
+        timeout--;
+        if (timeout == 0) {
+            break;
+        }
     }
 
     settings->set_coil_wind_even_if_not_fit(oldSetting);
