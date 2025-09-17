@@ -1394,7 +1394,7 @@ std::pair<bool, double> MagneticFilterDcCurrentDensity::evaluate_magnetic(Magnet
             }
             auto current = excitation.get_current().value();
             auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
-            auto dcCurrentDensity = wire.calculate_dc_current_density(current);
+            auto dcCurrentDensity = wire.calculate_dc_current_density(current) / magnetic->get_mutable_coil().get_functional_description()[windingIndex].get_number_parallels();
 
             scoring += fabs(defaults.maximumCurrentDensity - dcCurrentDensity);
             if (dcCurrentDensity > defaults.maximumCurrentDensity) {
@@ -1420,12 +1420,12 @@ std::pair<bool, double> MagneticFilterEffectiveCurrentDensity::evaluate_magnetic
             }
             auto current = excitation.get_current().value();
             auto wire = magnetic->get_mutable_coil().resolve_wire(windingIndex);
-            auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature());
+            auto effectiveCurrentDensity = wire.calculate_effective_current_density(current, operatingPoint.get_conditions().get_ambient_temperature()) / magnetic->get_mutable_coil().get_functional_description()[windingIndex].get_number_parallels();
 
             scoring += fabs(defaults.maximumEffectiveCurrentDensity - effectiveCurrentDensity);
-            // if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
-                // return {false, 0.0};
-            // }
+            if (effectiveCurrentDensity > defaults.maximumEffectiveCurrentDensity) {
+                return {false, 0.0};
+            }
         }
     }
 
