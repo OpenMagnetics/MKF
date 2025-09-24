@@ -265,4 +265,62 @@ class Wire : public MAS::Wire {
         static Wire get_wire_for_dc_resistance_per_meter(double dcResistancePerMeter, double temperature=Defaults().ambientTemperature);
 
 };
+
+bool operator==(Wire lhs, Wire rhs);
+
+inline bool operator==(Wire lhs, Wire rhs) {
+    if (lhs.get_type() != rhs.get_type()) {
+        return false;
+    }
+    if (lhs.get_name() && rhs.get_name()) {
+        return lhs.get_name().value() == rhs.get_name().value();
+    }
+    if (lhs.get_conducting_diameter() && rhs.get_conducting_diameter()) {
+        if (resolve_dimensional_values(lhs.get_conducting_diameter().value()) != resolve_dimensional_values(rhs.get_conducting_diameter().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_conducting_height() && rhs.get_conducting_height()) {
+        if (resolve_dimensional_values(lhs.get_conducting_height().value()) != resolve_dimensional_values(rhs.get_conducting_height().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_conducting_width() && rhs.get_conducting_width()) {
+        if (resolve_dimensional_values(lhs.get_conducting_width().value()) != resolve_dimensional_values(rhs.get_conducting_width().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_outer_diameter() && rhs.get_outer_diameter()) {
+        if (resolve_dimensional_values(lhs.get_outer_diameter().value()) != resolve_dimensional_values(rhs.get_outer_diameter().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_outer_height() && rhs.get_outer_height()) {
+        if (resolve_dimensional_values(lhs.get_outer_height().value()) != resolve_dimensional_values(rhs.get_outer_height().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_outer_width() && rhs.get_outer_width()) {
+        if (resolve_dimensional_values(lhs.get_outer_width().value()) != resolve_dimensional_values(rhs.get_outer_width().value())) {
+            return false;
+        }
+    }
+    if (lhs.get_number_conductors() && rhs.get_number_conductors()) {
+        if (lhs.get_number_conductors().value() != rhs.get_number_conductors().value()) {
+            return false;
+        }
+    }
+    if (lhs.get_standard() && rhs.get_standard()) {
+        if (lhs.get_standard().value() != rhs.get_standard().value()) {
+            return false;
+        }
+    }
+    if (lhs.get_standard_name() && rhs.get_standard_name()) {
+        if (lhs.get_standard_name().value() != rhs.get_standard_name().value()) {
+            return false;
+        }
+    }
+
+    return true;
+}
 } // namespace OpenMagnetics
