@@ -8,14 +8,6 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
-class Topology {
-private:
-protected:
-public:
-    Topology() = default;
-    ~Topology() = default;
-};
-
 class FlybackOperatingPoint : public MAS::FlybackOperatingPoint{
 public:
     double resolve_switching_frequency(double inputVoltage, double diodeVoltageDrop, std::optional<double> inductance = std::nullopt, std::optional<std::vector<double>> turnsRatios = std::nullopt, double efficiency = 0.85);
@@ -95,23 +87,6 @@ public:
     std::vector<double> & get_mutable_desired_turns_ratios() { return desiredTurnsRatios; }
     void set_desired_turns_ratios(const std::vector<double> & value) { this->desiredTurnsRatios = value; }
 
-};
-
-
-
-class CurrentTransformer : public MAS::CurrentTransformer {
-public:
-    bool _assertErrors = false;
-
-    CurrentTransformer(const json& j);
-    CurrentTransformer() {};
-
-    Inputs process(double turnsRatio, double secondaryDcResistance = 0);
-    Inputs process(Magnetic magnetic);
-    DesignRequirements process_design_requirements(double turnsRatio);
-    DesignRequirements process_design_requirements(Magnetic magnetic);
-    std::vector<OperatingPoint> process_operating_points(double turnsRatio, double secondaryDcResistance = 0);
-    std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 };
 
 

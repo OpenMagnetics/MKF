@@ -124,7 +124,7 @@ class Inputs : public MAS::Inputs {
 
     static WaveformLabel try_guess_waveform_label(Waveform waveform);
     static Waveform create_waveform(Processed processed, double frequency);
-    static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0);
+    static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0);
     static Processed calculate_basic_processed_data(Waveform waveform);
     static Waveform compress_waveform(Waveform waveform);
 

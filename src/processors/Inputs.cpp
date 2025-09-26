@@ -397,7 +397,7 @@ Waveform Inputs::create_waveform(Processed processed, double frequency) {
 }
 
 
-Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime) {
+Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle, double offset, double deadTime, double skew) {
     Waveform waveform;
     std::vector<double> data;
     std::vector<double> time;
@@ -410,6 +410,14 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
             double dc = dutyCycle * period;
             data = {min, max, min};
             time = {0, dc, period};
+            break;
+        }
+        case WaveformLabel::TRIANGULAR_WITH_DEADTIME: {
+            double max = peakToPeak / 2 + offset;
+            double min = -peakToPeak / 2 + offset;
+            double dc = dutyCycle * period;
+            data = {min, max, min, 0};
+            time = {0, dc, period - deadTime, period};
             break;
         }
         case WaveformLabel::UNIPOLAR_TRIANGULAR: {
@@ -529,6 +537,18 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
     waveform.set_ancillary_label(label);
     waveform.set_data(data);
     waveform.set_time(time);
+    if (skew > 0) {
+        auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, frequency);
+        auto timeStep = period / sampledWaveform.get_data().size();
+        size_t stepNeededForSkew = round(skew / timeStep);
+
+        auto auxData = sampledWaveform.get_data();
+        auxData[auxData.size() - 1] = auxData[auxData.size() - 1] - period;
+        std::rotate(auxData.rbegin(), auxData.rbegin() + stepNeededForSkew, auxData.rend());
+        waveform = sampledWaveform;
+        waveform.set_data(auxData);
+        waveform = compress_waveform(waveform);
+    }
 
     return waveform;
 }
