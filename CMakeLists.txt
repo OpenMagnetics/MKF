@@ -226,8 +226,8 @@ target_include_directories(MKF PUBLIC
      "${PROJECT_SOURCE_DIR}/src/support/"
      )
 
-add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
-target_link_libraries(magnetic_adviser MKF)
+# add_executable(magnetic_adviser "src/advisers/MagneticAdviser.cpp")
+# target_link_libraries(magnetic_adviser MKF)
 
 if(INCLUDE_MKF_TESTS)
     file(GLOB TESTS_SOURCES "tests/*.cpp" )

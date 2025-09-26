@@ -1,0 +1,311 @@
+#include "converter_models/Boost.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "support/Utils.h"
+#include <cfloat>
+
+namespace OpenMagnetics {
+
+    double Boost::calculate_duty_cycle(double inputVoltage, double outputVoltage, double diodeVoltageDrop, double efficiency) {
+        auto dutyCycle = 1 - inputVoltage * efficiency / (outputVoltage + diodeVoltageDrop);
+        if (dutyCycle >= 1) {
+            throw std::runtime_error("Duty cycle must be smaller than 1");
+        }
+        return dutyCycle;
+    }
+
+    Boost::Boost(const json& j) {
+        from_json(j, *this);
+    }
+
+    AdvancedBoost::AdvancedBoost(const json& j) {
+        from_json(j, *this);
+    }
+
+    OperatingPoint Boost::processOperatingPointsForInputVoltage(double inputVoltage, BoostOperatingPoint outputOperatingPoint, double inductance) {
+
+        OperatingPoint operatingPoint;
+        double switchingFrequency = outputOperatingPoint.get_switching_frequency();
+        double outputVoltage = outputOperatingPoint.get_output_voltage();
+        double outputCurrent = outputOperatingPoint.get_output_current();
+        double diodeVoltageDrop = get_diode_voltage_drop();
+        double efficiency = 1;
+        if (get_efficiency()) {
+            efficiency = get_efficiency().value();
+        }
+
+
+        auto dutyCycle = calculate_duty_cycle(inputVoltage, outputVoltage, diodeVoltageDrop, efficiency);
+
+        auto tOn = dutyCycle / switchingFrequency;
+        auto primaryCurrentPeakToPeak = inputVoltage * tOn / inductance;
+        auto primaryCurrentAverage = outputCurrent * (outputVoltage + diodeVoltageDrop) / inputVoltage;
+        auto primaryCurrentMinimum = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
+        auto primaryCurrentMaximum = primaryCurrentAverage - primaryCurrentPeakToPeak / 2;
+
+        auto primaryVoltaveMinimum = inputVoltage - outputVoltage - diodeVoltageDrop;
+        auto primaryVoltaveMaximum = inputVoltage;
+        auto primaryVoltavePeaktoPeak = primaryVoltaveMaximum - primaryVoltaveMinimum;
+
+        // Primary
+        {
+            OperatingPointExcitation excitation;
+            Waveform currentWaveform;
+            Waveform voltageWaveform;
+            Processed currentProcessed;
+            Processed voltageProcessed;
+
+            if (primaryCurrentMinimum < 0) {
+                tOn = sqrt(2 * outputCurrent * inductance * (outputVoltage + diodeVoltageDrop - inputVoltage) / (switchingFrequency * pow(inputVoltage, 2)));
+                auto tOff = tOn * ((outputVoltage + diodeVoltageDrop) / (outputVoltage + diodeVoltageDrop - inputVoltage) - 1);
+                auto deadTime = 1.0 / switchingFrequency - tOn - tOff;
+                outputCurrent = primaryCurrentPeakToPeak / 2;
+
+                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR_WITH_DEADTIME, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, outputCurrent, deadTime);
+                voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR_WITH_DEADTIME, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, deadTime);
+                currentProcessed.set_label(WaveformLabel::TRIANGULAR_WITH_DEADTIME);
+                voltageProcessed.set_label(WaveformLabel::RECTANGULAR_WITH_DEADTIME);
+                currentProcessed.set_dead_time(deadTime);
+                voltageProcessed.set_dead_time(deadTime);
+
+            }
+            else {
+                currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryCurrentAverage, 0);
+                currentProcessed.set_label(WaveformLabel::TRIANGULAR);
+                voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
+                voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
+            }
+
+
+
+            currentProcessed.set_peak_to_peak(primaryCurrentPeakToPeak);
+            currentProcessed.set_peak(outputCurrent + primaryCurrentPeakToPeak / 2);
+            currentProcessed.set_duty_cycle(dutyCycle);
+            currentProcessed.set_offset(outputCurrent);
+
+            voltageProcessed.set_peak_to_peak(primaryVoltavePeaktoPeak);
+            voltageProcessed.set_peak(primaryVoltaveMaximum);
+            voltageProcessed.set_duty_cycle(dutyCycle);
+            voltageProcessed.set_offset(0);
+
+            excitation.set_frequency(switchingFrequency);
+            SignalDescriptor current;
+            current.set_waveform(currentWaveform);
+            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
+            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
+            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
+            current.set_processed(currentProcessed);
+            current.set_harmonics(currentHarmonics);
+            excitation.set_current(current);
+            SignalDescriptor voltage;
+            voltage.set_waveform(voltageWaveform);
+            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
+            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
+            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
+            voltage.set_processed(voltageProcessed);
+            voltage.set_harmonics(voltageHarmonics);
+            excitation.set_voltage(voltage);
+            json isolationSideJson;
+            to_json(isolationSideJson, get_isolation_side_from_index(0));
+            excitation.set_name(isolationSideJson);
+            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
+
+            operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+        }
+
+        OperatingConditions conditions;
+        conditions.set_ambient_temperature(outputOperatingPoint.get_ambient_temperature());
+        conditions.set_cooling(std::nullopt);
+        operatingPoint.set_conditions(conditions);
+
+        return operatingPoint;
+    }
+
+    bool Boost::run_checks(bool assert) {
+        if (get_operating_points().size() == 0) {
+            if (!assert) {
+                return false;
+            }
+            throw std::runtime_error("At least one operating point is needed");
+        }
+        if (!get_input_voltage().get_nominal() && !get_input_voltage().get_maximum() && !get_input_voltage().get_minimum()) {
+            if (!assert) {
+                return false;
+            }
+            throw std::runtime_error("No input voltage introduced");
+        }
+
+        return true;
+    }
+
+    DesignRequirements Boost::process_design_requirements() {
+        double minimumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MINIMUM);
+        double maximumInputVoltage = resolve_dimensional_values(get_input_voltage(), DimensionalValues::MAXIMUM);
+        double efficiency = 1;
+        if (get_efficiency()) {
+            efficiency = get_efficiency().value();
+        }
+
+        if (!get_current_ripple_ratio() && !get_maximum_switch_current()) {
+            throw std::invalid_argument("Missing both current ripple ratio and maximum swtich current");
+        }
+
+        double maximumCurrentRiple = 0;
+        if (get_current_ripple_ratio()) {
+            double currentRippleRatio = get_current_ripple_ratio().value();
+            double maximumOutputCurrent = 0;
+
+            for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
+                auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
+                maximumOutputCurrent = std::max(maximumOutputCurrent, boostOperatingPoint.get_output_current());
+            }
+
+            maximumCurrentRiple = currentRippleRatio * maximumOutputCurrent;
+        }
+
+        if (get_maximum_switch_current()) {
+            double maximumSwitchCurrent = get_maximum_switch_current().value();
+            double maximumOutputCurrent = 0;
+
+            for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
+                auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
+                auto dutyCycle = calculate_duty_cycle(minimumInputVoltage, boostOperatingPoint.get_output_voltage(), get_diode_voltage_drop(), efficiency);
+                auto currentRiple = (maximumSwitchCurrent - boostOperatingPoint.get_output_current() / (1.0 - dutyCycle)) * 2;
+                maximumCurrentRiple = std::max(maximumCurrentRiple, currentRiple);
+            }
+
+        }
+
+        double maximumNeededInductance = 0;
+        for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
+            auto boostOperatingPoint = get_operating_points()[boostOperatingPointIndex];
+            auto switchingFrequency = boostOperatingPoint.get_switching_frequency();
+            auto outputVoltage = boostOperatingPoint.get_output_voltage();
+            auto desiredInductance = maximumInputVoltage * (outputVoltage - maximumInputVoltage) / (maximumCurrentRiple * switchingFrequency * outputVoltage);
+            maximumNeededInductance = std::max(maximumNeededInductance, desiredInductance);
+        }
+
+        DesignRequirements designRequirements;
+        designRequirements.get_mutable_turns_ratios().clear();
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_minimum(roundFloat(maximumNeededInductance, 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::BOOST_CONVERTER);
+        return designRequirements;
+    }
+
+    std::vector<OperatingPoint> Boost::process_operating_points(double magnetizingInductance) {
+        std::vector<OperatingPoint> operatingPoints;
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            auto inputVoltage = inputVoltages[inputVoltageIndex];
+            for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
+                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], magnetizingInductance);
+
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
+                if (get_operating_points().size() > 1) {
+                    name += " with op. point " + std::to_string(boostOperatingPointIndex);
+                }
+                operatingPoint.set_name(name);
+                operatingPoints.push_back(operatingPoint);
+            }
+        }
+        return operatingPoints;
+    }
+
+    Inputs Boost::process() {
+        Boost::run_checks(_assertErrors);
+
+        Inputs inputs;
+        auto designRequirements = process_design_requirements();
+
+        auto desiredMagnetizingInductance = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
+        auto operatingPoints = process_operating_points(desiredMagnetizingInductance);
+
+        inputs.set_design_requirements(designRequirements);
+        inputs.set_operating_points(operatingPoints);
+
+        return inputs;
+    }
+
+    std::vector<OperatingPoint> Boost::process_operating_points(Magnetic magnetic) {
+        Boost::run_checks(_assertErrors);
+
+        OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");  // hardcoded
+        double magnetizingInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
+        
+        return process_operating_points(magnetizingInductance);
+    }
+
+    Inputs AdvancedBoost::process() {
+        Boost::run_checks(_assertErrors);
+
+        Inputs inputs;
+
+        double maximumNeededInductance = get_desired_inductance();
+
+        inputs.get_mutable_operating_points().clear();
+        std::vector<double> inputVoltages;
+        std::vector<std::string> inputVoltagesNames;
+
+
+        if (get_input_voltage().get_nominal()) {
+            inputVoltages.push_back(get_input_voltage().get_nominal().value());
+            inputVoltagesNames.push_back("Nom.");
+        }
+        if (get_input_voltage().get_maximum()) {
+            inputVoltages.push_back(get_input_voltage().get_maximum().value());
+            inputVoltagesNames.push_back("Max.");
+        }
+        if (get_input_voltage().get_minimum()) {
+            inputVoltages.push_back(get_input_voltage().get_minimum().value());
+            inputVoltagesNames.push_back("Min.");
+        }
+
+        DesignRequirements designRequirements;
+
+        DimensionWithTolerance inductanceWithTolerance;
+        inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
+        designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
+        std::vector<IsolationSide> isolationSides;
+        isolationSides.push_back(get_isolation_side_from_index(0));
+        designRequirements.set_isolation_sides(isolationSides);
+        designRequirements.set_topology(Topologies::BOOST_CONVERTER);
+
+        inputs.set_design_requirements(designRequirements);
+
+        for (size_t inputVoltageIndex = 0; inputVoltageIndex < inputVoltages.size(); ++inputVoltageIndex) {
+            auto inputVoltage = inputVoltages[inputVoltageIndex];
+            for (size_t boostOperatingPointIndex = 0; boostOperatingPointIndex < get_operating_points().size(); ++boostOperatingPointIndex) {
+                auto operatingPoint = processOperatingPointsForInputVoltage(inputVoltage, get_operating_points()[boostOperatingPointIndex], maximumNeededInductance);
+
+                std::string name = inputVoltagesNames[inputVoltageIndex] + " input volt.";
+                if (get_operating_points().size() > 1) {
+                    name += " with op. point " + std::to_string(boostOperatingPointIndex);
+                }
+                operatingPoint.set_name(name);
+                inputs.get_mutable_operating_points().push_back(operatingPoint);
+            }
+        }
+
+        return inputs;
+    }
+} // namespace OpenMagnetics
