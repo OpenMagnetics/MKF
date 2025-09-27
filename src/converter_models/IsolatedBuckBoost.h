@@ -59,9 +59,13 @@ public:
 void from_json(const json & j, AdvancedIsolatedBuckBoost & x);
 void to_json(json & j, const AdvancedIsolatedBuckBoost & x);
 
+
 inline void from_json(const json & j, AdvancedIsolatedBuckBoost& x) {
+    x.set_current_ripple_ratio(get_stack_optional<double>(j, "currentRippleRatio"));
     x.set_diode_voltage_drop(j.at("diodeVoltageDrop").get<double>());
+    x.set_efficiency(get_stack_optional<double>(j, "efficiency"));
     x.set_input_voltage(j.at("inputVoltage").get<DimensionWithTolerance>());
+    x.set_maximum_switch_current(get_stack_optional<double>(j, "maximumSwitchCurrent"));
     x.set_operating_points(j.at("operatingPoints").get<std::vector<IsolatedBuckBoostOperatingPoint>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
@@ -69,10 +73,13 @@ inline void from_json(const json & j, AdvancedIsolatedBuckBoost& x) {
 
 inline void to_json(json & j, const AdvancedIsolatedBuckBoost & x) {
     j = json::object();
+    j["currentRippleRatio"] = x.get_current_ripple_ratio();
     j["diodeVoltageDrop"] = x.get_diode_voltage_drop();
+    j["efficiency"] = x.get_efficiency();
     j["inputVoltage"] = x.get_input_voltage();
-    j["desiredTurnsRatios"] = x.get_desired_turns_ratios();
+    j["maximumSwitchCurrent"] = x.get_maximum_switch_current();
     j["operatingPoints"] = x.get_operating_points();
+    j["desiredTurnsRatios"] = x.get_desired_turns_ratios();
     j["desiredInductance"] = x.get_desired_inductance();
 }
 } // namespace OpenMagnetics

@@ -270,7 +270,9 @@ namespace OpenMagnetics {
         inductanceWithTolerance.set_minimum(roundFloat(maximumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0));
+        for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
+            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
         designRequirements.set_isolation_sides(isolationSides);
         designRequirements.set_topology(Topologies::ISOLATED_BUCK_BOOST_CONVERTER);
         return designRequirements;
@@ -376,7 +378,9 @@ namespace OpenMagnetics {
         inductanceWithTolerance.set_nominal(roundFloat(maximumNeededInductance, 10));
         designRequirements.set_magnetizing_inductance(inductanceWithTolerance);
         std::vector<IsolationSide> isolationSides;
-        isolationSides.push_back(get_isolation_side_from_index(0));
+        for (size_t windingIndex = 0; windingIndex < turnsRatios.size() + 1; ++windingIndex) {
+            isolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
         designRequirements.set_isolation_sides(isolationSides);
         designRequirements.set_topology(Topologies::ISOLATED_BUCK_BOOST_CONVERTER);
 
