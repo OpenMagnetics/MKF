@@ -1019,7 +1019,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
     double magneticFluxDensityReference = 0.18;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_material_names(settings->get_preferred_core_material_powder_manufacturer());
+    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_powder_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
@@ -1091,7 +1091,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
     double magneticFluxDensityReference = 0.18;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
+    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
@@ -1166,7 +1166,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
     size_t numberCoreMaterialsTouse = 2;
     std::vector<std::pair<Magnetic, double>> magneticsWithMaterials;
     std::vector<CoreMaterial> coreMaterialsToEvaluate;
-    auto coreMaterials = get_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
+    auto coreMaterials = get_core_material_names(settings->get_preferred_core_material_ferrite_manufacturer());
     for (auto coreMaterial : coreMaterials) {
         auto application = Core::guess_material_application(coreMaterial);
         if (application == _application) {
