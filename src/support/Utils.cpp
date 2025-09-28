@@ -1023,40 +1023,217 @@ WireMaterial find_wire_material_by_name(std::string name) {
     }
 }
 
-CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter) {
+double get_error_by_winding_window_perimeter(CoreShape shape, double desiredPerimeter) {
+    auto corePiece = CorePiece::factory(shape);
+    auto mainColumn = corePiece->get_columns()[0];
+    double perimeter;
+    if (mainColumn.get_shape() == ColumnShape::RECTANGULAR || mainColumn.get_shape() == ColumnShape::IRREGULAR) {
+        perimeter = 2 * (mainColumn.get_width() + mainColumn.get_depth());
+    }
+    else if (mainColumn.get_shape() == ColumnShape::ROUND) {
+        perimeter = std::numbers::pi * mainColumn.get_width();
+    }
+    else if (mainColumn.get_shape() == ColumnShape::OBLONG) {
+        perimeter = std::numbers::pi * mainColumn.get_width() + 2 * (mainColumn.get_depth() - mainColumn.get_width());
+    }
+    else {
+        throw std::runtime_error("Unsupported column shape");
+    }
+
+    double error = fabs(perimeter - desiredPerimeter) / desiredPerimeter;
+    return error;
+}
+
+
+CoreShape find_core_shape_by_winding_window_perimeter(double desiredPerimeter, std::optional<CoreShapeFamily> family) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes();
     }
 
-    double minimumPerimeterError = DBL_MAX;
+    double minimumError = DBL_MAX;
     CoreShape closestShape;
     for (auto [name, shape] : coreShapeDatabase) {
         if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
-            auto corePiece = CorePiece::factory(shape);
-            auto mainColumn = corePiece->get_columns()[0];
-            double perimeter;
-            if (mainColumn.get_shape() == ColumnShape::RECTANGULAR || mainColumn.get_shape() == ColumnShape::IRREGULAR) {
-                perimeter = 2 * (mainColumn.get_width() + mainColumn.get_depth());
+            if (family) {
+                if (family.value() != shape.get_family()) {
+                    continue;
+                }
             }
-            else if (mainColumn.get_shape() == ColumnShape::ROUND) {
-                perimeter = std::numbers::pi * mainColumn.get_width();
-            }
-            else if (mainColumn.get_shape() == ColumnShape::OBLONG) {
-                perimeter = std::numbers::pi * mainColumn.get_width() + 2 * (mainColumn.get_depth() - mainColumn.get_width());
-            }
-            else {
-                throw std::runtime_error("Unsupported column shape");
-            }
- 
-            double perimeterError = fabs(perimeter - desiredPerimeter) / desiredPerimeter;
-            if (perimeterError < minimumPerimeterError) {
-                minimumPerimeterError = perimeterError;
+            auto error = get_error_by_winding_window_perimeter(shape, desiredPerimeter);
+
+            if (error < minimumError) {
+                minimumError = error;
                 closestShape = shape;
             }
         }
     }
     return closestShape;
 }
+double get_error_by_area_product(CoreShape shape, double desiredAreaProduct) {
+    Core core(shape);
+    core.process_data();
+    auto mainColumn = core.get_columns()[0];
+    auto columnArea = mainColumn.get_area();
+    auto windingWindow = core.get_winding_window();
+    if (!windingWindow.get_area()) {
+        throw std::runtime_error("Column area is missing");
+    }
+    auto windingWindowArea = windingWindow.get_area().value();
+    double areaProduct = columnArea * windingWindowArea;
+
+    double error = fabs(areaProduct - desiredAreaProduct) / desiredAreaProduct;
+    return error;
+}
+
+CoreShape find_core_shape_by_area_product(double desiredAreaProduct, std::optional<CoreShapeFamily> family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    double minimumError = DBL_MAX;
+    CoreShape closestShape;
+    for (auto [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+            if (family) {
+                if (family.value() != shape.get_family()) {
+                    continue;
+                }
+            }
+            auto error = get_error_by_area_product(shape, desiredAreaProduct);
+            if (error < minimumError) {
+                minimumError = error;
+                closestShape = shape;
+            }
+        }
+    }
+    return closestShape;
+}
+
+double get_error_by_winding_window_area(CoreShape shape, double desiredWindingWindowArea) {
+    Core core(shape);
+    core.process_data();
+    auto windingWindow = core.get_winding_window();
+    if (!windingWindow.get_area()) {
+        throw std::runtime_error("Column area is missing");
+    }
+    auto windingWindowArea = windingWindow.get_area().value();
+
+    double error = fabs(windingWindowArea - desiredWindingWindowArea) / desiredWindingWindowArea;
+    return error;
+}
+
+CoreShape find_core_shape_by_winding_window_area(double desiredWindingWindowArea, std::optional<CoreShapeFamily> family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    double minimumError = DBL_MAX;
+    CoreShape closestShape;
+    for (auto [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+            if (family) {
+                if (family.value() != shape.get_family()) {
+                    continue;
+                }
+            }
+
+            auto error = get_error_by_winding_window_area(shape, desiredWindingWindowArea);
+            if (error < minimumError) {
+                minimumError = error;
+                closestShape = shape;
+            }
+        }
+    }
+    return closestShape;
+}
+
+double get_error_by_winding_window_dimensions(CoreShape shape, double desiredWidthOrRadius, double desiredHeight) {
+    Core core(shape);
+    core.process_data();
+    auto windingWindow = core.get_winding_window();
+    auto errors = std::vector<double>(2, 0);
+    if (windingWindow.get_width()) {
+        auto windingWindowWidth = windingWindow.get_width().value();
+        errors[0] = fabs(windingWindowWidth - desiredWidthOrRadius) / desiredWidthOrRadius;
+    }
+    if (windingWindow.get_radial_height()) {
+        auto windingWindowRadialHeight = windingWindow.get_radial_height().value();
+        errors[0] = fabs(windingWindowRadialHeight - desiredWidthOrRadius) / desiredWidthOrRadius;
+    }
+    if (windingWindow.get_height()) {
+        auto windingWindowHeight = windingWindow.get_height().value();
+        errors[1] = fabs(windingWindowHeight - desiredHeight) / desiredHeight;
+    }
+
+    double error = sqrt(pow(errors[0], 2) + pow(errors[1], 2));
+    return error;
+}
+
+CoreShape find_core_shape_by_winding_window_dimensions(double desiredWidthOrRadius, double desiredHeight, std::optional<CoreShapeFamily> family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    double minimumError = DBL_MAX;
+    CoreShape closestShape;
+    for (auto [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+            if (family) {
+                if (family.value() != shape.get_family()) {
+                    continue;
+                }
+            }
+
+            auto error = get_error_by_winding_window_dimensions(shape, desiredWidthOrRadius, desiredHeight);
+            if (error < minimumError) {
+                minimumError = error;
+                closestShape = shape;
+            }
+        }
+    }
+    return closestShape;
+}
+
+double get_error_by_effective_parameters(CoreShape shape, double desiredEffectiveLength, double desiredEffectiveArea, double desiredEffectiveVolume) {
+    Core core(shape);
+    core.process_data();
+    auto effectiveLength = core.get_effective_length();
+    auto effectiveArea = core.get_effective_area();
+    auto effectiveVolume = core.get_effective_volume();
+    auto errors = std::vector<double>(3, 0);
+    errors[0] = fabs(effectiveLength - desiredEffectiveLength) / desiredEffectiveLength;
+    errors[1] = fabs(effectiveArea - desiredEffectiveArea) / desiredEffectiveArea;
+    errors[2] = fabs(effectiveVolume - desiredEffectiveVolume) / desiredEffectiveVolume;
+
+    double error = sqrt(pow(errors[0], 2) + pow(errors[1], 2) + pow(errors[2], 2));
+    return error;
+}
+
+CoreShape find_core_shape_by_effective_parameters(double desiredEffectiveLength, double desiredEffectiveArea, double desiredEffectiveVolume, std::optional<CoreShapeFamily> family) {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes();
+    }
+
+    double minimumError = DBL_MAX;
+    CoreShape closestShape;
+    for (auto [name, shape] : coreShapeDatabase) {
+        if (shape.get_family() != CoreShapeFamily::PQI && shape.get_family() != CoreShapeFamily::UI && shape.get_family() != CoreShapeFamily::UT) {
+            if (family) {
+                if (family.value() != shape.get_family()) {
+                    continue;
+                }
+            }
+
+            auto error = get_error_by_effective_parameters(shape, desiredEffectiveLength, desiredEffectiveArea, desiredEffectiveVolume);
+            if (error < minimumError) {
+                minimumError = error;
+                closestShape = shape;
+            }
+        }
+    }
+    return closestShape;
+}
+
 
 bool check_requirement(DimensionWithTolerance requirement, double value){
     if (requirement.get_minimum() && requirement.get_maximum()) {
