@@ -109,10 +109,10 @@ void load_insulation_materials();
 void load_wire_materials();
 void load_databases(json data, bool withAliases=true, bool addInternalData=true);
 
-std::vector<std::string> get_core_shapes_names(std::string manufacturer);
+std::vector<std::string> get_core_shape_names(std::string manufacturer);
 std::vector<std::string> get_core_material_names(std::optional<std::string> manufacturer=std::nullopt);
-std::vector<std::string> get_core_shapes_names(CoreShapeFamily family);
-std::vector<std::string> get_core_shapes_names();
+std::vector<std::string> get_core_shape_names(CoreShapeFamily family);
+std::vector<std::string> get_core_shape_names();
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype=std::nullopt);
 std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family);
 std::vector<CoreShapeFamily> get_core_shape_families();

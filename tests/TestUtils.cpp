@@ -124,7 +124,7 @@ SUITE(Utils) {
         clear_databases();
         auto settings = Settings::GetInstance();
         settings->reset();
-        auto allShapeNames = get_core_shapes_names();
+        auto allShapeNames = get_core_shape_names();
 
         CHECK(allShapeNames.size() > 900);
     }
@@ -133,9 +133,9 @@ SUITE(Utils) {
         clear_databases();
         auto settings = Settings::GetInstance();
         settings->reset();
-        auto allShapeNames = get_core_shapes_names();
-        auto magneticsShapeNames = get_core_shapes_names("Magnetics");
-        auto ferroxcubeShapeNames = get_core_shapes_names("Ferroxcube");
+        auto allShapeNames = get_core_shape_names();
+        auto magneticsShapeNames = get_core_shape_names("Magnetics");
+        auto ferroxcubeShapeNames = get_core_shape_names("Ferroxcube");
 
         CHECK(allShapeNames.size() > magneticsShapeNames.size());
         CHECK(allShapeNames.size() > ferroxcubeShapeNames.size());
