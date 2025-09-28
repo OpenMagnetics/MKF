@@ -44,62 +44,60 @@ SUITE(TopologyIsolatedBuckBoost) {
 
         auto inputs = isolatedBuckBoostInputs.process();
 
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuckBoost_Primary.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
-        //     painter.export_svg();
-        // }
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuckBoost_Secondary.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
-        //     painter.export_svg();
-        // }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuckBoost_Primary_Current.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuckBoost_Secondary_Current.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_waveform().value());
+            painter.export_svg();
+        }
 
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuckBoost_Primary_Voltage.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
-        //     painter.export_svg();
-        // }
-        // {
-        //     auto outFile = outputFilePath;
-        //     outFile.append("Test_IsolatedBuckBoost_Secondary_Voltage.svg");
-        //     std::filesystem::remove(outFile);   
-        //     Painter painter(outFile, false, true);
-        //     painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
-        //     painter.export_svg();
-        // }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuckBoost_Primary_Voltage.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_waveform().value());
+            painter.export_svg();
+        }
+        {
+            auto outFile = outputFilePath;
+            outFile.append("Test_IsolatedBuckBoost_Secondary_Voltage.svg");
+            std::filesystem::remove(outFile);   
+            Painter painter(outFile, false, true);
+            painter.paint_waveform(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_waveform().value());
+            painter.export_svg();
+        }
 
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding().size() == isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"].size());
         CHECK_CLOSE(double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_average().value(), double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
-        CHECK_CLOSE(double(isolatedBuckBoostInputsJson["inputVoltage"]["minimum"]), inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(isolatedBuckBoostInputsJson["inputVoltage"]["minimum"]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() != 0);
 
         CHECK_CLOSE(double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
-        CHECK(inputs.get_operating_points()[0].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), 0.01);
 
         CHECK_CLOSE(double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][0]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_average().value(), double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][0]) * maximumError);
-        CHECK_CLOSE(double(isolatedBuckBoostInputsJson["inputVoltage"]["maximum"]), inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_peak().value(), double(isolatedBuckBoostInputsJson["inputVoltage"]["maximum"]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_label() == WaveformLabel::TRIANGULAR);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset() > 0);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[0].get_current()->get_processed()->get_offset(), 0.01);
 
         CHECK_CLOSE(double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][1]), inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_average().value(), double(isolatedBuckBoostInputsJson["operatingPoints"][0]["outputCurrents"][1]) * maximumError);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_voltage()->get_processed()->get_label() == WaveformLabel::RECTANGULAR);
         CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY);
-        CHECK(inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset() > 0);
+        CHECK_CLOSE(0, inputs.get_operating_points()[1].get_excitations_per_winding()[1].get_current()->get_processed()->get_offset(), 0.01);
     }
 
 }

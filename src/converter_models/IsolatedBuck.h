@@ -3,13 +3,14 @@
 #include <MAS.hpp>
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
+#include "converter_models/Topology.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
 
-class IsolatedBuck : public MAS::IsolatedBuck {
+class IsolatedBuck : public MAS::IsolatedBuck, public Topology {
 public:
     bool _assertErrors = false;
 
@@ -19,7 +20,6 @@ public:
 
     bool run_checks(bool assert = false);
 
-    Inputs process();
     DesignRequirements process_design_requirements();
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);

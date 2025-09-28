@@ -43,11 +43,8 @@ namespace OpenMagnetics {
         auto dutyCycle = calculate_duty_cycle(inputVoltage, primaryOutputVoltage, efficiency);
 
         auto tOn = dutyCycle / switchingFrequency;
-        auto magnetizingCurrentRipple = inputVoltage * tOn / inductance;
 
         auto primaryCurrentPeakToPeak = (inputVoltage * primaryOutputVoltage) / (inputVoltage + primaryOutputVoltage) / (switchingFrequency * inductance);
-        auto primaryCurrentMaximum = totalReflectedSecondaryCurrent / (1 - dutyCycle) + primaryCurrentPeakToPeak / 2;
-        auto primaryCurrentMinimum = totalReflectedSecondaryCurrent / (1 - dutyCycle) - primaryCurrentPeakToPeak / 2;
 
         auto primaryVoltaveMaximum = inputVoltage;
         auto primaryVoltaveMinimum = primaryOutputVoltage - diodeVoltageDrop;
@@ -55,107 +52,34 @@ namespace OpenMagnetics {
 
         // Primary
         {
-            OperatingPointExcitation excitation;
             Waveform currentWaveform;
             Waveform voltageWaveform;
-            Processed currentProcessed;
-            Processed voltageProcessed;
-
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::TRIANGULAR, primaryCurrentPeakToPeak, switchingFrequency, dutyCycle, primaryOutputCurrent, 0);
-            currentProcessed.set_label(WaveformLabel::TRIANGULAR);
             voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, primaryVoltavePeaktoPeak, switchingFrequency, dutyCycle, 0, 0);
-            voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
 
-            currentProcessed.set_peak_to_peak(primaryCurrentPeakToPeak);
-            currentProcessed.set_peak(primaryCurrentMaximum);
-            currentProcessed.set_duty_cycle(dutyCycle);
-            currentProcessed.set_offset(primaryOutputCurrent);
-
-            voltageProcessed.set_peak_to_peak(primaryVoltavePeaktoPeak);
-            voltageProcessed.set_peak(std::max(primaryVoltaveMaximum, -primaryVoltaveMinimum));
-            voltageProcessed.set_duty_cycle(dutyCycle);
-            voltageProcessed.set_offset(0);
-
-            excitation.set_frequency(switchingFrequency);
-            SignalDescriptor current;
-            current.set_waveform(currentWaveform);
-            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
-            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
-            current.set_processed(currentProcessed);
-            current.set_harmonics(currentHarmonics);
-            excitation.set_current(current);
-            SignalDescriptor voltage;
-            voltage.set_waveform(voltageWaveform);
-            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
-            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
-            voltage.set_processed(voltageProcessed);
-            voltage.set_harmonics(voltageHarmonics);
-            excitation.set_voltage(voltage);
-            json isolationSideJson;
-            to_json(isolationSideJson, get_isolation_side_from_index(0));
-            excitation.set_name(isolationSideJson);
-            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
-
+            auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Primary");
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
         // Secondaries
         for (size_t secondaryIndex = 0; secondaryIndex < outputOperatingPoint.get_output_voltages().size() - 1; ++secondaryIndex) {
-            OperatingPointExcitation excitation;
             Waveform currentWaveform;
             Waveform voltageWaveform;
-            Processed currentProcessed;
-            Processed voltageProcessed;
             double secondaryOutputCurrent = outputOperatingPoint.get_output_currents()[secondaryIndex + 1];
 
             auto secondaryCurrentMaximum = (1 + dutyCycle) / (1 - dutyCycle) * secondaryOutputCurrent - secondaryOutputCurrent;
             auto secondaryCurrentMinimum = 0;
             auto secondaryCurrentPeakToPeak = secondaryCurrentMaximum - secondaryCurrentMinimum;
 
-            auto secondaryVoltaveMaximum = inputVoltage * turnsRatios[secondaryIndex] - diodeVoltageDrop;
-            auto secondaryVoltaveMinimum = (primaryOutputVoltage - diodeVoltageDrop) * turnsRatios[secondaryIndex] - diodeVoltageDrop;
+            auto secondaryVoltaveMaximum = inputVoltage / turnsRatios[secondaryIndex] - diodeVoltageDrop;
+            auto secondaryVoltaveMinimum = (primaryOutputVoltage - diodeVoltageDrop) / turnsRatios[secondaryIndex] + diodeVoltageDrop;
             auto secondaryVoltavePeaktoPeak = secondaryVoltaveMaximum - secondaryVoltaveMinimum;
 
             currentWaveform = Inputs::create_waveform(WaveformLabel::FLYBACK_PRIMARY, secondaryCurrentPeakToPeak, switchingFrequency, 1.0 - dutyCycle, secondaryOutputCurrent, 0, tOn);
-            currentProcessed.set_label(WaveformLabel::FLYBACK_PRIMARY);
             voltageWaveform = Inputs::create_waveform(WaveformLabel::RECTANGULAR, secondaryVoltavePeaktoPeak, switchingFrequency, 1.0 - dutyCycle, 0, 0, tOn);
-            voltageProcessed.set_label(WaveformLabel::RECTANGULAR);
 
-            currentProcessed.set_peak_to_peak(secondaryCurrentPeakToPeak);
-            currentProcessed.set_peak(secondaryCurrentMaximum);
-            currentProcessed.set_duty_cycle(dutyCycle);
-            currentProcessed.set_offset(secondaryOutputCurrent);
-
-            voltageProcessed.set_peak_to_peak(secondaryVoltavePeaktoPeak);
-            voltageProcessed.set_peak(std::max(secondaryVoltaveMaximum, -secondaryVoltaveMinimum));
-            voltageProcessed.set_duty_cycle(dutyCycle);
-            voltageProcessed.set_offset(0);
-
-            excitation.set_frequency(switchingFrequency);
-            SignalDescriptor current;
-            current.set_waveform(currentWaveform);
-            currentProcessed = Inputs::calculate_processed_data(currentWaveform, switchingFrequency, true, currentProcessed);
-            auto sampledCurrentWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(currentWaveform, switchingFrequency);
-            auto currentHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledCurrentWaveform, switchingFrequency);
-            current.set_processed(currentProcessed);
-            current.set_harmonics(currentHarmonics);
-            excitation.set_current(current);
-            SignalDescriptor voltage;
-            voltage.set_waveform(voltageWaveform);
-            voltageProcessed = Inputs::calculate_processed_data(voltageWaveform, switchingFrequency, true, voltageProcessed);
-            auto sampledVoltageWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, switchingFrequency);
-            auto voltageHarmonics = OpenMagnetics::Inputs::calculate_harmonics_data(sampledVoltageWaveform, switchingFrequency);
-            voltage.set_processed(voltageProcessed);
-            voltage.set_harmonics(voltageHarmonics);
-            excitation.set_voltage(voltage);
-            json isolationSideJson;
-            to_json(isolationSideJson, get_isolation_side_from_index(0));
-            excitation.set_name(isolationSideJson);
-            excitation = Inputs::prune_harmonics(excitation, Defaults().harmonicAmplitudeThreshold, 1);
-
+            auto excitation = complete_excitation(currentWaveform, voltageWaveform, switchingFrequency, "Secondary " + std::to_string(secondaryIndex));
             operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
         }
 
@@ -253,7 +177,6 @@ namespace OpenMagnetics {
             auto isolatedbuckBoostOperatingPoint = get_operating_points()[isolatedbuckBoostOperatingPointIndex];
             double primaryVoltage = isolatedbuckBoostOperatingPoint.get_output_voltages()[0];
             auto switchingFrequency = isolatedbuckBoostOperatingPoint.get_switching_frequency();
-            auto outputVoltage = isolatedbuckBoostOperatingPoint.get_output_voltages()[0];
             auto desiredInductance = primaryVoltage * maximumInputVoltage / (primaryVoltage + maximumInputVoltage) / (2 * maximumCurrentRiple* switchingFrequency);
 
             maximumNeededInductance = std::max(maximumNeededInductance, desiredInductance);
@@ -310,24 +233,6 @@ namespace OpenMagnetics {
             }
         }
         return operatingPoints;
-    }
-
-    Inputs IsolatedBuckBoost::process() {
-        IsolatedBuckBoost::run_checks(_assertErrors);
-
-        Inputs inputs;
-        auto designRequirements = process_design_requirements();
-        std::vector<double> turnsRatios;
-        for (auto turnsRatio : designRequirements.get_turns_ratios()) {
-            turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
-        }
-        auto desiredMagnetizingInductance = resolve_dimensional_values(designRequirements.get_magnetizing_inductance());
-        auto operatingPoints = process_operating_points(turnsRatios, desiredMagnetizingInductance);
-
-        inputs.set_design_requirements(designRequirements);
-        inputs.set_operating_points(operatingPoints);
-
-        return inputs;
     }
 
     std::vector<OperatingPoint> IsolatedBuckBoost::process_operating_points(Magnetic magnetic) {

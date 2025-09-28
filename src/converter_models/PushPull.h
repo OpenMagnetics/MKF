@@ -3,13 +3,14 @@
 #include <MAS.hpp>
 #include "processors/Inputs.h"
 #include "constructive_models/Magnetic.h"
+#include "converter_models/Topology.h"
 
 using namespace MAS;
 
 namespace OpenMagnetics {
 
 
-class PushPull : public MAS::PushPull {
+class PushPull : public MAS::PushPull, public Topology {
 public:
     bool _assertErrors = false;
 
@@ -24,9 +25,9 @@ public:
     std::vector<OperatingPoint> process_operating_points(std::vector<double> turnsRatios, double magnetizingInductance);
     std::vector<OperatingPoint> process_operating_points(Magnetic magnetic);
 
-    OperatingPoint processOperatingPointsForInputVoltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance);
+    OperatingPoint process_operating_points_for_input_voltage(double inputVoltage, PushPullOperatingPoint outputOperatingPoint, std::vector<double> turnsRatios, double inductance, double outputInductance);
     double get_output_inductance(double mainSecondaryTurnsRatio);
-    double calculate_duty_cycle();
+    double get_maximum_duty_cycle();
 
 };
 
