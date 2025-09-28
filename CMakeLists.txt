@@ -46,6 +46,7 @@ option(HAVE_LAPACK   "HAVE_LAPACK" 0)
 option(UTPP_INCLUDE_TESTS_IN_BUILD   "Build tests" OFF)
 option(INCLUDE_MKF_TESTS "Compiles also the tests" ON)
 option(INCLUDE_PYMKF "Compiles also the Python interface" OFF)
+option(MATPLOTPP_BUILD_HIGH_RESOLUTION_WORLD_MAP "Compile the high resolution maps for geoplots" OFF)
 
 message("Embeding MAS Data: ${EMBED_MAS_DATA}")
 message("Embeding MAS Cores: ${EMBED_MAS_CORES}")

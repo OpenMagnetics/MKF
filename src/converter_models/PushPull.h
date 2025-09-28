@@ -35,7 +35,7 @@ class AdvancedPushPull : public PushPull {
 private:
     std::vector<double> desiredTurnsRatios;
     double desiredInductance;
-    double desiredOutputInductance;
+    std::optional<double> desiredOutputInductance;
 
 protected:
 public:
@@ -52,12 +52,10 @@ public:
     double & get_mutable_desired_inductance() { return desiredInductance; }
     void set_desired_inductance(const double & value) { this->desiredInductance = value; }
 
-    const double & get_desired_output_inductance() const { return desiredOutputInductance; }
-    double & get_mutable_desired_output_inductance() { return desiredOutputInductance; }
-    void set_desired_output_inductance(const double & value) { this->desiredOutputInductance = value; }
+    std::optional<double> get_desired_output_inductance() const { return desiredOutputInductance; }
+    void set_desired_output_inductance(std::optional<double> value) { this->desiredOutputInductance = value; }
 
     const std::vector<double> & get_desired_turns_ratios() const { return desiredTurnsRatios; }
-    std::vector<double> & get_mutable_desired_turns_ratios() { return desiredTurnsRatios; }
     void set_desired_turns_ratios(const std::vector<double> & value) { this->desiredTurnsRatios = value; }
 
 };
@@ -77,7 +75,7 @@ inline void from_json(const json & j, AdvancedPushPull& x) {
     x.set_operating_points(j.at("operatingPoints").get<std::vector<PushPullOperatingPoint>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
-    x.set_desired_output_inductance(j.at("desiredOutputInductance").get<double>());
+    x.set_desired_output_inductance(get_stack_optional<double>(j, "desiredOutputInductance"));
 }
 
 inline void to_json(json & j, const AdvancedPushPull & x) {

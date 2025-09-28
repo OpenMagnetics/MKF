@@ -1064,8 +1064,14 @@ namespace OpenMagnetics {
         Inputs inputs;
 
         double minimumNeededInductance = get_desired_inductance();
-        double minimumOutputInductance = get_desired_output_inductance();
         std::vector<double> turnsRatios = get_desired_turns_ratios();
+        double minimumOutputInductance = 0;
+        if (get_desired_output_inductance()) {
+            minimumOutputInductance = get_desired_output_inductance().value();
+        }
+        else {
+            minimumOutputInductance = get_output_inductance(turnsRatios[0]);
+        }
 
         inputs.get_mutable_operating_points().clear();
         std::vector<double> inputVoltages;
