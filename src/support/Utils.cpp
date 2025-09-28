@@ -560,7 +560,7 @@ CoreShape find_core_shape_by_name(std::string name) {
     }
 }
 
-std::vector<std::string> get_material_names(std::optional<std::string> manufacturer) {
+std::vector<std::string> get_core_material_names(std::optional<std::string> manufacturer) {
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
@@ -581,30 +581,27 @@ std::vector<std::string> get_material_names(std::optional<std::string> manufactu
     return materialNames;
 }
 
-std::vector<std::string> get_core_shapes_names(std::optional<std::string> manufacturer) {
+std::vector<std::string> get_core_shapes_names(std::string manufacturer) {
     if (coreDatabase.empty()) {
         load_cores();
+    }
+
+    if (manufacturer == "") {
+        return get_core_shapes_names();
     }
 
     std::vector<std::string> coreNames;
 
     for (auto& core : coreDatabase) {
         std::string coreShapeName = core.get_shape_name();
-        if (!manufacturer) {
+        if (!core.get_manufacturer_info()) {
+            continue;
+        }
+        std::string manufacturerName = core.get_manufacturer_info()->get_name();
+
+        if (manufacturerName == manufacturer.value() || manufacturer.value() == "") {
             if (std::find(coreNames.begin(), coreNames.end(), coreShapeName) == coreNames.end()) {
                 coreNames.push_back(coreShapeName);
-            }
-        }
-        else {
-            if (!core.get_manufacturer_info()) {
-                continue;
-            }
-            std::string manufacturerName = core.get_manufacturer_info()->get_name();
-
-            if (manufacturerName == manufacturer.value() || manufacturer.value() == "") {
-                if (std::find(coreNames.begin(), coreNames.end(), coreShapeName) == coreNames.end()) {
-                    coreNames.push_back(coreShapeName);
-                }
             }
         }
     }
@@ -612,7 +609,7 @@ std::vector<std::string> get_core_shapes_names(std::optional<std::string> manufa
     return coreNames;
 }
 
-std::vector<std::string> get_shape_names(CoreShapeFamily family) {
+std::vector<std::string> get_core_shapes_names(CoreShapeFamily family) {
     if (coreShapeDatabase.empty()) {
         load_core_shapes(true);
     }
@@ -626,6 +623,58 @@ std::vector<std::string> get_shape_names(CoreShapeFamily family) {
     }
 
     return shapeNames;
+}
+
+std::vector<std::string> get_core_shapes_names() {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+    bool includeToroidalCores = settings->get_use_toroidal_cores();
+    bool includeConcentricCores = settings->get_use_concentric_cores();
+
+    std::vector<std::string> shapeNames;
+ 
+    for (auto& [name, shape] : coreShapeDatabase) {
+        if ((includeToroidalCores && shape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && shape.get_family() != CoreShapeFamily::T)) {
+            shapeNames.push_back(name);
+        }
+    }
+
+    return shapeNames;
+}
+
+
+std::vector<CoreShapeFamily> get_core_shape_families() {
+    if (coreShapeDatabase.empty()) {
+        load_core_shapes(true);
+    }
+
+    return coreShapeFamiliesInDatabase;
+}
+
+std::vector<std::string> get_core_material_families(std::optional<MaterialType> materialType) {
+    if (coreShapeDatabase.empty()) {
+        load_core_materials();
+    }
+    std::vector<std::string> families;
+    for (auto& [name, material] : coreMaterialDatabase) {
+        if (material.get_family()) {
+            if (!materialType) {
+                if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
+                    families.push_back(material.get_family().value());
+                }
+            }
+            else {
+                if (materialType.value() == material.get_material()) {
+                    if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
+                        families.push_back(material.get_family().value());
+                    }
+                }
+            }
+        }
+    }
+
+    return families;
 }
 
 std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std::optional<std::string> familySubtype) {
@@ -678,58 +727,6 @@ std::vector<std::string> get_shape_family_subtypes(CoreShapeFamily family) {
     std::sort(distinctSubtypes.begin(), distinctSubtypes.end(), [](std::string a, std::string b) {return a<b;});
 
     return distinctSubtypes;
-}
-
-std::vector<std::string> get_shape_names() {
-    if (coreShapeDatabase.empty()) {
-        load_core_shapes(true);
-    }
-    bool includeToroidalCores = settings->get_use_toroidal_cores();
-    bool includeConcentricCores = settings->get_use_concentric_cores();
-
-    std::vector<std::string> shapeNames;
- 
-    for (auto& [name, shape] : coreShapeDatabase) {
-        if ((includeToroidalCores && shape.get_family() == CoreShapeFamily::T) || (includeConcentricCores && shape.get_family() != CoreShapeFamily::T)) {
-            shapeNames.push_back(name);
-        }
-    }
-
-    return shapeNames;
-}
-
-
-std::vector<CoreShapeFamily> get_shape_families() {
-    if (coreShapeDatabase.empty()) {
-        load_core_shapes(true);
-    }
-
-    return coreShapeFamiliesInDatabase;
-}
-
-std::vector<std::string> get_material_families(std::optional<MaterialType> materialType) {
-    if (coreShapeDatabase.empty()) {
-        load_core_materials();
-    }
-    std::vector<std::string> families;
-    for (auto& [name, material] : coreMaterialDatabase) {
-        if (material.get_family()) {
-            if (!materialType) {
-                if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
-                    families.push_back(material.get_family().value());
-                }
-            }
-            else {
-                if (materialType.value() == material.get_material()) {
-                    if (std::find(families.begin(), families.end(), material.get_family().value()) == families.end()) {
-                        families.push_back(material.get_family().value());
-                    }
-                }
-            }
-        }
-    }
-
-    return families;
 }
 
 std::vector<std::string> get_wire_names() {

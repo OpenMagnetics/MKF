@@ -120,11 +120,20 @@ SUITE(Utils) {
         CHECK_EQUAL("T 22/12.4/12.8", shape.get_name().value());
     }
 
+    TEST(Test_Get_Shapes) {
+        clear_databases();
+        auto settings = Settings::GetInstance();
+        settings->reset();
+        auto allShapeNames = get_core_shapes_names();
+
+        CHECK(allShapeNames.size() > 900);
+    }
+
     TEST(Test_Get_Shapes_By_Manufacturer) {
         clear_databases();
         auto settings = Settings::GetInstance();
         settings->reset();
-        auto allShapeNames = get_shape_names();
+        auto allShapeNames = get_core_shapes_names();
         auto magneticsShapeNames = get_core_shapes_names("Magnetics");
         auto ferroxcubeShapeNames = get_core_shapes_names("Ferroxcube");
 
