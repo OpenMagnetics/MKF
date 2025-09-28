@@ -818,7 +818,7 @@ SUITE(CoilAdviser) {
                 dcCurrent = std::rand() % 30;
             }
             settings->set_use_toroidal_cores(false);
-            auto coreShapeNames = get_shape_names();
+            auto coreShapeNames = get_core_shape_names();
             std::string coreShapeName;
             OpenMagnetics::Magnetic magnetic;
 
@@ -1077,7 +1077,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.5;
         double dcCurrent = 0;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1140,7 +1140,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.88;
         double dcCurrent = 6;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1208,7 +1208,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.18;
         double dcCurrent = 28;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1279,7 +1279,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.61;
         double dcCurrent = 5;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1347,7 +1347,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.38;
         double dcCurrent = 16;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1416,7 +1416,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.57;
         double dcCurrent = 1;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1485,7 +1485,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.68;
         double dcCurrent = 7;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1554,7 +1554,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.68;
         double dcCurrent = 7;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1624,7 +1624,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.28;
         double dcCurrent = 2;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1691,7 +1691,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.14;
         double dcCurrent = 0;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1761,7 +1761,7 @@ SUITE(CoilAdviser) {
         double dutyCycle = 0.73;
         double dcCurrent = 5;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1829,7 +1829,7 @@ SUITE(CoilAdviser) {
         double temperature = 23;
         WaveformLabel waveShape = WaveformLabel::SINUSOIDAL;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 
@@ -1899,7 +1899,7 @@ SUITE(CoilAdviser) {
         double temperature = 23;
         WaveformLabel waveShape = WaveformLabel::SINUSOIDAL;
         settings->set_use_toroidal_cores(false);
-        auto coreShapeNames = get_shape_names();
+        auto coreShapeNames = get_core_shape_names();
         std::string coreShapeName;
         OpenMagnetics::Magnetic magnetic;
 

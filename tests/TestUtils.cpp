@@ -254,7 +254,7 @@ SUITE(Utils) {
     }
 
     TEST(Test_Core_Shapes_Families) {
-        CHECK(get_shape_families().size() > 0);
+        CHECK(get_core_shape_families().size() > 0);
     }
 
     TEST(Test_Core_Shapes_Dimensions_PQ) {

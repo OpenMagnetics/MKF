@@ -599,7 +599,7 @@ std::vector<std::string> get_core_shape_names(std::string manufacturer) {
         }
         std::string manufacturerName = core.get_manufacturer_info()->get_name();
 
-        if (manufacturerName == manufacturer.value() || manufacturer.value() == "") {
+        if (manufacturerName == manufacturer) {
             if (std::find(coreNames.begin(), coreNames.end(), coreShapeName) == coreNames.end()) {
                 coreNames.push_back(coreShapeName);
             }

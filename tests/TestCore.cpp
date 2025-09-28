@@ -1550,7 +1550,7 @@ SUITE(CoreProcessedDescription) {
 
     TEST(Test_Core_All_Shapes) {
         settings->set_use_toroidal_cores(true);
-        auto shapeNames = get_shape_names();
+        auto shapeNames = get_core_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("UI ")) {
                 continue;

@@ -2156,7 +2156,7 @@ SUITE(CoilPainter) {
 
     TEST(Test_Painter_All_Cores) {
 
-        for (std::string& shapeName : get_shape_names()){
+        for (std::string& shapeName : get_core_shape_names()){
             if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
                 continue;
             }

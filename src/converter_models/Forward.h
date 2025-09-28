@@ -34,7 +34,7 @@ class AdvancedForward : public Forward {
 private:
     std::vector<double> desiredTurnsRatios;
     double desiredInductance;
-    std::vector<double> desiredOutputInductances;
+    std::optional<std::vector<double>> desiredOutputInductances;
 
 protected:
 public:
@@ -55,9 +55,8 @@ public:
     std::vector<double> & get_mutable_desired_turns_ratios() { return desiredTurnsRatios; }
     void set_desired_turns_ratios(const std::vector<double> & value) { this->desiredTurnsRatios = value; }
 
-    const std::vector<double> & get_desired_output_inductances() const { return desiredOutputInductances; }
-    std::vector<double> & get_mutable_desired_output_inductances() { return desiredOutputInductances; }
-    void set_desired_output_inductances(const std::vector<double> & value) { this->desiredOutputInductances = value; }
+    std::optional<std::vector<double>> get_desired_output_inductances() const { return desiredOutputInductances; }
+    void set_desired_output_inductances(std::optional<std::vector<double>> value) { this->desiredOutputInductances = value; }
 };
 
 
@@ -74,7 +73,7 @@ inline void from_json(const json & j, AdvancedForward& x) {
     x.set_operating_points(j.at("operatingPoints").get<std::vector<ForwardOperatingPoint>>());
     x.set_desired_turns_ratios(j.at("desiredTurnsRatios").get<std::vector<double>>());
     x.set_desired_inductance(j.at("desiredInductance").get<double>());
-    x.set_desired_output_inductances(j.at("desiredOutputInductances").get<std::vector<double>>());
+    x.set_desired_output_inductances(get_stack_optional<std::vector<double>>(j, "desiredOutputInductance"));
 }
 
 inline void to_json(json & j, const AdvancedForward & x) {

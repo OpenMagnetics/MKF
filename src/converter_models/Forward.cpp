@@ -302,8 +302,18 @@ namespace OpenMagnetics {
         Inputs inputs;
 
         double minimumNeededInductance = get_desired_inductance();
-        std::vector<double> outputInductancePerSecondary = get_desired_output_inductances();
         std::vector<double> turnsRatios = get_desired_turns_ratios();
+        std::vector<double> outputInductancePerSecondary;
+
+        if (get_desired_output_inductances()) {
+            outputInductancePerSecondary = get_desired_output_inductances().value();
+        }
+        else {
+            for (size_t secondaryIndex = 0; secondaryIndex < turnsRatios.size(); ++secondaryIndex) {
+                auto minimumOutputInductance = get_output_inductance(turnsRatios[secondaryIndex], secondaryIndex);
+                outputInductancePerSecondary.push_back(minimumOutputInductance);
+            }
+        }
 
         if (turnsRatios.size() != get_operating_points()[0].get_output_currents().size() + 1) {
             throw std::runtime_error("Turns ratios must have one more position than outputs for the demagnetization winding");

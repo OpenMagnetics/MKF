@@ -135,7 +135,7 @@ SUITE(Bobbin) {
 
     TEST(Get_Winding_Window_Dimensions_All_Shapes_With_Bobbin) {
         settings->set_use_toroidal_cores(true);
-        auto shapeNames = get_shape_names();
+        auto shapeNames = get_core_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
                 continue;
@@ -148,7 +148,7 @@ SUITE(Bobbin) {
 
     TEST(Create_Bobbin_With_Thickness) {
         settings->set_use_toroidal_cores(true);
-        auto shapeNames = get_shape_names();
+        auto shapeNames = get_core_shape_names();
         for (auto shapeName : shapeNames) {
             if (shapeName.contains("PQI") || shapeName.contains("R ") || shapeName.contains("T ") || shapeName.contains("UI ")) {
                 continue;
